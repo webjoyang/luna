@@ -27,6 +27,7 @@ oldweb/
 .idea/
 .github/
 .gitee/
+.git/
 lefthook.yml
 .image/
 sql/

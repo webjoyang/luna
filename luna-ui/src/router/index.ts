@@ -8,7 +8,11 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.VITE_BASE_PATH), // createWebHashHistory URL带#，createWebHistory URL不带#
   strict: true,
   routes: remainingRouter as RouteRecordRaw[],
-  scrollBehavior: () => {
+  scrollBehavior: (to) => {
+    // 锚点导航（官网首页右侧进度点、#library 等）交给浏览器平滑定位到目标元素
+    if (to.hash) {
+      return { el: to.hash, behavior: 'smooth' }
+    }
     // 新开标签时、返回标签时，滚动条回到顶部，否则会保留上次标签的滚动位置。
     const scrollbarWrap = document.querySelector('.v-layout-content-scrollbar .el-scrollbar__wrap')
     if (scrollbarWrap) {

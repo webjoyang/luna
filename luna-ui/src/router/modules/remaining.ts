@@ -52,13 +52,21 @@ const remainingRouter: AppRouteRecordRaw[] = [
   },
   {
     path: '/',
+    component: () => import('@/views/PublicHome/Index.vue'),
+    name: 'PublicHome',
+    meta: {
+      hidden: true,
+      noTagsView: true
+    }
+  },
+  {
+    path: '/index',
     component: Layout,
-    redirect: '/index',
     name: 'Home',
     meta: {},
     children: [
       {
-        path: 'index',
+        path: '',
         component: () => import('@/views/Home/Index.vue'),
         name: 'Index',
         meta: {
@@ -185,11 +193,11 @@ const remainingRouter: AppRouteRecordRaw[] = [
   },
   {
     path: '/luna-login',
-    component: () => import('@/views/Login/LunaLogin.vue'),
+    component: () => import('@/views/LunaLogin/LunaLogin.vue'),
     name: 'LunaLogin',
     meta: {
       hidden: true,
-      title: t('router.login'),
+      title: '员工登录',
       noTagsView: true
     }
   },

@@ -258,7 +258,7 @@ const tryLogin = async () => {
     const res = await LoginApi.socialLogin(type, code, state)
     authUtil.setToken(res)
 
-    router.push({ path: redirect || '/' })
+    router.push({ path: redirect || '/index' })
   } catch (err) {}
 }
 
@@ -304,7 +304,7 @@ const handleLogin = async (params) => {
     }
     authUtil.setToken(res)
     if (!redirect) {
-      redirect = '/'
+      redirect = '/index'
     }
     // 判断是否为SSO登录
     if (redirect.indexOf('sso') !== -1) {

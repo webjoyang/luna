@@ -1,0 +1,6 @@
+<svg width="210" height="60" viewBox="0 0 210 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- LUNAAGI 默认字标 — 白色版（深背景用）。客户未配置 LOGO 时的全局回退图。 -->
+  <text x="6" y="44"
+        font-family="'Quicksand','Comfortaa','Nunito','Varela Round','Trebuchet MS',system-ui,-apple-system,sans-serif"
+        font-size="46" font-weight="700" letter-spacing="-0.01em" fill="#ffffff">lunaagi<tspan font-size="58" font-weight="900">.</tspan></text>
+</svg>

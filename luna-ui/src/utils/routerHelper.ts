@@ -24,8 +24,8 @@ export const registerComponent = (componentPath: string) => {
     }
   }
 }
-/* Layout */
-export const Layout = () => import('@/layout/Layout.vue')
+/* Layout: Luna shell (no logo/top bar, sidebar fully hidden on collapse, ToolHeader in "more" popover) */
+export const Layout = () => import('@/layout/luna/LunaLayout.vue')
 
 // 嵌套动态目录只需要透传子路由；不能再次渲染完整 Layout，否则内容区会重复出现顶部栏和侧边栏。
 // vue-router 5 对 component 更严格，这里必须返回带 render 的真实组件，不能只返回 { name: 'ParentLayout' }。
