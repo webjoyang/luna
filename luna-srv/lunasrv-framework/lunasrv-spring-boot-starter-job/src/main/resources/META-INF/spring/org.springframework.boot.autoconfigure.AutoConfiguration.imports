@@ -1,0 +1,2 @@
+com.luna.lunasrv.framework.quartz.config.LunasrvQuartzAutoConfiguration
+com.luna.lunasrv.framework.quartz.config.LunasrvAsyncAutoConfiguration

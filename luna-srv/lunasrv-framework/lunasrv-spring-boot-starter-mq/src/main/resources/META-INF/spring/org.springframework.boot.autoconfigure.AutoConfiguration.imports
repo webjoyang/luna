@@ -1,0 +1,3 @@
+com.luna.lunasrv.framework.mq.redis.config.LunasrvRedisMQProducerAutoConfiguration
+com.luna.lunasrv.framework.mq.redis.config.LunasrvRedisMQConsumerAutoConfiguration
+com.luna.lunasrv.framework.mq.rabbitmq.config.LunasrvRabbitMQAutoConfiguration

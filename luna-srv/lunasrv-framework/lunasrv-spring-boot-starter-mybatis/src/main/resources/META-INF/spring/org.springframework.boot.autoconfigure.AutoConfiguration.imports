@@ -1,0 +1,3 @@
+com.luna.lunasrv.framework.datasource.config.LunasrvDataSourceAutoConfiguration
+com.luna.lunasrv.framework.mybatis.config.LunasrvMybatisAutoConfiguration
+com.luna.lunasrv.framework.translate.config.LunasrvTranslateAutoConfiguration

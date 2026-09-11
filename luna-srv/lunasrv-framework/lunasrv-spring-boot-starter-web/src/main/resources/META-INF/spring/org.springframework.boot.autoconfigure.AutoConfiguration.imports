@@ -1,0 +1,7 @@
+com.luna.lunasrv.framework.apilog.config.LunasrvApiLogAutoConfiguration
+com.luna.lunasrv.framework.jackson.config.LunasrvJacksonAutoConfiguration
+com.luna.lunasrv.framework.swagger.config.LunasrvSwaggerAutoConfiguration
+com.luna.lunasrv.framework.web.config.LunasrvWebAutoConfiguration
+com.luna.lunasrv.framework.xss.config.LunasrvXssAutoConfiguration
+com.luna.lunasrv.framework.banner.config.LunasrvBannerAutoConfiguration
+com.luna.lunasrv.framework.encrypt.config.LunasrvApiEncryptAutoConfiguration
