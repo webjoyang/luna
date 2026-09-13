@@ -106,5 +106,4 @@ auto-*.d.ts
 output/
 .playwright-cli/
 .codebuddy/
-.trae/
 
