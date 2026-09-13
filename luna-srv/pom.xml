@@ -15,6 +15,7 @@
         <!-- 各种 module 拓展 -->
         <module>lunasrv-module-system</module>
         <module>lunasrv-module-infra</module>
+        <module>lunasrv-module-lunaerp</module>
 <!--        <module>lunasrv-module-member</module>-->
 <!--        <module>lunasrv-module-bpm</module>-->
 <!--        <module>lunasrv-module-report</module>-->

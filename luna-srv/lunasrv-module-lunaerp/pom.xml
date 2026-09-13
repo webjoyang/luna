@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.luna.lunasrv</groupId>
+        <artifactId>lunasrv</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>lunasrv-module-lunaerp</artifactId>
+    <packaging>jar</packaging>
+
+    <name>${project.artifactId}</name>
+    <description>
+        lunaerp 模块，Luna ERP 业务模块。
+        例如说：产品、产品标签、格雷类型等基础资料
+    </description>
+
+    <dependencies>
+        <!-- 业务组件 -->
+        <dependency>
+            <groupId>com.luna.lunasrv</groupId>
+            <artifactId>lunasrv-spring-boot-starter-biz-data-permission</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.luna.lunasrv</groupId>
+            <artifactId>lunasrv-spring-boot-starter-biz-tenant</artifactId>
+        </dependency>
+
+        <!-- Web 相关 -->
+        <dependency>
+            <groupId>com.luna.lunasrv</groupId>
+            <artifactId>lunasrv-spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- DB 相关 -->
+        <dependency>
+            <groupId>com.luna.lunasrv</groupId>
+            <artifactId>lunasrv-spring-boot-starter-mybatis</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.luna.lunasrv</groupId>
+            <artifactId>lunasrv-spring-boot-starter-redis</artifactId>
+        </dependency>
+
+        <!-- 工具类相关 -->
+        <dependency>
+            <groupId>com.luna.lunasrv</groupId>
+            <artifactId>lunasrv-spring-boot-starter-excel</artifactId>
+        </dependency>
+
+    </dependencies>
+
+</project>

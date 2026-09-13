@@ -453,6 +453,13 @@
                 <version>${revision}</version>
             </dependency>
 
+            <!-- 业务模块相关 -->
+            <dependency>
+                <groupId>com.luna.lunasrv</groupId>
+                <artifactId>lunasrv-module-lunaerp</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
             <dependency>
                 <groupId>com.luna.lunasrv</groupId>
                 <artifactId>lunasrv-spring-boot-starter-excel</artifactId>

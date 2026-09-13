@@ -107,3 +107,6 @@ auto-*.d.ts
 .history
 output/
 .playwright-cli/
+.codebuddy/
+.trae/
+
