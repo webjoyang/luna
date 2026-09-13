@@ -30,8 +30,6 @@ oldweb/
 .git/
 lefthook.yml
 .image/
-sql/
-script/
 .vscode/
 
 
