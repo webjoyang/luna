@@ -7,6 +7,7 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *
  * lunaerp 系统，使用 1-030-001-xxx 段（产品）
  *                  与 1-030-002-xxx 段（客户）
+ *                  与 1-030-003-xxx 段（销售合同）
  */
 public interface ErrorCodeConstants {
 
@@ -22,5 +23,9 @@ public interface ErrorCodeConstants {
 
     // ========== 客户模块 1-030-002-000 ==========
     ErrorCode CUSTOMER_NOT_EXISTS = new ErrorCode(1_030_002_000, "客户不存在");
+
+    // ========== 销售合同模块 1-030-003-000 ==========
+    ErrorCode SALES_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_003_000, "销售合同不存在");
+    ErrorCode SALES_CONTRACT_NO_DUPLICATE = new ErrorCode(1_030_003_001, "合同编号已被占用，请修改编号或重新获取");
 
 }

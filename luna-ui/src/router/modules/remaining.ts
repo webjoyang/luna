@@ -460,6 +460,26 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/business',
+    component: Layout,
+    name: 'lunaerpElmuiBusinessStatic',
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'sales-contract/edit/:id?',
+        component: () => import('@/views/lunaerp-elmui/business/sales-contract/edit/index.vue'),
+        name: 'LunaerpElmuiBusinessSalesContractEdit',
+        meta: {
+          title: '销售合同',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/business/sales-contract'
+        }
+      }
+    ]
+  },
+  {
     path: '/hrm',
     component: Layout,
     name: 'HrmCenter',

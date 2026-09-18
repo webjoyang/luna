@@ -450,5 +450,12 @@ export enum DICT_TYPE {
   LUNAERP_CUSTOMER_INDUSTRY = 'lunaerp_customer_industry', // 客户所属行业
   LUNAERP_CUSTOMER_SCALE = 'lunaerp_customer_scale', // 客户企业规模
   LUNAERP_CUSTOMER_SOURCE = 'lunaerp_customer_source', // 客户来源
-  LUNAERP_CUSTOMER_COOPERATION_STATUS = 'lunaerp_customer_cooperation_status' // 客户合作状态
+  LUNAERP_CUSTOMER_COOPERATION_STATUS = 'lunaerp_customer_cooperation_status', // 客户合作状态
+
+  // ========== LunaERP - 业务管理-销售合同模块 ==========
+  LUNAERP_SALES_CONTRACT_STATUS = 'lunaerp_sales_contract_status', // 销售合同状态
+  LUNAERP_SALES_CONTRACT_TRADE_TYPE = 'lunaerp_sales_contract_trade_type', // 销售合同贸易类型
+  LUNAERP_SALES_CONTRACT_ORDER_TYPE = 'lunaerp_sales_contract_order_type', // 销售合同订单属性
+  LUNAERP_SALES_CONTRACT_UNIT = 'lunaerp_sales_contract_unit', // 销售合同单位
+  LUNAERP_SALES_CONTRACT_CURRENCY = 'lunaerp_sales_contract_currency' // 销售合同币种
 }
