@@ -104,7 +104,7 @@ public class CustomerServiceImpl implements CustomerService {
     }
 
     /**
-     * 校验客户存在，不存在抛 1_030_002_000
+     * 校验客户存在，不存在抛 1_030_004_000
      */
     private void validateCustomerExists(Long id) {
         if (id == null || customerMapper.selectById(id) == null) {

@@ -43,7 +43,7 @@ Status: ready-for-agent
 29. 作为开发，我想客户状态用两态 ACTIVE/INACTIVE 而非旧系统的三态（带审批），以便首期不引入审批流复杂度。
 30. 作为开发，我想客户表无 code 字段、无唯一约束（除主键），以便与旧系统对齐（旧系统无 code）并允许同名客户。
 31. 作为开发，我想客户字段不含 `businessOwnership`，以便首期不引入业务部隔离逻辑。
-32. 作为开发，我想错误码段位用 `1-030-002-xxx`（customer 与 customer-contact 共用），以便与产品模块 `1-030-001-xxx` 平级。
+32. 作为开发，我想错误码段位与产品模块 `1-030-001-xxx` 平级且全模块唯一（customer 与 customer-contact 共用）。（落地修订：原设计记为 `1-030-002-xxx`，发现该段已被胚布品种 `GreigeErrorCodeConstants` 先行占用，客户改用 `1-030-004-xxx`，详见文末「错误码段重号修订」。）
 
 ## Implementation Decisions
 
@@ -120,12 +120,16 @@ Status: ready-for-agent
 
 ### 错误码
 
-`1-030-002-xxx` 段位（customer 与 customer-contact 共用）：
+`1-030-004-xxx` 段位（customer 与 customer-contact 共用）：
 
-- `1_030_002_000` — CUSTOMER_NOT_EXISTS（客户不存在）
-- `1_030_002_001` — CUSTOMER_CONTACT_NOT_EXISTS（客户联系人不存在）
+- `1_030_004_000` — CUSTOMER_NOT_EXISTS（客户不存在）
+- `1_030_004_001` — CUSTOMER_CONTACT_NOT_EXISTS（客户联系人不存在）
 
 追加到 `lunasrv-module-lunaerp` 的 `ErrorCodeConstants.java` 末尾。
+
+#### 错误码段重号修订（2026-09-18）
+
+lunaerp 段位全表：`1-030-001-xxx` 产品 / `1-030-002-xxx` 胚布品种（`GreigeErrorCodeConstants`，随「产品模块迁移」commit `985a7ec` 先行上线）/ `1-030-004-xxx` 客户。原设计把客户记在 002 段，落地时发现与胚布品种的 `1_030_002_000/001/002` 整段重号；胚布品种既已随主线发布、其常量类注释也明确记载「001 产品、002 胚布品种」，故由后开发的客户模块迁至 004 段（003 段在早期销售合同 WIP 中曾被使用，直接跳号避免再次撞段）。框架无错误码唯一校验，重号不影响运行期，但日志/问题定位会混淆两个模块，故在客户模块发布前完成改段。
 
 ### 字典（5 个）
 

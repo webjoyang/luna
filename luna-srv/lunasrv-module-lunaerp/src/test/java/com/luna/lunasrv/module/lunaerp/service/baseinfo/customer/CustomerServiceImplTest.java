@@ -28,8 +28,8 @@ import static org.mockito.Mockito.when;
  *
  * 覆盖关键业务语义：
  *  - createCustomer：shortName 为空时用 company 回填；status 缺省 ACTIVE；shortName 非空时保留。
- *  - getCustomer：客户不存在时抛 CUSTOMER_NOT_EXISTS（1_030_002_000）。
- *  - updateCustomer：不存在抛 1_030_002_000；shortName 为空时同样用 company 回填。
+ *  - getCustomer：客户不存在时抛 CUSTOMER_NOT_EXISTS（1_030_004_000）。
+ *  - updateCustomer：不存在抛 1_030_004_000；shortName 为空时同样用 company 回填。
  *  - deleteCustomer/deleteCustomerList：不存在抛错；删除时先置 status=INACTIVE 再逻辑删除。
  *
  * 说明：Controller 层 MockMvc 集成测试需要完整的 security filter chain + 测试数据库，
@@ -101,16 +101,16 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void getCustomer_notExists_throwsCode1030002000() {
+    void getCustomer_notExists_throwsCode1030004000() {
         when(customerMapper.selectById(9999L)).thenReturn(null);
 
         ServiceException ex = assertThrows(ServiceException.class,
                 () -> customerService.getCustomer(9999L));
-        assertEquals(1_030_002_000, ex.getCode());
+        assertEquals(1_030_004_000, ex.getCode());
     }
 
     @Test
-    void updateCustomer_notExists_throwsCode1030002000() {
+    void updateCustomer_notExists_throwsCode1030004000() {
         CustomerSaveReqVO req = new CustomerSaveReqVO();
         req.setId(9999L);
         req.setCompany(COMPANY);
@@ -119,7 +119,7 @@ class CustomerServiceImplTest {
 
         ServiceException ex = assertThrows(ServiceException.class,
                 () -> customerService.updateCustomer(req));
-        assertEquals(1_030_002_000, ex.getCode());
+        assertEquals(1_030_004_000, ex.getCode());
         verify(customerMapper, never()).updateById(any(CustomerDO.class));
     }
 
@@ -158,12 +158,12 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void deleteCustomer_notExists_throwsCode1030002000() {
+    void deleteCustomer_notExists_throwsCode1030004000() {
         when(customerMapper.selectById(9999L)).thenReturn(null);
 
         ServiceException ex = assertThrows(ServiceException.class,
                 () -> customerService.deleteCustomer(9999L));
-        assertEquals(1_030_002_000, ex.getCode());
+        assertEquals(1_030_004_000, ex.getCode());
         verify(customerMapper, never()).deleteByIds(anyList());
     }
 

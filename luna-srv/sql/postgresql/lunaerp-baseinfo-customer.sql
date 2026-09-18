@@ -144,3 +144,74 @@ INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_t
 
 COMMIT;
 -- @formatter:on
+
+-- =============================================================================
+-- 5. 客户联系人表 lunaerp_baseinfo_customer_contact
+--    客户的独立子资源：customer_id 直接 int8（无历史包袱，不学 product-image 的 String productId）。
+--    is_primary 业务允许同客户多条主联系人（不建唯一约束，由前端管理）。
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS lunaerp_baseinfo_customer_contact (
+    id           int8         NOT NULL,
+    customer_id  int8         NOT NULL,
+    name         varchar      NOT NULL,
+    position     varchar      NULL,
+    phone        varchar      NULL,
+    email        varchar      NULL,
+    remark       varchar      NULL,
+    is_primary   int2         NOT NULL DEFAULT 0,
+    creator      varchar(64)  NULL DEFAULT '',
+    create_time  timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater      varchar(64)  NULL DEFAULT '',
+    update_time  timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted      int2         NOT NULL DEFAULT 0,
+    tenant_id    int8         NOT NULL DEFAULT 0
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pk_lb_customer_contact') THEN
+        ALTER TABLE lunaerp_baseinfo_customer_contact ADD CONSTRAINT pk_lb_customer_contact PRIMARY KEY (id);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_lb_customer_contact_customer
+    ON lunaerp_baseinfo_customer_contact (customer_id);
+
+COMMENT ON TABLE lunaerp_baseinfo_customer_contact IS '基本信息-客户联系人表';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.id IS '联系人ID';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.customer_id IS '客户ID（lunaerp_baseinfo_customer.id）';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.name IS '联系人姓名（必填）';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.position IS '职位';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.phone IS '联系电话';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.email IS '邮箱';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.remark IS '备注';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.is_primary IS '是否主联系人（1 是 / 0 否），业务允许同客户多条主联系人';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.creator IS '创建者';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.create_time IS '创建时间';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.updater IS '更新者';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.update_time IS '更新时间';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.deleted IS '是否删除';
+COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.tenant_id IS '租户编号';
+
+-- 主键序列（MyBatis-Plus PostgreSQL INPUT 模式按 @KeySequence 取 nextval，可重复执行）
+CREATE SEQUENCE IF NOT EXISTS lunaerp_baseinfo_customer_contact_seq;
+
+-- =============================================================================
+-- 6. 联系人菜单与按钮（system_menu，可重复执行）
+--    10040 为隐藏菜单（type=2、visible='0'、无 component），仅作权限节点承载 query 权限；
+--    10041-10043 为 create/update/delete 按钮节点。导航树不显示，角色管理可分配。
+-- =============================================================================
+-- @formatter:off
+BEGIN;
+
+DELETE FROM system_menu WHERE id IN (10040, 10041, 10042, 10043);
+
+-- 隐藏权限节点：客户联系人（parent_id=10030 客户信息，无 component 不生成路由）
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10040, '客户联系人', 'lunaerp:baseinfo:customer-contact:query', 2, 1, 10030, 'customer-contact', '#', '', NULL, 0, '0', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+-- 按钮：联系人创建/修改/删除（query 权限挂在 10040 节点本身，与客户菜单模式一致）
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10041, '客户联系人创建', 'lunaerp:baseinfo:customer-contact:create', 3, 1, 10040, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10042, '客户联系人修改', 'lunaerp:baseinfo:customer-contact:update', 3, 2, 10040, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10043, '客户联系人删除', 'lunaerp:baseinfo:customer-contact:delete', 3, 3, 10040, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+
+COMMIT;
+-- @formatter:on

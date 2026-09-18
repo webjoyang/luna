@@ -6,7 +6,8 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  * LunaERP 错误码枚举类
  *
  * lunaerp 系统，使用 1-030-001-xxx 段（产品）
- *                  与 1-030-002-xxx 段（客户）
+ *                  与 1-030-002-xxx 段（胚布品种，见 GreigeErrorCodeConstants）
+ *                  与 1-030-004-xxx 段（客户，customer 与 customer-contact 共用）
  *                  与 1-030-003-xxx 段（销售合同）
  */
 public interface ErrorCodeConstants {
@@ -21,8 +22,11 @@ public interface ErrorCodeConstants {
     ErrorCode PRODUCT_TAG_LIMIT_EXCEEDED = new ErrorCode(1_030_001_006, "一个产品最多 20 个标签，当前 {} 个");
     ErrorCode PRODUCT_TAG_NAME_EMPTY = new ErrorCode(1_030_001_007, "标签内容不能为空");
 
-    // ========== 客户模块 1-030-002-000 ==========
-    ErrorCode CUSTOMER_NOT_EXISTS = new ErrorCode(1_030_002_000, "客户不存在");
+    // ========== 客户模块 1-030-004-000（customer 与 customer-contact 共用） ==========
+    // 注：1-030-002 段已由胚布品种先行占用（GreigeErrorCodeConstants，随产品模块迁移上线），
+    // 客户作为后开发模块改用 004 段，避免整段重号。
+    ErrorCode CUSTOMER_NOT_EXISTS = new ErrorCode(1_030_004_000, "客户不存在");
+    ErrorCode CUSTOMER_CONTACT_NOT_EXISTS = new ErrorCode(1_030_004_001, "客户联系人不存在");
 
     // ========== 销售合同模块 1-030-003-000 ==========
     ErrorCode SALES_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_003_000, "销售合同不存在");

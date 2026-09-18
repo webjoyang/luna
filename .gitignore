@@ -106,4 +106,5 @@ auto-*.d.ts
 output/
 .playwright-cli/
 .codebuddy/
-
+.agents/
+skills/

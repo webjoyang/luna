@@ -18,7 +18,7 @@
         <BasicProfileTab :customer-id="customerId" @saved="onSaved" />
       </el-tab-pane>
       <el-tab-pane label="联系人" name="contacts">
-        <PlaceholderTab />
+        <ContactsTab :customer-id="customerId" />
       </el-tab-pane>
       <el-tab-pane label="合同" name="contracts">
         <PlaceholderTab />
@@ -42,6 +42,7 @@
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
 import BasicProfileTab from './BasicProfileTab.vue'
+import ContactsTab from './ContactsTab.vue'
 import PlaceholderTab from './PlaceholderTab.vue'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 
