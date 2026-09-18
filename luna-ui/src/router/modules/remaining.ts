@@ -428,6 +428,38 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/baseinfo',
+    component: Layout,
+    name: 'lunaerpElmuiBaseinfoStatic',
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'customer/workspace',
+        component: () => import('@/views/lunaerp-elmui/baseinfo/customer/workspace/index.vue'),
+        name: 'LunaerpElmuiBaseinfoCustomerWorkspaceCreate',
+        meta: {
+          title: '新建客户',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/baseinfo/customer'
+        }
+      },
+      {
+        path: 'customer/workspace/:id',
+        component: () => import('@/views/lunaerp-elmui/baseinfo/customer/workspace/index.vue'),
+        name: 'LunaerpElmuiBaseinfoCustomerWorkspace',
+        meta: {
+          title: '客户工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/baseinfo/customer'
+        }
+      }
+    ]
+  },
+  {
     path: '/hrm',
     component: Layout,
     name: 'HrmCenter',

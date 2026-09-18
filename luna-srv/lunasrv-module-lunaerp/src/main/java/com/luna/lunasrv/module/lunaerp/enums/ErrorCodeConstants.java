@@ -5,7 +5,8 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
 /**
  * LunaERP 错误码枚举类
  *
- * lunaerp 系统，使用 1-030-001-xxx 段
+ * lunaerp 系统，使用 1-030-001-xxx 段（产品）
+ *                  与 1-030-002-xxx 段（客户）
  */
 public interface ErrorCodeConstants {
 
@@ -18,5 +19,8 @@ public interface ErrorCodeConstants {
     ErrorCode PRODUCT_TAG_NAME_TOO_LONG = new ErrorCode(1_030_001_005, "标签最多 8 个字，请再精简一下");
     ErrorCode PRODUCT_TAG_LIMIT_EXCEEDED = new ErrorCode(1_030_001_006, "一个产品最多 20 个标签，当前 {} 个");
     ErrorCode PRODUCT_TAG_NAME_EMPTY = new ErrorCode(1_030_001_007, "标签内容不能为空");
+
+    // ========== 客户模块 1-030-002-000 ==========
+    ErrorCode CUSTOMER_NOT_EXISTS = new ErrorCode(1_030_002_000, "客户不存在");
 
 }

@@ -443,5 +443,12 @@ export enum DICT_TYPE {
   IM_RTC_CALL_END_REASON = 'im_rtc_call_end_reason', // IM 通话结束原因：1=通话结束 / 2=已拒绝 / 3=已取消 / 4=无人接听 / 5=对方正忙 / 9=通话异常
   IM_RTC_PARTICIPANT_ROLE = 'im_rtc_participant_role', // IM 通话参与角色：1=发起人 / 2=被邀请者 / 3=主动加入者
   IM_RTC_PARTICIPANT_STATUS = 'im_rtc_participant_status', // IM 通话参与状态：10=邀请中 / 20=已加入 / 30=已拒绝 / 40=未应答 / 50=已离开
-  IM_CHANNEL_MATERIAL_TYPE = 'im_channel_material_type' // IM 频道素材内容类型：1=富文本 / 2=外链
+  IM_CHANNEL_MATERIAL_TYPE = 'im_channel_material_type', // IM 频道素材内容类型：1=富文本 / 2=外链
+
+  // ========== LunaERP - 基本信息-客户模块  ==========
+  LUNAERP_CUSTOMER_CLIENT_TYPE = 'lunaerp_customer_client_type', // 客户类型
+  LUNAERP_CUSTOMER_INDUSTRY = 'lunaerp_customer_industry', // 客户所属行业
+  LUNAERP_CUSTOMER_SCALE = 'lunaerp_customer_scale', // 客户企业规模
+  LUNAERP_CUSTOMER_SOURCE = 'lunaerp_customer_source', // 客户来源
+  LUNAERP_CUSTOMER_COOPERATION_STATUS = 'lunaerp_customer_cooperation_status' // 客户合作状态
 }
