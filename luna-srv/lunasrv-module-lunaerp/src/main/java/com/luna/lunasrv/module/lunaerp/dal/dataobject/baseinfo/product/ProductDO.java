@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product;
 
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
@@ -88,7 +89,13 @@ public class ProductDO extends TenantBaseDO {
     private String machineType;
     /**
      * 产量
+     *
+     * OUTPUT 是 JSQLParser 保留字：租户拦截器（TenantLineInnerInterceptor）会用
+     * JSQLParser 解析每条 SQL，未加引号的 output 会被当作关键字导致解析失败（ParseException，
+     * 产品分页等所有经过租户拦截器的查询 500）。此处显式加双引号转义为列标识符；
+     * PostgreSQL 双引号标识符区分大小写，"output" 与实际列名一致。
      */
+    @TableField("\"output\"")
     private String output;
     /**
      * 备注
