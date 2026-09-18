@@ -1,22 +1,29 @@
 package com.luna.lunasrv.module.lunaerp.service.business.salescontract;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import cn.hutool.core.collection.CollUtil;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractItemRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -79,6 +86,9 @@ public class SalesContractServiceImpl implements SalesContractService {
     private SalesContractMapper salesContractMapper;
 
     @Resource
+    private SalesContractItemMapper salesContractItemMapper;
+
+    @Resource
     private CustomerMapper customerMapper;
 
     @Override
@@ -117,8 +127,14 @@ public class SalesContractServiceImpl implements SalesContractService {
         if (!StringUtils.hasText(contract.getCurrency())) {
             contract.setCurrency(DEFAULT_CURRENCY);
         }
-        // 1.6 本票无明细，总额固定 0（02 票接管重算）
+        // 1.6 明细聚合：服务端权威重算行金额与主表汇总（请求体传入的 totalQuantity/totalAmount 一律忽略覆盖）
+        List<SalesContractItemDO> itemDOList = buildItemDOList(null, createReqVO.getItems());
+        BigDecimal[] totals = recalculateTotals(itemDOList);
+        contract.setTotalQuantity(totals[0]);
+        contract.setTotalAmount(totals[1]);
+        // 1.7 保存主表 → 插入明细（回填 contractId）
         salesContractMapper.insert(contract);
+        saveItems(contract.getId(), itemDOList);
         return contract.getId();
     }
 
@@ -142,7 +158,15 @@ public class SalesContractServiceImpl implements SalesContractService {
         if (!StringUtils.hasText(updateObj.getClientName())) {
             updateObj.setClientName(customer.getCompany());
         }
+        // 4. 明细整体替换：先按 contractId 逻辑删除旧明细，再插本次提交的全部明细；
+        //    服务端权威重算行金额与主表汇总（请求体传入的 totalQuantity/totalAmount 一律忽略覆盖）
+        List<SalesContractItemDO> itemDOList = buildItemDOList(updateReqVO.getId(), updateReqVO.getItems());
+        BigDecimal[] totals = recalculateTotals(itemDOList);
+        updateObj.setTotalQuantity(totals[0]);
+        updateObj.setTotalAmount(totals[1]);
         salesContractMapper.updateById(updateObj);
+        salesContractItemMapper.deleteByContractId(updateReqVO.getId());
+        saveItems(updateReqVO.getId(), itemDOList);
     }
 
     @Override
@@ -150,8 +174,9 @@ public class SalesContractServiceImpl implements SalesContractService {
     public void deleteSalesContract(Long id) {
         // 校验存在
         validateSalesContractExists(id);
-        // 逻辑删除主表（本票无明细，不做状态联动、不区分当前状态）
+        // 逻辑删除主表 + 级联逻辑删除全部明细（明细是合同聚合的一部分，ADR-0003）
         salesContractMapper.deleteById(id);
+        salesContractItemMapper.deleteByContractId(id);
     }
 
     @Override
@@ -160,7 +185,11 @@ public class SalesContractServiceImpl implements SalesContractService {
         if (contract == null) {
             throw exception(SALES_CONTRACT_NOT_EXISTS);
         }
-        return BeanUtils.toBean(contract, SalesContractRespVO.class);
+        SalesContractRespVO respVO = BeanUtils.toBean(contract, SalesContractRespVO.class);
+        // 嵌套返回明细（按 line_no 升序）
+        List<SalesContractItemDO> itemDOList = salesContractItemMapper.selectListByContractId(id);
+        respVO.setItems(BeanUtils.toBean(itemDOList, SalesContractItemRespVO.class));
+        return respVO;
     }
 
     @Override
@@ -171,6 +200,13 @@ public class SalesContractServiceImpl implements SalesContractService {
         // 执行查询
         PageResult<SalesContractDO> pageResult = salesContractMapper.selectPage(reqVO, wrapper);
         return BeanUtils.toBean(pageResult, SalesContractRespVO.class);
+    }
+
+    @Override
+    public String getNextContractNo() {
+        // 只读预览、不占号：直接复用自动取号的扫描结果（含已删除行，ADR-0004），
+        // 不做撞号查重、不写库；无新建时多次调用返回相同值，保存后再次调用自然顺延
+        return generateContractNo();
     }
 
     // ==================== 私有方法 ====================
@@ -197,6 +233,81 @@ public class SalesContractServiceImpl implements SalesContractService {
                     .or().apply("LOWER(client_contract_no) LIKE LOWER({0})", like));
         }
         return wrapper;
+    }
+
+    // ==================== 明细聚合私有方法（ADR-0003） ====================
+
+    /**
+     * 将请求明细列表转换为 DO 列表，并按数组顺序重排 line_no（从 1 开始）、
+     * 服务端权威重算每行 amount = quantity × unit_price + other_fees（null 数值按 0）。
+     *
+     * @param contractId 合同ID（创建时可为 null，由 {@link #saveItems} 回填）
+     * @param items      请求明细列表（为 null/空表示零明细合同）
+     * @return 明细 DO 列表
+     */
+    private List<SalesContractItemDO> buildItemDOList(Long contractId, List<SalesContractItemSaveReqVO> items) {
+        List<SalesContractItemDO> itemDOList = new ArrayList<>();
+        if (CollUtil.isEmpty(items)) {
+            return itemDOList;
+        }
+        for (int i = 0; i < items.size(); i++) {
+            SalesContractItemSaveReqVO item = items.get(i);
+            SalesContractItemDO itemDO = BeanUtils.toBean(item, SalesContractItemDO.class);
+            itemDO.setContractId(contractId);
+            itemDO.setLineNo(i + 1);
+            // 行金额权威重算：数量 × 单价 + 其他费用（null 按 0），统一 scale=2 对齐 numeric(18,2)
+            BigDecimal quantity = zeroIfNull(item.getQuantity());
+            BigDecimal unitPrice = zeroIfNull(item.getUnitPrice());
+            BigDecimal otherFees = zeroIfNull(item.getOtherFees());
+            itemDO.setQuantity(quantity.setScale(2, RoundingMode.HALF_UP));
+            itemDO.setUnitPrice(unitPrice.setScale(2, RoundingMode.HALF_UP));
+            itemDO.setOtherFees(otherFees.setScale(2, RoundingMode.HALF_UP));
+            itemDO.setAmount(quantity.multiply(unitPrice).add(otherFees).setScale(2, RoundingMode.HALF_UP));
+            itemDOList.add(itemDO);
+        }
+        return itemDOList;
+    }
+
+    /**
+     * 按明细列表重算主表汇总：totalQuantity = Σ quantity，totalAmount = Σ amount。
+     * 零明细时两者均为 0。
+     *
+     * @param items 明细 DO 列表（行金额已由 {@link #buildItemDOList} 重算）
+     * @return [totalQuantity, totalAmount]
+     */
+    private BigDecimal[] recalculateTotals(List<SalesContractItemDO> items) {
+        BigDecimal totalQuantity = BigDecimal.ZERO;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        if (items != null) {
+            for (SalesContractItemDO item : items) {
+                totalQuantity = totalQuantity.add(zeroIfNull(item.getQuantity()));
+                totalAmount = totalAmount.add(zeroIfNull(item.getAmount()));
+            }
+        }
+        return new BigDecimal[]{
+                totalQuantity.setScale(2, RoundingMode.HALF_UP),
+                totalAmount.setScale(2, RoundingMode.HALF_UP)
+        };
+    }
+
+    /**
+     * 批量保存明细（回填 contractId）；零明细时跳过插入。
+     */
+    private void saveItems(Long contractId, List<SalesContractItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        for (SalesContractItemDO item : items) {
+            item.setContractId(contractId);
+        }
+        salesContractItemMapper.insertBatch(items);
+    }
+
+    /**
+     * null 安全转 BigDecimal：null → 0
+     */
+    private BigDecimal zeroIfNull(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     /**

@@ -6,12 +6,15 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,12 +24,15 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -57,6 +63,9 @@ class SalesContractServiceImplTest {
 
     @Mock
     private SalesContractMapper salesContractMapper;
+
+    @Mock
+    private SalesContractItemMapper salesContractItemMapper;
 
     @Mock
     private CustomerMapper customerMapper;
@@ -310,10 +319,14 @@ class SalesContractServiceImplTest {
         contract.setContractNo("CH20260001");
         contract.setCustomerId(CUSTOMER_ID);
         when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+        // 零明细合同：明细查询返回空列表
+        when(salesContractItemMapper.selectListByContractId(2048L)).thenReturn(Collections.emptyList());
 
         SalesContractRespVO respVO = salesContractService.getSalesContract(2048L);
         assertEquals(2048L, respVO.getId());
         assertEquals("CH20260001", respVO.getContractNo());
+        assertNotNull(respVO.getItems());
+        assertTrue(respVO.getItems().isEmpty(), "零明细合同应返回空明细列表");
     }
 
     @Test
@@ -391,7 +404,7 @@ class SalesContractServiceImplTest {
     }
 
     @Test
-    void deleteSalesContract_exists_logicalDeleteMainTableOnly() {
+    void deleteSalesContract_exists_logicalDeleteMainTableAndCascadeItems() {
         SalesContractDO contract = new SalesContractDO();
         contract.setId(2048L);
         contract.setStatus("ACTIVE");
@@ -399,8 +412,9 @@ class SalesContractServiceImplTest {
 
         salesContractService.deleteSalesContract(2048L);
 
-        // 本票无明细：仅逻辑删除主表，不做状态联动
+        // 逻辑删除主表 + 级联逻辑删除全部明细（明细是合同聚合的一部分，ADR-0003）
         verify(salesContractMapper).deleteById(2048L);
+        verify(salesContractItemMapper).deleteByContractId(2048L);
         verify(salesContractMapper, never()).updateById(any(SalesContractDO.class));
     }
 
@@ -460,6 +474,213 @@ class SalesContractServiceImplTest {
         assertTrue(sqlSegment.contains("ORDER BY sign_date DESC"));
         assertTrue(!sqlSegment.contains("LOWER(contract_no) LIKE"), "无 keyword 时不应拼接模糊条件");
         assertTrue(!sqlSegment.contains("status ="), "无 status 时不应拼接等值过滤");
+    }
+
+    // ==================== getNextContractNo：取号预览（只读不占号） ====================
+
+    @Test
+    void getNextContractNo_noContracts_returnsChYear0001() {
+        // 当年无合同（含已删除行均无）→ 预览 CH + 当前年份 + 0001，与自动取号一致
+        when(salesContractMapper.selectListByContractNoPrefixIncludingDeleted(YEAR_PREFIX))
+                .thenReturn(Collections.emptyList());
+
+        String nextNo = salesContractService.getNextContractNo();
+
+        assertEquals(YEAR_PREFIX + "0001", nextNo);
+        // 只读不占号：不做撞号查重、不写库
+        verify(salesContractMapper, never()).selectByContractNoIncludingDeleted(anyString());
+        verify(salesContractMapper, never()).insert(any(SalesContractDO.class));
+    }
+
+    @Test
+    void getNextContractNo_normalMaxExists_returnsMaxPlusOne() {
+        // 已有未删除的 CH{year}0005 → 预览 0006，与自动取号 +1 行为一致
+        SalesContractDO normalMax = new SalesContractDO();
+        normalMax.setContractNo(YEAR_PREFIX + "0005");
+        normalMax.setDeleted(false);
+        when(salesContractMapper.selectListByContractNoPrefixIncludingDeleted(YEAR_PREFIX))
+                .thenReturn(Arrays.asList(normalMax));
+
+        assertEquals(YEAR_PREFIX + "0006", salesContractService.getNextContractNo());
+    }
+
+    @Test
+    void getNextContractNo_deletedRowOccupiesSeq_returnsIncrementedSameAsAutoNo() {
+        // 最大序号来自已删除行（ADR-0004：软删序号仍占用）→ 预览同样 +1，与自动取号行为一致
+        SalesContractDO deletedMax = new SalesContractDO();
+        deletedMax.setContractNo(YEAR_PREFIX + "0007");
+        deletedMax.setDeleted(true);
+        when(salesContractMapper.selectListByContractNoPrefixIncludingDeleted(YEAR_PREFIX))
+                .thenReturn(Arrays.asList(deletedMax));
+
+        assertEquals(YEAR_PREFIX + "0008", salesContractService.getNextContractNo());
+    }
+
+    // ==================== 商品明细聚合（ADR-0003） ====================
+
+    /** 构造两行明细请求 */
+    private List<SalesContractItemSaveReqVO> buildTwoItems() {
+        SalesContractItemSaveReqVO item1 = new SalesContractItemSaveReqVO();
+        item1.setProductCode("P001");
+        item1.setProductName("纯棉平布");
+        item1.setQuantity(new BigDecimal("100"));
+        item1.setUnitPrice(new BigDecimal("15.50"));
+        item1.setOtherFees(new BigDecimal("10"));
+
+        SalesContractItemSaveReqVO item2 = new SalesContractItemSaveReqVO();
+        item2.setProductCode("P002");
+        item2.setQuantity(new BigDecimal("200"));
+        item2.setUnitPrice(new BigDecimal("20"));
+        item2.setOtherFees(null); // null 应按 0 处理
+
+        return Arrays.asList(item1, item2);
+    }
+
+    @Test
+    void createSalesContract_withItems_insertsItemsReordersLineNoAndRecalculates() {
+        // 行1: 100 × 15.50 + 10 = 1560；行2: 200 × 20 + 0 = 4000
+        // totalQuantity = 300，totalAmount = 5560
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setItems(buildTwoItems());
+        when(salesContractMapper.selectListByContractNoPrefixIncludingDeleted(anyString()))
+                .thenReturn(Collections.emptyList());
+        when(salesContractMapper.selectByContractNoIncludingDeleted(anyString())).thenReturn(null);
+
+        salesContractService.createSalesContract(req);
+
+        // 主表汇总由服务端重算
+        ArgumentCaptor<SalesContractDO> contractCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).insert(contractCaptor.capture());
+        SalesContractDO saved = contractCaptor.getValue();
+        assertEquals(new BigDecimal("300.00"), saved.getTotalQuantity(), "总数量应为两行数量之和");
+        assertEquals(new BigDecimal("5560.00"), saved.getTotalAmount(), "总金额应为两行金额之和");
+
+        // 明细批量插入，line_no 按提交顺序从 1 重排，行金额权威重算
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SalesContractItemDO>> itemsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(salesContractItemMapper).insertBatch(itemsCaptor.capture());
+        List<SalesContractItemDO> savedItems = itemsCaptor.getValue();
+        assertEquals(2, savedItems.size());
+        assertEquals(1, savedItems.get(0).getLineNo());
+        assertEquals(2, savedItems.get(1).getLineNo());
+        assertEquals(new BigDecimal("1560.00"), savedItems.get(0).getAmount(),
+                "行1金额 = 100×15.50+10");
+        assertEquals(new BigDecimal("4000.00"), savedItems.get(1).getAmount(),
+                "行2金额 = 200×20+0（otherFees null 按 0）");
+        // contractId 回填到主表主键
+        assertEquals(2048L, savedItems.get(0).getContractId());
+    }
+
+    @Test
+    void createSalesContract_withWrongTotalsInRequest_serverOverridesWithRecalculated() {
+        // 前端传入错误的 totalQuantity/totalAmount，服务端必须忽略并按明细重算
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setItems(buildTwoItems());
+        req.setTotalQuantity(new BigDecimal("999"));
+        req.setTotalAmount(new BigDecimal("9999"));
+        when(salesContractMapper.selectListByContractNoPrefixIncludingDeleted(anyString()))
+                .thenReturn(Collections.emptyList());
+        when(salesContractMapper.selectByContractNoIncludingDeleted(anyString())).thenReturn(null);
+
+        salesContractService.createSalesContract(req);
+
+        ArgumentCaptor<SalesContractDO> captor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).insert(captor.capture());
+        assertEquals(new BigDecimal("300.00"), captor.getValue().getTotalQuantity(),
+                "请求传入的错误 totalQuantity 必须被服务端重算值覆盖");
+        assertEquals(new BigDecimal("5560.00"), captor.getValue().getTotalAmount(),
+                "请求传入的错误 totalAmount 必须被服务端重算值覆盖");
+    }
+
+    @Test
+    void createSalesContract_zeroItems_totalsAreZeroAndNoItemInsert() {
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setItems(Collections.emptyList());
+        when(salesContractMapper.selectListByContractNoPrefixIncludingDeleted(anyString()))
+                .thenReturn(Collections.emptyList());
+        when(salesContractMapper.selectByContractNoIncludingDeleted(anyString())).thenReturn(null);
+
+        salesContractService.createSalesContract(req);
+
+        ArgumentCaptor<SalesContractDO> captor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).insert(captor.capture());
+        assertEquals(new BigDecimal("0.00"), captor.getValue().getTotalQuantity(), "零明细总数量应为 0");
+        assertEquals(new BigDecimal("0.00"), captor.getValue().getTotalAmount(), "零明细总金额应为 0");
+        verify(salesContractItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void updateSalesContract_withItems_deletesOldThenInsertsNewAndRecalculates() {
+        when(salesContractMapper.selectById(2048L)).thenReturn(new SalesContractDO());
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setId(2048L);
+        req.setItems(buildTwoItems());
+        salesContractService.updateSalesContract(req);
+
+        // 先逻辑删除旧明细，再插新
+        verify(salesContractItemMapper).deleteByContractId(2048L);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SalesContractItemDO>> itemsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(salesContractItemMapper).insertBatch(itemsCaptor.capture());
+        assertEquals(2, itemsCaptor.getValue().size());
+        assertEquals(1, itemsCaptor.getValue().get(0).getLineNo());
+        assertEquals(2, itemsCaptor.getValue().get(1).getLineNo());
+
+        // 主表汇总重算
+        ArgumentCaptor<SalesContractDO> contractCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).updateById(contractCaptor.capture());
+        assertEquals(new BigDecimal("300.00"), contractCaptor.getValue().getTotalQuantity());
+        assertEquals(new BigDecimal("5560.00"), contractCaptor.getValue().getTotalAmount());
+    }
+
+    @Test
+    void updateSalesContract_toEmptyItems_deletesOldAndSkipsInsert() {
+        when(salesContractMapper.selectById(2048L)).thenReturn(new SalesContractDO());
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setId(2048L);
+        req.setItems(Collections.emptyList());
+        salesContractService.updateSalesContract(req);
+
+        // 删旧 + 不插新（整体替换为空）
+        verify(salesContractItemMapper).deleteByContractId(2048L);
+        verify(salesContractItemMapper, never()).insertBatch(any());
+        // 汇总归零
+        ArgumentCaptor<SalesContractDO> contractCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).updateById(contractCaptor.capture());
+        assertEquals(new BigDecimal("0.00"), contractCaptor.getValue().getTotalQuantity());
+        assertEquals(new BigDecimal("0.00"), contractCaptor.getValue().getTotalAmount());
+    }
+
+    @Test
+    void getSalesContract_withItems_returnsNestedItemsOrderedByLineNo() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractItemDO item1 = new SalesContractItemDO();
+        item1.setId(1L);
+        item1.setContractId(2048L);
+        item1.setLineNo(1);
+        item1.setProductCode("P001");
+        item1.setQuantity(new BigDecimal("100"));
+        SalesContractItemDO item2 = new SalesContractItemDO();
+        item2.setId(2L);
+        item2.setContractId(2048L);
+        item2.setLineNo(2);
+        item2.setProductCode("P002");
+        when(salesContractItemMapper.selectListByContractId(2048L))
+                .thenReturn(Arrays.asList(item1, item2));
+
+        SalesContractRespVO respVO = salesContractService.getSalesContract(2048L);
+        assertEquals(2, respVO.getItems().size());
+        assertEquals(1, respVO.getItems().get(0).getLineNo());
+        assertEquals("P001", respVO.getItems().get(0).getProductCode());
+        assertEquals(2, respVO.getItems().get(1).getLineNo());
+        assertEquals("P002", respVO.getItems().get(1).getProductCode());
     }
 
 }

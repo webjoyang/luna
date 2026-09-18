@@ -1,5 +1,5 @@
 -- =============================================================================
--- 模块：LunaERP - 业务管理 - 销售合同（本票：主表骨架 CRUD，不含商品明细）
+-- 模块：LunaERP - 业务管理 - 销售合同（主表 + 商品明细子表，明细作为合同聚合整体保存，见 ADR-0003）
 -- 数据库：PostgreSQL
 -- 规范：芋道 ruoyi-vue-pro（id int8、creator/create_time/updater/update_time/
 --       deleted/tenant_id 标准列，主键 ALTER TABLE ADD CONSTRAINT，列 COMMENT）
@@ -85,6 +85,64 @@ COMMENT ON COLUMN lunaerp_business_sales_contract.tenant_id IS '租户编号';
 -- 2. 主键序列（MyBatis-Plus PostgreSQL INPUT 模式按 @KeySequence 取 nextval，可重复执行）
 -- =============================================================================
 CREATE SEQUENCE IF NOT EXISTS lunaerp_business_sales_contract_seq;
+
+-- =============================================================================
+-- 1b. 销售合同明细子表 lunaerp_business_sales_contract_item
+--     明细是合同聚合的一部分（ADR-0003）：无独立 Controller/权限码，
+--     写操作随合同保存整体替换，删除合同时按 contract_id 级联逻辑删除。
+--     amount / total_quantity / total_amount 由服务端权威重算（行金额 = 数量×单价+其他费用）。
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS lunaerp_business_sales_contract_item (
+    id                       int8          NOT NULL,
+    contract_id              int8          NOT NULL,
+    line_no                  int4          NOT NULL DEFAULT 0,
+    product_code             varchar(64)   NULL,
+    product_name             varchar(128)  NULL,
+    customer_color           varchar(64)   NULL,
+    composition              varchar(128)  NULL,
+    width                    varchar(64)   NULL,
+    weight                   varchar(64)   NULL,
+    quantity                 numeric(18,2) NOT NULL DEFAULT 0,
+    unit_price               numeric(18,2) NOT NULL DEFAULT 0,
+    other_fees               numeric(18,2) NOT NULL DEFAULT 0,
+    amount                   numeric(18,2) NOT NULL DEFAULT 0,
+    remark                   varchar(256)  NULL,
+    creator                  varchar(64)   NULL DEFAULT '',
+    create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                  varchar(64)   NULL DEFAULT '',
+    update_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted                  int2          NOT NULL DEFAULT 0,
+    tenant_id                int8          NOT NULL DEFAULT 0
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pk_lb_sales_contract_item') THEN
+        ALTER TABLE lunaerp_business_sales_contract_item ADD CONSTRAINT pk_lb_sales_contract_item PRIMARY KEY (id);
+    END IF;
+END $$;
+
+-- 按合同查询明细的普通索引（明细随合同整体加载，按 line_no 排序）
+CREATE INDEX IF NOT EXISTS idx_lb_sales_contract_item_contract_id
+    ON lunaerp_business_sales_contract_item (contract_id);
+
+COMMENT ON TABLE lunaerp_business_sales_contract_item IS '业务管理-销售合同明细子表';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.id IS '明细ID';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.contract_id IS '合同ID（lunaerp_business_sales_contract.id，必填）';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.line_no IS '行号（服务端按提交顺序重排，从 1 开始）';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.product_code IS '产品编号（本票手填输入，03 票接入产品库远程搜索）';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.product_name IS '品名';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.customer_color IS '客户色号';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.composition IS '成分';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.width IS '门幅';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.weight IS '克重';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.quantity IS '数量';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.unit_price IS '单价';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.other_fees IS '其他费用';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.amount IS '行金额（服务端重算：数量×单价+其他费用）';
+COMMENT ON COLUMN lunaerp_business_sales_contract_item.remark IS '行备注';
+
+CREATE SEQUENCE IF NOT EXISTS lunaerp_business_sales_contract_item_seq;
 
 -- =============================================================================
 -- 3. 菜单与按钮（system_menu，可重复执行）

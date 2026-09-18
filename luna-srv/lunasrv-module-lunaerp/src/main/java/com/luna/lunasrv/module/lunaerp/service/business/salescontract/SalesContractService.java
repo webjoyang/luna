@@ -23,21 +23,22 @@ public interface SalesContractService {
     Long createSalesContract(SalesContractSaveReqVO createReqVO);
 
     /**
-     * 更新销售合同：校验合同存在、客户存在；contractNo 变更时查重（含已删除行，见 ADR-0004）。
+     * 更新销售合同：校验合同存在、客户存在；contractNo 变更时查重（含已删除行，见 ADR-0004）；
+     * 明细整体替换（先删旧再插新），行金额与主表 totalQuantity/totalAmount 由服务端权威重算。
      *
      * @param updateReqVO 合同
      */
     void updateSalesContract(SalesContractSaveReqVO updateReqVO);
 
     /**
-     * 删除销售合同：仅逻辑删除主表（本票无明细），不做状态联动。
+     * 删除销售合同：逻辑删除主表 + 级联逻辑删除全部明细（明细是合同聚合的一部分，见 ADR-0003）。
      *
      * @param id 合同ID
      */
     void deleteSalesContract(Long id);
 
     /**
-     * 获得销售合同详情
+     * 获得销售合同详情（含嵌套商品明细，按 line_no 升序）
      *
      * @param id 合同ID
      * @return 合同
@@ -52,5 +53,13 @@ public interface SalesContractService {
      * @return 合同分页
      */
     PageResult<SalesContractRespVO> getSalesContractPage(SalesContractPageReqVO reqVO);
+
+    /**
+     * 预览当前租户当年下一个合同编号（只读、不占号）：
+     * 复用自动取号的扫描入口（含已删除行，见 ADR-0004），多次调用在无新建时返回相同值。
+     *
+     * @return 下一个合同编号字符串
+     */
+    String getNextContractNo();
 
 }

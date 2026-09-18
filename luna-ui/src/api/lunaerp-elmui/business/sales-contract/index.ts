@@ -1,6 +1,24 @@
 import request from '@/config/axios'
 
-// 销售合同 VO（本票仅基本信息，不含商品明细）
+// 销售合同明细 VO（作为合同聚合的一部分，随合同整体保存，无独立端点，见 ADR-0003）
+export interface SalesContractItemVO {
+  id?: number
+  contractId?: number
+  lineNo?: number
+  productCode?: string
+  productName?: string
+  customerColor?: string
+  composition?: string
+  width?: string
+  weight?: string
+  quantity?: number
+  unitPrice?: number
+  otherFees?: number
+  amount?: number // 行金额，服务端重算：数量 × 单价 + 其他费用
+  remark?: string
+}
+
+// 销售合同 VO
 export interface SalesContractVO {
   id?: number
   contractNo?: string
@@ -16,10 +34,11 @@ export interface SalesContractVO {
   currency?: string
   tradeType?: string
   orderType?: string
-  totalQuantity?: number
-  totalAmount?: number
+  totalQuantity?: number // 服务端按明细权威重算，前端传入值会被忽略覆盖
+  totalAmount?: number // 服务端按明细权威重算，前端传入值会被忽略覆盖
   remarks?: string
   status?: string
+  items?: SalesContractItemVO[] // 商品明细列表（整体替换；为空表示零明细合同）
   createTime?: Date | string
 }
 
@@ -41,6 +60,11 @@ export const getSalesContractPage = (params: SalesContractPageParam) => {
 // 查询销售合同详情
 export const getSalesContract = (id: number) => {
   return request.get({ url: '/lunaerp/business/sales-contract/get?id=' + id })
+}
+
+// 预览当前租户当年下一个合同编号（只读不占号，多次调用在无新建时返回相同值）
+export const getNextSalesContractNo = () => {
+  return request.get<string>({ url: '/lunaerp/business/sales-contract/get-next-no' })
 }
 
 // 新增销售合同（contractNo 留空时后端自动生成）

@@ -50,6 +50,13 @@ public class SalesContractController {
         return success(salesContractService.getSalesContract(id));
     }
 
+    @GetMapping("/get-next-no")
+    @Operation(summary = "预览下一个合同编号（只读、不占号）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:sales-contract:query')")
+    public CommonResult<String> getNextContractNo() {
+        return success(salesContractService.getNextContractNo());
+    }
+
     @PutMapping("/update")
     @Operation(summary = "修改销售合同")
     @PreAuthorize("@ss.hasPermission('lunaerp:business:sales-contract:update')")

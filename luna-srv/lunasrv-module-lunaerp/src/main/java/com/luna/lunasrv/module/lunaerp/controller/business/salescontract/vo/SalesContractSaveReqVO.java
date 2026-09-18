@@ -1,11 +1,13 @@
 package com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Schema(description = "管理后台 - 业务管理-销售合同创建/修改 Request VO")
 @Data
@@ -61,5 +63,15 @@ public class SalesContractSaveReqVO {
 
     @Schema(description = "合同状态（字典 lunaerp_sales_contract_status），缺省 ACTIVE", example = "ACTIVE")
     private String status;
+
+    @Schema(description = "总数量（服务端按明细权威重算，前端传入值一律忽略覆盖）", example = "0")
+    private java.math.BigDecimal totalQuantity;
+
+    @Schema(description = "总金额（服务端按明细权威重算，前端传入值一律忽略覆盖）", example = "0")
+    private java.math.BigDecimal totalAmount;
+
+    @Schema(description = "商品明细列表（整体替换：服务端按数组顺序重排 line_no；为空表示零明细合同）")
+    @Valid
+    private List<SalesContractItemSaveReqVO> items;
 
 }

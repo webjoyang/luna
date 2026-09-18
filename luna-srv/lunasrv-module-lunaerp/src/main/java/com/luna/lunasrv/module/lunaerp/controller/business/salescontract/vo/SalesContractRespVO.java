@@ -6,8 +6,9 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
-@Schema(description = "管理后台 - 业务管理-销售合同 Response VO（不含商品明细）")
+@Schema(description = "管理后台 - 业务管理-销售合同 Response VO")
 @Data
 public class SalesContractRespVO {
 
@@ -53,10 +54,10 @@ public class SalesContractRespVO {
     @Schema(description = "订单属性（字典 lunaerp_sales_contract_order_type）", example = "BULK")
     private String orderType;
 
-    @Schema(description = "总数量（本票固定 0，02 票接管重算）", example = "0")
+    @Schema(description = "总数量（服务端按明细重算）", example = "300.00")
     private BigDecimal totalQuantity;
 
-    @Schema(description = "总金额（本票固定 0，02 票接管重算）", example = "0")
+    @Schema(description = "总金额（服务端按明细重算）", example = "4650.00")
     private BigDecimal totalAmount;
 
     @Schema(description = "备注")
@@ -64,6 +65,9 @@ public class SalesContractRespVO {
 
     @Schema(description = "合同状态（字典 lunaerp_sales_contract_status）", example = "ACTIVE")
     private String status;
+
+    @Schema(description = "商品明细列表（按 line_no 升序；分页列表不返回明细）")
+    private List<SalesContractItemRespVO> items;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
