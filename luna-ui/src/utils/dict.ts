@@ -463,5 +463,8 @@ export enum DICT_TYPE {
   LUNAERP_SALES_CONTRACT_CURRENCY = 'lunaerp_sales_contract_currency', // 销售合同币种
 
   // ========== LunaERP - 生产管理-胚布单模块 ==========
-  LUNAERP_GREIGE_ORDER_STATUS = 'lunaerp_greige_order_status' // 胚布单状态
+  LUNAERP_GREIGE_ORDER_STATUS = 'lunaerp_greige_order_status', // 胚布单状态
+
+  // ========== LunaERP - 生产管理-染色单模块 ==========
+  LUNAERP_DYEING_ORDER_STATUS = 'lunaerp_dyeing_order_status' // 染色单状态
 }

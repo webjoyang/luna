@@ -520,6 +520,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/production/greige-order'
         }
+      },
+      {
+        path: 'dyeing-order/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/production/dyeing-order/workspace/index.vue'),
+        name: 'LunaerpElmuiProductionDyeingOrderWorkspace',
+        meta: {
+          title: '染色单工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/production/dyeing-order'
+        }
       }
     ]
   },

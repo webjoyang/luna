@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] 染色单主表已建（含主键序列、租户/逻辑删除等框架托管列、status/order_date/sales_contract_id 辅助索引、全列注释）
-- [ ] "染色单"菜单（10220）已注册在"生产管理"目录（10200，已由胚布单脚本创建）下，菜单承载 query 权限，脚本可重复执行
-- [ ] 染色单状态字典（DRAFT/ACTIVE/COMPLETED/CANCELLED）已初始化（dict_type id 2222，dict_data id 3571-3574）
-- [ ] 后端分页接口可用：支持关键词（匹配合同号/客户名称/产品编码/产品名称）、状态、客户、承染方、单据日期区间、交货日期区间过滤，默认单据日期倒序
-- [ ] 前端列表页可访问：搜索区（6 个条件）、10 列结构（单据日期/合同号/客户名称/承染方/产品编码/产品名称/状态 DictTag/交货日期/创建人/创建时间）、操作列、分页组件、空状态均正常
-- [ ] 前端隐藏工作台路由已注册（`/production/dyeing-order/workspace/:id?`，无 id 新建 / 有 id 查看编辑），本期页面可为占位
-- [ ] 测试覆盖：分页条件（keyword/status/customerId/dyeingFactoryId/日期区间）正确透传到查询构造
+- [x] 染色单主表已建（含主键序列、租户/逻辑删除等框架托管列、status/order_date/sales_contract_id 辅助索引、全列注释）
+- [x] "染色单"菜单（10220）已注册在"生产管理"目录（10200，已由胚布单脚本创建）下，菜单承载 query 权限，脚本可重复执行
+- [x] 染色单状态字典（DRAFT/ACTIVE/COMPLETED/CANCELLED）已初始化（dict_type id 2222，dict_data id 3571-3574）
+- [x] 后端分页接口可用：支持关键词（匹配合同号/客户名称/产品编码/产品名称）、状态、客户、承染方、单据日期区间、交货日期区间过滤，默认单据日期倒序
+- [x] 前端列表页可访问：搜索区（6 个条件）、10 列结构（单据日期/合同号/客户名称/承染方/产品编码/产品名称/状态 DictTag/交货日期/创建人/创建时间）、操作列、分页组件、空状态均正常
+- [x] 前端隐藏工作台路由已注册（`/production/dyeing-order/workspace/:id?`，无 id 新建 / 有 id 查看编辑），本期页面可为占位
+- [x] 测试覆盖：分页条件（keyword/status/customerId/dyeingFactoryId/日期区间）正确透传到查询构造

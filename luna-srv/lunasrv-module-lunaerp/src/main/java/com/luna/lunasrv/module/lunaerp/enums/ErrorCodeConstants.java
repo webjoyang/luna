@@ -44,4 +44,9 @@ public interface ErrorCodeConstants {
     ErrorCode GREIGE_ORDER_NO_DUPLICATE = new ErrorCode(1_030_006_001, "胚布单号【{}】已存在");
     ErrorCode GREIGE_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_006_002, "关联的{}不存在或不可用");
 
+    // ========== 染色单模块 1-030-007-000（主表与颜色明细共用） ==========
+    ErrorCode DYEING_ORDER_NOT_EXISTS = new ErrorCode(1_030_007_000, "染色单不存在");
+    ErrorCode DYEING_ORDER_STATUS_NOT_ALLOWED = new ErrorCode(1_030_007_001, "当前状态不允许该操作");
+    ErrorCode DYEING_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_007_002, "关联的{}不存在或不可用");
+
 }
