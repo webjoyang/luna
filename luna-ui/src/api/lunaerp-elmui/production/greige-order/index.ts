@@ -1,6 +1,18 @@
 import request from '@/config/axios'
 
-// 胚布单 VO（颜色投胚分配行随 04 票接入；投胚需求等服务端重算字段以 04 票为准）
+// 颜色投胚分配行 VO（随单聚合保存；demandQty 投胚需求由服务端权威重算，前端传值被覆盖）
+export interface GreigeOrderColorVO {
+  id?: number
+  orderId?: number
+  lineNo?: number
+  color?: string
+  finishedQty?: number // 成品下单量 KG，null 按 0
+  lossRate?: number // 损耗率，小数（0.05 = 5%），为空时后端取主单预设损耗、再缺省 0
+  demandQty?: number // 投胚需求 KG（服务端按 成品量÷(1−损耗率) 重算）
+  remark?: string
+}
+
+// 胚布单 VO（颜色投胚分配行随单整体保存；计划投胚量与颜色投胚需求合计不强制相等）
 export interface GreigeOrderVO {
   id?: number
   orderNo?: string
@@ -28,6 +40,7 @@ export interface GreigeOrderVO {
   productionRemark?: string
   remark?: string
   status?: string
+  colors?: GreigeOrderColorVO[] // 颜色投胚分配行（详情嵌套返回，保存时整体替换）
   createTime?: Date | string
 }
 
@@ -59,7 +72,7 @@ export const updateGreigeOrder = (data: GreigeOrderVO) => {
   return request.put<boolean>({ url: '/lunaerp/production/greige-order/update', data })
 }
 
-// 查询胚布单详情（主表全部字段；颜色分配行随 04 票接入）
+// 查询胚布单详情（主表全部字段 + 颜色投胚分配行按 line_no 升序嵌套返回）
 export const getGreigeOrder = (id: number) => {
   return request.get<GreigeOrderVO>({ url: `/lunaerp/production/greige-order/get?id=${id}` })
 }

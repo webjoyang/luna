@@ -1,12 +1,14 @@
 package com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 @Schema(description = "管理后台 - 生产管理-胚布单创建/修改 Request VO")
 @Data
@@ -102,5 +104,10 @@ public class GreigeOrderSaveReqVO {
 
     @Schema(description = "胚布单状态（字典 lunaerp_greige_order_status），缺省 ACTIVE", example = "ACTIVE")
     private String status;
+
+    @Schema(description = "颜色投胚分配行列表（整体替换：服务端按数组顺序重排 line_no、"
+            + "权威重算投胚需求 = 成品量÷(1−损耗率)；为 null/空表示零颜色单据，合法）")
+    @Valid
+    private List<GreigeOrderColorSaveReqVO> colors;
 
 }

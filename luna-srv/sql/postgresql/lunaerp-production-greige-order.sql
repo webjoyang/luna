@@ -99,9 +99,56 @@ COMMENT ON COLUMN lunaerp_production_greige_order.deleted IS '是否删除';
 COMMENT ON COLUMN lunaerp_production_greige_order.tenant_id IS '租户编号';
 
 -- =============================================================================
+-- 1b. 胚布单颜色投胚分配子表 lunaerp_production_greige_order_color
+--     颜色行是胚布单聚合的一部分（ADR-0003）：无独立 Controller/Service/权限码，
+--     写操作随胚布单保存整体替换（事务内按 order_id 删旧行、插新行并重排 line_no），
+--     删除胚布单时按 order_id 级联逻辑删除。零颜色合法。
+--     demand_qty（投胚需求）由服务端权威重算：成品量 ÷ (1 − 损耗率)，null 成品量按 0；
+--     loss_rate 行损耗为空时取主单预设损耗、再缺省 0。
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS lunaerp_production_greige_order_color (
+    id                       int8          NOT NULL,
+    order_id                 int8          NOT NULL,
+    line_no                  int4          NOT NULL DEFAULT 0,
+    color                    varchar(64)   NULL,
+    finished_qty             numeric(18,2) NOT NULL DEFAULT 0,
+    loss_rate                numeric(6,4)  NOT NULL DEFAULT 0,
+    demand_qty               numeric(18,2) NOT NULL DEFAULT 0,
+    remark                   varchar(256)  NULL,
+    creator                  varchar(64)   NULL DEFAULT '',
+    create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                  varchar(64)   NULL DEFAULT '',
+    update_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted                  int2          NOT NULL DEFAULT 0,
+    tenant_id                int8          NOT NULL DEFAULT 0
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pk_lb_greige_order_color') THEN
+        ALTER TABLE lunaerp_production_greige_order_color ADD CONSTRAINT pk_lb_greige_order_color PRIMARY KEY (id);
+    END IF;
+END $$;
+
+-- 按胚布单查询颜色行的普通索引（颜色行随单整体加载，按 line_no 排序）
+CREATE INDEX IF NOT EXISTS idx_lb_greige_order_color_order_id
+    ON lunaerp_production_greige_order_color (order_id);
+
+COMMENT ON TABLE lunaerp_production_greige_order_color IS '生产管理-胚布单颜色投胚分配子表';
+COMMENT ON COLUMN lunaerp_production_greige_order_color.id IS '颜色行ID';
+COMMENT ON COLUMN lunaerp_production_greige_order_color.order_id IS '胚布单ID（lunaerp_production_greige_order.id，必填）';
+COMMENT ON COLUMN lunaerp_production_greige_order_color.line_no IS '行号（服务端按提交顺序重排，从 1 开始）';
+COMMENT ON COLUMN lunaerp_production_greige_order_color.color IS '颜色';
+COMMENT ON COLUMN lunaerp_production_greige_order_color.finished_qty IS '成品下单量 KG（null 按 0）';
+COMMENT ON COLUMN lunaerp_production_greige_order_color.loss_rate IS '损耗率（小数，0.05 = 5%；保存时空值取主单预设损耗、再缺省 0）';
+COMMENT ON COLUMN lunaerp_production_greige_order_color.demand_qty IS '投胚需求 KG（服务端权威重算：成品量÷(1−损耗率)，前端传值被覆盖）';
+COMMENT ON COLUMN lunaerp_production_greige_order_color.remark IS '行备注';
+
+-- =============================================================================
 -- 2. 主键序列（MyBatis-Plus PostgreSQL INPUT 模式按 @KeySequence 取 nextval，可重复执行）
 -- =============================================================================
 CREATE SEQUENCE IF NOT EXISTS lunaerp_production_greige_order_seq;
+CREATE SEQUENCE IF NOT EXISTS lunaerp_production_greige_order_color_seq;
 
 -- =============================================================================
 -- 3. 菜单与按钮（system_menu，可重复执行）

@@ -6,16 +6,20 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderColorRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderColorSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.color.GreigeOrderColorDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -48,6 +53,8 @@ import static org.mockito.Mockito.when;
  *    四类引用校验、快照回填、缺省值 单据日期/状态/匹重/损耗）
  *  - 03 票：查看与修改（get/update 目标不存在校验、更新整体保存路径语义、
  *    编号查重排除自身、匹数人工值保留）
+ *  - 04 票：颜色投胚分配（聚合保存删旧插新/重排 line_no、投胚需求重算口径
+ *    成品量÷(1−损耗率)、行损耗缺省取主单、null 成品量按 0、详情嵌套返回、零颜色合法）
  *
  * 说明：分页查询条件在 Service 构造（对齐 sales-contract 模块），测试通过捕获 Wrapper
  * 断言 SQL 片段与参数；Lambda 列名解析需先初始化 MyBatis-Plus TableInfo 缓存（见 setUp）。
@@ -68,6 +75,9 @@ class GreigeOrderServiceImplTest {
     @Mock
     private GreigeTypeMapper greigeTypeMapper;
 
+    @Mock
+    private GreigeOrderColorMapper greigeOrderColorMapper;
+
     @InjectMocks
     private GreigeOrderServiceImpl greigeOrderService;
 
@@ -77,6 +87,8 @@ class GreigeOrderServiceImplTest {
         // 初始化 TableInfo 缓存，使 LambdaQueryWrapper 的 SFunction 列名解析在无 MyBatis 环境下可用
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), GreigeOrderDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), GreigeOrderColorDO.class);
     }
 
     // ==================== getGreigeOrderPage：查询条件透传（01 票） ====================
@@ -475,6 +487,183 @@ class GreigeOrderServiceImplTest {
         verify(greigeOrderMapper, never()).updateById(any(GreigeOrderDO.class));
     }
 
+    // ==================== 颜色投胚分配（04 票） ====================
+
+    @Test
+    void createGreigeOrder_withColors_renumbersLineNoAndRecalculatesDemand() {
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        // 两行颜色：500÷(1−0.05)=526.32；300÷(1−0.10)=333.33
+        reqVO.setColors(List.of(
+                colorReq("大红", "500.00", "0.05"),
+                colorReq("藏青", "300.00", "0.10")
+        ));
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<List<GreigeOrderColorDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(greigeOrderColorMapper).insertBatch(captor.capture());
+        List<GreigeOrderColorDO> inserted = captor.getValue();
+        assertEquals(2, inserted.size());
+        assertEquals(1, inserted.get(0).getLineNo(), "line_no 按提交顺序从 1 重排");
+        assertEquals(2, inserted.get(1).getLineNo());
+        assertEquals(new BigDecimal("526.32"), inserted.get(0).getDemandQty(),
+                "投胚需求应按 成品量÷(1−损耗率) 服务端权威重算");
+        assertEquals(new BigDecimal("333.33"), inserted.get(1).getDemandQty());
+    }
+
+    @Test
+    void createGreigeOrder_frontEndDemandQtyIgnored_overwrittenByServer() {
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        GreigeOrderColorSaveReqVO color = colorReq("大红", "500.00", "0.05");
+        color.setDemandQty(new BigDecimal("9999.99")); // 前端传入值应被服务端覆盖
+        reqVO.setColors(List.of(color));
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<List<GreigeOrderColorDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(greigeOrderColorMapper).insertBatch(captor.capture());
+        assertEquals(new BigDecimal("526.32"), captor.getValue().get(0).getDemandQty(),
+                "前端传的投胚需求应被服务端重算值覆盖");
+    }
+
+    @Test
+    void createGreigeOrder_rowLossNull_fallsBackToOrderSuggestedLoss() {
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setSuggestedLoss(new BigDecimal("0.08")); // 主单预设损耗 8%
+        // 行损耗为空：取主单预设损耗 0.08；100÷(1−0.08)=108.70
+        reqVO.setColors(List.of(colorReq("大红", "100.00", null)));
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<List<GreigeOrderColorDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(greigeOrderColorMapper).insertBatch(captor.capture());
+        GreigeOrderColorDO row = captor.getValue().get(0);
+        assertEquals(new BigDecimal("0.0800"), row.getLossRate(),
+                "行损耗为空时应取主单预设损耗并按 numeric(6,4) 精度保存");
+        assertEquals(new BigDecimal("108.70"), row.getDemandQty());
+    }
+
+    @Test
+    void createGreigeOrder_nullFinishedQty_treatedAsZero() {
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColors(List.of(colorReq("大红", null, "0.05")));
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<List<GreigeOrderColorDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(greigeOrderColorMapper).insertBatch(captor.capture());
+        GreigeOrderColorDO row = captor.getValue().get(0);
+        assertEquals(new BigDecimal("0.00"), row.getFinishedQty(), "null 成品量应按 0 保存");
+        assertEquals(new BigDecimal("0.00"), row.getDemandQty(), "null 成品量按 0 时投胚需求为 0");
+    }
+
+    @Test
+    void createGreigeOrder_zeroColors_legal_noColorRowInserted() {
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColors(List.of()); // 零颜色合法
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        verify(greigeOrderMapper).insert(any(GreigeOrderDO.class));
+        verify(greigeOrderColorMapper, never()).insertBatch(anyList());
+        verify(greigeOrderColorMapper, never()).deleteByOrderId(any(Long.class));
+    }
+
+    @Test
+    void updateGreigeOrder_replacesColorRows_deleteOldThenInsertNew() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setColors(List.of(colorReq("大红", "500.00", "0.05")));
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        // 整体替换：先按 order_id 删旧行，再插本次提交的全部颜色行
+        verify(greigeOrderColorMapper).deleteByOrderId(1L);
+        ArgumentCaptor<List<GreigeOrderColorDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(greigeOrderColorMapper).insertBatch(captor.capture());
+        List<GreigeOrderColorDO> inserted = captor.getValue();
+        assertEquals(1, inserted.size());
+        assertEquals(1L, inserted.get(0).getOrderId(), "颜色行应回填 orderId");
+        assertEquals(1, inserted.get(0).getLineNo());
+    }
+
+    @Test
+    void updateGreigeOrder_colorsCleared_deletesAllOldRows() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setColors(null); // 清空全部颜色行：删除旧行后不插入新行
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        verify(greigeOrderColorMapper).deleteByOrderId(1L);
+        verify(greigeOrderColorMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void updateGreigeOrder_rowLossTakesOrderSuggestedLossWhenNull() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setSuggestedLoss(new BigDecimal("0.08"));
+        reqVO.setColors(List.of(colorReq("大红", "100.00", null)));
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        ArgumentCaptor<List<GreigeOrderColorDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(greigeOrderColorMapper).insertBatch(captor.capture());
+        GreigeOrderColorDO row = captor.getValue().get(0);
+        assertEquals(new BigDecimal("0.0800"), row.getLossRate(), "更新时行损耗缺省同样取主单预设损耗");
+        assertEquals(new BigDecimal("108.70"), row.getDemandQty());
+    }
+
+    @Test
+    void createGreigeOrder_lossRateAtOrAboveOne_demandNotAmplified() {
+        // 损耗率 ≥ 100%（除数 ≤ 0）为异常口径：按不放大处理（需求 = 成品量），避免除零
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColors(List.of(colorReq("大红", "100.00", "1")));
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<List<GreigeOrderColorDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(greigeOrderColorMapper).insertBatch(captor.capture());
+        assertEquals(new BigDecimal("100.00"), captor.getValue().get(0).getDemandQty());
+    }
+
+    @Test
+    void getGreigeOrder_nestsColorRows() {
+        GreigeOrderDO order = greigeOrder(1L, "PB0919001");
+        order.setStatus("ACTIVE");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(order);
+        GreigeOrderColorDO row = new GreigeOrderColorDO();
+        row.setId(11L);
+        row.setOrderId(1L);
+        row.setLineNo(1);
+        row.setColor("大红");
+        row.setFinishedQty(new BigDecimal("500.00"));
+        row.setLossRate(new BigDecimal("0.0500"));
+        row.setDemandQty(new BigDecimal("526.32"));
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(row));
+
+        GreigeOrderRespVO respVO = greigeOrderService.getGreigeOrder(1L);
+
+        assertEquals(1, respVO.getColors().size(), "详情应嵌套返回颜色行");
+        GreigeOrderColorRespVO colorVO = respVO.getColors().get(0);
+        assertEquals(11L, colorVO.getId());
+        assertEquals("大红", colorVO.getColor());
+        assertEquals(new BigDecimal("526.32"), colorVO.getDemandQty());
+    }
+
     // ==================== 测试数据构造 ====================
 
     /**
@@ -493,6 +682,17 @@ class GreigeOrderServiceImplTest {
         supplier.setId(id);
         supplier.setCompanyName(companyName);
         when(supplierMapper.selectById(id)).thenReturn(supplier);
+    }
+
+    /**
+     * 构造颜色行请求：颜色 / 成品下单量（可为 null）/ 损耗率（可为 null）
+     */
+    private GreigeOrderColorSaveReqVO colorReq(String color, String finishedQty, String lossRate) {
+        GreigeOrderColorSaveReqVO colorVO = new GreigeOrderColorSaveReqVO();
+        colorVO.setColor(color);
+        colorVO.setFinishedQty(finishedQty == null ? null : new BigDecimal(finishedQty));
+        colorVO.setLossRate(lossRate == null ? null : new BigDecimal(lossRate));
+        return colorVO;
     }
 
     private GreigeOrderDO greigeOrder(Long id, String orderNo) {

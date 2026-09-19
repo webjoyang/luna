@@ -286,6 +286,65 @@
         </el-col>
       </el-row>
 
+      <div class="section-title">颜色投胚分配</div>
+      <el-table :data="colorRows" border size="small" class="color-table" empty-text="暂无颜色行，可点击下方按钮添加（零颜色单据也可保存）">
+        <el-table-column label="行号" type="index" width="50" align="center" />
+        <el-table-column label="颜色" min-width="140">
+          <template #default="{ row }">
+            <el-input v-model="row.color" :disabled="isViewMode" maxlength="64" placeholder="如 大红" />
+          </template>
+        </el-table-column>
+        <el-table-column label="成品下单量(KG)" width="150">
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.finishedQty"
+              :disabled="isViewMode"
+              :precision="2"
+              :controls="false"
+              :min="0"
+              class="!w-full"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="损耗率(%)" width="130">
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.lossPercent"
+              :disabled="isViewMode"
+              :precision="2"
+              :controls="false"
+              :min="0"
+              :max="99.99"
+              class="!w-full"
+              placeholder="留空取主单预设损耗"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="投胚需求(KG)" width="130" align="right">
+          <template #default="{ row }">
+            <span class="row-demand">{{ formatQty(rowDemand(row)) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="备注" min-width="140">
+          <template #default="{ row }">
+            <el-input v-model="row.remark" :disabled="isViewMode" />
+          </template>
+        </el-table-column>
+        <el-table-column v-if="!isViewMode" label="操作" width="70" align="center" fixed="right">
+          <template #default="{ $index }">
+            <el-button type="danger" link @click="removeColor($index)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="!isViewMode" class="items-actions">
+        <el-button type="primary" plain @click="addColor">添加颜色行</el-button>
+      </div>
+      <div class="items-summary">
+        合计：成品下单量 <b>{{ formatQty(totalFinishedQty) }}</b>
+        ／ 投胚需求 <b>{{ formatQty(totalDemandQty) }}</b>
+        <span class="summary-tip">（仅供参考，不与计划投胚量做一致校验；保存后以服务端重算为准）</span>
+      </div>
+
       <div class="section-title">备注</div>
       <el-row :gutter="20">
         <el-col :span="24">
@@ -343,7 +402,7 @@
 import { DICT_TYPE, getStrDictOptions, getDictLabel } from '@/utils/dict'
 import { formatDate } from '@/utils/formatTime'
 import * as GreigeOrderApi from '@/api/lunaerp-elmui/production/greige-order'
-import type { GreigeOrderVO } from '@/api/lunaerp-elmui/production/greige-order'
+import type { GreigeOrderVO, GreigeOrderColorVO } from '@/api/lunaerp-elmui/production/greige-order'
 import * as SalesContractApi from '@/api/lunaerp-elmui/business/sales-contract'
 import type { SalesContractVO } from '@/api/lunaerp-elmui/business/sales-contract'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
@@ -389,6 +448,56 @@ const formData = reactive<GreigeOrderVO>({
   remark: '',
   status: 'ACTIVE'
 })
+
+// ==================== 颜色投胚分配（聚合保存，ADR-0003） ====================
+
+/**
+ * 颜色行前端展示类型：损耗率以百分比（lossPercent）录入，
+ * 提交时换算回小数 lossRate；demandQty 由前端实时预览、服务端权威重算。
+ */
+type ColorRow = GreigeOrderColorVO & { lossPercent?: number }
+
+/** 颜色行独立于 formData 维护（避开 Object.assign 回填覆盖），保存时并入载荷 */
+const colorRows = ref<ColorRow[]>([])
+
+/** 新增一行空颜色行 */
+const addColor = () => {
+  colorRows.value.push({ color: '', finishedQty: 0, lossPercent: undefined, remark: '' })
+}
+
+/** 删除指定颜色行 */
+const removeColor = (index: number) => {
+  colorRows.value.splice(index, 1)
+}
+
+/** null/undefined 安全转数字 */
+const toNumber = (val: number | undefined | null): number => (val == null ? 0 : Number(val))
+
+/**
+ * 投胚需求实时预览：成品量 ÷ (1 − 损耗率)，与后端口径一致；
+ * 行损耗留空取主单预设损耗（lossPercent 状态源），损耗 ≥ 100% 无放大意义按不放大显示。
+ */
+const rowDemand = (row: ColorRow): number => {
+  const finishedQty = toNumber(row.finishedQty)
+  const lossRate =
+    row.lossPercent != null ? toNumber(row.lossPercent) / 100 : toNumber(formData.suggestedLoss)
+  const divisor = 1 - lossRate
+  if (divisor <= 0) return finishedQty
+  return finishedQty / divisor
+}
+
+/** 合计成品下单量（仅供参考） */
+const totalFinishedQty = computed(() =>
+  colorRows.value.reduce((sum, row) => sum + toNumber(row.finishedQty), 0)
+)
+
+/** 合计投胚需求（仅供参考，不与计划投胚量做一致校验） */
+const totalDemandQty = computed(() =>
+  colorRows.value.reduce((sum, row) => sum + rowDemand(row), 0)
+)
+
+/** 数量格式化（两位小数） */
+const formatQty = (val: number): string => val.toFixed(2)
 
 const rules = {
   greigeFactoryId: [{ required: true, message: '坯布厂不能为空', trigger: 'change' }],
@@ -579,6 +688,12 @@ const loadGreigeOrder = async () => {
     Object.assign(formData, data)
     // 预设损耗小数 → 百分比展示
     lossPercent.value = Number(((data.suggestedLoss ?? 0) * 100).toFixed(2))
+    // 颜色行回填：损耗率小数 → 百分比展示（后端保存时已把空值解析为主单损耗/0）
+    colorRows.value = (data.colors || []).map((color) => ({
+      ...color,
+      lossPercent:
+        color.lossRate != null ? Number((Number(color.lossRate) * 100).toFixed(2)) : undefined
+    }))
     if (data.greigeFactoryId) {
       greigeSupplierOptions.value = [
         { id: data.greigeFactoryId, companyName: data.greigeFactoryName || '' } as SupplierVO
@@ -614,7 +729,16 @@ const handleSubmit = async () => {
       dyeingFactoryName: formData.dyeingFactoryName?.trim() || undefined,
       suggestedLoss: toSuggestedLoss(),
       productCode: formData.productCode?.trim() || undefined,
-      greigeTypeId: formData.greigeTypeId || undefined
+      greigeTypeId: formData.greigeTypeId || undefined,
+      // 颜色行并入载荷整体保存：损耗率百分比 → 小数；投胚需求传前端预览值（服务端权威重算覆盖）
+      colors: colorRows.value.map((row) => ({
+        color: row.color,
+        finishedQty: row.finishedQty,
+        lossRate:
+          row.lossPercent != null ? Number((row.lossPercent / 100).toFixed(4)) : undefined,
+        demandQty: Number(rowDemand(row).toFixed(2)),
+        remark: row.remark
+      }))
     }
     if (isCreateMode.value) {
       await GreigeOrderApi.createGreigeOrder(payload)
@@ -668,6 +792,39 @@ onMounted(() => {
 .greige-form {
   max-width: 1100px;
   padding: 4px 8px;
+}
+
+.color-table {
+  margin-bottom: 8px;
+}
+
+.items-actions {
+  margin-bottom: 8px;
+}
+
+.items-summary {
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  text-align: right;
+  font-size: 14px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+
+  b {
+    color: var(--el-color-primary);
+    margin: 0 4px;
+  }
+
+  .summary-tip {
+    margin-left: 8px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+}
+
+.row-demand {
+  font-weight: 600;
+  color: var(--el-color-primary);
 }
 
 .option-type {

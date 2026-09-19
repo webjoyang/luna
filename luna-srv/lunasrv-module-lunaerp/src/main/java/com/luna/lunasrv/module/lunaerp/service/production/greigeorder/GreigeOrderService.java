@@ -8,7 +8,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.Grei
 /**
  * 生产管理-胚布单 Service 接口
  *
- * 02 票打通创建与取号，03 票追加查看与修改；颜色分配（04）、删除（05）由后续票据追加。
+ * 02 票打通创建与取号，03 票追加查看与修改，04 票追加颜色投胚分配（随单聚合保存）；删除（05）由后续票据追加。
  *
  * @author luna
  */
@@ -26,14 +26,15 @@ public interface GreigeOrderService {
      * 获得胚布单详情
      *
      * @param id 胚布单ID
-     * @return 胚布单详情（主表全部字段；颜色分配行随 04 票接入）
+     * @return 胚布单详情（主表全部字段 + 颜色投胚分配行按 line_no 升序嵌套返回）
      */
     GreigeOrderRespVO getGreigeOrder(Long id);
 
     /**
      * 创建胚布单
      *
-     * @param createReqVO 创建信息（单号留空走自动号；坯布厂必填、染厂/合同/胚布品种可空引用）
+     * @param createReqVO 创建信息（单号留空走自动号；坯布厂必填、染厂/合同/胚布品种可空引用；
+     *                    颜色行随单整体保存，投胚需求服务端权威重算，零颜色合法）
      * @return 胚布单ID
      */
     Long createGreigeOrder(GreigeOrderSaveReqVO createReqVO);
@@ -41,7 +42,8 @@ public interface GreigeOrderService {
     /**
      * 更新胚布单（整体保存）
      *
-     * @param updateReqVO 更新信息（含 id；编号/引用校验规则与创建一致，编号查重排除自身）
+     * @param updateReqVO 更新信息（含 id；编号/引用校验规则与创建一致，编号查重排除自身；
+     *                    颜色行整体替换：事务内按 order_id 删旧行、插新行并重排 line_no）
      */
     void updateGreigeOrder(GreigeOrderSaveReqVO updateReqVO);
 
