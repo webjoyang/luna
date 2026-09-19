@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_REFERENCE_NOT_FOUND;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_STATUS_NOT_ALLOWED;
 
@@ -68,6 +69,32 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         return order.getId();
     }
 
+    @Override
+    public DyeingOrderRespVO getDyeingOrder(Long id) {
+        DyeingOrderDO order = validateDyeingOrderExists(id);
+        return BeanUtils.toBean(order, DyeingOrderRespVO.class);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateDyeingOrder(DyeingOrderSaveReqVO updateReqVO) {
+        // 1. 存在性校验：目标单据不存在报 DYEING_ORDER_NOT_EXISTS
+        DyeingOrderDO existing = validateDyeingOrderExists(updateReqVO.getId());
+        // 2. 状态校验：仅 DRAFT 态可更新，非 DRAFT 态更新报 DYEING_ORDER_STATUS_NOT_ALLOWED
+        if (!"DRAFT".equals(existing.getStatus())) {
+            throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
+        }
+        // 3. 引用校验：销售合同必填且存在；承染方供应商必填且存在
+        ValidatedRefs refs = validateReferences(updateReqVO);
+        // 4. 组装 DO
+        DyeingOrderDO order = BeanUtils.toBean(updateReqVO, DyeingOrderDO.class);
+        // 5. 保持 DRAFT 态，刷新快照与缺省值
+        order.setStatus("DRAFT");
+        fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory());
+        // 6. 整体更新（可空字段清空随 DO 的 updateStrategy=ALWAYS 一并落库）
+        dyeingOrderMapper.updateById(order);
+    }
+
     /**
      * 构造分页查询条件：
      * keyword 对 contract_no / client_name / product_code / product_name 做 OR 模糊
@@ -106,6 +133,20 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
                     .or().apply("LOWER(product_name) LIKE LOWER({0})", like));
         }
         return wrapper;
+    }
+
+    /**
+     * 校验染色单存在，不存在抛 DYEING_ORDER_NOT_EXISTS
+     */
+    private DyeingOrderDO validateDyeingOrderExists(Long id) {
+        if (id == null) {
+            throw exception(DYEING_ORDER_NOT_EXISTS);
+        }
+        DyeingOrderDO order = dyeingOrderMapper.selectById(id);
+        if (order == null) {
+            throw exception(DYEING_ORDER_NOT_EXISTS);
+        }
+        return order;
     }
 
     /**

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.color.DyeingColorDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
@@ -273,6 +274,148 @@ class DyeingOrderServiceImplTest {
                 () -> dyeingOrderService.createDyeingOrder(reqVO));
         assertEquals(1_030_007_001, exception.getCode());
         verify(dyeingOrderMapper, never()).insert(any(DyeingOrderDO.class));
+    }
+
+    // ==================== getDyeingOrder：详情查询（03 票） ====================
+
+    @Test
+    void getDyeingOrder_notExists_throwsNotExists() {
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.getDyeingOrder(1001L));
+        assertEquals(1_030_007_000, exception.getCode());
+    }
+
+    @Test
+    void getDyeingOrder_exists_returnsDetails() {
+        DyeingOrderDO order = new DyeingOrderDO();
+        order.setId(1001L);
+        order.setSalesContractId(101L);
+        order.setContractNo("CH20260001");
+        order.setCustomerId(201L);
+        order.setClientName("测试客户");
+        order.setDyeingFactoryId(301L);
+        order.setDyeingFactoryName("海宁染整厂");
+        order.setStatus("DRAFT");
+        order.setOrderDate(LocalDate.of(2026, 9, 19));
+        order.setProductCode("P001");
+        order.setProductName("全棉汗布");
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(order);
+
+        DyeingOrderRespVO respVO = dyeingOrderService.getDyeingOrder(1001L);
+
+        assertEquals(1001L, respVO.getId());
+        assertEquals("CH20260001", respVO.getContractNo());
+        assertEquals("测试客户", respVO.getClientName());
+        assertEquals("海宁染整厂", respVO.getDyeingFactoryName());
+        assertEquals("DRAFT", respVO.getStatus());
+        assertEquals("P001", respVO.getProductCode());
+    }
+
+    // ==================== updateDyeingOrder：更新单据（03 票） ====================
+
+    @Test
+    void updateDyeingOrder_notExists_throwsNotExists() {
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(null);
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.updateDyeingOrder(reqVO));
+        assertEquals(1_030_007_000, exception.getCode());
+        verify(dyeingOrderMapper, never()).updateById(any(DyeingOrderDO.class));
+    }
+
+    @Test
+    void updateDyeingOrder_nonDraft_throwsStatusNotAllowed() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(1001L);
+        existing.setStatus("ACTIVE");
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(existing);
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.updateDyeingOrder(reqVO));
+        assertEquals(1_030_007_001, exception.getCode());
+        verify(dyeingOrderMapper, never()).updateById(any(DyeingOrderDO.class));
+    }
+
+    @Test
+    void updateDyeingOrder_draft_updatesSuccessfullyAndRefreshesSnapshots() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(1001L);
+        existing.setStatus("DRAFT");
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(existing);
+
+        stubContract(102L, "CH20260002", 202L, "新客户");
+        stubSupplier(302L, "嘉兴新染厂");
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+        reqVO.setSalesContractId(102L);
+        reqVO.setDyeingFactoryId(302L);
+        reqVO.setProductCode("P002");
+        reqVO.setProductName("新产品");
+        reqVO.setLoss("6%");
+        reqVO.setRemark("修改后的备注");
+
+        dyeingOrderService.updateDyeingOrder(reqVO);
+
+        ArgumentCaptor<DyeingOrderDO> captor = ArgumentCaptor.forClass(DyeingOrderDO.class);
+        verify(dyeingOrderMapper).updateById(captor.capture());
+        DyeingOrderDO updated = captor.getValue();
+        assertEquals(1001L, updated.getId());
+        assertEquals("DRAFT", updated.getStatus());
+        assertEquals("CH20260002", updated.getContractNo(), "合同号快照应刷新");
+        assertEquals(202L, updated.getCustomerId(), "客户ID应刷新");
+        assertEquals("新客户", updated.getClientName(), "客户名快照应刷新");
+        assertEquals(302L, updated.getDyeingFactoryId());
+        assertEquals("嘉兴新染厂", updated.getDyeingFactoryName(), "承染方公司名快照应刷新");
+        assertEquals("P002", updated.getProductCode());
+        assertEquals("新产品", updated.getProductName());
+        assertEquals("6%", updated.getLoss());
+        assertEquals("修改后的备注", updated.getRemark());
+    }
+
+    @Test
+    void updateDyeingOrder_contractMissing_throwsReferenceNotFound() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(1001L);
+        existing.setStatus("DRAFT");
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(existing);
+
+        when(salesContractMapper.selectById(101L)).thenReturn(null);
+        stubSupplier(301L, "海宁染整厂");
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.updateDyeingOrder(reqVO));
+        assertEquals(1_030_007_002, exception.getCode());
+        verify(dyeingOrderMapper, never()).updateById(any(DyeingOrderDO.class));
+    }
+
+    @Test
+    void updateDyeingOrder_factoryMissing_throwsReferenceNotFound() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(1001L);
+        existing.setStatus("DRAFT");
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(existing);
+
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        when(supplierMapper.selectById(301L)).thenReturn(null);
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.updateDyeingOrder(reqVO));
+        assertEquals(1_030_007_002, exception.getCode());
+        verify(dyeingOrderMapper, never()).updateById(any(DyeingOrderDO.class));
     }
 
     // ==================== 辅助方法 ====================

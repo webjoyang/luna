@@ -3,7 +3,7 @@
     ref="formRef"
     :model="formData"
     :rules="rules"
-    :disabled="isViewMode"
+    :disabled="isReadOnly"
     label-width="110px"
     class="dyeing-order-form"
     v-loading="loading"
@@ -215,13 +215,20 @@
     </el-row>
 
     <!-- 操作按钮 -->
-    <div v-if="!isViewMode" class="form-actions">
-      <el-button type="primary" :loading="submitLoading" @click="handleSave('DRAFT')">
-        保存为草稿
-      </el-button>
-      <el-button type="success" :loading="submitLoading" @click="handleSave('ACTIVE')">
-        下达
-      </el-button>
+    <div v-if="!isReadOnly" class="form-actions">
+      <template v-if="isCreateMode">
+        <el-button type="primary" :loading="submitLoading" @click="handleSave('DRAFT')">
+          保存为草稿
+        </el-button>
+        <el-button type="success" :loading="submitLoading" @click="handleSave('ACTIVE')">
+          下达
+        </el-button>
+      </template>
+      <template v-else>
+        <el-button type="primary" :loading="submitLoading" @click="handleSave('DRAFT')">
+          保存
+        </el-button>
+      </template>
       <el-button @click="handleCancel">取消</el-button>
     </div>
   </el-form>
@@ -248,6 +255,11 @@ const emit = defineEmits<{
   (e: 'success', id: number): void
   (e: 'cancel'): void
 }>()
+
+const isCreateMode = computed(() => !props.orderId)
+const isReadOnly = computed(
+  () => props.isViewMode || (!isCreateMode.value && formData.value.status !== 'DRAFT')
+)
 
 const router = useRouter()
 const message = useMessage()
@@ -353,6 +365,40 @@ const handleSupplierChange = (val?: number) => {
   }
 }
 
+// 详情加载
+const loadDetail = async () => {
+  if (!props.orderId) return
+  loading.value = true
+  try {
+    const res = await DyeingOrderApi.getDyeingOrder(Number(props.orderId))
+    formData.value = res
+    if (res.salesContractId && res.contractNo) {
+      contractOptions.value = [
+        {
+          id: res.salesContractId,
+          contractNo: res.contractNo,
+          customerId: res.customerId,
+          clientName: res.clientName
+        }
+      ]
+    }
+    if (res.dyeingFactoryId && res.dyeingFactoryName) {
+      supplierOptions.value = [
+        {
+          id: res.dyeingFactoryId,
+          companyName: res.dyeingFactoryName
+        }
+      ]
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadDetail()
+})
+
 // 保存/下达
 const handleSave = async (status: 'DRAFT' | 'ACTIVE') => {
   if (!formRef.value) return
@@ -364,9 +410,15 @@ const handleSave = async (status: 'DRAFT' | 'ACTIVE') => {
       ...formData.value,
       status
     }
-    const id = await DyeingOrderApi.createDyeingOrder(submitData)
-    message.success(status === 'ACTIVE' ? '染色单下达成功' : '染色单保存为草稿成功')
-    emit('success', id)
+    if (isCreateMode.value) {
+      const id = await DyeingOrderApi.createDyeingOrder(submitData)
+      message.success(status === 'ACTIVE' ? '染色单下达成功' : '染色单保存为草稿成功')
+      emit('success', id)
+    } else {
+      await DyeingOrderApi.updateDyeingOrder(submitData)
+      message.success('染色单修改成功')
+      emit('success', Number(props.orderId))
+    }
   } finally {
     submitLoading.value = false
   }

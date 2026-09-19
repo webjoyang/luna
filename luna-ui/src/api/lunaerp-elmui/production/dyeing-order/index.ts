@@ -78,6 +78,11 @@ export const createDyeingOrder = (data: DyeingOrderVO) => {
   return request.post<number>({ url: '/lunaerp/production/dyeing-order/create', data })
 }
 
+// 修改染色单
+export const updateDyeingOrder = (data: DyeingOrderVO) => {
+  return request.put<boolean>({ url: '/lunaerp/production/dyeing-order/update', data })
+}
+
 // 删除染色单
 export const deleteDyeingOrder = (id: number) => {
   return request.delete<boolean>({ url: `/lunaerp/production/dyeing-order/delete?id=${id}` })

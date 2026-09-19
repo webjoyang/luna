@@ -28,4 +28,19 @@ public interface DyeingOrderService {
      */
     Long createDyeingOrder(DyeingOrderSaveReqVO createReqVO);
 
+    /**
+     * 获得染色单详情
+     *
+     * @param id 染色单ID
+     * @return 染色单详情
+     */
+    DyeingOrderRespVO getDyeingOrder(Long id);
+
+    /**
+     * 更新染色单（整体保存）
+     *
+     * @param updateReqVO 更新信息
+     */
+    void updateDyeingOrder(DyeingOrderSaveReqVO updateReqVO);
+
 }

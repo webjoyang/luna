@@ -7,6 +7,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.Dyei
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.dyeingorder.DyeingOrderService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
@@ -14,8 +15,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
@@ -36,6 +39,22 @@ public class DyeingOrderController {
     @PreAuthorize("@ss.hasPermission('lunaerp:production:dyeing-order:create')")
     public CommonResult<Long> createDyeingOrder(@Valid @RequestBody DyeingOrderSaveReqVO createReqVO) {
         return success(dyeingOrderService.createDyeingOrder(createReqVO));
+    }
+
+    @PutMapping("/update")
+    @Operation(summary = "更新染色单（整体保存）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:dyeing-order:update')")
+    public CommonResult<Boolean> updateDyeingOrder(@Valid @RequestBody DyeingOrderSaveReqVO updateReqVO) {
+        dyeingOrderService.updateDyeingOrder(updateReqVO);
+        return success(true);
+    }
+
+    @GetMapping("/get")
+    @Operation(summary = "获得染色单详情")
+    @Parameter(name = "id", description = "染色单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:dyeing-order:query')")
+    public CommonResult<DyeingOrderRespVO> getDyeingOrder(@RequestParam("id") Long id) {
+        return success(dyeingOrderService.getDyeingOrder(id));
     }
 
     @GetMapping("/page")
