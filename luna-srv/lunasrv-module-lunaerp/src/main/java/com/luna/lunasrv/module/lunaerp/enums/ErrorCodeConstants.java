@@ -7,8 +7,9 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *
  * lunaerp 系统，使用 1-030-001-xxx 段（产品）
  *                  与 1-030-002-xxx 段（胚布品种，见 GreigeErrorCodeConstants）
- *                  与 1-030-004-xxx 段（客户，customer 与 customer-contact 共用）
  *                  与 1-030-003-xxx 段（销售合同）
+ *                  与 1-030-004-xxx 段（客户，customer 与 customer-contact 共用）
+ *                  与 1-030-005-xxx 段（供应商，supplier 与 supplier-contact 共用）
  */
 public interface ErrorCodeConstants {
 
@@ -31,5 +32,10 @@ public interface ErrorCodeConstants {
     // ========== 销售合同模块 1-030-003-000 ==========
     ErrorCode SALES_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_003_000, "销售合同不存在");
     ErrorCode SALES_CONTRACT_NO_DUPLICATE = new ErrorCode(1_030_003_001, "合同编号已被占用，请修改编号或重新获取");
+
+    // ========== 供应商模块 1-030-005-000（supplier 与 supplier-contact 共用） ==========
+    ErrorCode SUPPLIER_NOT_EXISTS = new ErrorCode(1_030_005_000, "供应商不存在");
+    ErrorCode SUPPLIER_NO_DUPLICATE = new ErrorCode(1_030_005_001, "供应商编号已被占用，请修改编号或重新获取");
+    ErrorCode SUPPLIER_CONTACT_NOT_EXISTS = new ErrorCode(1_030_005_002, "供应商联系人不存在");
 
 }

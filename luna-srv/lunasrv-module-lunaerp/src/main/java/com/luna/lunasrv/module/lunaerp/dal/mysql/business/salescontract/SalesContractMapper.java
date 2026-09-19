@@ -27,7 +27,11 @@ public interface SalesContractMapper extends BaseMapperX<SalesContractDO> {
      * @param prefix 编号前缀，如 CH2026
      * @return 合同列表（含已删除行）
      */
-    @Select("SELECT * FROM lunaerp_business_sales_contract WHERE contract_no LIKE CONCAT(#{prefix}, '%')")
+    @Select("SELECT id, contract_no, customer_id, client_name, client_contact, client_address, client_contract_no, "
+            + "salesperson_user_id, sign_date, delivery_date, unit, currency, trade_type, order_type, "
+            + "total_quantity, total_amount, remarks, status, "
+            + "creator, create_time, updater, update_time, deleted, tenant_id "
+            + "FROM lunaerp_business_sales_contract WHERE contract_no LIKE CONCAT(#{prefix}, '%')")
     List<SalesContractDO> selectListByContractNoPrefixIncludingDeleted(@Param("prefix") String prefix);
 
     /**
@@ -40,7 +44,11 @@ public interface SalesContractMapper extends BaseMapperX<SalesContractDO> {
      * @param contractNo 合同编号
      * @return 合同（含已删除行），不存在返回 null
      */
-    @Select("SELECT * FROM lunaerp_business_sales_contract WHERE contract_no = #{contractNo} LIMIT 1")
+    @Select("SELECT id, contract_no, customer_id, client_name, client_contact, client_address, client_contract_no, "
+            + "salesperson_user_id, sign_date, delivery_date, unit, currency, trade_type, order_type, "
+            + "total_quantity, total_amount, remarks, status, "
+            + "creator, create_time, updater, update_time, deleted, tenant_id "
+            + "FROM lunaerp_business_sales_contract WHERE contract_no = #{contractNo} LIMIT 1")
     SalesContractDO selectByContractNoIncludingDeleted(@Param("contractNo") String contractNo);
 
 }

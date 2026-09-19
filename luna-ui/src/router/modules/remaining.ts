@@ -456,6 +456,30 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/baseinfo/customer'
         }
+      },
+      {
+        path: 'supplier/workspace',
+        component: () => import('@/views/lunaerp-elmui/baseinfo/supplier/workspace/index.vue'),
+        name: 'LunaerpElmuiBaseinfoSupplierWorkspaceCreate',
+        meta: {
+          title: '新建供应商',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/baseinfo/supplier'
+        }
+      },
+      {
+        path: 'supplier/workspace/:id',
+        component: () => import('@/views/lunaerp-elmui/baseinfo/supplier/workspace/index.vue'),
+        name: 'LunaerpElmuiBaseinfoSupplierWorkspace',
+        meta: {
+          title: '供应商工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/baseinfo/supplier'
+        }
       }
     ]
   },

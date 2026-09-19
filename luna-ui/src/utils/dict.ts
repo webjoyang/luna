@@ -452,6 +452,9 @@ export enum DICT_TYPE {
   LUNAERP_CUSTOMER_SOURCE = 'lunaerp_customer_source', // 客户来源
   LUNAERP_CUSTOMER_COOPERATION_STATUS = 'lunaerp_customer_cooperation_status', // 客户合作状态
 
+  // ========== LunaERP - 基本信息-供应商模块 ==========
+  LUNAERP_SUPPLIER_TYPE = 'lunaerp_supplier_type', // 供应商类型（18 项经营类别）
+
   // ========== LunaERP - 业务管理-销售合同模块 ==========
   LUNAERP_SALES_CONTRACT_STATUS = 'lunaerp_sales_contract_status', // 销售合同状态
   LUNAERP_SALES_CONTRACT_TRADE_TYPE = 'lunaerp_sales_contract_trade_type', // 销售合同贸易类型
