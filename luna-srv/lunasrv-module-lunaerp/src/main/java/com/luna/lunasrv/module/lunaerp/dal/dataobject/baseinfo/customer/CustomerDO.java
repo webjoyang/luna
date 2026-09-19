@@ -11,7 +11,7 @@ import lombok.EqualsAndHashCode;
  *
  * 表：lunaerp_baseinfo_customer
  *
- * 字段范围：仅 A 组基础档案（company/shortName/phone/address/clientType/industry/
+ * 字段范围：仅 A 组基础档案（companyName/shortName/phone/address/clientType/industry/
  * scale/source/cooperationStatus/unifiedSocialCreditCode/remark/status）。
  * 不引入 code、businessOwnership，亦无业务唯一约束（公司名允许重名）。
  *
@@ -30,9 +30,9 @@ public class CustomerDO extends TenantBaseDO {
     /**
      * 公司名称（必填）
      */
-    private String company;
+    private String companyName;
     /**
-     * 简称（为空时后端用 company 回填）
+     * 简称（为空时后端用 companyName 回填）
      */
     private String shortName;
     /**

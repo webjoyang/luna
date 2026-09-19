@@ -4,7 +4,7 @@
 -- 规范：芋道 ruoyi-vue-pro（id int8、creator/create_time/updater/update_time/
 --       deleted/tenant_id 标准列，主键 ALTER TABLE ADD CONSTRAINT，列 COMMENT）
 -- 可重复执行：CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS，
---             主键用 DO 块判存，菜单/字典先 DELETE 再 INSERT。
+--             主键与存量列迁移（company→company_name）用 DO 块判存，菜单/字典先 DELETE 再 INSERT。
 -- 注意：本脚本仅做语法自查，禁止在共享远程库直接执行。
 -- =============================================================================
 
@@ -13,7 +13,7 @@
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS lunaerp_baseinfo_customer (
     id                       int8         NOT NULL,
-    company                  varchar      NOT NULL,
+    company_name             varchar      NOT NULL,
     short_name               varchar      NULL,
     phone                    varchar      NULL,
     address                  varchar      NULL,
@@ -33,6 +33,26 @@ CREATE TABLE IF NOT EXISTS lunaerp_baseinfo_customer (
     tenant_id                 int8        NOT NULL DEFAULT 0
 );
 
+-- 存量库升级：旧列 company 正名为 company_name（可重复执行）。
+-- 判存 information_schema：旧列存在且新列不存在时才 RENAME，空库新表与已升级库重跑均跳过；
+-- RENAME 仅改列名，NOT NULL 等约束与数据随列保留，不丢数据。
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'lunaerp_baseinfo_customer'
+          AND column_name = 'company'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'lunaerp_baseinfo_customer'
+          AND column_name = 'company_name'
+    ) THEN
+        ALTER TABLE lunaerp_baseinfo_customer RENAME COLUMN company TO company_name;
+    END IF;
+END $$;
+
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pk_lb_customer') THEN
@@ -49,8 +69,8 @@ CREATE INDEX IF NOT EXISTS idx_lb_customer_cooperation_status
 
 COMMENT ON TABLE lunaerp_baseinfo_customer IS '基本信息-客户表';
 COMMENT ON COLUMN lunaerp_baseinfo_customer.id IS '客户ID';
-COMMENT ON COLUMN lunaerp_baseinfo_customer.company IS '公司名称（必填）';
-COMMENT ON COLUMN lunaerp_baseinfo_customer.short_name IS '简称（为空时后端用 company 回填）';
+COMMENT ON COLUMN lunaerp_baseinfo_customer.company_name IS '公司名称（必填）';
+COMMENT ON COLUMN lunaerp_baseinfo_customer.short_name IS '简称（为空时后端用 company_name 回填）';
 COMMENT ON COLUMN lunaerp_baseinfo_customer.phone IS '联系电话';
 COMMENT ON COLUMN lunaerp_baseinfo_customer.address IS '公司地址';
 COMMENT ON COLUMN lunaerp_baseinfo_customer.client_type IS '客户类型（字典 lunaerp_customer_client_type：潜在/正式/流失）';

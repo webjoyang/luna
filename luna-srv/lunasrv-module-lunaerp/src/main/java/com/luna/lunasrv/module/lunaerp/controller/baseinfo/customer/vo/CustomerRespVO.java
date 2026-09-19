@@ -13,7 +13,7 @@ public class CustomerRespVO {
     private Long id;
 
     @Schema(description = "公司名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "杭州织造有限公司")
-    private String company;
+    private String companyName;
 
     @Schema(description = "简称", example = "杭州织造")
     private String shortName;

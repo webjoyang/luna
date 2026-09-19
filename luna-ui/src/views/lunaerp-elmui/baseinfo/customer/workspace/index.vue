@@ -6,8 +6,8 @@
           <span class="header-title">
             {{ isCreateMode ? '新建客户' : '客户工作台' }}
           </span>
-          <span v-if="!isCreateMode && formData?.company" class="header-sub">
-            · {{ formData.company }}
+          <span v-if="!isCreateMode && formData?.companyName" class="header-sub">
+            · {{ formData.companyName }}
           </span>
         </template>
       </el-page-header>

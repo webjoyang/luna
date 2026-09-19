@@ -9,8 +9,8 @@
   >
     <el-row :gutter="20">
       <el-col :span="12">
-        <el-form-item label="公司名称" prop="company">
-          <el-input v-model="formData.company" placeholder="请输入公司名称" />
+        <el-form-item label="公司名称" prop="companyName">
+          <el-input v-model="formData.companyName" placeholder="请输入公司名称" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -158,7 +158,7 @@ const loading = ref(false)
 const submitting = ref(false)
 
 const formData = reactive<CustomerVO>({
-  company: '',
+  companyName: '',
   shortName: '',
   phone: '',
   address: '',
@@ -173,7 +173,7 @@ const formData = reactive<CustomerVO>({
 })
 
 const rules: FormRules = {
-  company: [{ required: true, message: '公司名称不能为空', trigger: 'blur' }],
+  companyName: [{ required: true, message: '公司名称不能为空', trigger: 'blur' }],
   clientType: [{ required: true, message: '客户类型不能为空', trigger: 'change' }]
 }
 

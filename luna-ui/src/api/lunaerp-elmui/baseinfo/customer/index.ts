@@ -3,7 +3,7 @@ import request from '@/config/axios'
 // 客户信息 VO
 export interface CustomerVO {
   id?: number
-  company: string
+  companyName: string
   shortName?: string
   phone?: string
   address?: string

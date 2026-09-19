@@ -36,7 +36,7 @@
               <el-option
                 v-for="item in customerOptions"
                 :key="item.id"
-                :label="item.company"
+                :label="item.companyName"
                 :value="item.id!"
               />
             </el-select>
@@ -453,7 +453,7 @@ const searchCustomers = async (query: string) => {
 /** 选中客户：① 保存 clientName 快照；② 远程带出主联系人姓名与客户地址；单个接口失败不影响另一个回填 */
 const handleCustomerChange = async (customerId: number) => {
   const customer = customerOptions.value.find((item) => item.id === customerId)
-  formData.clientName = customer?.company || ''
+  formData.clientName = customer?.companyName || ''
   // allSettled：联系人/地址任一接口失败，另一个仍照常回填，整体失败不阻断选择
   const [detailResult, contactsResult] = await Promise.allSettled([
     CustomerApi.getCustomer(customerId),
@@ -516,7 +516,7 @@ const loadContract = async () => {
     formData.items = data.items || []
     // 用快照预置当前客户下拉选项，保证选中态有 label
     if (data.customerId) {
-      customerOptions.value = [{ id: data.customerId, company: data.clientName || '' } as CustomerVO]
+      customerOptions.value = [{ id: data.customerId, companyName: data.clientName || '' } as CustomerVO]
     }
   } finally {
     loading.value = false

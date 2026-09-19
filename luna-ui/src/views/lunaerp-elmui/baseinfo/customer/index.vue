@@ -55,11 +55,11 @@
       @selection-change="handleSelectionChange"
     >
       <el-table-column type="selection" width="55" />
-      <el-table-column label="客户" prop="company" min-width="220">
+      <el-table-column label="客户" prop="companyName" min-width="220">
         <template #default="{ row }">
           <div class="cell-customer">
-            <span class="cell-company">{{ row.company }}</span>
-            <span v-if="row.shortName && row.shortName !== row.company" class="cell-short">
+            <span class="cell-customer-name">{{ row.companyName }}</span>
+            <span v-if="row.shortName && row.shortName !== row.companyName" class="cell-short">
               {{ row.shortName }}
             </span>
           </div>
@@ -228,7 +228,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 2px;
 
-  .cell-company {
+  .cell-customer-name {
     font-weight: 600;
     color: var(--el-text-color-primary);
   }

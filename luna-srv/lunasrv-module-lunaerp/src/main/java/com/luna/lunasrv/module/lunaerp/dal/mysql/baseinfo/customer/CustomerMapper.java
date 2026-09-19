@@ -10,7 +10,7 @@ import org.apache.ibatis.annotations.Mapper;
 /**
  * 基本信息-客户表 Mapper
  *
- * 列表 search 智能词命中 company / short_name / phone / unified_social_credit_code 之一，
+ * 列表 search 智能词命中 company_name / short_name / phone / unified_social_credit_code 之一，
  * PostgreSQL 用 LOWER(...) LIKE LOWER({0}) 实现 OR ILIKE 语义（占位符走预编译，无注入风险）。
  * 逻辑删除（deleted=0）与租户条件由框架自动追加。
  *
@@ -29,12 +29,12 @@ public interface CustomerMapper extends BaseMapperX<CustomerDO> {
         LambdaQueryWrapperX<CustomerDO> wrapper = new LambdaQueryWrapperX<>();
         // status 等值过滤（为空则不过滤，便于"全部"场景）
         wrapper.eqIfPresent(CustomerDO::getStatus, reqVO.getStatus());
-        // search 智能词：命中 company / short_name / phone / unified_social_credit_code 之一
+        // search 智能词：命中 company_name / short_name / phone / unified_social_credit_code 之一
         String search = reqVO.getSearch() == null ? "" : reqVO.getSearch().trim();
         if (!search.isEmpty()) {
             String like = "%" + search + "%";
             wrapper.and(w -> w
-                    .apply("LOWER(company) LIKE LOWER({0})", like)
+                    .apply("LOWER(company_name) LIKE LOWER({0})", like)
                     .or().apply("LOWER(short_name) LIKE LOWER({0})", like)
                     .or().apply("LOWER(phone) LIKE LOWER({0})", like)
                     .or().apply("LOWER(unified_social_credit_code) LIKE LOWER({0})", like));

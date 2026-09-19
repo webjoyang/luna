@@ -15,7 +15,7 @@ import java.util.List;
 public interface CustomerService {
 
     /**
-     * 创建客户：shortName 为空时用 company 回填，status 缺省 ACTIVE。
+     * 创建客户：shortName 为空时用 companyName 回填，status 缺省 ACTIVE。
      *
      * @param createReqVO 客户
      * @return 客户ID
@@ -39,7 +39,7 @@ public interface CustomerService {
     CustomerRespVO getCustomer(Long id);
 
     /**
-     * 修改客户：shortName 为空时用 company 回填（与创建一致）。
+     * 修改客户：shortName 为空时用 companyName 回填（与创建一致）。
      *
      * @param updateReqVO 客户
      */

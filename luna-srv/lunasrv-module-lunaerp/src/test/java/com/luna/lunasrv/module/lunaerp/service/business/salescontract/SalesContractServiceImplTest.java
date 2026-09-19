@@ -74,7 +74,7 @@ class SalesContractServiceImplTest {
     private SalesContractServiceImpl salesContractService;
 
     private static final Long CUSTOMER_ID = 1024L;
-    private static final String CUSTOMER_COMPANY = "杭州织造有限公司";
+    private static final String CUSTOMER_COMPANY_NAME = "杭州织造有限公司";
     private static final String YEAR_PREFIX = "CH" + LocalDate.now().getYear();
 
     @BeforeEach
@@ -96,7 +96,7 @@ class SalesContractServiceImplTest {
     private CustomerDO buildCustomer() {
         CustomerDO customer = new CustomerDO();
         customer.setId(CUSTOMER_ID);
-        customer.setCompany(CUSTOMER_COMPANY);
+        customer.setCompanyName(CUSTOMER_COMPANY_NAME);
         return customer;
     }
 
@@ -272,7 +272,7 @@ class SalesContractServiceImplTest {
         assertEquals("BULK", saved.getOrderType());
         assertEquals("KG", saved.getUnit());
         assertEquals("RMB", saved.getCurrency());
-        assertEquals(CUSTOMER_COMPANY, saved.getClientName(), "clientName 快照为空时应用客户公司名称回填");
+        assertEquals(CUSTOMER_COMPANY_NAME, saved.getClientName(), "clientName 快照为空时应用客户公司名称回填");
     }
 
     @Test
@@ -354,7 +354,7 @@ class SalesContractServiceImplTest {
         verify(salesContractMapper).updateById(captor.capture());
         SalesContractDO updated = captor.getValue();
         assertEquals(2048L, updated.getId());
-        assertEquals(CUSTOMER_COMPANY, updated.getClientName(), "update 时 clientName 为空也应用客户公司名称回填");
+        assertEquals(CUSTOMER_COMPANY_NAME, updated.getClientName(), "update 时 clientName 为空也应用客户公司名称回填");
     }
 
     @Test

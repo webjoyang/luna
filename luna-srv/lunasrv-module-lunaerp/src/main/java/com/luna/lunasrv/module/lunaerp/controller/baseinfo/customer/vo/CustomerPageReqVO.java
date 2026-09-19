@@ -10,7 +10,7 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 public class CustomerPageReqVO extends PageParam {
 
-    @Schema(description = "智能搜索词（命中 company/shortName/phone/unifiedSocialCreditCode 之一）", example = "杭州")
+    @Schema(description = "智能搜索词（命中 companyName/shortName/phone/unifiedSocialCreditCode 之一）", example = "杭州")
     private String search;
 
     @Schema(description = "状态：ACTIVE/INACTIVE", example = "ACTIVE")

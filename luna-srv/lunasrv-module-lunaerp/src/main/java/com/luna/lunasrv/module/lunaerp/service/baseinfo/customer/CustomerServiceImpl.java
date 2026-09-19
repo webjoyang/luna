@@ -42,7 +42,7 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     public Long createCustomer(CustomerSaveReqVO createReqVO) {
         CustomerDO customer = BeanUtils.toBean(createReqVO, CustomerDO.class);
-        // shortName 为空时用 company 回填
+        // shortName 为空时用 companyName 回填
         backfillShortName(customer);
         // status 缺省 ACTIVE
         if (!StringUtils.hasText(customer.getStatus())) {
@@ -72,7 +72,7 @@ public class CustomerServiceImpl implements CustomerService {
     public void updateCustomer(CustomerSaveReqVO updateReqVO) {
         // 校验存在
         validateCustomerExists(updateReqVO.getId());
-        // 更新（shortName 为空时用 company 回填，与创建一致）
+        // 更新（shortName 为空时用 companyName 回填，与创建一致）
         CustomerDO updateObj = BeanUtils.toBean(updateReqVO, CustomerDO.class);
         backfillShortName(updateObj);
         customerMapper.updateById(updateObj);
@@ -95,11 +95,11 @@ public class CustomerServiceImpl implements CustomerService {
     // ==================== 私有方法 ====================
 
     /**
-     * shortName 为空时用 company 回填（create/update 共用）
+     * shortName 为空时用 companyName 回填（create/update 共用）
      */
     private void backfillShortName(CustomerDO customer) {
         if (!StringUtils.hasText(customer.getShortName())) {
-            customer.setShortName(customer.getCompany());
+            customer.setShortName(customer.getCompanyName());
         }
     }
 

@@ -106,7 +106,7 @@ public class SalesContractServiceImpl implements SalesContractService {
         }
         // 1.4 客户名称快照：为空时用客户公司名称回填
         if (!StringUtils.hasText(contract.getClientName())) {
-            contract.setClientName(customer.getCompany());
+            contract.setClientName(customer.getCompanyName());
         }
         // 1.5 缺省值
         if (contract.getSignDate() == null) {
@@ -156,7 +156,7 @@ public class SalesContractServiceImpl implements SalesContractService {
             updateObj.setContractNo(null);
         }
         if (!StringUtils.hasText(updateObj.getClientName())) {
-            updateObj.setClientName(customer.getCompany());
+            updateObj.setClientName(customer.getCompanyName());
         }
         // 4. 明细整体替换：先按 contractId 逻辑删除旧明细，再插本次提交的全部明细；
         //    服务端权威重算行金额与主表汇总（请求体传入的 totalQuantity/totalAmount 一律忽略覆盖）

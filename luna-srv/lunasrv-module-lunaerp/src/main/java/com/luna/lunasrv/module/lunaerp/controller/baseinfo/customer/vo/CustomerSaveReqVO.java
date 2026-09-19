@@ -13,9 +13,9 @@ public class CustomerSaveReqVO {
 
     @Schema(description = "公司名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "杭州织造有限公司")
     @NotBlank(message = "公司名称不能为空")
-    private String company;
+    private String companyName;
 
-    @Schema(description = "简称（为空时后端用 company 回填）", example = "杭州织造")
+    @Schema(description = "简称（为空时后端用 companyName 回填）", example = "杭州织造")
     private String shortName;
 
     @Schema(description = "联系电话", example = "0571-12345678")
