@@ -8,12 +8,12 @@
       </el-page-header>
     </div>
 
-    <!-- 新建：整页完整主表表单（编辑/查看随 03 票开放） -->
+    <!-- 整页表单：新建 / 编辑 / 查看（查看模式全部控件 disabled、隐藏保存） -->
     <el-form
-      v-if="isCreateMode"
       ref="formRef"
       :model="formData"
       :rules="rules"
+      :disabled="isViewMode"
       label-width="110px"
       class="greige-form"
       v-loading="loading"
@@ -27,7 +27,7 @@
               maxlength="32"
               placeholder="留空自动生成（如 PB0919001），也可手填"
             >
-              <template #append>
+              <template v-if="isCreateMode" #append>
                 <el-button :loading="nextNoLoading" @click="handleGetNextNo">获取编号</el-button>
               </template>
             </el-input>
@@ -98,7 +98,7 @@
               <el-option
                 v-for="item in greigeSupplierOptions"
                 :key="item.id"
-                :label="`${item.supplierNo} ${item.companyName}`"
+                :label="supplierOptionLabel(item)"
                 :value="item.id!"
               >
                 <span>{{ item.supplierNo }} {{ item.companyName }}</span>
@@ -124,7 +124,7 @@
               <el-option
                 v-for="item in dyeingSupplierOptions"
                 :key="item.id"
-                :label="`${item.supplierNo} ${item.companyName}`"
+                :label="supplierOptionLabel(item)"
                 :value="item.id!"
               >
                 <span>{{ item.supplierNo }} {{ item.companyName }}</span>
@@ -319,20 +319,23 @@
       </el-row>
 
       <div class="form-footer">
+        <!-- 只读模式仅隐藏保存按钮（规格要求），返回保留 -->
         <el-button
+          v-if="!isViewMode"
           type="primary"
           :loading="submitting"
           @click="handleSubmit"
-          v-hasPermi="['lunaerp:production:greige-order:create']"
+          v-hasPermi="
+            isCreateMode
+              ? ['lunaerp:production:greige-order:create']
+              : ['lunaerp:production:greige-order:update']
+          "
         >
           保存
         </el-button>
         <el-button @click="handleBack">返回</el-button>
       </div>
     </el-form>
-
-    <!-- 编辑/查看：随 03 票开放 -->
-    <el-empty v-else description="胚布单编辑/查看随 03 票开放" :image-size="120" />
   </ContentWrap>
 </template>
 
@@ -395,8 +398,13 @@ const rules = {
 
 const orderId = computed(() => (route.params.id as string) || null)
 const isCreateMode = computed(() => !orderId.value)
+/** 查看模式：列表"查看"以同一页只读打开（?mode=view），全部控件 disabled、隐藏保存 */
+const isViewMode = computed(() => route.query.mode === 'view')
 
-const pageTitle = computed(() => (isCreateMode.value ? '新建胚布单' : '编辑胚布单'))
+const pageTitle = computed(() => {
+  if (isCreateMode.value) return '新建胚布单'
+  return isViewMode.value ? '查看胚布单' : '编辑胚布单'
+})
 
 // ==================== 获取编号（只读预览、不占号） ====================
 
@@ -430,6 +438,13 @@ const dyeingSupplierLoading = ref(false)
 
 const typeLabel = (supplierType?: string): string =>
   supplierType ? getDictLabel(DICT_TYPE.LUNAERP_SUPPLIER_TYPE, supplierType) : ''
+
+/**
+ * 供应商选项 label：编辑/查看回填时用快照预置选项（无档案编号），
+ * 仅显示公司名；正常远程搜索选项显示"编号 公司名"。
+ */
+const supplierOptionLabel = (item: SupplierVO): string =>
+  item.supplierNo ? `${item.supplierNo} ${item.companyName}` : item.companyName || ''
 
 const searchSuppliers = async (query: string, role: 'greige' | 'dyeing') => {
   const setLoading = role === 'greige' ? greigeSupplierLoading : dyeingSupplierLoading
@@ -529,8 +544,12 @@ const loadGreigeTypes = async () => {
 /**
  * 计划投胚量或匹重变化时按 ceil(投胚量÷匹重) 重算匹数；
  * 用户手改匹数后，再次修改投胚量/匹重仍会重算（以最新输入为准）。
+ * 编辑/查看回填期间跳过（restoring），保证匹数人工值原样回显。
  */
+const restoring = ref(false)
+
 watch([() => formData.plannedQty, () => formData.pieceWeight], ([plannedQty, pieceWeight]) => {
+  if (restoring.value) return
   const qty = Number(plannedQty ?? 0)
   const weight = Number(pieceWeight ?? 0)
   if (qty > 0 && weight > 0) {
@@ -544,6 +563,42 @@ watch([() => formData.plannedQty, () => formData.pieceWeight], ([plannedQty, pie
 const lossPercent = ref(0)
 
 const toSuggestedLoss = (): number => Number((lossPercent.value ?? 0) / 100)
+
+// ==================== 编辑/查看：详情回填 ====================
+
+/**
+ * 加载胚布单（编辑/查看模式）：主表全部字段回填；
+ * 远程下拉（坯布厂/染厂/合同）用快照预置当前选项，保证选中态有 label。
+ */
+const loadGreigeOrder = async () => {
+  if (!orderId.value) return
+  loading.value = true
+  restoring.value = true
+  try {
+    const data = await GreigeOrderApi.getGreigeOrder(Number(orderId.value))
+    Object.assign(formData, data)
+    // 预设损耗小数 → 百分比展示
+    lossPercent.value = Number(((data.suggestedLoss ?? 0) * 100).toFixed(2))
+    if (data.greigeFactoryId) {
+      greigeSupplierOptions.value = [
+        { id: data.greigeFactoryId, companyName: data.greigeFactoryName || '' } as SupplierVO
+      ]
+    }
+    if (data.dyeingFactoryId) {
+      dyeingSupplierOptions.value = [
+        { id: data.dyeingFactoryId, companyName: data.dyeingFactoryName || '' } as SupplierVO
+      ]
+    }
+    if (data.salesContractId) {
+      contractOptions.value = [
+        { id: data.salesContractId, contractNo: data.contractNo || '' } as SalesContractVO
+      ]
+    }
+  } finally {
+    restoring.value = false
+    loading.value = false
+  }
+}
 
 // ==================== 保存 ====================
 
@@ -561,7 +616,12 @@ const handleSubmit = async () => {
       productCode: formData.productCode?.trim() || undefined,
       greigeTypeId: formData.greigeTypeId || undefined
     }
-    await GreigeOrderApi.createGreigeOrder(payload)
+    if (isCreateMode.value) {
+      await GreigeOrderApi.createGreigeOrder(payload)
+    } else {
+      // 编辑整体保存：携带 id，编号/引用校验规则与新建一致（后端权威）
+      await GreigeOrderApi.updateGreigeOrder({ ...payload, id: Number(orderId.value) })
+    }
     message.success('保存成功')
     router.push('/production/greige-order')
   } finally {
@@ -576,10 +636,15 @@ const handleBack = () => {
 /** 初始化 */
 onMounted(() => {
   loadGreigeTypes()
-  // 新建时预取一批供应商/合同候选，保证下拉一打开就有内容可看
-  searchSuppliers('', 'greige')
-  searchSuppliers('', 'dyeing')
-  searchContracts('')
+  if (isCreateMode.value) {
+    // 新建：预取一批供应商/合同候选，保证下拉一打开就有内容可看
+    searchSuppliers('', 'greige')
+    searchSuppliers('', 'dyeing')
+    searchContracts('')
+  } else {
+    // 编辑/查看：按 id 回填全部字段（远程下拉用快照预置选中态）
+    loadGreigeOrder()
+  }
 })
 </script>
 

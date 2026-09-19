@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
@@ -37,10 +39,12 @@ public class GreigeOrderDO extends TenantBaseDO {
     /**
      * 销售合同ID（lunaerp_business_sales_contract.id，逻辑关联可空）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long salesContractId;
     /**
      * 合同号快照（选中合同时保存）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String contractNo;
     /**
      * 承织坯布厂供应商ID（lunaerp_baseinfo_supplier.id，必填，见 ADR-0007）
@@ -53,10 +57,12 @@ public class GreigeOrderDO extends TenantBaseDO {
     /**
      * 指定染厂供应商ID（lunaerp_baseinfo_supplier.id，可空，见 ADR-0007）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long dyeingFactoryId;
     /**
      * 染厂公司名快照（选中供应商时保存）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String dyeingFactoryName;
     /**
      * 单据日期（必填，创建缺省当天）
@@ -65,30 +71,37 @@ public class GreigeOrderDO extends TenantBaseDO {
     /**
      * 交货日期（可空）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDate deliveryDate;
     /**
      * 产品编号
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String productCode;
     /**
      * 产品名称
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String productName;
     /**
      * 成分
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String composition;
     /**
      * 幅宽（保留文本，兼容"160cm 有效"等写法）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String width;
     /**
      * 克重（保留文本）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String gsm;
     /**
      * 缩水率（描述性文本）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String shrinkage;
     /**
      * 匹重 KG（缺省 25）
@@ -97,6 +110,7 @@ public class GreigeOrderDO extends TenantBaseDO {
     /**
      * 匹数（前端按 ceil(投胚量÷匹重) 自动算，可手改；服务端不重算）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Integer pieceCount;
     /**
      * 计划投胚量 KG（工厂经验口径，与颜色折算投胚需求之和不强制相等）
@@ -105,6 +119,7 @@ public class GreigeOrderDO extends TenantBaseDO {
     /**
      * 下单成品数量 KG
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal finishedQty;
     /**
      * 预设损耗（小数，0.05 = 5%，缺省 0）
@@ -113,18 +128,22 @@ public class GreigeOrderDO extends TenantBaseDO {
     /**
      * 加工费
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal processingFee;
     /**
      * 所属胚布品种（胚布品种档案 id 为字符串，手选不自动识别）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String greigeTypeId;
     /**
      * 生产工艺备注
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String productionRemark;
     /**
      * 备注
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String remark;
     /**
      * 胚布单状态（字典 lunaerp_greige_order_status：ACTIVE 进行中 / COMPLETED 已完成 / CANCELLED 已取消），创建缺省 ACTIVE

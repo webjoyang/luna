@@ -35,6 +35,22 @@ public class GreigeOrderController {
         return success(greigeOrderService.createGreigeOrder(createReqVO));
     }
 
+    @PutMapping("/update")
+    @Operation(summary = "更新胚布单（整体保存）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:greige-order:update')")
+    public CommonResult<Boolean> updateGreigeOrder(@Valid @RequestBody GreigeOrderSaveReqVO updateReqVO) {
+        greigeOrderService.updateGreigeOrder(updateReqVO);
+        return success(true);
+    }
+
+    @GetMapping("/get")
+    @Operation(summary = "获得胚布单详情")
+    @Parameter(name = "id", description = "胚布单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:greige-order:query')")
+    public CommonResult<GreigeOrderRespVO> getGreigeOrder(@RequestParam("id") Long id) {
+        return success(greigeOrderService.getGreigeOrder(id));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得胚布单分页")
     @PreAuthorize("@ss.hasPermission('lunaerp:production:greige-order:query')")

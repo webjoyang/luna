@@ -26,6 +26,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_NO_DUPLICATE;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_REFERENCE_NOT_FOUND;
 
@@ -34,7 +35,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_OR
  *
  * 编号规则见 ADR-0006：PB + 月日 + 3 位日流水、按天取号、全量唯一（含已删除行）、软删不释放；
  * 取号扫描与查重范围包含已删除行。坯布厂/染厂引用供应商档案不做类型强过滤（ADR-0007）。
- * 查看/修改（03）、颜色分配（04）、删除（05）由后续票据追加。
+ * 颜色分配（04）、删除（05）由后续票据追加。
  *
  * @author luna
  */
@@ -96,18 +97,8 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createGreigeOrder(GreigeOrderSaveReqVO createReqVO) {
-        // 1.1 引用校验：坯布厂必填；染厂/销售合同/胚布品种非空时逐一校验存在（ADR-0007 不校验供应商类型）
-        SupplierDO greigeFactory = validateSupplierExists(createReqVO.getGreigeFactoryId(), "坯布厂");
-        SupplierDO dyeingFactory = createReqVO.getDyeingFactoryId() == null
-                ? null : validateSupplierExists(createReqVO.getDyeingFactoryId(), "指定染厂");
-        SalesContractDO contract = null;
-        if (createReqVO.getSalesContractId() != null) {
-            contract = salesContractMapper.selectById(createReqVO.getSalesContractId());
-            if (contract == null) {
-                throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "销售合同");
-            }
-        }
-        validateGreigeTypeExists(createReqVO.getGreigeTypeId());
+        // 1. 引用校验：坯布厂必填；染厂/销售合同/胚布品种非空时逐一校验存在（ADR-0007 不校验供应商类型）
+        ValidatedRefs refs = validateReferences(createReqVO);
         // 2. 组装 DO
         GreigeOrderDO order = BeanUtils.toBean(createReqVO, GreigeOrderDO.class);
         // 3. 编号：手填查重（含已删除行，撞号直接报错不顺延）；留空自动生成（撞号有限次顺延重试）
@@ -116,33 +107,44 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         } else {
             order.setOrderNo(generateOrderNoWithRetry());
         }
-        // 4. 快照回填：名称快照为空时用档案当前名称（选中供应商后档案改名的场景以前端传值为准）
-        if (!StringUtils.hasText(order.getGreigeFactoryName())) {
-            order.setGreigeFactoryName(greigeFactory.getCompanyName());
-        }
-        if (order.getDyeingFactoryId() != null && !StringUtils.hasText(order.getDyeingFactoryName())
-                && dyeingFactory != null) {
-            order.setDyeingFactoryName(dyeingFactory.getCompanyName());
-        }
-        if (order.getSalesContractId() != null && contract != null && !StringUtils.hasText(order.getContractNo())) {
-            order.setContractNo(contract.getContractNo());
-        }
-        // 5. 缺省值
-        if (order.getOrderDate() == null) {
-            order.setOrderDate(LocalDate.now());
-        }
-        if (!StringUtils.hasText(order.getStatus())) {
-            order.setStatus(DEFAULT_STATUS);
-        }
-        if (order.getPieceWeight() == null) {
-            order.setPieceWeight(DEFAULT_PIECE_WEIGHT);
-        }
-        if (order.getSuggestedLoss() == null) {
-            order.setSuggestedLoss(DEFAULT_SUGGESTED_LOSS);
-        }
-        // 6. 保存
+        // 4. 快照回填 + 缺省值
+        fillSnapshotsAndDefaults(order, refs.greigeFactory(), refs.dyeingFactory(), refs.contract());
+        // 5. 保存
         greigeOrderMapper.insert(order);
         return order.getId();
+    }
+
+    @Override
+    public GreigeOrderRespVO getGreigeOrder(Long id) {
+        GreigeOrderDO order = greigeOrderMapper.selectById(id);
+        if (order == null) {
+            throw exception(GREIGE_ORDER_NOT_EXISTS);
+        }
+        return BeanUtils.toBean(order, GreigeOrderRespVO.class);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateGreigeOrder(GreigeOrderSaveReqVO updateReqVO) {
+        // 1. 存在性校验：目标单据不存在报 GREIGE_ORDER_NOT_EXISTS
+        validateGreigeOrderExists(updateReqVO.getId());
+        // 2. 引用校验（与创建一致：坯布厂必填；染厂/销售合同/胚布品种非空时逐一校验存在，ADR-0007 不校验供应商类型）
+        ValidatedRefs refs = validateReferences(updateReqVO);
+        // 3. 组装 DO
+        GreigeOrderDO order = BeanUtils.toBean(updateReqVO, GreigeOrderDO.class);
+        // 4. 编号：手填查重（排除自身，扫描含已删除行 ADR-0006）；留空自动生成（有限次顺延重试）
+        if (StringUtils.hasText(order.getOrderNo())) {
+            GreigeOrderDO duplicate = greigeOrderMapper.selectByOrderNoIncludingDeleted(order.getOrderNo());
+            if (duplicate != null && !duplicate.getId().equals(order.getId())) {
+                throw exception(GREIGE_ORDER_NO_DUPLICATE, order.getOrderNo());
+            }
+        } else {
+            order.setOrderNo(generateOrderNoWithRetry());
+        }
+        // 5. 快照回填 + 缺省值（与创建一致）
+        fillSnapshotsAndDefaults(order, refs.greigeFactory(), refs.dyeingFactory(), refs.contract());
+        // 6. 整体保存：可空字段清空随 DO 的 updateStrategy=ALWAYS 一并落库
+        greigeOrderMapper.updateById(order);
     }
 
     @Override
@@ -174,6 +176,71 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
                     .or().apply("LOWER(product_code) LIKE LOWER({0})", like));
         }
         return wrapper;
+    }
+
+    /**
+     * 校验胚布单存在，不存在抛 1_030_006_000
+     */
+    private void validateGreigeOrderExists(Long id) {
+        if (id == null || greigeOrderMapper.selectById(id) == null) {
+            throw exception(GREIGE_ORDER_NOT_EXISTS);
+        }
+    }
+
+    /**
+     * 引用校验结果：坯布厂/染厂供应商档案与销售合同档案，供快照回填
+     */
+    private record ValidatedRefs(SupplierDO greigeFactory, SupplierDO dyeingFactory, SalesContractDO contract) {
+    }
+
+    /**
+     * 引用校验（创建/更新共用）：坯布厂必填；染厂/销售合同/胚布品种非空时逐一校验存在
+     * （ADR-0007 不校验供应商类型），任一不过抛 GREIGE_ORDER_REFERENCE_NOT_FOUND。
+     */
+    private ValidatedRefs validateReferences(GreigeOrderSaveReqVO reqVO) {
+        SupplierDO greigeFactory = validateSupplierExists(reqVO.getGreigeFactoryId(), "坯布厂");
+        SupplierDO dyeingFactory = reqVO.getDyeingFactoryId() == null
+                ? null : validateSupplierExists(reqVO.getDyeingFactoryId(), "指定染厂");
+        SalesContractDO contract = null;
+        if (reqVO.getSalesContractId() != null) {
+            contract = salesContractMapper.selectById(reqVO.getSalesContractId());
+            if (contract == null) {
+                throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "销售合同");
+            }
+        }
+        validateGreigeTypeExists(reqVO.getGreigeTypeId());
+        return new ValidatedRefs(greigeFactory, dyeingFactory, contract);
+    }
+
+    /**
+     * 快照回填 + 缺省值（创建/更新共用）：
+     * 名称/合同号快照为空时用档案当前名称回填（选中供应商后档案改名的场景以前端传值为准）；
+     * 单据日期缺省今天、状态缺省 ACTIVE、匹重缺省 25、预设损耗缺省 0。
+     */
+    private void fillSnapshotsAndDefaults(GreigeOrderDO order, SupplierDO greigeFactory,
+                                          SupplierDO dyeingFactory, SalesContractDO contract) {
+        if (!StringUtils.hasText(order.getGreigeFactoryName()) && greigeFactory != null) {
+            order.setGreigeFactoryName(greigeFactory.getCompanyName());
+        }
+        if (order.getDyeingFactoryId() != null && !StringUtils.hasText(order.getDyeingFactoryName())
+                && dyeingFactory != null) {
+            order.setDyeingFactoryName(dyeingFactory.getCompanyName());
+        }
+        if (order.getSalesContractId() != null && contract != null && !StringUtils.hasText(order.getContractNo())) {
+            order.setContractNo(contract.getContractNo());
+        }
+        if (order.getOrderDate() == null) {
+            order.setOrderDate(LocalDate.now());
+        }
+        if (!StringUtils.hasText(order.getStatus())) {
+            order.setStatus(DEFAULT_STATUS);
+        }
+        if (order.getPieceWeight() == null) {
+            order.setPieceWeight(DEFAULT_PIECE_WEIGHT);
+        }
+        if (order.getSuggestedLoss() == null) {
+            order.setSuggestedLoss(DEFAULT_SUGGESTED_LOSS);
+        }
     }
 
     // ==================== 编号（ADR-0006） ====================

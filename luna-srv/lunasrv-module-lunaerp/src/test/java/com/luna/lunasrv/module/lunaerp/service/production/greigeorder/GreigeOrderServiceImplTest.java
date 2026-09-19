@@ -7,6 +7,7 @@ import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
@@ -29,6 +30,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,6 +46,8 @@ import static org.mockito.Mockito.when;
  *  - 01 票：列表分页查询条件（keyword OR 模糊、status 等值、默认 order_date 倒序）
  *  - 02 票：创建/取号（ADR-0006 按天取号含已删除行、手填撞号含软删报错、
  *    四类引用校验、快照回填、缺省值 单据日期/状态/匹重/损耗）
+ *  - 03 票：查看与修改（get/update 目标不存在校验、更新整体保存路径语义、
+ *    编号查重排除自身、匹数人工值保留）
  *
  * 说明：分页查询条件在 Service 构造（对齐 sales-contract 模块），测试通过捕获 Wrapper
  * 断言 SQL 片段与参数；Lambda 列名解析需先初始化 MyBatis-Plus TableInfo 缓存（见 setUp）。
@@ -339,6 +343,136 @@ class GreigeOrderServiceImplTest {
         assertEquals("PB0919003", nextNo, "预览应返回下一个自动编号");
         verify(greigeOrderMapper, never()).insert(any(GreigeOrderDO.class));
         verify(greigeOrderMapper, never()).selectByOrderNoIncludingDeleted(any(String.class));
+    }
+
+    // ==================== getGreigeOrder：详情（03 票） ====================
+
+    @Test
+    void getGreigeOrder_notExists_throwsNotExists() {
+        when(greigeOrderMapper.selectById(404L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.getGreigeOrder(404L));
+        assertEquals(1_030_006_000, exception.getCode(), "详情目标不存在应报 GREIGE_ORDER_NOT_EXISTS");
+    }
+
+    @Test
+    void getGreigeOrder_exists_returnsAllMainFields() {
+        GreigeOrderDO order = greigeOrder(1L, "PB0919001");
+        order.setGreigeFactoryId(1L);
+        order.setGreigeFactoryName("海宁坯布厂");
+        order.setOrderDate(LocalDate.of(2026, 9, 19));
+        order.setPieceWeight(new BigDecimal("25"));
+        order.setPieceCount(40); // 匹数人工值原样返回
+        order.setPlannedQty(new BigDecimal("1000.00"));
+        order.setStatus("ACTIVE");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(order);
+
+        GreigeOrderRespVO respVO = greigeOrderService.getGreigeOrder(1L);
+
+        assertEquals(1L, respVO.getId());
+        assertEquals("PB0919001", respVO.getOrderNo());
+        assertEquals(1L, respVO.getGreigeFactoryId());
+        assertEquals("海宁坯布厂", respVO.getGreigeFactoryName());
+        assertEquals(LocalDate.of(2026, 9, 19), respVO.getOrderDate());
+        assertEquals(40, respVO.getPieceCount(), "匹数人工值应原样返回");
+        assertEquals("ACTIVE", respVO.getStatus());
+    }
+
+    // ==================== updateGreigeOrder：修改（03 票） ====================
+
+    @Test
+    void updateGreigeOrder_notExists_throwsNotExists() {
+        when(greigeOrderMapper.selectById(404L)).thenReturn(null);
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(404L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.updateGreigeOrder(reqVO));
+        assertEquals(1_030_006_000, exception.getCode(), "更新目标不存在应报 GREIGE_ORDER_NOT_EXISTS");
+        verify(greigeOrderMapper, never()).updateById(any(GreigeOrderDO.class));
+    }
+
+    @Test
+    void updateGreigeOrder_success_overwritesAllSubmittedFields() {
+        // 存在 + 引用齐备；手填编号命中自身（排除自身后放行）
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919777"))
+                .thenReturn(greigeOrder(1L, "PB0919777"));
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setOrderNo("PB0919777");
+        reqVO.setPieceCount(88); // 匹数人工值
+        reqVO.setOrderDate(LocalDate.of(2026, 9, 19));
+        reqVO.setStatus("COMPLETED");
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).updateById(captor.capture());
+        GreigeOrderDO updated = captor.getValue();
+        assertEquals(1L, updated.getId());
+        assertEquals("PB0919777", updated.getOrderNo(), "手填编号命中自身时按原值保存");
+        assertEquals(88, updated.getPieceCount(), "匹数人工值服务端不重算、原值保留");
+        assertEquals("COMPLETED", updated.getStatus());
+        assertEquals("海宁坯布厂", updated.getGreigeFactoryName(), "坯布厂快照回填与创建一致");
+        // 请求未携带染厂（编辑清空场景）：DO 携带 null，配合 updateStrategy=ALWAYS 落库为清空
+        assertNull(updated.getDyeingFactoryId(),
+                "编辑清空染厂时应以 null 提交，由 ALWAYS 更新策略落库");
+    }
+
+    @Test
+    void updateGreigeOrder_manualOrderNo_hitsAnotherOrder_throwsDuplicate() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+        // 撞号命中另一张单据（含已删除行同样命中）：报 GREIGE_ORDER_NO_DUPLICATE
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919002"))
+                .thenReturn(greigeOrder(2L, "PB0919002"));
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setOrderNo("PB0919002");
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.updateGreigeOrder(reqVO));
+        assertEquals(1_030_006_001, exception.getCode());
+        verify(greigeOrderMapper, never()).updateById(any(GreigeOrderDO.class));
+    }
+
+    @Test
+    void updateGreigeOrder_blankOrderNo_regeneratesDailySequence() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of());
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919001")).thenReturn(null);
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setOrderNo("  "); // 清空编号：与创建一致走自动号
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).updateById(captor.capture());
+        assertEquals("PB0919001", captor.getValue().getOrderNo(), "编号留空时与创建一致自动生成");
+    }
+
+    @Test
+    void updateGreigeOrder_dyeingFactoryMissing_throwsReferenceNotFound() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+        when(supplierMapper.selectById(2L)).thenReturn(null);
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setDyeingFactoryId(2L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.updateGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode(), "更新时引用校验规则与创建一致");
+        verify(greigeOrderMapper, never()).updateById(any(GreigeOrderDO.class));
     }
 
     // ==================== 测试数据构造 ====================

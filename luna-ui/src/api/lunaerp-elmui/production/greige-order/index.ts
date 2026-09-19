@@ -53,3 +53,13 @@ export const getNextGreigeOrderNo = () => {
 export const createGreigeOrder = (data: GreigeOrderVO) => {
   return request.post<number>({ url: '/lunaerp/production/greige-order/create', data })
 }
+
+// 修改胚布单（整体保存；orderNo 留空时后端自动生成，编号/引用校验规则与新建一致）
+export const updateGreigeOrder = (data: GreigeOrderVO) => {
+  return request.put<boolean>({ url: '/lunaerp/production/greige-order/update', data })
+}
+
+// 查询胚布单详情（主表全部字段；颜色分配行随 04 票接入）
+export const getGreigeOrder = (id: number) => {
+  return request.get<GreigeOrderVO>({ url: `/lunaerp/production/greige-order/get?id=${id}` })
+}

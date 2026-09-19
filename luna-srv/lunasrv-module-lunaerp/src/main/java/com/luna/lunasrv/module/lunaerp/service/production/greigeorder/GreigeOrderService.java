@@ -8,8 +8,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.Grei
 /**
  * 生产管理-胚布单 Service 接口
  *
- * 本票（02）打通创建与取号；查看/修改（03）、
- * 颜色分配（04）、删除（05）由后续票据追加。
+ * 02 票打通创建与取号，03 票追加查看与修改；颜色分配（04）、删除（05）由后续票据追加。
  *
  * @author luna
  */
@@ -24,12 +23,27 @@ public interface GreigeOrderService {
     PageResult<GreigeOrderRespVO> getGreigeOrderPage(GreigeOrderPageReqVO pageReqVO);
 
     /**
+     * 获得胚布单详情
+     *
+     * @param id 胚布单ID
+     * @return 胚布单详情（主表全部字段；颜色分配行随 04 票接入）
+     */
+    GreigeOrderRespVO getGreigeOrder(Long id);
+
+    /**
      * 创建胚布单
      *
      * @param createReqVO 创建信息（单号留空走自动号；坯布厂必填、染厂/合同/胚布品种可空引用）
      * @return 胚布单ID
      */
     Long createGreigeOrder(GreigeOrderSaveReqVO createReqVO);
+
+    /**
+     * 更新胚布单（整体保存）
+     *
+     * @param updateReqVO 更新信息（含 id；编号/引用校验规则与创建一致，编号查重排除自身）
+     */
+    void updateGreigeOrder(GreigeOrderSaveReqVO updateReqVO);
 
     /**
      * 预览下一个胚布单号（只读、不占号）
