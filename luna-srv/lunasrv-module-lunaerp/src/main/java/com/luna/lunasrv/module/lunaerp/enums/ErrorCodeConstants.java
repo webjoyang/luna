@@ -10,6 +10,7 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-003-xxx 段（销售合同）
  *                  与 1-030-004-xxx 段（客户，customer 与 customer-contact 共用）
  *                  与 1-030-005-xxx 段（供应商，supplier 与 supplier-contact 共用）
+ *                  与 1-030-006-xxx 段（胚布单，主表与颜色行共用）
  */
 public interface ErrorCodeConstants {
 
@@ -37,5 +38,10 @@ public interface ErrorCodeConstants {
     ErrorCode SUPPLIER_NOT_EXISTS = new ErrorCode(1_030_005_000, "供应商不存在");
     ErrorCode SUPPLIER_NO_DUPLICATE = new ErrorCode(1_030_005_001, "供应商编号已被占用，请修改编号或重新获取");
     ErrorCode SUPPLIER_CONTACT_NOT_EXISTS = new ErrorCode(1_030_005_002, "供应商联系人不存在");
+
+    // ========== 胚布单模块 1-030-006-000（主表与颜色行共用） ==========
+    ErrorCode GREIGE_ORDER_NOT_EXISTS = new ErrorCode(1_030_006_000, "胚布单不存在");
+    ErrorCode GREIGE_ORDER_NO_DUPLICATE = new ErrorCode(1_030_006_001, "胚布单号【{}】已存在");
+    ErrorCode GREIGE_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_006_002, "关联的{}不存在或不可用");
 
 }

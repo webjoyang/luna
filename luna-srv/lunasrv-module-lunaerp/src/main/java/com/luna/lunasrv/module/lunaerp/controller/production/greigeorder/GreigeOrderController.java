@@ -4,15 +4,16 @@ import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.greigeorder.GreigeOrderService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
@@ -27,11 +28,25 @@ public class GreigeOrderController {
     @Resource
     private GreigeOrderService greigeOrderService;
 
+    @PostMapping("/create")
+    @Operation(summary = "创建胚布单")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:greige-order:create')")
+    public CommonResult<Long> createGreigeOrder(@Valid @RequestBody GreigeOrderSaveReqVO createReqVO) {
+        return success(greigeOrderService.createGreigeOrder(createReqVO));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得胚布单分页")
     @PreAuthorize("@ss.hasPermission('lunaerp:production:greige-order:query')")
     public CommonResult<PageResult<GreigeOrderRespVO>> getGreigeOrderPage(@Validated GreigeOrderPageReqVO pageReqVO) {
         return success(greigeOrderService.getGreigeOrderPage(pageReqVO));
+    }
+
+    @GetMapping("/get-next-no")
+    @Operation(summary = "预览下一个胚布单号（只读、不占号）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:greige-order:query')")
+    public CommonResult<String> getNextGreigeOrderNo() {
+        return success(greigeOrderService.getNextGreigeOrderNo());
     }
 
 }

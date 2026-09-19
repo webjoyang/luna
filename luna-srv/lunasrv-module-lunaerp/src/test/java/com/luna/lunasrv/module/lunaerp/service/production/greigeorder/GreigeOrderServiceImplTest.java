@@ -3,10 +3,17 @@ package com.luna.lunasrv.module.lunaerp.service.production.greigeorder;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,19 +23,27 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * {@link GreigeOrderServiceImpl} 的纯 Mockito 单元测试（不依赖 Spring 上下文与数据库）。
  *
- * 本票（01）覆盖列表分页语义：
- *  - getGreigeOrderPage：keyword OR 模糊命中 order_no/contract_no/product_name/product_code、
- *    status 等值过滤、默认 order_date 倒序；无过滤条件时不拼接多余谓词。
+ * 覆盖行为：
+ *  - 01 票：列表分页查询条件（keyword OR 模糊、status 等值、默认 order_date 倒序）
+ *  - 02 票：创建/取号（ADR-0006 按天取号含已删除行、手填撞号含软删报错、
+ *    四类引用校验、快照回填、缺省值 单据日期/状态/匹重/损耗）
  *
  * 说明：分页查询条件在 Service 构造（对齐 sales-contract 模块），测试通过捕获 Wrapper
  * 断言 SQL 片段与参数；Lambda 列名解析需先初始化 MyBatis-Plus TableInfo 缓存（见 setUp）。
@@ -39,6 +54,15 @@ class GreigeOrderServiceImplTest {
 
     @Mock
     private GreigeOrderMapper greigeOrderMapper;
+
+    @Mock
+    private SupplierMapper supplierMapper;
+
+    @Mock
+    private SalesContractMapper salesContractMapper;
+
+    @Mock
+    private GreigeTypeMapper greigeTypeMapper;
 
     @InjectMocks
     private GreigeOrderServiceImpl greigeOrderService;
@@ -51,7 +75,7 @@ class GreigeOrderServiceImplTest {
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), GreigeOrderDO.class);
     }
 
-    // ==================== getGreigeOrderPage：查询条件透传 ====================
+    // ==================== getGreigeOrderPage：查询条件透传（01 票） ====================
 
     @Test
     void getGreigeOrderPage_filtersPassedThrough_andOrderedByOrderDateDesc() {
@@ -121,6 +145,227 @@ class GreigeOrderServiceImplTest {
         verify(greigeOrderMapper).selectPage(eq(reqVO), captor.capture());
         assertFalse(captor.getValue().getSqlSegment().contains("LOWER(order_no) LIKE"),
                 "空白 keyword 不应拼接模糊条件");
+    }
+
+    // ==================== createGreigeOrder：自动取号（ADR-0006） ====================
+
+    @Test
+    void createGreigeOrder_blankOrderNo_generatesDailySequenceMaxPlusOne() {
+        // 当天前缀 PB0919：已有 PB0919002 与一条已删除的 PB0919001（软删行也参与扫描）
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of(
+                greigeOrder(1L, "PB0919002"),
+                greigeOrder(2L, "PB0919001")
+        ));
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919003")).thenReturn(null);
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setOrderNo(null);
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        assertEquals("PB0919003", captor.getValue().getOrderNo(),
+                "自动号应取当天前缀最大数字后缀 +1（扫描含已删除行）");
+    }
+
+    @Test
+    void createGreigeOrder_blankOrderNo_noExistingToday_startsFrom001() {
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of());
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919001")).thenReturn(null);
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setOrderNo("");
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        assertEquals("PB0919001", captor.getValue().getOrderNo(), "当天无单据时应从 001 起");
+    }
+
+    // ==================== createGreigeOrder：手填编号查重（ADR-0006） ====================
+
+    @Test
+    void createGreigeOrder_manualOrderNo_hitsDeletedRow_throwsDuplicate() {
+        // 撞号命中已删除单据（软删不释放编号）：报 GREIGE_ORDER_NO_DUPLICATE，不顺延
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919001"))
+                .thenReturn(greigeOrder(9L, "PB0919001"));
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setOrderNo("PB0919001");
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_001, exception.getCode());
+        verify(greigeOrderMapper, never()).insert(any(GreigeOrderDO.class));
+    }
+
+    @Test
+    void createGreigeOrder_manualOrderNo_unique_keptAsEntered() {
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919777")).thenReturn(null);
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setOrderNo("PB0919777");
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        assertEquals("PB0919777", captor.getValue().getOrderNo(), "手填编号合法时应按原值保存");
+    }
+
+    // ==================== createGreigeOrder：引用校验（ADR-0007） ====================
+
+    @Test
+    void createGreigeOrder_greigeFactoryMissing_throwsReferenceNotFound() {
+        when(supplierMapper.selectById(1L)).thenReturn(null);
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+    }
+
+    @Test
+    void createGreigeOrder_dyeingFactoryMissing_throwsReferenceNotFound() {
+        stubSupplier(1L, "海宁坯布厂");
+        when(supplierMapper.selectById(2L)).thenReturn(null);
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setDyeingFactoryId(2L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+    }
+
+    @Test
+    void createGreigeOrder_salesContractMissing_throwsReferenceNotFound() {
+        stubSupplier(1L, "海宁坯布厂");
+        when(salesContractMapper.selectById(100L)).thenReturn(null);
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setSalesContractId(100L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+    }
+
+    @Test
+    void createGreigeOrder_greigeTypeMissing_throwsReferenceNotFound() {
+        stubSupplier(1L, "海宁坯布厂");
+        when(greigeTypeMapper.selectById(5L)).thenReturn(null);
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setGreigeTypeId("5");
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+    }
+
+    @Test
+    void createGreigeOrder_greigeTypeIdNotNumeric_throwsReferenceNotFound() {
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setGreigeTypeId("not-a-number");
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+    }
+
+    // ==================== createGreigeOrder：快照回填与缺省值 ====================
+
+    @Test
+    void createGreigeOrder_snapshotsBackfilled_andDefaultsApplied() {
+        stubSupplier(1L, "海宁坯布厂");
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(100L);
+        contract.setContractNo("CH20260001");
+        when(salesContractMapper.selectById(100L)).thenReturn(contract);
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of());
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted(any(String.class))).thenReturn(null);
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setSalesContractId(100L);
+        reqVO.setOrderNo(null); // 走自动号
+        reqVO.setContractNo(null); // 快照留空，用合同档案合同号回填
+        reqVO.setOrderDate(null);
+        reqVO.setStatus(null);
+        reqVO.setPieceWeight(null);
+        reqVO.setSuggestedLoss(null);
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        GreigeOrderDO inserted = captor.getValue();
+        assertEquals("海宁坯布厂", inserted.getGreigeFactoryName(), "坯布厂公司名快照留空时应用档案名称回填");
+        assertEquals("CH20260001", inserted.getContractNo(), "合同号快照留空时应用合同档案合同号回填");
+        assertEquals(LocalDate.now(), inserted.getOrderDate(), "单据日期缺省今天");
+        assertEquals("ACTIVE", inserted.getStatus(), "状态缺省 ACTIVE");
+        assertEquals(new BigDecimal("25"), inserted.getPieceWeight(), "匹重缺省 25");
+        assertEquals(BigDecimal.ZERO, inserted.getSuggestedLoss(), "预设损耗缺省 0");
+    }
+
+    @Test
+    void createGreigeOrder_explicitSnapshots_preservedOverArchiveName() {
+        // 前端传了快照（供应商改名场景）时按原值保存
+        stubSupplier(1L, "海宁坯布厂（新名称）");
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of());
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted(any(String.class))).thenReturn(null);
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setOrderNo(null);
+        reqVO.setGreigeFactoryName("海宁坯布厂（旧名称）");
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        assertEquals("海宁坯布厂（旧名称）", captor.getValue().getGreigeFactoryName(),
+                "显式快照应优先于档案当前名称");
+    }
+
+    // ==================== getNextGreigeOrderNo：只读预览 ====================
+
+    @Test
+    void getNextGreigeOrderNo_previewsWithoutInserting() {
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of(
+                greigeOrder(1L, "PB0919002")
+        ));
+
+        String nextNo = greigeOrderService.getNextGreigeOrderNo();
+
+        assertEquals("PB0919003", nextNo, "预览应返回下一个自动编号");
+        verify(greigeOrderMapper, never()).insert(any(GreigeOrderDO.class));
+        verify(greigeOrderMapper, never()).selectByOrderNoIncludingDeleted(any(String.class));
+    }
+
+    // ==================== 测试数据构造 ====================
+
+    /**
+     * 构造合法的最小创建请求：坯布厂 1L，编号 PB0919777（不撞号）
+     */
+    private GreigeOrderSaveReqVO validCreateReqVO() {
+        GreigeOrderSaveReqVO reqVO = new GreigeOrderSaveReqVO();
+        reqVO.setOrderNo("PB0919777");
+        reqVO.setGreigeFactoryId(1L);
+        reqVO.setPlannedQty(new BigDecimal("1000.00"));
+        return reqVO;
+    }
+
+    private void stubSupplier(Long id, String companyName) {
+        SupplierDO supplier = new SupplierDO();
+        supplier.setId(id);
+        supplier.setCompanyName(companyName);
+        when(supplierMapper.selectById(id)).thenReturn(supplier);
+    }
+
+    private GreigeOrderDO greigeOrder(Long id, String orderNo) {
+        GreigeOrderDO order = new GreigeOrderDO();
+        order.setId(id);
+        order.setOrderNo(orderNo);
+        return order;
     }
 
 }

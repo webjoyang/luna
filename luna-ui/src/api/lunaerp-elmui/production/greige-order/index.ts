@@ -43,3 +43,13 @@ export interface GreigeOrderPageParam {
 export const getGreigeOrderPage = (params: GreigeOrderPageParam) => {
   return request.get({ url: '/lunaerp/production/greige-order/page', params })
 }
+
+// 预览当天下一个胚布单号（只读不占号，多次调用在无新建时返回相同值）
+export const getNextGreigeOrderNo = () => {
+  return request.get<string>({ url: '/lunaerp/production/greige-order/get-next-no' })
+}
+
+// 新增胚布单（orderNo 留空时后端自动生成）
+export const createGreigeOrder = (data: GreigeOrderVO) => {
+  return request.post<number>({ url: '/lunaerp/production/greige-order/create', data })
+}

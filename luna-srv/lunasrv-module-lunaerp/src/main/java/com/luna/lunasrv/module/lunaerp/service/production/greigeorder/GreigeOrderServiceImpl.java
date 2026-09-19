@@ -5,24 +5,83 @@ import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.greigetype.GreigeTypeDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_NO_DUPLICATE;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_REFERENCE_NOT_FOUND;
 
 /**
  * 生产管理-胚布单 Service 实现类
  *
- * 本票（01）只打通列表分页；创建/取号（02）、查看/修改（03）、
- * 颜色分配（04）、删除（05）由后续票据追加。
+ * 编号规则见 ADR-0006：PB + 月日 + 3 位日流水、按天取号、全量唯一（含已删除行）、软删不释放；
+ * 取号扫描与查重范围包含已删除行。坯布厂/染厂引用供应商档案不做类型强过滤（ADR-0007）。
+ * 查看/修改（03）、颜色分配（04）、删除（05）由后续票据追加。
  *
  * @author luna
  */
 @Service
 public class GreigeOrderServiceImpl implements GreigeOrderService {
 
+    /**
+     * 胚布单号前缀（PB + 两位月 + 两位日）
+     */
+    private static final String ORDER_NO_PREFIX = "PB";
+    /**
+     * 编号数字部分最小补零位数（超 999 自然扩位）
+     */
+    private static final int NO_MIN_DIGITS = 3;
+    /**
+     * 自动取号撞唯一索引时的最大顺延重试次数
+     */
+    private static final int MAX_GENERATE_RETRY = 3;
+    /**
+     * 编号前缀（PB+月日）后的数字部分
+     */
+    private static final Pattern NO_SUFFIX_NUMBER_PATTERN = Pattern.compile("^\\d+");
+
+    /**
+     * 单据默认状态
+     */
+    private static final String DEFAULT_STATUS = "ACTIVE";
+    /**
+     * 匹重缺省值 KG
+     */
+    private static final BigDecimal DEFAULT_PIECE_WEIGHT = new BigDecimal("25");
+    /**
+     * 预设损耗缺省值（小数）
+     */
+    private static final BigDecimal DEFAULT_SUGGESTED_LOSS = BigDecimal.ZERO;
+
     @Resource
     private GreigeOrderMapper greigeOrderMapper;
+
+    @Resource
+    private SupplierMapper supplierMapper;
+
+    @Resource
+    private SalesContractMapper salesContractMapper;
+
+    @Resource
+    private GreigeTypeMapper greigeTypeMapper;
 
     @Override
     public PageResult<GreigeOrderRespVO> getGreigeOrderPage(GreigeOrderPageReqVO reqVO) {
@@ -32,6 +91,65 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         // 执行查询
         PageResult<GreigeOrderDO> pageResult = greigeOrderMapper.selectPage(reqVO, wrapper);
         return BeanUtils.toBean(pageResult, GreigeOrderRespVO.class);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createGreigeOrder(GreigeOrderSaveReqVO createReqVO) {
+        // 1.1 引用校验：坯布厂必填；染厂/销售合同/胚布品种非空时逐一校验存在（ADR-0007 不校验供应商类型）
+        SupplierDO greigeFactory = validateSupplierExists(createReqVO.getGreigeFactoryId(), "坯布厂");
+        SupplierDO dyeingFactory = createReqVO.getDyeingFactoryId() == null
+                ? null : validateSupplierExists(createReqVO.getDyeingFactoryId(), "指定染厂");
+        SalesContractDO contract = null;
+        if (createReqVO.getSalesContractId() != null) {
+            contract = salesContractMapper.selectById(createReqVO.getSalesContractId());
+            if (contract == null) {
+                throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "销售合同");
+            }
+        }
+        validateGreigeTypeExists(createReqVO.getGreigeTypeId());
+        // 2. 组装 DO
+        GreigeOrderDO order = BeanUtils.toBean(createReqVO, GreigeOrderDO.class);
+        // 3. 编号：手填查重（含已删除行，撞号直接报错不顺延）；留空自动生成（撞号有限次顺延重试）
+        if (StringUtils.hasText(order.getOrderNo())) {
+            validateOrderNoUnique(order.getOrderNo());
+        } else {
+            order.setOrderNo(generateOrderNoWithRetry());
+        }
+        // 4. 快照回填：名称快照为空时用档案当前名称（选中供应商后档案改名的场景以前端传值为准）
+        if (!StringUtils.hasText(order.getGreigeFactoryName())) {
+            order.setGreigeFactoryName(greigeFactory.getCompanyName());
+        }
+        if (order.getDyeingFactoryId() != null && !StringUtils.hasText(order.getDyeingFactoryName())
+                && dyeingFactory != null) {
+            order.setDyeingFactoryName(dyeingFactory.getCompanyName());
+        }
+        if (order.getSalesContractId() != null && contract != null && !StringUtils.hasText(order.getContractNo())) {
+            order.setContractNo(contract.getContractNo());
+        }
+        // 5. 缺省值
+        if (order.getOrderDate() == null) {
+            order.setOrderDate(LocalDate.now());
+        }
+        if (!StringUtils.hasText(order.getStatus())) {
+            order.setStatus(DEFAULT_STATUS);
+        }
+        if (order.getPieceWeight() == null) {
+            order.setPieceWeight(DEFAULT_PIECE_WEIGHT);
+        }
+        if (order.getSuggestedLoss() == null) {
+            order.setSuggestedLoss(DEFAULT_SUGGESTED_LOSS);
+        }
+        // 6. 保存
+        greigeOrderMapper.insert(order);
+        return order.getId();
+    }
+
+    @Override
+    public String getNextGreigeOrderNo() {
+        // 只读预览、不占号：直接复用自动取号的扫描结果（含已删除行，ADR-0006），
+        // 不做撞号查重、不写库；无新建时多次调用返回相同值，保存后再次调用自然顺延
+        return generateOrderNo();
     }
 
     // ==================== 私有方法 ====================
@@ -56,6 +174,113 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
                     .or().apply("LOWER(product_code) LIKE LOWER({0})", like));
         }
         return wrapper;
+    }
+
+    // ==================== 编号（ADR-0006） ====================
+
+    /**
+     * 自动取号（撞号有限次顺延重试）。
+     *
+     * @return 生成的胚布单号
+     */
+    private String generateOrderNoWithRetry() {
+        for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
+            String candidate = generateOrderNo();
+            // 查重含已删除行（ADR-0006）；命中说明并发取号或历史数据占用，顺延重试
+            if (greigeOrderMapper.selectByOrderNoIncludingDeleted(candidate) == null) {
+                return candidate;
+            }
+        }
+        // 连续撞号放弃取号，提示用户手填，避免无限循环
+        throw exception(GREIGE_ORDER_NO_DUPLICATE, generateOrderNo());
+    }
+
+    /**
+     * 生成胚布单号：PB + 两位月 + 两位日 + 顺序号 3 位起（超 999 自然扩位）。
+     * 以服务器当天日期构造前缀，按天取号；扫描当前租户同前缀的全部单据（含已删除行，ADR-0006），
+     * 按前缀后的数字部分取 max + 1，字符串排序会取错最大值（如 PB091910 > PB09199）。
+     */
+    private String generateOrderNo() {
+        LocalDate today = LocalDate.now();
+        String prefix = ORDER_NO_PREFIX + String.format("%02d%02d", today.getMonthValue(), today.getDayOfMonth());
+        List<GreigeOrderDO> candidates = greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted(prefix);
+        long maxNum = 0L;
+        int maxDigits = NO_MIN_DIGITS;
+        for (GreigeOrderDO candidate : candidates) {
+            String no = candidate.getOrderNo();
+            if (no == null || no.length() <= prefix.length()) {
+                continue;
+            }
+            String suffix = no.substring(prefix.length());
+            Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
+            if (!matcher.find()) {
+                continue;
+            }
+            String digits = matcher.group();
+            long num;
+            try {
+                num = Long.parseLong(digits);
+            } catch (NumberFormatException ignore) {
+                // 手填的超长/异常数字后缀不参与取号比较，避免取号被单条脏数据打断
+                continue;
+            }
+            if (num > maxNum) {
+                maxNum = num;
+                maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
+            }
+        }
+        if (maxNum == 0L) {
+            return prefix + String.format("%0" + NO_MIN_DIGITS + "d", 1);
+        }
+        return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+    }
+
+    /**
+     * 校验单号未被占用，扫描范围含已删除行（ADR-0006）：
+     * 手填撞号（无论目标是否已删除）一律报 GREIGE_ORDER_NO_DUPLICATE，不顺延。
+     */
+    private void validateOrderNoUnique(String orderNo) {
+        if (greigeOrderMapper.selectByOrderNoIncludingDeleted(orderNo) != null) {
+            throw exception(GREIGE_ORDER_NO_DUPLICATE, orderNo);
+        }
+    }
+
+    // ==================== 引用校验（ADR-0007） ====================
+
+    /**
+     * 校验供应商存在（存在性 + 租户归属由租户拦截器保证；不限状态、不校验供应商类型，见 ADR-0007）
+     *
+     * @param supplierId 供应商ID
+     * @param roleName   引用角色名（坯布厂/指定染厂），用于错误信息
+     * @return 供应商（供公司名快照回填）
+     */
+    private SupplierDO validateSupplierExists(Long supplierId, String roleName) {
+        SupplierDO supplier = supplierId == null ? null : supplierMapper.selectById(supplierId);
+        if (supplier == null) {
+            throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, roleName);
+        }
+        return supplier;
+    }
+
+    /**
+     * 校验胚布品种存在（可空引用；档案 id 为数值，字符串形态无法解析视同不存在）
+     *
+     * @param greigeTypeId 胚布品种档案 id（字符串形态）
+     */
+    private void validateGreigeTypeExists(String greigeTypeId) {
+        if (!StringUtils.hasText(greigeTypeId)) {
+            return;
+        }
+        Long id;
+        try {
+            id = Long.parseLong(greigeTypeId.trim());
+        } catch (NumberFormatException e) {
+            throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "胚布品种");
+        }
+        GreigeTypeDO greigeType = greigeTypeMapper.selectById(id);
+        if (greigeType == null) {
+            throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "胚布品种");
+        }
     }
 
 }
