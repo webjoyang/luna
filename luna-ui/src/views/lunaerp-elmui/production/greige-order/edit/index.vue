@@ -380,7 +380,6 @@ const formData = reactive<GreigeOrderVO>({
   pieceCount: undefined,
   plannedQty: undefined,
   finishedQty: undefined,
-  suggestedLoss: 0,
   processingFee: undefined,
   greigeTypeId: undefined,
   productionRemark: '',
@@ -541,9 +540,9 @@ watch([() => formData.plannedQty, () => formData.pieceWeight], ([plannedQty, pie
 
 // ==================== 预设损耗：百分比输入、小数传输 ====================
 
+/** 预设损耗唯一状态源（百分比），提交时统一换算为小数（0.05 = 5%） */
 const lossPercent = ref(0)
 
-/** 提交与读取时统一以 lossPercent 为准换算为小数（0.05 = 5%） */
 const toSuggestedLoss = (): number => Number((lossPercent.value ?? 0) / 100)
 
 // ==================== 保存 ====================
