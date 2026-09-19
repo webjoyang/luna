@@ -4,13 +4,17 @@ import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.dyeingorder.DyeingOrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,6 +30,13 @@ public class DyeingOrderController {
 
     @Resource
     private DyeingOrderService dyeingOrderService;
+
+    @PostMapping("/create")
+    @Operation(summary = "创建染色单")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:dyeing-order:create')")
+    public CommonResult<Long> createDyeingOrder(@Valid @RequestBody DyeingOrderSaveReqVO createReqVO) {
+        return success(dyeingOrderService.createDyeingOrder(createReqVO));
+    }
 
     @GetMapping("/page")
     @Operation(summary = "获得染色单分页")

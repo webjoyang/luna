@@ -5,12 +5,22 @@ import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_REFERENCE_NOT_FOUND;
 
 /**
  * 生产管理-染色单 Service 实现类
@@ -27,6 +37,12 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
     @Resource
     private DyeingOrderMapper dyeingOrderMapper;
 
+    @Resource
+    private SupplierMapper supplierMapper;
+
+    @Resource
+    private SalesContractMapper salesContractMapper;
+
     @Override
     public PageResult<DyeingOrderRespVO> getDyeingOrderPage(DyeingOrderPageReqVO reqVO) {
         // 构造查询条件
@@ -35,6 +51,20 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         // 执行查询
         PageResult<DyeingOrderDO> pageResult = dyeingOrderMapper.selectPage(reqVO, wrapper);
         return BeanUtils.toBean(pageResult, DyeingOrderRespVO.class);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createDyeingOrder(DyeingOrderSaveReqVO createReqVO) {
+        // 1. 引用校验：销售合同必填且存在；承染方供应商必填且存在
+        ValidatedRefs refs = validateReferences(createReqVO);
+        // 2. 组装 DO
+        DyeingOrderDO order = BeanUtils.toBean(createReqVO, DyeingOrderDO.class);
+        // 3. 快照回填 + 缺省值（状态缺省 DRAFT、日期缺省当天、快照回填）
+        fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory());
+        // 4. 保存主表
+        dyeingOrderMapper.insert(order);
+        return order.getId();
     }
 
     /**
@@ -75,6 +105,54 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
                     .or().apply("LOWER(product_name) LIKE LOWER({0})", like));
         }
         return wrapper;
+    }
+
+    /**
+     * 引用校验结果：销售合同与承染方供应商档案，供快照回填
+     */
+    private record ValidatedRefs(SalesContractDO contract, SupplierDO dyeingFactory) {
+    }
+
+    /**
+     * 引用校验：销售合同必填且存在；承染方供应商必填且存在，任一不存在抛 DYEING_ORDER_REFERENCE_NOT_FOUND
+     */
+    private ValidatedRefs validateReferences(DyeingOrderSaveReqVO reqVO) {
+        SalesContractDO contract = salesContractMapper.selectById(reqVO.getSalesContractId());
+        if (contract == null) {
+            throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "销售合同");
+        }
+        SupplierDO dyeingFactory = supplierMapper.selectById(reqVO.getDyeingFactoryId());
+        if (dyeingFactory == null) {
+            throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "承染方");
+        }
+        return new ValidatedRefs(contract, dyeingFactory);
+    }
+
+    /**
+     * 快照回填 + 缺省值：
+     * 合同号快照为空时用销售合同号回填；客户ID与客户名快照为空时从合同带出；
+     * 承染方公司名快照为空时用供应商档案公司名称回填；
+     * 单据日期缺省今天；状态缺省 DRAFT。
+     */
+    private void fillSnapshotsAndDefaults(DyeingOrderDO order, SalesContractDO contract, SupplierDO dyeingFactory) {
+        if (!StringUtils.hasText(order.getContractNo()) && contract != null) {
+            order.setContractNo(contract.getContractNo());
+        }
+        if (order.getCustomerId() == null && contract != null) {
+            order.setCustomerId(contract.getCustomerId());
+        }
+        if (!StringUtils.hasText(order.getClientName()) && contract != null) {
+            order.setClientName(contract.getClientName());
+        }
+        if (!StringUtils.hasText(order.getDyeingFactoryName()) && dyeingFactory != null) {
+            order.setDyeingFactoryName(dyeingFactory.getCompanyName());
+        }
+        if (order.getOrderDate() == null) {
+            order.setOrderDate(LocalDate.now());
+        }
+        if (!StringUtils.hasText(order.getStatus())) {
+            order.setStatus("DRAFT");
+        }
     }
 
 }

@@ -7,16 +7,29 @@
         </template>
       </el-page-header>
     </div>
-    <el-empty description="染色单工作台（开发中）" :image-size="120" />
+
+    <el-tabs v-model="activeTab" class="workspace-tabs">
+      <el-tab-pane label="基础信息" name="basic">
+        <BasicInfoTab
+          :order-id="orderId"
+          :is-view-mode="isViewMode"
+          @success="handleSuccess"
+          @cancel="handleBack"
+        />
+      </el-tab-pane>
+    </el-tabs>
   </ContentWrap>
 </template>
 
 <script lang="ts" setup>
+import BasicInfoTab from './BasicInfoTab.vue'
+
 defineOptions({ name: 'LunaerpElmuiProductionDyeingOrderWorkspace' })
 
 const router = useRouter()
 const route = useRoute()
 
+const activeTab = ref('basic')
 const orderId = computed(() => (route.params.id as string) || null)
 const isCreateMode = computed(() => !orderId.value)
 const isViewMode = computed(() => route.query.mode === 'view')
@@ -29,6 +42,10 @@ const pageTitle = computed(() => {
 const handleBack = () => {
   router.push('/production/dyeing-order')
 }
+
+const handleSuccess = (_id: number) => {
+  router.push('/production/dyeing-order')
+}
 </script>
 
 <style lang="scss" scoped>
@@ -38,5 +55,10 @@ const handleBack = () => {
 .header-title {
   font-size: 16px;
   font-weight: 600;
+}
+.workspace-tabs {
+  :deep(.el-tabs__content) {
+    min-height: 320px;
+  }
 }
 </style>

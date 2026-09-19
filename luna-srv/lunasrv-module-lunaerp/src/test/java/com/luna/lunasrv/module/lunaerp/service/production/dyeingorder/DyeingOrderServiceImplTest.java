@@ -26,11 +26,24 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.luna.lunasrv.framework.common.exception.ServiceException;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.never;
+
 /**
  * {@link DyeingOrderServiceImpl} 的纯 Mockito 单元测试。
  *
  * 01 票：覆盖列表分页查询条件透传（keyword OR 模糊、status/customerId/dyeingFactoryId 等值、
  * 单据日期/交货日期区间、默认 order_date 倒序）。
+ * 02 票：覆盖新建染色单（status 缺省 DRAFT、传 ACTIVE 保留、order_date 缺省今天、
+ * 销售合同/承染方引用校验、快照写入）。
  *
  * @author luna
  */
@@ -38,6 +51,12 @@ class DyeingOrderServiceImplTest {
 
     @Mock
     private DyeingOrderMapper dyeingOrderMapper;
+
+    @Mock
+    private SupplierMapper supplierMapper;
+
+    @Mock
+    private SalesContractMapper salesContractMapper;
 
     @InjectMocks
     private DyeingOrderServiceImpl dyeingOrderService;
@@ -138,6 +157,143 @@ class DyeingOrderServiceImplTest {
         verify(dyeingOrderMapper).selectPage(eq(reqVO), captor.capture());
         assertFalse(captor.getValue().getSqlSegment().contains("LOWER(contract_no) LIKE"),
                 "空白 keyword 视为未输入，不拼接模糊条件");
+    }
+
+    // ==================== createDyeingOrder：状态与日期缺省（02 票） ====================
+
+    @Test
+    void createDyeingOrder_statusDefaultsToDraft_andOrderDateDefaultsToToday() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setStatus(null);
+        reqVO.setOrderDate(null);
+
+        dyeingOrderService.createDyeingOrder(reqVO);
+
+        ArgumentCaptor<DyeingOrderDO> captor = ArgumentCaptor.forClass(DyeingOrderDO.class);
+        verify(dyeingOrderMapper).insert(captor.capture());
+        DyeingOrderDO inserted = captor.getValue();
+        assertEquals("DRAFT", inserted.getStatus(), "status 为空时应缺省为 DRAFT");
+        assertEquals(LocalDate.now(), inserted.getOrderDate(), "orderDate 为空时应缺省为当天");
+    }
+
+    @Test
+    void createDyeingOrder_passedActive_preservesActive() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setStatus("ACTIVE");
+
+        dyeingOrderService.createDyeingOrder(reqVO);
+
+        ArgumentCaptor<DyeingOrderDO> captor = ArgumentCaptor.forClass(DyeingOrderDO.class);
+        verify(dyeingOrderMapper).insert(captor.capture());
+        assertEquals("ACTIVE", captor.getValue().getStatus(), "传 ACTIVE 时应保留 ACTIVE");
+    }
+
+    // ==================== createDyeingOrder：引用校验与快照（02 票） ====================
+
+    @Test
+    void createDyeingOrder_contractMissing_throwsReferenceNotFound() {
+        when(salesContractMapper.selectById(101L)).thenReturn(null);
+        stubSupplier(301L, "海宁染整厂");
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.createDyeingOrder(reqVO));
+        assertEquals(1_030_007_002, exception.getCode());
+        verify(dyeingOrderMapper, never()).insert(any(DyeingOrderDO.class));
+    }
+
+    @Test
+    void createDyeingOrder_factoryMissing_throwsReferenceNotFound() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        when(supplierMapper.selectById(301L)).thenReturn(null);
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.createDyeingOrder(reqVO));
+        assertEquals(1_030_007_002, exception.getCode());
+        verify(dyeingOrderMapper, never()).insert(any(DyeingOrderDO.class));
+    }
+
+    @Test
+    void createDyeingOrder_snapshotsWrittenFromContractAndSupplier() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setContractNo(null);
+        reqVO.setCustomerId(null);
+        reqVO.setClientName(null);
+        reqVO.setDyeingFactoryName(null);
+
+        dyeingOrderService.createDyeingOrder(reqVO);
+
+        ArgumentCaptor<DyeingOrderDO> captor = ArgumentCaptor.forClass(DyeingOrderDO.class);
+        verify(dyeingOrderMapper).insert(captor.capture());
+        DyeingOrderDO inserted = captor.getValue();
+        assertEquals(101L, inserted.getSalesContractId());
+        assertEquals("CH20260001", inserted.getContractNo(), "合同号快照应从销售合同档案自动带出");
+        assertEquals(201L, inserted.getCustomerId(), "客户ID应从销售合同档案自动带出");
+        assertEquals("测试客户", inserted.getClientName(), "客户名称快照应从销售合同档案自动带出");
+        assertEquals(301L, inserted.getDyeingFactoryId());
+        assertEquals("海宁染整厂", inserted.getDyeingFactoryName(), "承染方公司名快照应从供应商档案自动带出");
+    }
+
+    @Test
+    void createDyeingOrder_customSnapshotsPreserved() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setContractNo("CH20260001-CUSTOM");
+        reqVO.setCustomerId(999L);
+        reqVO.setClientName("定制客户名");
+        reqVO.setDyeingFactoryName("定制染厂名");
+
+        dyeingOrderService.createDyeingOrder(reqVO);
+
+        ArgumentCaptor<DyeingOrderDO> captor = ArgumentCaptor.forClass(DyeingOrderDO.class);
+        verify(dyeingOrderMapper).insert(captor.capture());
+        DyeingOrderDO inserted = captor.getValue();
+        assertEquals("CH20260001-CUSTOM", inserted.getContractNo(), "已传合同号快照时应保留原值");
+        assertEquals(999L, inserted.getCustomerId(), "已传客户ID时应保留原值");
+        assertEquals("定制客户名", inserted.getClientName(), "已传客户名快照时应保留原值");
+        assertEquals("定制染厂名", inserted.getDyeingFactoryName(), "已传染厂名快照时应保留原值");
+    }
+
+    // ==================== 辅助方法 ====================
+
+    private DyeingOrderSaveReqVO validCreateReqVO() {
+        DyeingOrderSaveReqVO reqVO = new DyeingOrderSaveReqVO();
+        reqVO.setSalesContractId(101L);
+        reqVO.setDyeingFactoryId(301L);
+        reqVO.setProductCode("P001");
+        reqVO.setProductName("全棉汗布");
+        reqVO.setComposition("95棉5氨");
+        reqVO.setWidth("160cm");
+        reqVO.setGsm("180g");
+        reqVO.setShrinkage("≤5%");
+        reqVO.setLoss("5%");
+        reqVO.setPh("6.5");
+        reqVO.setRemark("新建备注");
+        return reqVO;
+    }
+
+    private void stubContract(Long id, String contractNo, Long customerId, String clientName) {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(id);
+        contract.setContractNo(contractNo);
+        contract.setCustomerId(customerId);
+        contract.setClientName(clientName);
+        when(salesContractMapper.selectById(id)).thenReturn(contract);
+    }
+
+    private void stubSupplier(Long id, String companyName) {
+        SupplierDO supplier = new SupplierDO();
+        supplier.setId(id);
+        supplier.setCompanyName(companyName);
+        when(supplierMapper.selectById(id)).thenReturn(supplier);
     }
 
 }

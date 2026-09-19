@@ -4,15 +4,15 @@
 
 **Blocked by:** 01 染色单地基：空列表可访问
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] 新建接口可用；status 缺省 DRAFT，传 ACTIVE 可直接下达；order_date 缺省今天
-- [ ] 错误码 1-030-007 段三常量已注册：DYEING_ORDER_NOT_EXISTS(000)、DYEING_ORDER_STATUS_NOT_ALLOWED(001)、DYEING_ORDER_REFERENCE_NOT_FOUND(002)
-- [ ] 销售合同必选，远程搜索选择；选中后保存 sales_contract_id + contract_no 快照，并带出 customer_id + client_name 快照写入主表；合同不存在报引用错误
-- [ ] 承染方（染厂）必选，远程搜索供应商档案选择；保存 dyeing_factory_id + dyeing_factory_name 快照；供应商不存在报引用错误
-- [ ] 产品规格字段齐备：产品编码、产品名称、成分、幅宽、克重、缩水率
-- [ ] 技术规格&色牢度字段齐备：损耗率、pH 值、缩水率、水洗牢度、皂洗牢度、干摩擦牢度、湿摩擦牢度、日晒牢度、汗渍牢度、干洗牢度、六千沾色牢度、其他要求（均为可空文本，不建字典）
-- [ ] 备注字段可填
-- [ ] 工作台"基础信息"Tab 表单分三区：基本信息（合同/染厂/日期）、产品规格、技术规格&色牢度、备注
-- [ ] 保存成功后返回列表并可见新单据（DRAFT 状态）
-- [ ] 测试覆盖：status 缺省 DRAFT、order_date 缺省今天、合同与染厂引用校验、快照写入
+- [x] 新建接口可用；status 缺省 DRAFT，传 ACTIVE 可直接下达；order_date 缺省今天
+- [x] 错误码 1-030-007 段三常量已注册：DYEING_ORDER_NOT_EXISTS(000)、DYEING_ORDER_STATUS_NOT_ALLOWED(001)、DYEING_ORDER_REFERENCE_NOT_FOUND(002)
+- [x] 销售合同必选，远程搜索选择；选中后保存 sales_contract_id + contract_no 快照，并带出 customer_id + client_name 快照写入主表；合同不存在报引用错误
+- [x] 承染方（染厂）必选，远程搜索供应商档案选择；保存 dyeing_factory_id + dyeing_factory_name 快照；供应商不存在报引用错误
+- [x] 产品规格字段齐备：产品编码、产品名称、成分、幅宽、克重、缩水率
+- [x] 技术规格&色牢度字段齐备：损耗率、pH 值、缩水率、水洗牢度、皂洗牢度、干摩擦牢度、湿摩擦牢度、日晒牢度、汗渍牢度、干洗牢度、六千沾色牢度、其他要求（均为可空文本，不建字典）
+- [x] 备注字段可填
+- [x] 工作台"基础信息"Tab 表单分三区：基本信息（合同/染厂/日期）、产品规格、技术规格&色牢度、备注
+- [x] 保存成功后返回列表并可见新单据（DRAFT 状态）
+- [x] 测试覆盖：status 缺省 DRAFT、order_date 缺省今天、合同与染厂引用校验、快照写入
