@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "管理后台 - 生产管理-染色单 Response VO")
 @Data
@@ -99,5 +100,8 @@ public class DyeingOrderRespVO {
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "颜色明细列表（详情接口嵌套返回，按 line_no 排序；列表接口不返回）")
+    private List<DyeingColorRespVO> colors;
 
 }

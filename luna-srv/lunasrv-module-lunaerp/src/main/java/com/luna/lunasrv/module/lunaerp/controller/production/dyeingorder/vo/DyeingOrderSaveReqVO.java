@@ -1,11 +1,13 @@
 package com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Schema(description = "管理后台 - 生产管理-染色单创建/修改 Request VO")
 @Data
@@ -115,5 +117,9 @@ public class DyeingOrderSaveReqVO {
 
     @Schema(description = "染色单状态（字典 lunaerp_dyeing_order_status），缺省 DRAFT", example = "DRAFT")
     private String status;
+
+    @Schema(description = "颜色明细列表（整体替换；为空表示零明细）")
+    @Valid
+    private List<DyeingColorSaveReqVO> colors;
 
 }

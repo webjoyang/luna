@@ -127,6 +127,118 @@
       </el-col>
     </el-row>
 
+    <!-- 颜色明细 -->
+    <div class="section-title">颜色明细</div>
+    <el-table
+      :data="colorRows"
+      border
+      size="small"
+      class="color-table"
+      empty-text="暂无颜色明细，可点击下方按钮添加（零颜色单据也可保存）"
+    >
+      <el-table-column label="行号" type="index" width="55" align="center" />
+      <el-table-column label="客户色号" min-width="140">
+        <template #default="{ row }">
+          <el-input
+            v-model="row.customerColorNo"
+            :disabled="isReadOnly"
+            maxlength="64"
+            placeholder="从合同带出可改"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="颜色名称" min-width="140">
+        <template #default="{ row }">
+          <el-input
+            v-model="row.colorName"
+            :disabled="isReadOnly"
+            maxlength="128"
+            placeholder="手填颜色名称"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="本单染色数量" width="140">
+        <template #default="{ row }">
+          <el-input-number
+            v-model="row.quantity"
+            :disabled="isReadOnly"
+            :precision="2"
+            :controls="false"
+            :min="0"
+            class="!w-full"
+            placeholder="成品口径"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="匹数" width="110">
+        <template #default="{ row }">
+          <el-input-number
+            v-model="row.pieces"
+            :disabled="isReadOnly"
+            :precision="0"
+            :controls="false"
+            :min="0"
+            class="!w-full"
+            placeholder="匹数"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="投染数" width="140">
+        <template #default="{ row }">
+          <el-input-number
+            v-model="row.dyeingInputQty"
+            :disabled="isReadOnly"
+            :precision="2"
+            :controls="false"
+            :min="0"
+            class="!w-full"
+            placeholder="实际投入量"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="投染数单位" width="120">
+        <template #default="{ row }">
+          <el-select
+            v-model="row.dyeingInputUnit"
+            :disabled="isReadOnly"
+            placeholder="单位"
+            class="!w-full"
+          >
+            <el-option
+              v-for="dict in unitDictOptions"
+              :key="dict.value"
+              :label="dict.label"
+              :value="dict.value"
+            />
+          </el-select>
+        </template>
+      </el-table-column>
+      <el-table-column label="合同数量" width="120" align="right">
+        <template #default="{ row }">
+          <span>{{ row.contractQty != null ? Number(row.contractQty).toFixed(2) : '—' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column
+        v-if="!isReadOnly"
+        label="操作"
+        width="80"
+        align="center"
+        fixed="right"
+      >
+        <template #default="{ $index }">
+          <el-button type="danger" link @click="removeColor($index)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+    <div v-if="!isReadOnly" class="items-actions">
+      <el-button type="primary" plain @click="addColor">新增颜色行</el-button>
+    </div>
+    <div class="items-summary">
+      合计：本单染色数量 <b>{{ formatQty(totalQuantity) }}</b>
+      ／ 投染数 <b>{{ formatQty(totalInputQty) }}</b>
+      ／ 匹数 <b>{{ totalPieces }}</b>
+    </div>
+
     <!-- 第三区：技术规格与色牢度 -->
     <div class="section-title">技术规格&色牢度</div>
     <el-row :gutter="20">
@@ -236,9 +348,10 @@
 
 <script lang="ts" setup>
 import type { FormInstance, FormRules } from 'element-plus'
+import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { formatDate } from '@/utils/formatTime'
 import * as DyeingOrderApi from '@/api/lunaerp-elmui/production/dyeing-order'
-import type { DyeingOrderVO } from '@/api/lunaerp-elmui/production/dyeing-order'
+import type { DyeingOrderVO, DyeingColorVO } from '@/api/lunaerp-elmui/production/dyeing-order'
 import * as SalesContractApi from '@/api/lunaerp-elmui/business/sales-contract'
 import type { SalesContractVO } from '@/api/lunaerp-elmui/business/sales-contract'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
@@ -262,7 +375,6 @@ const isReadOnly = computed(
   () => props.isViewMode || (!isCreateMode.value && formData.value.status !== 'DRAFT')
 )
 
-const router = useRouter()
 const message = useMessage()
 
 const loading = ref(false)
@@ -299,6 +411,49 @@ const formData = ref<DyeingOrderVO>({
   status: 'DRAFT'
 })
 
+// ==================== 颜色明细（聚合保存，ADR-0003） ====================
+const colorRows = ref<DyeingColorVO[]>([])
+
+const unitDictOptions = computed(() => {
+  const options = getStrDictOptions(DICT_TYPE.LUNAERP_SALES_CONTRACT_UNIT)
+  if (options && options.length > 0) {
+    return options
+  }
+  return [
+    { label: 'KG', value: 'KG' },
+    { label: 'M', value: 'M' }
+  ]
+})
+
+const addColor = () => {
+  colorRows.value.push({
+    customerColorNo: '',
+    colorName: '',
+    quantity: 0,
+    pieces: undefined,
+    dyeingInputQty: undefined,
+    dyeingInputUnit: 'KG',
+    contractQty: undefined
+  })
+}
+
+const removeColor = (index: number) => {
+  colorRows.value.splice(index, 1)
+}
+
+const toNumber = (val: number | undefined | null): number => (val == null ? 0 : Number(val))
+const formatQty = (val: number): string => val.toFixed(2)
+
+const totalQuantity = computed(() =>
+  colorRows.value.reduce((sum, row) => sum + toNumber(row.quantity), 0)
+)
+const totalInputQty = computed(() =>
+  colorRows.value.reduce((sum, row) => sum + toNumber(row.dyeingInputQty), 0)
+)
+const totalPieces = computed(() =>
+  colorRows.value.reduce((sum, row) => sum + toNumber(row.pieces), 0)
+)
+
 const rules: FormRules = {
   salesContractId: [{ required: true, message: '请选择销售合同', trigger: 'change' }],
   dyeingFactoryId: [{ required: true, message: '请选择承染方（染厂）', trigger: 'change' }],
@@ -322,7 +477,7 @@ const searchContracts = async (query: string) => {
   }
 }
 
-const handleContractChange = (val?: number) => {
+const handleContractChange = async (val?: number) => {
   if (!val) {
     formData.value.contractNo = ''
     formData.value.customerId = undefined
@@ -334,6 +489,50 @@ const handleContractChange = (val?: number) => {
     formData.value.contractNo = found.contractNo || ''
     formData.value.customerId = found.customerId
     formData.value.clientName = found.clientName || ''
+  }
+  // 选销售合同后自动带出合同全部明细行：product_code/product_name/customer_color→customer_color_no、quantity→contract_qty
+  try {
+    const contract = await SalesContractApi.getSalesContract(val)
+    if (contract) {
+      if (contract.contractNo) formData.value.contractNo = contract.contractNo
+      if (contract.customerId) formData.value.customerId = contract.customerId
+      if (contract.clientName) formData.value.clientName = contract.clientName
+
+      const items = contract.items || []
+      if (items.length > 0) {
+        // 主表产品规格：若未填写，从第一条明细带出
+        if (!formData.value.productCode && items[0].productCode) {
+          formData.value.productCode = items[0].productCode
+        }
+        if (!formData.value.productName && items[0].productName) {
+          formData.value.productName = items[0].productName
+        }
+        if (!formData.value.composition && items[0].composition) {
+          formData.value.composition = items[0].composition
+        }
+        if (!formData.value.width && items[0].width) {
+          formData.value.width = items[0].width
+        }
+        if (!formData.value.gsm && items[0].weight) {
+          formData.value.gsm = items[0].weight
+        }
+
+        // 把该合同全部明细行拷到染色单明细
+        colorRows.value = items.map((item) => ({
+          customerColorNo: item.customerColor || '',
+          colorName: '',
+          quantity: item.quantity != null ? Number(item.quantity) : 0,
+          pieces: undefined,
+          dyeingInputQty: undefined,
+          dyeingInputUnit: contract.unit || 'KG',
+          contractQty: item.quantity != null ? Number(item.quantity) : 0
+        }))
+      } else {
+        colorRows.value = []
+      }
+    }
+  } catch (e) {
+    console.error('加载销售合同明细失败', e)
   }
 }
 
@@ -373,13 +572,25 @@ const loadDetail = async () => {
   try {
     const res = await DyeingOrderApi.getDyeingOrder(Number(props.orderId))
     formData.value = res
+    colorRows.value = (res.colors || []).map((color) => ({
+      id: color.id,
+      dyeingOrderId: color.dyeingOrderId,
+      lineNo: color.lineNo,
+      customerColorNo: color.customerColorNo || '',
+      colorName: color.colorName || '',
+      quantity: color.quantity != null ? Number(color.quantity) : 0,
+      pieces: color.pieces != null ? Number(color.pieces) : undefined,
+      dyeingInputQty: color.dyeingInputQty != null ? Number(color.dyeingInputQty) : undefined,
+      dyeingInputUnit: color.dyeingInputUnit || 'KG',
+      contractQty: color.contractQty != null ? Number(color.contractQty) : undefined
+    }))
     emit('loaded', res)
     if (res.salesContractId && res.contractNo) {
       contractOptions.value = [
         {
           id: res.salesContractId,
           contractNo: res.contractNo,
-          customerId: res.customerId,
+          customerId: res.customerId || 0,
           clientName: res.clientName
         }
       ]
@@ -410,7 +621,19 @@ const handleSave = async (status: 'DRAFT' | 'ACTIVE') => {
   try {
     const submitData: DyeingOrderVO = {
       ...formData.value,
-      status
+      status,
+      colors: colorRows.value.map((row) => ({
+        id: row.id,
+        dyeingOrderId: row.dyeingOrderId,
+        lineNo: row.lineNo,
+        customerColorNo: row.customerColorNo || '',
+        colorName: row.colorName || '',
+        quantity: row.quantity != null ? Number(row.quantity) : 0,
+        pieces: row.pieces != null ? Number(row.pieces) : undefined,
+        dyeingInputQty: row.dyeingInputQty != null ? Number(row.dyeingInputQty) : undefined,
+        dyeingInputUnit: row.dyeingInputUnit || undefined,
+        contractQty: row.contractQty != null ? Number(row.contractQty) : undefined
+      }))
     }
     if (isCreateMode.value) {
       const id = await DyeingOrderApi.createDyeingOrder(submitData)
@@ -450,6 +673,27 @@ const handleCancel = () => {
   margin-left: 8px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+
+.color-table {
+  margin-bottom: 12px;
+}
+
+.items-actions {
+  margin-bottom: 12px;
+}
+
+.items-summary {
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  background-color: var(--el-fill-color-light);
+  border-radius: 4px;
+
+  b {
+    color: var(--el-color-primary);
+  }
 }
 
 .form-actions {

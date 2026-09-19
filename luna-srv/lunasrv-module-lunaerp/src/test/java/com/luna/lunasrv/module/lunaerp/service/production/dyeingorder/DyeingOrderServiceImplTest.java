@@ -5,11 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingColorRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingColorSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.color.DyeingColorDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.DyeingColorMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +21,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -46,6 +51,8 @@ import static org.mockito.Mockito.never;
  * 单据日期/交货日期区间、默认 order_date 倒序）。
  * 02 票：覆盖新建染色单（status 缺省 DRAFT、传 ACTIVE 保留、order_date 缺省今天、
  * 销售合同/承染方引用校验、快照写入）。
+ * 03 票：覆盖查看与修改染色单（DRAFT 可更新、非 DRAFT 报状态错误、快照刷新）。
+ * 04 票：覆盖颜色明细聚合（新建/更新删旧插新、重排 line_no、零颜色合法、详情嵌套返回）。
  *
  * @author luna
  */
@@ -53,6 +60,9 @@ class DyeingOrderServiceImplTest {
 
     @Mock
     private DyeingOrderMapper dyeingOrderMapper;
+
+    @Mock
+    private DyeingColorMapper dyeingColorMapper;
 
     @Mock
     private SupplierMapper supplierMapper;
@@ -431,6 +441,182 @@ class DyeingOrderServiceImplTest {
                 () -> dyeingOrderService.updateDyeingOrder(reqVO));
         assertEquals(1_030_007_002, exception.getCode());
         verify(dyeingOrderMapper, never()).updateById(any(DyeingOrderDO.class));
+    }
+
+    // ==================== 颜色明细聚合保存与查询（04 票） ====================
+
+    @Test
+    void createDyeingOrder_withColors_savesColorsAndReordersLineNo() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        DyeingColorSaveReqVO color1 = new DyeingColorSaveReqVO();
+        color1.setCustomerColorNo("C-01");
+        color1.setColorName("藏青");
+        color1.setQuantity(new BigDecimal("500.00"));
+        color1.setPieces(20);
+        color1.setDyeingInputQty(new BigDecimal("525.00"));
+        color1.setDyeingInputUnit("KG");
+        color1.setContractQty(new BigDecimal("500.00"));
+
+        DyeingColorSaveReqVO color2 = new DyeingColorSaveReqVO();
+        color2.setCustomerColorNo("C-02");
+        color2.setColorName("花灰");
+        color2.setQuantity(new BigDecimal("300.00"));
+        color2.setPieces(12);
+        color2.setDyeingInputQty(new BigDecimal("315.00"));
+        color2.setDyeingInputUnit("KG");
+        color2.setContractQty(new BigDecimal("300.00"));
+
+        reqVO.setColors(List.of(color1, color2));
+
+        when(dyeingOrderMapper.insert(any(DyeingOrderDO.class))).thenAnswer(invocation -> {
+            DyeingOrderDO order = invocation.getArgument(0);
+            order.setId(1001L);
+            return 1;
+        });
+
+        Long orderId = dyeingOrderService.createDyeingOrder(reqVO);
+
+        assertEquals(1001L, orderId);
+        ArgumentCaptor<List<DyeingColorDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(dyeingColorMapper).insertBatch(captor.capture());
+        List<DyeingColorDO> savedColors = captor.getValue();
+        assertEquals(2, savedColors.size());
+        assertEquals(1, savedColors.get(0).getLineNo());
+        assertEquals("C-01", savedColors.get(0).getCustomerColorNo());
+        assertEquals("藏青", savedColors.get(0).getColorName());
+        assertEquals(new BigDecimal("500.00"), savedColors.get(0).getQuantity());
+        assertEquals(1001L, savedColors.get(0).getDyeingOrderId());
+
+        assertEquals(2, savedColors.get(1).getLineNo());
+        assertEquals("C-02", savedColors.get(1).getCustomerColorNo());
+        assertEquals("花灰", savedColors.get(1).getColorName());
+        assertEquals(new BigDecimal("300.00"), savedColors.get(1).getQuantity());
+        assertEquals(1001L, savedColors.get(1).getDyeingOrderId());
+    }
+
+    @Test
+    void createDyeingOrder_zeroColors_legalAndDoesNotInsertColors() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColors(Collections.emptyList());
+
+        dyeingOrderService.createDyeingOrder(reqVO);
+
+        verify(dyeingOrderMapper).insert(any(DyeingOrderDO.class));
+        verify(dyeingColorMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void updateDyeingOrder_withColors_deletesOldAndInsertsNewColors() {
+        stubExistingOrder(1001L, "DRAFT");
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+
+        DyeingColorSaveReqVO color1 = new DyeingColorSaveReqVO();
+        color1.setCustomerColorNo("C-03");
+        color1.setColorName("酒红");
+        color1.setQuantity(new BigDecimal("200.00"));
+        color1.setPieces(8);
+        color1.setDyeingInputQty(new BigDecimal("210.00"));
+        color1.setDyeingInputUnit("M");
+        color1.setContractQty(new BigDecimal("200.00"));
+
+        reqVO.setColors(List.of(color1));
+
+        dyeingOrderService.updateDyeingOrder(reqVO);
+
+        verify(dyeingOrderMapper).updateById(any(DyeingOrderDO.class));
+        verify(dyeingColorMapper).deleteByOrderId(1001L);
+
+        ArgumentCaptor<List<DyeingColorDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(dyeingColorMapper).insertBatch(captor.capture());
+        List<DyeingColorDO> savedColors = captor.getValue();
+        assertEquals(1, savedColors.size());
+        assertEquals(1, savedColors.get(0).getLineNo());
+        assertEquals(1001L, savedColors.get(0).getDyeingOrderId());
+        assertEquals("C-03", savedColors.get(0).getCustomerColorNo());
+        assertEquals("酒红", savedColors.get(0).getColorName());
+        assertEquals("M", savedColors.get(0).getDyeingInputUnit());
+    }
+
+    @Test
+    void updateDyeingOrder_zeroColors_deletesOldAndDoesNotInsertColors() {
+        stubExistingOrder(1001L, "DRAFT");
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+        reqVO.setColors(Collections.emptyList());
+
+        dyeingOrderService.updateDyeingOrder(reqVO);
+
+        verify(dyeingOrderMapper).updateById(any(DyeingOrderDO.class));
+        verify(dyeingColorMapper).deleteByOrderId(1001L);
+        verify(dyeingColorMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void getDyeingOrder_nestedColors_orderedByLineNo() {
+        DyeingOrderDO order = new DyeingOrderDO();
+        order.setId(1001L);
+        order.setSalesContractId(101L);
+        order.setContractNo("CH20260001");
+        order.setCustomerId(201L);
+        order.setClientName("测试客户");
+        order.setDyeingFactoryId(301L);
+        order.setDyeingFactoryName("海宁染整厂");
+        order.setStatus("DRAFT");
+        order.setOrderDate(LocalDate.of(2026, 9, 19));
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(order);
+
+        DyeingColorDO c1 = new DyeingColorDO();
+        c1.setId(501L);
+        c1.setDyeingOrderId(1001L);
+        c1.setLineNo(1);
+        c1.setCustomerColorNo("C-01");
+        c1.setColorName("藏青");
+        c1.setQuantity(new BigDecimal("500.00"));
+        c1.setPieces(20);
+        c1.setDyeingInputQty(new BigDecimal("525.00"));
+        c1.setDyeingInputUnit("KG");
+        c1.setContractQty(new BigDecimal("500.00"));
+
+        DyeingColorDO c2 = new DyeingColorDO();
+        c2.setId(502L);
+        c2.setDyeingOrderId(1001L);
+        c2.setLineNo(2);
+        c2.setCustomerColorNo("C-02");
+        c2.setColorName("花灰");
+        c2.setQuantity(new BigDecimal("300.00"));
+        c2.setPieces(12);
+        c2.setDyeingInputQty(new BigDecimal("315.00"));
+        c2.setDyeingInputUnit("KG");
+        c2.setContractQty(new BigDecimal("300.00"));
+
+        when(dyeingColorMapper.selectListByOrderId(1001L)).thenReturn(List.of(c1, c2));
+
+        DyeingOrderRespVO respVO = dyeingOrderService.getDyeingOrder(1001L);
+
+        assertEquals(1001L, respVO.getId());
+        assertEquals(2, respVO.getColors().size());
+        assertEquals(1, respVO.getColors().get(0).getLineNo());
+        assertEquals("C-01", respVO.getColors().get(0).getCustomerColorNo());
+        assertEquals("藏青", respVO.getColors().get(0).getColorName());
+        assertEquals(new BigDecimal("500.00"), respVO.getColors().get(0).getQuantity());
+
+        assertEquals(2, respVO.getColors().get(1).getLineNo());
+        assertEquals("C-02", respVO.getColors().get(1).getCustomerColorNo());
+        assertEquals("花灰", respVO.getColors().get(1).getColorName());
+        assertEquals(new BigDecimal("300.00"), respVO.getColors().get(1).getQuantity());
     }
 
     // ==================== 辅助方法 ====================

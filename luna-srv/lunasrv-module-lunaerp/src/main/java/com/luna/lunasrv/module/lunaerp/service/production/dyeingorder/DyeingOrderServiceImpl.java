@@ -1,23 +1,31 @@
 package com.luna.lunasrv.module.lunaerp.service.production.dyeingorder;
 
+import cn.hutool.core.collection.CollUtil;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingColorRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingColorSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.color.DyeingColorDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.DyeingColorMapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_NOT_EXISTS;
@@ -38,6 +46,9 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
 
     @Resource
     private DyeingOrderMapper dyeingOrderMapper;
+
+    @Resource
+    private DyeingColorMapper dyeingColorMapper;
 
     @Resource
     private SupplierMapper supplierMapper;
@@ -66,13 +77,20 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory());
         // 4. 保存主表
         dyeingOrderMapper.insert(order);
+        // 5. 颜色明细：按提交顺序重排 line_no（从 1 开始），回填 dyeingOrderId（零明细合法）
+        List<DyeingColorDO> colorDOList = buildColorDOList(order.getId(), createReqVO.getColors());
+        saveColors(order.getId(), colorDOList);
         return order.getId();
     }
 
     @Override
     public DyeingOrderRespVO getDyeingOrder(Long id) {
         DyeingOrderDO order = validateDyeingOrderExists(id);
-        return BeanUtils.toBean(order, DyeingOrderRespVO.class);
+        DyeingOrderRespVO respVO = BeanUtils.toBean(order, DyeingOrderRespVO.class);
+        // 嵌套返回颜色行（按 line_no 升序）
+        List<DyeingColorDO> colorDOList = dyeingColorMapper.selectListByOrderId(id);
+        respVO.setColors(BeanUtils.toBean(colorDOList, DyeingColorRespVO.class));
+        return respVO;
     }
 
     @Override
@@ -97,6 +115,11 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory());
         // 6. 整体更新（可空字段清空随 DO 的 updateStrategy=ALWAYS 一并落库）
         dyeingOrderMapper.updateById(order);
+        // 7. 颜色明细整体替换：事务内先按 dyeing_order_id 删旧行，再插本次提交的全部颜色行
+        //    （零颜色也执行删除，保证"清空全部颜色行"语义；line_no 从 1 开始重排）
+        List<DyeingColorDO> colorDOList = buildColorDOList(updateReqVO.getId(), updateReqVO.getColors());
+        dyeingColorMapper.deleteByOrderId(updateReqVO.getId());
+        saveColors(updateReqVO.getId(), colorDOList);
     }
 
     /**
@@ -197,6 +220,47 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         } else if (!"DRAFT".equals(order.getStatus()) && !"ACTIVE".equals(order.getStatus())) {
             throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
         }
+    }
+
+    // ==================== 颜色明细聚合私有方法（ADR-0003） ====================
+
+    /**
+     * 将请求颜色行列表转换为 DO 列表：按数组顺序重排 line_no（从 1 开始）、
+     * 数量 null 按 0 处理。
+     *
+     * @param dyeingOrderId 染色单ID
+     * @param colors        请求颜色行列表（为 null/空表示零颜色单据，合法）
+     * @return 颜色行 DO 列表
+     */
+    private List<DyeingColorDO> buildColorDOList(Long dyeingOrderId, List<DyeingColorSaveReqVO> colors) {
+        List<DyeingColorDO> colorDOList = new ArrayList<>();
+        if (CollUtil.isEmpty(colors)) {
+            return colorDOList;
+        }
+        for (int i = 0; i < colors.size(); i++) {
+            DyeingColorSaveReqVO color = colors.get(i);
+            DyeingColorDO colorDO = BeanUtils.toBean(color, DyeingColorDO.class);
+            colorDO.setDyeingOrderId(dyeingOrderId);
+            colorDO.setLineNo(i + 1);
+            if (colorDO.getQuantity() == null) {
+                colorDO.setQuantity(BigDecimal.ZERO);
+            }
+            colorDOList.add(colorDO);
+        }
+        return colorDOList;
+    }
+
+    /**
+     * 批量保存颜色行（回填 dyeingOrderId）；零颜色时跳过插入。
+     */
+    private void saveColors(Long dyeingOrderId, List<DyeingColorDO> colors) {
+        if (CollUtil.isEmpty(colors)) {
+            return;
+        }
+        for (DyeingColorDO color : colors) {
+            color.setDyeingOrderId(dyeingOrderId);
+        }
+        dyeingColorMapper.insertBatch(colors);
     }
 
 }
