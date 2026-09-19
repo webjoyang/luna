@@ -504,6 +504,26 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/production',
+    component: Layout,
+    name: 'lunaerpElmuiProductionStatic',
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'greige-order/edit/:id?',
+        component: () => import('@/views/lunaerp-elmui/production/greige-order/edit/index.vue'),
+        name: 'LunaerpElmuiProductionGreigeOrderEdit',
+        meta: {
+          title: '胚布单',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/production/greige-order'
+        }
+      }
+    ]
+  },
+  {
     path: '/hrm',
     component: Layout,
     name: 'HrmCenter',
