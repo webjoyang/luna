@@ -4,13 +4,13 @@
 
 **Blocked by:** 05 染色单状态操作
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] 删除接口可用：仅 DRAFT 态可删除，非 DRAFT 态删除报 1-030-007-001（状态不允许该操作）
-- [ ] 删除时按 dyeing_order_id 级联逻辑删除全部颜色明细
-- [ ] 删除不存在的染色单报 1-030-007-000
-- [ ] 前端列表行"删除"按钮仅 DRAFT 单据显示，删除前二次确认
-- [ ] 工作台"删除"按钮仅 DRAFT 态显示
-- [ ] Service 全量单测通过：创建、更新（状态约束）、删除（状态约束+级联）、状态操作（合法/非法流转）、聚合保存、分页条件透传、详情嵌套返回
-- [ ] 后端 `mvn test -pl lunasrv-module-lunaerp` 全绿
-- [ ] 前端 `pnpm build:local` 与 `pnpm ts:check` 改动文件零报错
+- [x] 删除接口可用：仅 DRAFT 态可删除，非 DRAFT 态删除报 1-030-007-001（状态不允许该操作）
+- [x] 删除时按 dyeing_order_id 级联逻辑删除全部颜色明细
+- [x] 删除不存在的染色单报 1-030-007-000
+- [x] 前端列表行"删除"按钮仅 DRAFT 单据显示，删除前二次确认
+- [x] 工作台"删除"按钮仅 DRAFT 态显示
+- [x] Service 全量单测通过：创建、更新（状态约束）、删除（状态约束+级联）、状态操作（合法/非法流转）、聚合保存、分页条件透传、详情嵌套返回
+- [x] 后端 `mvn test -pl lunasrv-module-lunaerp` 全绿
+- [x] 前端 `pnpm build:local` 与 `pnpm ts:check` 改动文件零报错

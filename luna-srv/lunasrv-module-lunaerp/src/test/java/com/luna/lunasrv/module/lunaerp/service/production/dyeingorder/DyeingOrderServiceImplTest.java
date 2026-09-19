@@ -746,6 +746,43 @@ class DyeingOrderServiceImplTest {
         verify(dyeingOrderMapper, never()).update(any(), any());
     }
 
+    // ==================== 删除染色单（06 票） ====================
+
+    @Test
+    void deleteDyeingOrder_draft_successAndCascadesColorDelete() {
+        stubExistingOrder(1001L, "DRAFT");
+
+        dyeingOrderService.deleteDyeingOrder(1001L);
+
+        verify(dyeingOrderMapper).deleteById(1001L);
+        verify(dyeingColorMapper).deleteByOrderId(1001L);
+    }
+
+    @Test
+    void deleteDyeingOrder_notExists_throwsNotExists() {
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.deleteDyeingOrder(1001L));
+        assertEquals(1_030_007_000, exception.getCode());
+        verify(dyeingOrderMapper, never()).deleteById(any());
+        verify(dyeingColorMapper, never()).deleteByOrderId(any());
+    }
+
+    @Test
+    void deleteDyeingOrder_nonDraft_throwsStatusNotAllowed() {
+        for (String status : List.of("ACTIVE", "COMPLETED", "CANCELLED")) {
+            stubExistingOrder(1001L, status);
+
+            ServiceException exception = assertThrows(ServiceException.class,
+                    () -> dyeingOrderService.deleteDyeingOrder(1001L),
+                    "状态为 " + status + " 时删除应抛出状态不允许异常");
+            assertEquals(1_030_007_001, exception.getCode());
+        }
+        verify(dyeingOrderMapper, never()).deleteById(any());
+        verify(dyeingColorMapper, never()).deleteByOrderId(any());
+    }
+
     // ==================== 辅助方法 ====================
 
     private void stubExistingOrder(Long id, String status) {

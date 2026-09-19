@@ -140,6 +140,17 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         transitionStatus(id, "ACTIVE", "CANCELLED");
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteDyeingOrder(Long id) {
+        DyeingOrderDO order = validateDyeingOrderExists(id);
+        if (!"DRAFT".equals(order.getStatus())) {
+            throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
+        }
+        dyeingOrderMapper.deleteById(id);
+        dyeingColorMapper.deleteByOrderId(id);
+    }
+
     /**
      * 执行单据状态流转校验与单字段更新
      *

@@ -82,6 +82,8 @@ class GreigeOrderServiceImplTest {
     @InjectMocks
     private GreigeOrderServiceImpl greigeOrderService;
 
+    private static final String TODAY_PREFIX = "PB" + LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("MMdd"));
+
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
@@ -161,19 +163,19 @@ class GreigeOrderServiceImplTest {
                 ArgumentCaptor.forClass(LambdaQueryWrapperX.class);
         verify(greigeOrderMapper).selectPage(eq(reqVO), captor.capture());
         assertFalse(captor.getValue().getSqlSegment().contains("LOWER(order_no) LIKE"),
-                "空白 keyword 不应拼接模糊条件");
+                "空白 keyword 视为未输入，不拼接模糊条件");
     }
 
-    // ==================== createGreigeOrder：自动取号（ADR-0006） ====================
+    // ==================== createGreigeOrder：自动编号生成（ADR-0006） ====================
 
     @Test
     void createGreigeOrder_blankOrderNo_generatesDailySequenceMaxPlusOne() {
-        // 当天前缀 PB0919：已有 PB0919002 与一条已删除的 PB0919001（软删行也参与扫描）
-        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of(
-                greigeOrder(1L, "PB0919002"),
-                greigeOrder(2L, "PB0919001")
+        // 当天前缀：已有 002 与一条已删除的 001（软删行也参与扫描）
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted(TODAY_PREFIX)).thenReturn(List.of(
+                greigeOrder(1L, TODAY_PREFIX + "002"),
+                greigeOrder(2L, TODAY_PREFIX + "001")
         ));
-        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919003")).thenReturn(null);
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted(TODAY_PREFIX + "003")).thenReturn(null);
         stubSupplier(1L, "海宁坯布厂");
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
         reqVO.setOrderNo(null);
@@ -182,14 +184,14 @@ class GreigeOrderServiceImplTest {
 
         ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
         verify(greigeOrderMapper).insert(captor.capture());
-        assertEquals("PB0919003", captor.getValue().getOrderNo(),
+        assertEquals(TODAY_PREFIX + "003", captor.getValue().getOrderNo(),
                 "自动号应取当天前缀最大数字后缀 +1（扫描含已删除行）");
     }
 
     @Test
     void createGreigeOrder_blankOrderNo_noExistingToday_startsFrom001() {
-        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of());
-        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919001")).thenReturn(null);
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted(TODAY_PREFIX)).thenReturn(List.of());
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted(TODAY_PREFIX + "001")).thenReturn(null);
         stubSupplier(1L, "海宁坯布厂");
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
         reqVO.setOrderNo("");
@@ -198,7 +200,7 @@ class GreigeOrderServiceImplTest {
 
         ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
         verify(greigeOrderMapper).insert(captor.capture());
-        assertEquals("PB0919001", captor.getValue().getOrderNo(), "当天无单据时应从 001 起");
+        assertEquals(TODAY_PREFIX + "001", captor.getValue().getOrderNo(), "当天无单据时应从 001 起");
     }
 
     // ==================== createGreigeOrder：手填编号查重（ADR-0006） ====================
@@ -300,7 +302,7 @@ class GreigeOrderServiceImplTest {
         contract.setId(100L);
         contract.setContractNo("CH20260001");
         when(salesContractMapper.selectById(100L)).thenReturn(contract);
-        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of());
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted(TODAY_PREFIX)).thenReturn(List.of());
         when(greigeOrderMapper.selectByOrderNoIncludingDeleted(any(String.class))).thenReturn(null);
 
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
@@ -329,7 +331,7 @@ class GreigeOrderServiceImplTest {
     void createGreigeOrder_explicitSnapshots_preservedOverArchiveName() {
         // 前端传了快照（供应商改名场景）时按原值保存
         stubSupplier(1L, "海宁坯布厂（新名称）");
-        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of());
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted(TODAY_PREFIX)).thenReturn(List.of());
         when(greigeOrderMapper.selectByOrderNoIncludingDeleted(any(String.class))).thenReturn(null);
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
         reqVO.setOrderNo(null);
@@ -347,13 +349,13 @@ class GreigeOrderServiceImplTest {
 
     @Test
     void getNextGreigeOrderNo_previewsWithoutInserting() {
-        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of(
-                greigeOrder(1L, "PB0919002")
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted(TODAY_PREFIX)).thenReturn(List.of(
+                greigeOrder(1L, TODAY_PREFIX + "002")
         ));
 
         String nextNo = greigeOrderService.getNextGreigeOrderNo();
 
-        assertEquals("PB0919003", nextNo, "预览应返回下一个自动编号");
+        assertEquals(TODAY_PREFIX + "003", nextNo, "预览应返回下一个自动编号");
         verify(greigeOrderMapper, never()).insert(any(GreigeOrderDO.class));
         verify(greigeOrderMapper, never()).selectByOrderNoIncludingDeleted(any(String.class));
     }
@@ -458,8 +460,8 @@ class GreigeOrderServiceImplTest {
     void updateGreigeOrder_blankOrderNo_regeneratesDailySequence() {
         when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
         stubSupplier(1L, "海宁坯布厂");
-        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of());
-        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919001")).thenReturn(null);
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted(TODAY_PREFIX)).thenReturn(List.of());
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted(TODAY_PREFIX + "001")).thenReturn(null);
 
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
         reqVO.setId(1L);
@@ -469,7 +471,7 @@ class GreigeOrderServiceImplTest {
 
         ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
         verify(greigeOrderMapper).updateById(captor.capture());
-        assertEquals("PB0919001", captor.getValue().getOrderNo(), "编号留空时与创建一致自动生成");
+        assertEquals(TODAY_PREFIX + "001", captor.getValue().getOrderNo(), "编号留空时与创建一致自动生成");
     }
 
     @Test
@@ -693,10 +695,10 @@ class GreigeOrderServiceImplTest {
     void createGreigeOrder_afterDelete_nextNoSkipsDeletedNumber() {
         // 软删不释放编号（ADR-0006）：当天唯一的单据 PB0919001 已删除，取号扫描含软删行，
         // 新单应顺延为 PB0919002 而非重用 PB0919001
-        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of(
-                greigeOrder(1L, "PB0919001") // 该行 deleted=1
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted(TODAY_PREFIX)).thenReturn(List.of(
+                greigeOrder(1L, TODAY_PREFIX + "001") // 该行 deleted=1
         ));
-        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919002")).thenReturn(null);
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted(TODAY_PREFIX + "002")).thenReturn(null);
         stubSupplier(1L, "海宁坯布厂");
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
         reqVO.setOrderNo(null);
@@ -705,7 +707,7 @@ class GreigeOrderServiceImplTest {
 
         ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
         verify(greigeOrderMapper).insert(captor.capture());
-        assertEquals("PB0919002", captor.getValue().getOrderNo(),
+        assertEquals(TODAY_PREFIX + "002", captor.getValue().getOrderNo(),
                 "软删编号不应被新单重用，自动号应顺延");
     }
 

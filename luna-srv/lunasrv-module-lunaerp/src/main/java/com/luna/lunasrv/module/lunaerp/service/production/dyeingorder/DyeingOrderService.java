@@ -64,4 +64,11 @@ public interface DyeingOrderService {
      */
     void cancelDyeingOrder(Long id);
 
+    /**
+     * 删除染色单（仅 DRAFT 态可删，级联删除颜色明细）
+     *
+     * @param id 染色单ID
+     */
+    void deleteDyeingOrder(Long id);
+
 }

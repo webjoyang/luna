@@ -13,6 +13,7 @@ import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -88,6 +89,15 @@ public class DyeingOrderController {
     @PreAuthorize("@ss.hasPermission('lunaerp:production:dyeing-order:update')")
     public CommonResult<Boolean> cancelDyeingOrder(@RequestParam("id") Long id) {
         dyeingOrderService.cancelDyeingOrder(id);
+        return success(true);
+    }
+
+    @DeleteMapping("/delete")
+    @Operation(summary = "删除染色单")
+    @Parameter(name = "id", description = "染色单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:dyeing-order:delete')")
+    public CommonResult<Boolean> deleteDyeingOrder(@RequestParam("id") Long id) {
+        dyeingOrderService.deleteDyeingOrder(id);
         return success(true);
     }
 
