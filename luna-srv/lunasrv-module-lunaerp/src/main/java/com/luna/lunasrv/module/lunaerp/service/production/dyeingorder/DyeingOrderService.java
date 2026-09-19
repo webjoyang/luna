@@ -43,4 +43,25 @@ public interface DyeingOrderService {
      */
     void updateDyeingOrder(DyeingOrderSaveReqVO updateReqVO);
 
+    /**
+     * 生效/下达染色单（DRAFT -> ACTIVE）
+     *
+     * @param id 染色单ID
+     */
+    void effectDyeingOrder(Long id);
+
+    /**
+     * 完成染色单（ACTIVE -> COMPLETED）
+     *
+     * @param id 染色单ID
+     */
+    void completeDyeingOrder(Long id);
+
+    /**
+     * 取消染色单（ACTIVE -> CANCELLED）
+     *
+     * @param id 染色单ID
+     */
+    void cancelDyeingOrder(Long id);
+
 }

@@ -87,3 +87,19 @@ export const updateDyeingOrder = (data: DyeingOrderVO) => {
 export const deleteDyeingOrder = (id: number) => {
   return request.delete<boolean>({ url: `/lunaerp/production/dyeing-order/delete?id=${id}` })
 }
+
+// 生效/下达染色单（DRAFT -> ACTIVE）
+export const effectDyeingOrder = (id: number) => {
+  return request.put<boolean>({ url: `/lunaerp/production/dyeing-order/effect?id=${id}` })
+}
+
+// 完成染色单（ACTIVE -> COMPLETED）
+export const completeDyeingOrder = (id: number) => {
+  return request.put<boolean>({ url: `/lunaerp/production/dyeing-order/complete?id=${id}` })
+}
+
+// 取消染色单（ACTIVE -> CANCELLED）
+export const cancelDyeingOrder = (id: number) => {
+  return request.put<boolean>({ url: `/lunaerp/production/dyeing-order/cancel?id=${id}` })
+}
+

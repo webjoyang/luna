@@ -64,4 +64,31 @@ public class DyeingOrderController {
         return success(dyeingOrderService.getDyeingOrderPage(pageReqVO));
     }
 
+    @PutMapping("/effect")
+    @Operation(summary = "生效/下达染色单")
+    @Parameter(name = "id", description = "染色单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:dyeing-order:update')")
+    public CommonResult<Boolean> effectDyeingOrder(@RequestParam("id") Long id) {
+        dyeingOrderService.effectDyeingOrder(id);
+        return success(true);
+    }
+
+    @PutMapping("/complete")
+    @Operation(summary = "完成染色单")
+    @Parameter(name = "id", description = "染色单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:dyeing-order:update')")
+    public CommonResult<Boolean> completeDyeingOrder(@RequestParam("id") Long id) {
+        dyeingOrderService.completeDyeingOrder(id);
+        return success(true);
+    }
+
+    @PutMapping("/cancel")
+    @Operation(summary = "取消染色单")
+    @Parameter(name = "id", description = "染色单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:dyeing-order:update')")
+    public CommonResult<Boolean> cancelDyeingOrder(@RequestParam("id") Long id) {
+        dyeingOrderService.cancelDyeingOrder(id);
+        return success(true);
+    }
+
 }

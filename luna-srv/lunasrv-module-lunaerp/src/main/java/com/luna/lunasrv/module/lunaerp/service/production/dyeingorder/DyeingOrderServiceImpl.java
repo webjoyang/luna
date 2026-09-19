@@ -122,6 +122,41 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         saveColors(updateReqVO.getId(), colorDOList);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void effectDyeingOrder(Long id) {
+        transitionStatus(id, "DRAFT", "ACTIVE");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void completeDyeingOrder(Long id) {
+        transitionStatus(id, "ACTIVE", "COMPLETED");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelDyeingOrder(Long id) {
+        transitionStatus(id, "ACTIVE", "CANCELLED");
+    }
+
+    /**
+     * 执行单据状态流转校验与单字段更新
+     *
+     * @param id         染色单ID
+     * @param fromStatus 前置合法状态
+     * @param toStatus   流转目标状态
+     */
+    private void transitionStatus(Long id, String fromStatus, String toStatus) {
+        DyeingOrderDO order = validateDyeingOrderExists(id);
+        if (!fromStatus.equals(order.getStatus())) {
+            throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
+        }
+        dyeingOrderMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DyeingOrderDO>()
+                .eq(DyeingOrderDO::getId, id)
+                .set(DyeingOrderDO::getStatus, toStatus));
+    }
+
     /**
      * 构造分页查询条件：
      * keyword 对 contract_no / client_name / product_code / product_name 做 OR 模糊

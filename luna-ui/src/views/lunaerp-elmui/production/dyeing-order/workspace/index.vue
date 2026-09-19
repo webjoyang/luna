@@ -48,7 +48,10 @@ const currentStatus = ref<string>()
 
 const pageTitle = computed(() => {
   if (isCreateMode.value) return '新建染色单'
-  return isViewMode.value ? '查看染色单' : '编辑染色单'
+  if (isViewMode.value || (currentStatus.value && currentStatus.value !== 'DRAFT')) {
+    return '查看染色单'
+  }
+  return '编辑染色单'
 })
 
 const handleBack = () => {

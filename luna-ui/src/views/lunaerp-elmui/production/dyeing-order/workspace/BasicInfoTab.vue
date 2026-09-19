@@ -327,21 +327,65 @@
     </el-row>
 
     <!-- 操作按钮 -->
-    <div v-if="!isReadOnly" class="form-actions">
+    <div v-if="hasActions" class="form-actions">
+      <!-- 新建模式 -->
       <template v-if="isCreateMode">
         <el-button type="primary" :loading="submitLoading" @click="handleSave('DRAFT')">
-          保存为草稿
+          保存草稿
         </el-button>
         <el-button type="success" :loading="submitLoading" @click="handleSave('ACTIVE')">
           下达
         </el-button>
+        <el-button @click="handleCancel">取消</el-button>
       </template>
-      <template v-else>
-        <el-button type="primary" :loading="submitLoading" @click="handleSave('DRAFT')">
-          保存
+
+      <!-- 草稿态 (DRAFT)：[保存草稿][下达][删除] -->
+      <template v-else-if="formData.status === 'DRAFT'">
+        <el-button
+          type="primary"
+          :loading="submitLoading"
+          @click="handleSave('DRAFT')"
+          v-hasPermi="['lunaerp:production:dyeing-order:update']"
+        >
+          保存草稿
+        </el-button>
+        <el-button
+          type="success"
+          :loading="submitLoading"
+          @click="handleEffect"
+          v-hasPermi="['lunaerp:production:dyeing-order:update']"
+        >
+          下达
+        </el-button>
+        <el-button
+          type="danger"
+          :loading="submitLoading"
+          @click="handleDelete"
+          v-hasPermi="['lunaerp:production:dyeing-order:delete']"
+        >
+          删除
         </el-button>
       </template>
-      <el-button @click="handleCancel">取消</el-button>
+
+      <!-- 进行中态 (ACTIVE)：[完成][取消] -->
+      <template v-else-if="formData.status === 'ACTIVE'">
+        <el-button
+          type="success"
+          :loading="submitLoading"
+          @click="handleComplete"
+          v-hasPermi="['lunaerp:production:dyeing-order:update']"
+        >
+          完成
+        </el-button>
+        <el-button
+          type="danger"
+          :loading="submitLoading"
+          @click="handleCancelOrder"
+          v-hasPermi="['lunaerp:production:dyeing-order:update']"
+        >
+          取消
+        </el-button>
+      </template>
     </div>
   </el-form>
 </template>
@@ -613,28 +657,30 @@ onMounted(() => {
 })
 
 // 保存/下达
+const buildSubmitData = (status: 'DRAFT' | 'ACTIVE'): DyeingOrderVO => ({
+  ...formData.value,
+  status,
+  colors: colorRows.value.map((row) => ({
+    id: row.id,
+    dyeingOrderId: row.dyeingOrderId,
+    lineNo: row.lineNo,
+    customerColorNo: row.customerColorNo || '',
+    colorName: row.colorName || '',
+    quantity: row.quantity != null ? Number(row.quantity) : 0,
+    pieces: row.pieces != null ? Number(row.pieces) : undefined,
+    dyeingInputQty: row.dyeingInputQty != null ? Number(row.dyeingInputQty) : undefined,
+    dyeingInputUnit: row.dyeingInputUnit || undefined,
+    contractQty: row.contractQty != null ? Number(row.contractQty) : undefined
+  }))
+})
+
 const handleSave = async (status: 'DRAFT' | 'ACTIVE') => {
   if (!formRef.value) return
   await formRef.value.validate()
 
   submitLoading.value = true
   try {
-    const submitData: DyeingOrderVO = {
-      ...formData.value,
-      status,
-      colors: colorRows.value.map((row) => ({
-        id: row.id,
-        dyeingOrderId: row.dyeingOrderId,
-        lineNo: row.lineNo,
-        customerColorNo: row.customerColorNo || '',
-        colorName: row.colorName || '',
-        quantity: row.quantity != null ? Number(row.quantity) : 0,
-        pieces: row.pieces != null ? Number(row.pieces) : undefined,
-        dyeingInputQty: row.dyeingInputQty != null ? Number(row.dyeingInputQty) : undefined,
-        dyeingInputUnit: row.dyeingInputUnit || undefined,
-        contractQty: row.contractQty != null ? Number(row.contractQty) : undefined
-      }))
-    }
+    const submitData = buildSubmitData(status)
     if (isCreateMode.value) {
       const id = await DyeingOrderApi.createDyeingOrder(submitData)
       message.success(status === 'ACTIVE' ? '染色单下达成功' : '染色单保存为草稿成功')
@@ -642,8 +688,79 @@ const handleSave = async (status: 'DRAFT' | 'ACTIVE') => {
     } else {
       await DyeingOrderApi.updateDyeingOrder(submitData)
       message.success('染色单修改成功')
-      emit('success', Number(props.orderId))
+      await loadDetail()
     }
+  } finally {
+    submitLoading.value = false
+  }
+}
+
+const hasActions = computed(() => {
+  if (props.isViewMode) return false
+  if (isCreateMode.value) return true
+  return formData.value.status === 'DRAFT' || formData.value.status === 'ACTIVE'
+})
+
+const handleEffect = async () => {
+  try {
+    await message.confirm('确认下达该染色单吗？下达后将进入进行中状态，且不可修改。')
+  } catch {
+    return
+  }
+
+  submitLoading.value = true
+  try {
+    await DyeingOrderApi.effectDyeingOrder(Number(props.orderId))
+    message.success('染色单下达成功')
+    await loadDetail()
+  } finally {
+    submitLoading.value = false
+  }
+}
+
+const handleDelete = async () => {
+  try {
+    await message.delConfirm('确认删除该染色单草稿吗？')
+  } catch {
+    return
+  }
+  submitLoading.value = true
+  try {
+    await DyeingOrderApi.deleteDyeingOrder(Number(props.orderId))
+    message.success('删除成功')
+    emit('cancel')
+  } finally {
+    submitLoading.value = false
+  }
+}
+
+const handleComplete = async () => {
+  try {
+    await message.confirm('确认将该染色单标记为已完成吗？')
+  } catch {
+    return
+  }
+  submitLoading.value = true
+  try {
+    await DyeingOrderApi.completeDyeingOrder(Number(props.orderId))
+    message.success('染色单已完成')
+    await loadDetail()
+  } finally {
+    submitLoading.value = false
+  }
+}
+
+const handleCancelOrder = async () => {
+  try {
+    await message.confirm('确认取消该染色单吗？取消后单据将变为已取消状态。')
+  } catch {
+    return
+  }
+  submitLoading.value = true
+  try {
+    await DyeingOrderApi.cancelDyeingOrder(Number(props.orderId))
+    message.success('染色单已取消')
+    await loadDetail()
   } finally {
     submitLoading.value = false
   }

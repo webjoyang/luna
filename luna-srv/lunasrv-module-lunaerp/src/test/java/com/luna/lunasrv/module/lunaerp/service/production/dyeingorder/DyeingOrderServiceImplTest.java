@@ -39,9 +39,11 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.Supplier
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 
 /**
@@ -617,6 +619,131 @@ class DyeingOrderServiceImplTest {
         assertEquals("C-02", respVO.getColors().get(1).getCustomerColorNo());
         assertEquals("花灰", respVO.getColors().get(1).getColorName());
         assertEquals(new BigDecimal("300.00"), respVO.getColors().get(1).getQuantity());
+    }
+
+    // ==================== 状态操作：下达/完成/取消（05 票） ====================
+
+    @Test
+    void effectDyeingOrder_draft_transitionsToActive_andOnlyModifiesStatus() {
+        stubExistingOrder(1001L, "DRAFT");
+
+        dyeingOrderService.effectDyeingOrder(1001L);
+
+        ArgumentCaptor<LambdaUpdateWrapper<DyeingOrderDO>> captor =
+                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(dyeingOrderMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<DyeingOrderDO> wrapper = captor.getValue();
+        String sqlSet = wrapper.getSqlSet();
+        assertTrue(sqlSet.contains("status"), "应更新 status 字段");
+        assertFalse(sqlSet.contains("sales_contract_id"), "不应触碰 sales_contract_id 等业务字段");
+        assertFalse(sqlSet.contains("product_code"), "不应触碰 product_code 等业务字段");
+        assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("ACTIVE"), "目标状态应为 ACTIVE");
+    }
+
+    @Test
+    void completeDyeingOrder_active_transitionsToCompleted_andOnlyModifiesStatus() {
+        stubExistingOrder(1001L, "ACTIVE");
+
+        dyeingOrderService.completeDyeingOrder(1001L);
+
+        ArgumentCaptor<LambdaUpdateWrapper<DyeingOrderDO>> captor =
+                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(dyeingOrderMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<DyeingOrderDO> wrapper = captor.getValue();
+        String sqlSet = wrapper.getSqlSet();
+        assertTrue(sqlSet.contains("status"), "应更新 status 字段");
+        assertFalse(sqlSet.contains("sales_contract_id"), "不应触碰 sales_contract_id 等业务字段");
+        assertFalse(sqlSet.contains("product_code"), "不应触碰 product_code 等业务字段");
+        assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("COMPLETED"), "目标状态应为 COMPLETED");
+    }
+
+    @Test
+    void cancelDyeingOrder_active_transitionsToCancelled_andOnlyModifiesStatus() {
+        stubExistingOrder(1001L, "ACTIVE");
+
+        dyeingOrderService.cancelDyeingOrder(1001L);
+
+        ArgumentCaptor<LambdaUpdateWrapper<DyeingOrderDO>> captor =
+                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(dyeingOrderMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<DyeingOrderDO> wrapper = captor.getValue();
+        String sqlSet = wrapper.getSqlSet();
+        assertTrue(sqlSet.contains("status"), "应更新 status 字段");
+        assertFalse(sqlSet.contains("sales_contract_id"), "不应触碰 sales_contract_id 等业务字段");
+        assertFalse(sqlSet.contains("product_code"), "不应触碰 product_code 等业务字段");
+        assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("CANCELLED"), "目标状态应为 CANCELLED");
+    }
+
+    @Test
+    void effectDyeingOrder_notExists_throwsNotExists() {
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.effectDyeingOrder(1001L));
+        assertEquals(1_030_007_000, exception.getCode());
+        verify(dyeingOrderMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void effectDyeingOrder_illegalStatus_throwsStatusNotAllowed() {
+        for (String status : List.of("ACTIVE", "COMPLETED", "CANCELLED")) {
+            stubExistingOrder(1001L, status);
+
+            ServiceException exception = assertThrows(ServiceException.class,
+                    () -> dyeingOrderService.effectDyeingOrder(1001L),
+                    "状态为 " + status + " 时下达应抛出状态不允许异常");
+            assertEquals(1_030_007_001, exception.getCode());
+        }
+        verify(dyeingOrderMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void completeDyeingOrder_notExists_throwsNotExists() {
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.completeDyeingOrder(1001L));
+        assertEquals(1_030_007_000, exception.getCode());
+        verify(dyeingOrderMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void completeDyeingOrder_illegalStatus_throwsStatusNotAllowed() {
+        for (String status : List.of("DRAFT", "COMPLETED", "CANCELLED")) {
+            stubExistingOrder(1001L, status);
+
+            ServiceException exception = assertThrows(ServiceException.class,
+                    () -> dyeingOrderService.completeDyeingOrder(1001L),
+                    "状态为 " + status + " 时完成应抛出状态不允许异常");
+            assertEquals(1_030_007_001, exception.getCode());
+        }
+        verify(dyeingOrderMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void cancelDyeingOrder_notExists_throwsNotExists() {
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.cancelDyeingOrder(1001L));
+        assertEquals(1_030_007_000, exception.getCode());
+        verify(dyeingOrderMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void cancelDyeingOrder_illegalStatus_throwsStatusNotAllowed() {
+        for (String status : List.of("DRAFT", "COMPLETED", "CANCELLED")) {
+            stubExistingOrder(1001L, status);
+
+            ServiceException exception = assertThrows(ServiceException.class,
+                    () -> dyeingOrderService.cancelDyeingOrder(1001L),
+                    "状态为 " + status + " 时取消应抛出状态不允许异常");
+            assertEquals(1_030_007_001, exception.getCode());
+        }
+        verify(dyeingOrderMapper, never()).update(any(), any());
     }
 
     // ==================== 辅助方法 ====================
