@@ -252,6 +252,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  (e: 'loaded', data: DyeingOrderVO): void
   (e: 'success', id: number): void
   (e: 'cancel'): void
 }>()
@@ -372,6 +373,7 @@ const loadDetail = async () => {
   try {
     const res = await DyeingOrderApi.getDyeingOrder(Number(props.orderId))
     formData.value = res
+    emit('loaded', res)
     if (res.salesContractId && res.contractNo) {
       contractOptions.value = [
         {

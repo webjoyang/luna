@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -329,26 +330,23 @@ class DyeingOrderServiceImplTest {
 
     @Test
     void updateDyeingOrder_nonDraft_throwsStatusNotAllowed() {
-        DyeingOrderDO existing = new DyeingOrderDO();
-        existing.setId(1001L);
-        existing.setStatus("ACTIVE");
-        when(dyeingOrderMapper.selectById(1001L)).thenReturn(existing);
+        for (String status : List.of("ACTIVE", "COMPLETED", "CANCELLED")) {
+            stubExistingOrder(1001L, status);
 
-        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
-        reqVO.setId(1001L);
+            DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+            reqVO.setId(1001L);
 
-        ServiceException exception = assertThrows(ServiceException.class,
-                () -> dyeingOrderService.updateDyeingOrder(reqVO));
-        assertEquals(1_030_007_001, exception.getCode());
+            ServiceException exception = assertThrows(ServiceException.class,
+                    () -> dyeingOrderService.updateDyeingOrder(reqVO),
+                    "状态为 " + status + " 时更新应抛出状态不允许异常");
+            assertEquals(1_030_007_001, exception.getCode());
+        }
         verify(dyeingOrderMapper, never()).updateById(any(DyeingOrderDO.class));
     }
 
     @Test
     void updateDyeingOrder_draft_updatesSuccessfullyAndRefreshesSnapshots() {
-        DyeingOrderDO existing = new DyeingOrderDO();
-        existing.setId(1001L);
-        existing.setStatus("DRAFT");
-        when(dyeingOrderMapper.selectById(1001L)).thenReturn(existing);
+        stubExistingOrder(1001L, "DRAFT");
 
         stubContract(102L, "CH20260002", 202L, "新客户");
         stubSupplier(302L, "嘉兴新染厂");
@@ -381,11 +379,31 @@ class DyeingOrderServiceImplTest {
     }
 
     @Test
-    void updateDyeingOrder_contractMissing_throwsReferenceNotFound() {
+    void updateDyeingOrder_nullOrderDate_preservesExistingOrderDate() {
+        LocalDate originalDate = LocalDate.of(2026, 8, 15);
         DyeingOrderDO existing = new DyeingOrderDO();
         existing.setId(1001L);
         existing.setStatus("DRAFT");
+        existing.setOrderDate(originalDate);
         when(dyeingOrderMapper.selectById(1001L)).thenReturn(existing);
+
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+        reqVO.setOrderDate(null);
+
+        dyeingOrderService.updateDyeingOrder(reqVO);
+
+        ArgumentCaptor<DyeingOrderDO> captor = ArgumentCaptor.forClass(DyeingOrderDO.class);
+        verify(dyeingOrderMapper).updateById(captor.capture());
+        assertEquals(originalDate, captor.getValue().getOrderDate(), "更新时 orderDate 为空应保留既有单据日期");
+    }
+
+    @Test
+    void updateDyeingOrder_contractMissing_throwsReferenceNotFound() {
+        stubExistingOrder(1001L, "DRAFT");
 
         when(salesContractMapper.selectById(101L)).thenReturn(null);
         stubSupplier(301L, "海宁染整厂");
@@ -401,10 +419,7 @@ class DyeingOrderServiceImplTest {
 
     @Test
     void updateDyeingOrder_factoryMissing_throwsReferenceNotFound() {
-        DyeingOrderDO existing = new DyeingOrderDO();
-        existing.setId(1001L);
-        existing.setStatus("DRAFT");
-        when(dyeingOrderMapper.selectById(1001L)).thenReturn(existing);
+        stubExistingOrder(1001L, "DRAFT");
 
         stubContract(101L, "CH20260001", 201L, "测试客户");
         when(supplierMapper.selectById(301L)).thenReturn(null);
@@ -419,6 +434,14 @@ class DyeingOrderServiceImplTest {
     }
 
     // ==================== 辅助方法 ====================
+
+    private void stubExistingOrder(Long id, String status) {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(id);
+        existing.setStatus(status);
+        existing.setOrderDate(LocalDate.of(2026, 9, 19));
+        when(dyeingOrderMapper.selectById(id)).thenReturn(existing);
+    }
 
     private DyeingOrderSaveReqVO validCreateReqVO() {
         DyeingOrderSaveReqVO reqVO = new DyeingOrderSaveReqVO();

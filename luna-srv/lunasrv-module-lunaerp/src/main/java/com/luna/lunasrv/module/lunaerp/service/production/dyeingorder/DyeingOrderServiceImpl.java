@@ -88,8 +88,12 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         ValidatedRefs refs = validateReferences(updateReqVO);
         // 4. 组装 DO
         DyeingOrderDO order = BeanUtils.toBean(updateReqVO, DyeingOrderDO.class);
-        // 5. 保持 DRAFT 态，刷新快照与缺省值
+        order.setId(existing.getId());
+        // 5. 保持 DRAFT 态，保留原有单据日期（若未传），刷新快照与缺省值
         order.setStatus("DRAFT");
+        if (order.getOrderDate() == null) {
+            order.setOrderDate(existing.getOrderDate());
+        }
         fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory());
         // 6. 整体更新（可空字段清空随 DO 的 updateStrategy=ALWAYS 一并落库）
         dyeingOrderMapper.updateById(order);
