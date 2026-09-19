@@ -242,7 +242,7 @@ class DyeingOrderServiceImplTest {
     }
 
     @Test
-    void createDyeingOrder_customSnapshotsPreserved() {
+    void createDyeingOrder_snapshotsAuthoritativelyOverwrittenFromContract() {
         stubContract(101L, "CH20260001", 201L, "测试客户");
         stubSupplier(301L, "海宁染整厂");
         DyeingOrderSaveReqVO reqVO = validCreateReqVO();
@@ -256,10 +256,23 @@ class DyeingOrderServiceImplTest {
         ArgumentCaptor<DyeingOrderDO> captor = ArgumentCaptor.forClass(DyeingOrderDO.class);
         verify(dyeingOrderMapper).insert(captor.capture());
         DyeingOrderDO inserted = captor.getValue();
-        assertEquals("CH20260001-CUSTOM", inserted.getContractNo(), "已传合同号快照时应保留原值");
-        assertEquals(999L, inserted.getCustomerId(), "已传客户ID时应保留原值");
-        assertEquals("定制客户名", inserted.getClientName(), "已传客户名快照时应保留原值");
-        assertEquals("定制染厂名", inserted.getDyeingFactoryName(), "已传染厂名快照时应保留原值");
+        assertEquals("CH20260001", inserted.getContractNo(), "合同号快照以销售合同档案为准");
+        assertEquals(201L, inserted.getCustomerId(), "客户ID以销售合同档案为准");
+        assertEquals("测试客户", inserted.getClientName(), "客户名快照以销售合同档案为准");
+        assertEquals("海宁染整厂", inserted.getDyeingFactoryName(), "染厂名快照以供应商档案为准");
+    }
+
+    @Test
+    void createDyeingOrder_invalidStatus_throwsStatusNotAllowed() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setStatus("CANCELLED");
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.createDyeingOrder(reqVO));
+        assertEquals(1_030_007_001, exception.getCode());
+        verify(dyeingOrderMapper, never()).insert(any(DyeingOrderDO.class));
     }
 
     // ==================== 辅助方法 ====================

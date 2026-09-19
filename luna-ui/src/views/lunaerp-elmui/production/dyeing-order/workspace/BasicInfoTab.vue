@@ -141,6 +141,11 @@
         </el-form-item>
       </el-col>
       <el-col :span="12">
+        <el-form-item label="缩水率" prop="shrinkage">
+          <el-input v-model="formData.shrinkage" maxlength="64" placeholder="如 ≤5%" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
         <el-form-item label="水洗牢度" prop="fastnessWash">
           <el-input v-model="formData.fastnessWash" maxlength="64" placeholder="如 4级" />
         </el-form-item>
@@ -176,7 +181,7 @@
         </el-form-item>
       </el-col>
       <el-col :span="12">
-        <el-form-item label="六千沾色" prop="fastnessSixFiber">
+        <el-form-item label="六千沾色牢度" prop="fastnessSixFiber">
           <el-input v-model="formData.fastnessSixFiber" maxlength="64" placeholder="如 4级" />
         </el-form-item>
       </el-col>
@@ -362,7 +367,6 @@ const handleSave = async (status: 'DRAFT' | 'ACTIVE') => {
     const id = await DyeingOrderApi.createDyeingOrder(submitData)
     message.success(status === 'ACTIVE' ? '染色单下达成功' : '染色单保存为草稿成功')
     emit('success', id)
-    router.push('/production/dyeing-order')
   } finally {
     submitLoading.value = false
   }
@@ -370,7 +374,6 @@ const handleSave = async (status: 'DRAFT' | 'ACTIVE') => {
 
 const handleCancel = () => {
   emit('cancel')
-  router.push('/production/dyeing-order')
 }
 </script>
 

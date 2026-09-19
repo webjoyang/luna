@@ -21,6 +21,7 @@ import java.time.LocalDate;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_REFERENCE_NOT_FOUND;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_STATUS_NOT_ALLOWED;
 
 /**
  * 生产管理-染色单 Service 实现类
@@ -130,21 +131,17 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
 
     /**
      * 快照回填 + 缺省值：
-     * 合同号快照为空时用销售合同号回填；客户ID与客户名快照为空时从合同带出；
-     * 承染方公司名快照为空时用供应商档案公司名称回填；
-     * 单据日期缺省今天；状态缺省 DRAFT。
+     * 合同号快照从销售合同带出；客户ID与客户名快照从销售合同带出；
+     * 承染方公司名快照从供应商档案带出；
+     * 单据日期缺省今天；状态缺省 DRAFT，传值仅允许 DRAFT/ACTIVE。
      */
     private void fillSnapshotsAndDefaults(DyeingOrderDO order, SalesContractDO contract, SupplierDO dyeingFactory) {
-        if (!StringUtils.hasText(order.getContractNo()) && contract != null) {
+        if (contract != null) {
             order.setContractNo(contract.getContractNo());
-        }
-        if (order.getCustomerId() == null && contract != null) {
             order.setCustomerId(contract.getCustomerId());
-        }
-        if (!StringUtils.hasText(order.getClientName()) && contract != null) {
             order.setClientName(contract.getClientName());
         }
-        if (!StringUtils.hasText(order.getDyeingFactoryName()) && dyeingFactory != null) {
+        if (dyeingFactory != null) {
             order.setDyeingFactoryName(dyeingFactory.getCompanyName());
         }
         if (order.getOrderDate() == null) {
@@ -152,6 +149,8 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         }
         if (!StringUtils.hasText(order.getStatus())) {
             order.setStatus("DRAFT");
+        } else if (!"DRAFT".equals(order.getStatus()) && !"ACTIVE".equals(order.getStatus())) {
+            throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
         }
     }
 
