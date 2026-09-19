@@ -43,7 +43,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_OR
  * 编号规则见 ADR-0006：PB + 月日 + 3 位日流水、按天取号、全量唯一（含已删除行）、软删不释放；
  * 取号扫描与查重范围包含已删除行。坯布厂/染厂引用供应商档案不做类型强过滤（ADR-0007）。
  * 颜色分配（04）随单聚合保存：事务内按 order_id 删旧行、插新行并重排 line_no，
- * 投胚需求 = 成品量 ÷ (1 − 损耗率) 服务端权威重算；删除（05）由后续票据追加。
+ * 投胚需求 = 成品量 ÷ (1 − 损耗率) 服务端权威重算；删除（05）级联逻辑删除主表与颜色行。
  *
  * @author luna
  */
@@ -185,6 +185,16 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         // 只读预览、不占号：直接复用自动取号的扫描结果（含已删除行，ADR-0006），
         // 不做撞号查重、不写库；无新建时多次调用返回相同值，保存后再次调用自然顺延
         return generateOrderNo();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteGreigeOrder(Long id) {
+        // 1. 存在性校验：目标单据不存在报 GREIGE_ORDER_NOT_EXISTS
+        validateGreigeOrderExists(id);
+        // 2. 级联逻辑删除：主表 + 按订单ID逻辑删除全部颜色行（颜色行随单聚合，ADR-0003；不区分当前状态）
+        greigeOrderMapper.deleteById(id);
+        greigeOrderColorMapper.deleteByOrderId(id);
     }
 
     // ==================== 私有方法 ====================

@@ -76,3 +76,8 @@ export const updateGreigeOrder = (data: GreigeOrderVO) => {
 export const getGreigeOrder = (id: number) => {
   return request.get<GreigeOrderVO>({ url: `/lunaerp/production/greige-order/get?id=${id}` })
 }
+
+// 删除胚布单（主表与颜色行级联逻辑删除；软删编号不释放，见 ADR-0006）
+export const deleteGreigeOrder = (id: number) => {
+  return request.delete<boolean>({ url: `/lunaerp/production/greige-order/delete?id=${id}` })
+}

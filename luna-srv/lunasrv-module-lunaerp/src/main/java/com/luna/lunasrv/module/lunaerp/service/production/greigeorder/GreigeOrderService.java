@@ -8,7 +8,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.Grei
 /**
  * 生产管理-胚布单 Service 接口
  *
- * 02 票打通创建与取号，03 票追加查看与修改，04 票追加颜色投胚分配（随单聚合保存）；删除（05）由后续票据追加。
+ * 02 票打通创建与取号，03 票追加查看与修改，04 票追加颜色投胚分配（随单聚合保存），05 票追加删除收尾。
  *
  * @author luna
  */
@@ -53,5 +53,12 @@ public interface GreigeOrderService {
      * @return 下一个自动编号，形如 PB0919001
      */
     String getNextGreigeOrderNo();
+
+    /**
+     * 删除胚布单
+     *
+     * @param id 胚布单ID（不存在报 GREIGE_ORDER_NOT_EXISTS；不区分当前状态）
+     */
+    void deleteGreigeOrder(Long id);
 
 }

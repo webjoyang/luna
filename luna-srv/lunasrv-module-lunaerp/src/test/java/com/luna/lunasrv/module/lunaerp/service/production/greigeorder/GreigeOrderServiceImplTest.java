@@ -55,6 +55,7 @@ import static org.mockito.Mockito.when;
  *    编号查重排除自身、匹数人工值保留）
  *  - 04 票：颜色投胚分配（聚合保存删旧插新/重排 line_no、投胚需求重算口径
  *    成品量÷(1−损耗率)、行损耗缺省取主单、null 成品量按 0、详情嵌套返回、零颜色合法）
+ *  - 05 票：删除与收尾（删除级联逻辑删除主表与颜色行、删除不存在报错、软删编号不重用）
  *
  * 说明：分页查询条件在 Service 构造（对齐 sales-contract 模块），测试通过捕获 Wrapper
  * 断言 SQL 片段与参数；Lambda 列名解析需先初始化 MyBatis-Plus TableInfo 缓存（见 setUp）。
@@ -662,6 +663,50 @@ class GreigeOrderServiceImplTest {
         assertEquals(11L, colorVO.getId());
         assertEquals("大红", colorVO.getColor());
         assertEquals(new BigDecimal("526.32"), colorVO.getDemandQty());
+    }
+
+    // ==================== deleteGreigeOrder：删除与收尾（05 票） ====================
+
+    @Test
+    void deleteGreigeOrder_exists_cascadesMainAndColorRows() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919001"));
+
+        greigeOrderService.deleteGreigeOrder(1L);
+
+        // 主表与全部颜色行一并逻辑删除（颜色行随单聚合，ADR-0003）
+        verify(greigeOrderMapper).deleteById(1L);
+        verify(greigeOrderColorMapper).deleteByOrderId(1L);
+    }
+
+    @Test
+    void deleteGreigeOrder_notExists_throwsNotExists() {
+        when(greigeOrderMapper.selectById(404L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.deleteGreigeOrder(404L));
+        assertEquals(1_030_006_000, exception.getCode(), "删除目标不存在应报 GREIGE_ORDER_NOT_EXISTS");
+        verify(greigeOrderMapper, never()).deleteById(any(Long.class));
+        verify(greigeOrderColorMapper, never()).deleteByOrderId(any(Long.class));
+    }
+
+    @Test
+    void createGreigeOrder_afterDelete_nextNoSkipsDeletedNumber() {
+        // 软删不释放编号（ADR-0006）：当天唯一的单据 PB0919001 已删除，取号扫描含软删行，
+        // 新单应顺延为 PB0919002 而非重用 PB0919001
+        when(greigeOrderMapper.selectListByOrderNoPrefixIncludingDeleted("PB0919")).thenReturn(List.of(
+                greigeOrder(1L, "PB0919001") // 该行 deleted=1
+        ));
+        when(greigeOrderMapper.selectByOrderNoIncludingDeleted("PB0919002")).thenReturn(null);
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setOrderNo(null);
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        assertEquals("PB0919002", captor.getValue().getOrderNo(),
+                "软删编号不应被新单重用，自动号应顺延");
     }
 
     // ==================== 测试数据构造 ====================

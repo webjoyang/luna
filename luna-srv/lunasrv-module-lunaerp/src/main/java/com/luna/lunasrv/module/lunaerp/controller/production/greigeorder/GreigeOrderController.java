@@ -65,4 +65,13 @@ public class GreigeOrderController {
         return success(greigeOrderService.getNextGreigeOrderNo());
     }
 
+    @DeleteMapping("/delete")
+    @Operation(summary = "删除胚布单")
+    @Parameter(name = "id", description = "胚布单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:greige-order:delete')")
+    public CommonResult<Boolean> deleteGreigeOrder(@RequestParam("id") Long id) {
+        greigeOrderService.deleteGreigeOrder(id);
+        return success(true);
+    }
+
 }

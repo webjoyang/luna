@@ -56,7 +56,7 @@
           <DictTag :type="DICT_TYPE.LUNAERP_GREIGE_ORDER_STATUS" :value="row.status" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="130" align="center" fixed="right">
+      <el-table-column label="操作" width="170" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -73,6 +73,14 @@
             v-hasPermi="['lunaerp:production:greige-order:update']"
           >
             <Icon icon="ep:edit" class="mr-2px" />编辑
+          </el-button>
+          <el-button
+            link
+            type="danger"
+            @click="handleDelete(row.id)"
+            v-hasPermi="['lunaerp:production:greige-order:delete']"
+          >
+            <Icon icon="ep:delete" class="mr-2px" />删除
           </el-button>
         </template>
       </el-table-column>
@@ -98,6 +106,7 @@ import type { GreigeOrderVO } from '@/api/lunaerp-elmui/production/greige-order'
 defineOptions({ name: 'LunaerpElmuiProductionGreigeOrder' })
 
 const router = useRouter()
+const message = useMessage()
 
 const loading = ref(true)
 const total = ref(0)
@@ -152,6 +161,16 @@ const openEdit = (id?: number) => {
 /** 查看：同一表单页只读模式打开 */
 const openView = (id: number) => {
   router.push(`/production/greige-order/edit/${id}?mode=view`)
+}
+
+/** 删除：二次确认后级联逻辑删除主表与颜色行，成功后即时刷新列表 */
+const handleDelete = async (id: number) => {
+  try {
+    await message.delConfirm()
+    await GreigeOrderApi.deleteGreigeOrder(id)
+    message.success('删除成功')
+    await getList()
+  } catch {}
 }
 
 /** 初始化 */
