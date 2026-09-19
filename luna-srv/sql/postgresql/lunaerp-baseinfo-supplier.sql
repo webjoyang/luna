@@ -175,21 +175,25 @@ COMMENT ON COLUMN lunaerp_baseinfo_supplier_contact.tenant_id IS '租户编号';
 CREATE SEQUENCE IF NOT EXISTS lunaerp_baseinfo_supplier_contact_seq;
 
 -- =============================================================================
--- 6. 联系人菜单与按钮（system_menu，可重复执行）
---    10060 为隐藏菜单（type=2、visible='0'、无 component），仅作权限节点承载 query 权限；
---    10061-10063 为 create/update/delete 按钮节点。导航树不显示，角色管理可分配。
+-- 6. 联系人权限按钮（system_menu，可重复执行）
+--    10060 承载联系人 query 权限、10061-10063 为 create/update/delete，
+--    四个节点全部直接挂在 10050 供应商信息菜单下、type=3 按钮。
+--    侧边栏不渲染（type=3 不进前端路由树），角色管理菜单树中可勾选分配；
+--    平铺挂页面菜单也符合后端 validateParentMenu"按钮父级必须是目录/菜单"的约束。
+--    刻意不用 type=2 隐藏菜单：type=2 会被前端 generateRoute 生成子路由，
+--    叠加供应商信息菜单 always_show='1'，会把"供应商信息"渲染成带空展开箭头的父菜单。
 -- =============================================================================
 -- @formatter:off
 BEGIN;
 
 DELETE FROM system_menu WHERE id IN (10060, 10061, 10062, 10063);
 
--- 隐藏权限节点：供应商联系人（parent_id=10050 供应商信息，无 component 不生成路由）
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10060, '供应商联系人', 'lunaerp:baseinfo:supplier-contact:query', 2, 1, 10050, 'supplier-contact', '#', '', NULL, 0, '0', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
--- 按钮：联系人创建/修改/删除（query 权限挂在 10060 节点本身，与供应商菜单模式一致）
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10061, '供应商联系人创建', 'lunaerp:baseinfo:supplier-contact:create', 3, 1, 10060, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10062, '供应商联系人修改', 'lunaerp:baseinfo:supplier-contact:update', 3, 2, 10060, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10063, '供应商联系人删除', 'lunaerp:baseinfo:supplier-contact:delete', 3, 3, 10060, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
+-- 供应商联系人 query（type=3 不进路由树，不产生侧边栏子菜单；名称即角色树里的分组标识）
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10060, '供应商联系人', 'lunaerp:baseinfo:supplier-contact:query', 3, 10, 10050, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
+-- 按钮：联系人创建/修改/删除
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10061, '供应商联系人创建', 'lunaerp:baseinfo:supplier-contact:create', 3, 11, 10050, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10062, '供应商联系人修改', 'lunaerp:baseinfo:supplier-contact:update', 3, 12, 10050, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10063, '供应商联系人删除', 'lunaerp:baseinfo:supplier-contact:delete', 3, 13, 10050, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 
 COMMIT;
 -- @formatter:on

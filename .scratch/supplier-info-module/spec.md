@@ -171,8 +171,7 @@ Status: ready-for-agent
 
 - 10050 供应商信息菜单（type=2，parent_id=10000 基本信息，path `supplier`，icon `ep:shop`，component `lunaerp-elmui/baseinfo/supplier/index`，component_name `LunaerpElmuiBaseinfoSupplier`，query 权限挂菜单本身，sort 取客户之后）
 - 10051-10053 供应商 创建/修改/删除 按钮节点
-- 10060 供应商联系人隐藏权限节点（type=2、visible='0'、无 component，挂在 10050 下）
-- 10061-10063 供应商联系人 创建/修改/删除 按钮节点
+- 10060-10063 供应商联系人 query/创建/修改/删除 四个按钮节点（type=3、path/component 为空，全部平铺直接挂在 10050 下；type=3 不进前端路由树，不会把供应商信息菜单变成带子菜单的父菜单；2026-09-19 由原"10060 type=2 隐藏节点 + 按钮挂其下"方案修正，见 issue 04）
 - system_dict_type id 2220；system_dict_data id 3550-3567（18 项）
 
 ### SQL 脚本

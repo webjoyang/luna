@@ -217,21 +217,25 @@ COMMENT ON COLUMN lunaerp_baseinfo_customer_contact.tenant_id IS '租户编号';
 CREATE SEQUENCE IF NOT EXISTS lunaerp_baseinfo_customer_contact_seq;
 
 -- =============================================================================
--- 6. 联系人菜单与按钮（system_menu，可重复执行）
---    10040 为隐藏菜单（type=2、visible='0'、无 component），仅作权限节点承载 query 权限；
---    10041-10043 为 create/update/delete 按钮节点。导航树不显示，角色管理可分配。
+-- 6. 联系人权限按钮（system_menu，可重复执行）
+--    10040 承载联系人 query 权限、10041-10043 为 create/update/delete，
+--    四个节点全部直接挂在 10030 客户信息菜单下、type=3 按钮。
+--    侧边栏不渲染（type=3 不进前端路由树），角色管理菜单树中可勾选分配；
+--    平铺挂页面菜单也符合后端 validateParentMenu"按钮父级必须是目录/菜单"的约束。
+--    刻意不用 type=2 隐藏菜单：type=2 会被前端 generateRoute 生成子路由，
+--    叠加客户信息菜单 always_show='1'，会把"客户信息"渲染成带空展开箭头的父菜单。
 -- =============================================================================
 -- @formatter:off
 BEGIN;
 
 DELETE FROM system_menu WHERE id IN (10040, 10041, 10042, 10043);
 
--- 隐藏权限节点：客户联系人（parent_id=10030 客户信息，无 component 不生成路由）
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10040, '客户联系人', 'lunaerp:baseinfo:customer-contact:query', 2, 1, 10030, 'customer-contact', '#', '', NULL, 0, '0', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
--- 按钮：联系人创建/修改/删除（query 权限挂在 10040 节点本身，与客户菜单模式一致）
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10041, '客户联系人创建', 'lunaerp:baseinfo:customer-contact:create', 3, 1, 10040, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10042, '客户联系人修改', 'lunaerp:baseinfo:customer-contact:update', 3, 2, 10040, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10043, '客户联系人删除', 'lunaerp:baseinfo:customer-contact:delete', 3, 3, 10040, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+-- 客户联系人 query（type=3 不进路由树，不产生侧边栏子菜单；名称即角色树里的分组标识）
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10040, '客户联系人', 'lunaerp:baseinfo:customer-contact:query', 3, 10, 10030, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+-- 按钮：联系人创建/修改/删除
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10041, '客户联系人创建', 'lunaerp:baseinfo:customer-contact:create', 3, 11, 10030, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10042, '客户联系人修改', 'lunaerp:baseinfo:customer-contact:update', 3, 12, 10030, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10043, '客户联系人删除', 'lunaerp:baseinfo:customer-contact:delete', 3, 13, 10030, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
 
 COMMIT;
 -- @formatter:on

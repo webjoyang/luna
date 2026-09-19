@@ -176,8 +176,7 @@ lunaerp 段位全表：`1-030-001-xxx` 产品 / `1-030-002-xxx` 胚布品种（`
 3. `system_menu` 事务性 INSERT（先 DELETE 再 INSERT，可重复执行）：
    - 10030 客户信息菜单（type=2，parent_id=10000，component=`lunaerp-elmui/baseinfo/customer/index`，component_name=`LunaerpElmuiBaseinfoCustomer`，icon=`ep:office-building`）
    - 10031-10033 customer 按钮（query/create/update/delete 三个）
-   - 10040 customer-contact 隐藏菜单（type=2，visible='0'，作为权限节点用）
-   - 10041-10043 customer-contact 按钮
+   - 10040-10043 customer-contact query/创建/修改/删除 四个按钮节点（type=3、path/component 为空，全部平铺直接挂 10030；2026-09-19 由"10040 type=2 隐藏菜单"修正——type=2 会被前端生成子路由，叠加父菜单 always_show 把客户信息渲染成空展开父菜单，见供应商 issue 04）
 4. `system_dict_type` + `system_dict_data` INSERT：5 个字典 type，每个 type 配初始枚举值（ID 段建议 11000+）
 
 ### 软删除与状态机
