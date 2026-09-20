@@ -466,5 +466,8 @@ export enum DICT_TYPE {
   LUNAERP_GREIGE_ORDER_STATUS = 'lunaerp_greige_order_status', // 胚布单状态
 
   // ========== LunaERP - 生产管理-染色单模块 ==========
-  LUNAERP_DYEING_ORDER_STATUS = 'lunaerp_dyeing_order_status' // 染色单状态
+  LUNAERP_DYEING_ORDER_STATUS = 'lunaerp_dyeing_order_status', // 染色单状态
+
+  // ========== LunaERP - 生产管理-纱线采购单模块 ==========
+  LUNAERP_YARN_ORDER_STATUS = 'lunaerp_yarn_order_status' // 纱线采购单状态
 }

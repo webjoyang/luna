@@ -544,6 +544,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/production/yarn-recipe-bom'
         }
+      },
+      {
+        path: 'yarn-order/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/production/yarn-order/workspace/index.vue'),
+        name: 'LunaerpElmuiProductionYarnOrderWorkspace',
+        meta: {
+          title: '纱线采购单工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/production/yarn-order'
+        }
       }
     ]
   },
