@@ -79,11 +79,12 @@ class YarnOrderServiceImplTest {
     // ==================== calculate 测算测试 ====================
 
     @Test
-    void calculate_emptyGreigeOrderIds_throwsException() {
+    void calculate_emptyGreigeOrderIds_throws1030009004() {
         YarnOrderCalculateReqVO req = new YarnOrderCalculateReqVO();
         req.setGreigeOrderIds(Collections.emptyList());
 
-        assertThrows(Exception.class, () -> yarnOrderService.calculateYarnOrder(req));
+        ServiceException ex = assertThrows(ServiceException.class, () -> yarnOrderService.calculateYarnOrder(req));
+        assertEquals(1_030_009_004, ex.getCode());
     }
 
     @Test

@@ -158,6 +158,7 @@ public class YarnOrderServiceImpl implements YarnOrderService {
         // 5. 更新主表
         YarnOrderDO order = BeanUtils.toBean(updateReqVO, YarnOrderDO.class);
         order.setOrderNo(orderNo);
+        order.setStatus(existing.getStatus()); // 状态流转必须走专有生命周期方法，不允许通过 update 直接变更
         yarnOrderMapper.updateById(order);
 
         // 6. 明细整体替换
@@ -177,6 +178,46 @@ public class YarnOrderServiceImpl implements YarnOrderService {
         }
         yarnOrderMapper.deleteById(id);
         yarnOrderItemMapper.deleteByOrderId(id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void effectYarnOrder(Long id) {
+        YarnOrderDO existing = yarnOrderMapper.selectById(id);
+        if (existing == null) {
+            throw exception(YARN_ORDER_NOT_EXISTS);
+        }
+        if (!STATUS_DRAFT.equals(existing.getStatus())) {
+            throw exception(YARN_ORDER_STATUS_NOT_ALLOWED);
+        }
+        yarnOrderMapper.updateById(new YarnOrderDO().setId(id).setStatus(STATUS_ACTIVE));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void completeYarnOrder(Long id) {
+        YarnOrderDO existing = yarnOrderMapper.selectById(id);
+        if (existing == null) {
+            throw exception(YARN_ORDER_NOT_EXISTS);
+        }
+        if (!STATUS_ACTIVE.equals(existing.getStatus())) {
+            throw exception(YARN_ORDER_STATUS_NOT_ALLOWED);
+        }
+        yarnOrderMapper.updateById(new YarnOrderDO().setId(id).setStatus(STATUS_COMPLETED));
+        // Issue 06 将在此处添加自动写入库存台账逻辑
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelYarnOrder(Long id) {
+        YarnOrderDO existing = yarnOrderMapper.selectById(id);
+        if (existing == null) {
+            throw exception(YARN_ORDER_NOT_EXISTS);
+        }
+        if (!STATUS_ACTIVE.equals(existing.getStatus())) {
+            throw exception(YARN_ORDER_STATUS_NOT_ALLOWED);
+        }
+        yarnOrderMapper.updateById(new YarnOrderDO().setId(id).setStatus(STATUS_CANCELLED));
     }
 
     @Override
@@ -234,7 +275,12 @@ public class YarnOrderServiceImpl implements YarnOrderService {
                 w.apply("LOWER(order_no) LIKE LOWER({0})", "%" + keyword + "%");
                 if (CollUtil.isNotEmpty(matchingGreige)) {
                     for (GreigeOrderDO g : matchingGreige) {
-                        w.or().apply("source_instructions LIKE {0}", "%" + g.getId() + "%");
+                        String idStr = String.valueOf(g.getId());
+                        w.or().apply("(source_instructions LIKE {0} OR source_instructions LIKE {1} OR source_instructions LIKE {2} OR source_instructions LIKE {3})",
+                                "%[" + idStr + "]%",
+                                "%[" + idStr + ",%",
+                                "%," + idStr + ",%",
+                                "%," + idStr + "]%");
                     }
                 }
             });
@@ -270,59 +316,10 @@ public class YarnOrderServiceImpl implements YarnOrderService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void effectYarnOrder(Long id) {
-        YarnOrderDO existing = yarnOrderMapper.selectById(id);
-        if (existing == null) {
-            throw exception(YARN_ORDER_NOT_EXISTS);
-        }
-        if (!STATUS_DRAFT.equals(existing.getStatus())) {
-            throw exception(YARN_ORDER_STATUS_NOT_ALLOWED);
-        }
-        YarnOrderDO update = new YarnOrderDO();
-        update.setId(id);
-        update.setStatus(STATUS_ACTIVE);
-        yarnOrderMapper.updateById(update);
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void completeYarnOrder(Long id) {
-        YarnOrderDO existing = yarnOrderMapper.selectById(id);
-        if (existing == null) {
-            throw exception(YARN_ORDER_NOT_EXISTS);
-        }
-        if (!STATUS_ACTIVE.equals(existing.getStatus())) {
-            throw exception(YARN_ORDER_STATUS_NOT_ALLOWED);
-        }
-        YarnOrderDO update = new YarnOrderDO();
-        update.setId(id);
-        update.setStatus(STATUS_COMPLETED);
-        yarnOrderMapper.updateById(update);
-        // Issue 06 将在此处添加自动写入库存台账逻辑
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void cancelYarnOrder(Long id) {
-        YarnOrderDO existing = yarnOrderMapper.selectById(id);
-        if (existing == null) {
-            throw exception(YARN_ORDER_NOT_EXISTS);
-        }
-        if (!STATUS_ACTIVE.equals(existing.getStatus())) {
-            throw exception(YARN_ORDER_STATUS_NOT_ALLOWED);
-        }
-        YarnOrderDO update = new YarnOrderDO();
-        update.setId(id);
-        update.setStatus(STATUS_CANCELLED);
-        yarnOrderMapper.updateById(update);
-    }
-
-    @Override
     public YarnOrderCalculateRespVO calculateYarnOrder(YarnOrderCalculateReqVO calculateReqVO) {
         List<Long> greigeOrderIds = calculateReqVO.getGreigeOrderIds();
         if (CollUtil.isEmpty(greigeOrderIds)) {
-            throw new IllegalArgumentException("请至少选择一张胚布指示单");
+            throw exception(YARN_ORDER_GREIGE_ORDERS_EMPTY);
         }
 
         // 1. 校验胚布单存在、有产品ID、有配比BOM
@@ -346,17 +343,9 @@ public class YarnOrderServiceImpl implements YarnOrderService {
         }
 
         // 2. 组装选中胚布单快照
-        List<YarnOrderCalculateGreigeOrderRespVO> sourceGreigeOrders = greigeOrders.stream().map(g -> {
-            YarnOrderCalculateGreigeOrderRespVO vo = new YarnOrderCalculateGreigeOrderRespVO();
-            vo.setId(g.getId());
-            vo.setOrderNo(g.getOrderNo());
-            vo.setProductId(g.getProductId());
-            vo.setProductCode(g.getProductCode());
-            vo.setProductName(g.getProductName());
-            vo.setFinishedQty(g.getFinishedQty());
-            vo.setSuggestedLoss(g.getSuggestedLoss());
-            return vo;
-        }).collect(Collectors.toList());
+        List<YarnOrderCalculateGreigeOrderRespVO> sourceGreigeOrders = greigeOrders.stream()
+                .map(this::buildGreigeOrderSnapshot)
+                .collect(Collectors.toList());
 
         // 3. 按 yarn_spec_id 合并多单多 BOM 明细需求 baseQty
         Map<Long, BigDecimal> baseQtyMap = new LinkedHashMap<>();
@@ -546,17 +535,9 @@ public class YarnOrderServiceImpl implements YarnOrderService {
         if (CollUtil.isNotEmpty(greigeOrderIds)) {
             List<GreigeOrderDO> greigeOrders = greigeOrderMapper.selectBatchIds(greigeOrderIds);
             if (CollUtil.isNotEmpty(greigeOrders)) {
-                List<YarnOrderCalculateGreigeOrderRespVO> snapshots = greigeOrders.stream().map(g -> {
-                    YarnOrderCalculateGreigeOrderRespVO vo = new YarnOrderCalculateGreigeOrderRespVO();
-                    vo.setId(g.getId());
-                    vo.setOrderNo(g.getOrderNo());
-                    vo.setProductId(g.getProductId());
-                    vo.setProductCode(g.getProductCode());
-                    vo.setProductName(g.getProductName());
-                    vo.setFinishedQty(g.getFinishedQty());
-                    vo.setSuggestedLoss(g.getSuggestedLoss());
-                    return vo;
-                }).collect(Collectors.toList());
+                List<YarnOrderCalculateGreigeOrderRespVO> snapshots = greigeOrders.stream()
+                        .map(this::buildGreigeOrderSnapshot)
+                        .collect(Collectors.toList());
                 resp.setSourceGreigeOrders(snapshots);
 
                 String nos = greigeOrders.stream()
@@ -566,6 +547,18 @@ public class YarnOrderServiceImpl implements YarnOrderService {
                 resp.setSourceGreigeOrderNos(nos);
             }
         }
+    }
+
+    private YarnOrderCalculateGreigeOrderRespVO buildGreigeOrderSnapshot(GreigeOrderDO g) {
+        YarnOrderCalculateGreigeOrderRespVO vo = new YarnOrderCalculateGreigeOrderRespVO();
+        vo.setId(g.getId());
+        vo.setOrderNo(g.getOrderNo());
+        vo.setProductId(g.getProductId());
+        vo.setProductCode(g.getProductCode());
+        vo.setProductName(g.getProductName());
+        vo.setFinishedQty(g.getFinishedQty());
+        vo.setSuggestedLoss(g.getSuggestedLoss());
+        return vo;
     }
 
     private String generateOrderNoWithRetry(LocalDate orderDate) {

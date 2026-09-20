@@ -67,5 +67,6 @@ public interface ErrorCodeConstants {
     ErrorCode YARN_ORDER_NO_DUPLICATE = new ErrorCode(1_030_009_001, "纱线采购单号【{}】已存在");
     ErrorCode YARN_ORDER_STATUS_NOT_ALLOWED = new ErrorCode(1_030_009_002, "当前状态不允许该操作");
     ErrorCode YARN_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_009_003, "关联的{}不存在或不可用");
+    ErrorCode YARN_ORDER_GREIGE_ORDERS_EMPTY = new ErrorCode(1_030_009_004, "请至少选择一张胚布指示单");
 
 }

@@ -21,7 +21,7 @@ public interface YarnOrderItemMapper extends BaseMapperX<YarnOrderItemDO> {
     default List<YarnOrderItemDO> selectListByOrderId(Long orderId) {
         return selectList(new LambdaQueryWrapperX<YarnOrderItemDO>()
                 .eq(YarnOrderItemDO::getOrderId, orderId)
-                .orderByAsc(YarnOrderItemDO::getId));
+                .orderByAsc(YarnOrderItemDO::getYarnSpecId));
     }
 
     default int deleteByOrderId(Long orderId) {
