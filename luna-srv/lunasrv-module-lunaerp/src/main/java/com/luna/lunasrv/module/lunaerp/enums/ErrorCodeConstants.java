@@ -11,6 +11,9 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-004-xxx 段（客户，customer 与 customer-contact 共用）
  *                  与 1-030-005-xxx 段（供应商，supplier 与 supplier-contact 共用）
  *                  与 1-030-006-xxx 段（胚布单，主表与颜色行共用）
+ *                  与 1-030-007-xxx 段（染色单，主表与颜色明细共用）
+ *                  与 1-030-008-xxx 段（纱线档案：材质+规格+配比BOM+库存台账共用）
+ *                  与 1-030-009-xxx 段（纱线采购单：主表+明细共用）
  */
 public interface ErrorCodeConstants {
 
@@ -48,5 +51,20 @@ public interface ErrorCodeConstants {
     ErrorCode DYEING_ORDER_NOT_EXISTS = new ErrorCode(1_030_007_000, "染色单不存在");
     ErrorCode DYEING_ORDER_STATUS_NOT_ALLOWED = new ErrorCode(1_030_007_001, "当前状态不允许该操作");
     ErrorCode DYEING_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_007_002, "关联的{}不存在或不可用");
+
+    // ========== 纱线档案模块 1-030-008-000（材质+规格+配比BOM+库存台账共用） ==========
+    ErrorCode YARN_TYPE_NOT_EXISTS = new ErrorCode(1_030_008_000, "纱线材质不存在");
+    ErrorCode YARN_TYPE_NAME_DUPLICATE = new ErrorCode(1_030_008_001, "纱线材质名【{}】已存在");
+    ErrorCode YARN_SPEC_NOT_EXISTS = new ErrorCode(1_030_008_002, "纱线规格不存在");
+    ErrorCode YARN_SPEC_NAME_DUPLICATE = new ErrorCode(1_030_008_003, "纱线规格【{}】已存在");
+    ErrorCode YARN_RECIPE_BOM_NOT_EXISTS = new ErrorCode(1_030_008_004, "纱线配比BOM不存在");
+    ErrorCode YARN_RECIPE_BOM_ITEM_NOT_EXISTS = new ErrorCode(1_030_008_005, "纱线配比BOM明细不存在");
+    ErrorCode STOCK_LEDGER_NOT_EXISTS = new ErrorCode(1_030_008_006, "库存台账记录不存在");
+
+    // ========== 纱线采购单模块 1-030-009-000（主表+明细共用） ==========
+    ErrorCode YARN_ORDER_NOT_EXISTS = new ErrorCode(1_030_009_000, "纱线采购单不存在");
+    ErrorCode YARN_ORDER_NO_DUPLICATE = new ErrorCode(1_030_009_001, "纱线采购单号【{}】已存在");
+    ErrorCode YARN_ORDER_STATUS_NOT_ALLOWED = new ErrorCode(1_030_009_002, "当前状态不允许该操作");
+    ErrorCode YARN_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_009_003, "关联的{}不存在或不可用");
 
 }

@@ -111,6 +111,50 @@ _避免_：颜色明细（口语）、colors（旧系统 JSON 字段名）。
 **染色单状态 (DyeingOrderStatus)**：
 四态：`DRAFT` 草稿（缺省）/ `ACTIVE` 进行中 / `COMPLETED` 已完成 / `CANCELLED` 已取消。比销售合同/胚布单多一个 `DRAFT` 态，因为染色单业务上存在"先打草稿反复确认、再下达给染厂"的形态，这是与合同/胚布单的刻意不一致。保存时默认为草稿，点"下达"转 ACTIVE；编辑页可手动切换 COMPLETED/CANCELLED。
 
+## 生产管理：纱线采购
+
+**纱线材质 (YarnType)**：
+纱线按材质类型归档的第一级主数据，是纱线规格的父级。`lunaerp_production_yarn_type` 主表仅含 name/sort/status + 框架列，seed 7 项：棉/涤/人棉/氨纶/锦纶/粘胶/混纺。**材质类型不入字典**（数量稳定、枚举式直接 seed 表，见 ADR-0011）。
+_避免_：纱线类型、YarnCategory（旧系统术语保留追溯）。
+
+**纱线规格 (YarnSpec)**：
+具体可采购的纱线规格，挂在材质之下，是采购明细行直接关联的实体。`lunaerp_production_yarn_spec` 子表含 yarn_type_id 关联 + spec_name（如"32S 棉"）+ spin_method（纺纱工艺）+ luster（光泽）+ standard_name（标准名称，唯一索引 [tenant_id, yarn_type_id, standard_name]）+ ref_price（参考单价）+ remark/status。**ref_price 是测算时历史价回填的兜底来源**（ADR-0011）。
+
+**纱线配比 BOM (YarnRecipeBom)**：
+某产品品种生产时所需的纱线配比清单，是纱线需求量测算的**唯一权威源**。`lunaerp_production_yarn_recipe_bom` 主表通过 product_id 强关联产品档案（含 product_code/product_name 快照），明细表 `lunaerp_production_yarn_recipe_bom_item` 含 yarn_type_id + yarn_spec_id + ratio（**百分比数字，49 = 49%**）+ spin_method + remark + ref_price。
+_避免_：复用产品档案 yarn_specs 字段（旧系统方案，已废弃，见 ADR-0011）。配比权威源独立成表是因为配比与产品档案生命周期不同，且需单独维护与版本化。
+
+**纱线采购单 (YarnOrder)**：
+向纱线供应商下达的纱线采购委托单，记载一批胚布指示单共同驱动的纱线采购需求。`lunaerp_production_yarn_order` 主表通过 `source_instructions`（Text JSON 数组）关联多张胚布指示单 ID，多供应商挂在明细行（不在主表），含 order_date/delivery_date/loss_rate（**百分比数字，5 = 5%**）/status/remark。命名 `yarnorder`（不使用 yarnpurchase，见用户决策）。
+_避免_：纱线采购指令、YarnPurchase（命名已纠正）。
+
+**纱线采购明细 (YarnOrderItem)**：
+采购单中按纱线规格逐行展开的采购条目。`lunaerp_production_yarn_order_item` 明细表关联 yarn_type_id + yarn_spec_id + supplier_id（多供应商挂在明细行 + 公司名快照），含三量字段 `required_qty`/`stock_qty`/`purchase_qty`（需求量/在库量/实采量）+ ratio（百分比数字）+ loss_rate（百分比数字）+ base_qty（基础量）+ unit_price + total_amount + ref_unit_price（历史价回填）+ remark。**无 line_no 行号字段**（用户决策）。明细随主表聚合保存、级联逻辑删除（同 ADR-0003 模式）。
+
+**纱线采购单号 (YarnOrderNo)**：
+形如 `YP20260920001`：`YP` + 年月日 + 3 位日流水（超 999 自然扩位），**按天取号**，租户内全量唯一、软删不释放（仿胚布单 ADR-0006 模式）。新建缺省由服务端生成、也可手填（撞号报错）。
+
+**纱线采购单状态 (YarnOrderStatus)**：
+四态：`DRAFT` 草稿（缺省）/ `ACTIVE` 进行中 / `COMPLETED` 已完成 / `CANCELLED` 已取消，仿染色单 ADR-0008。完成（ACTIVE→COMPLETED）时后端自动写一条 STOCK_IN 台账记录采购入库，是采购单与库存台账的联动接缝（ADR-0012）。MVP 无审批流。
+
+**纱线库存台账 (StockLedger)**：
+所有纱线库存变动的单式流水台账，`lunaerp_production_stock_ledger` 单表含 yarn_spec_id + type（枚举 STOCK_IN/STOCK_OUT/PROCESS_IN/PROCESS_OUT）+ quantity（正负值，STOCK_IN 为正）+ related_doc_type/related_doc_id（关联单据类型与 ID，如 yarn_order）+ batch_no + remark。**MVP 实际只用 STOCK_IN**（采购单完成自动写入），其余类型为未来扩展占位。**去掉 source_location/target_location 两列**（MVP 无库位概念，ADR-0012）。余额查询 = 按 yarn_spec_id 聚合 SUM(quantity)。
+_避免_：纱线库存表（旧系统 StockLedger 单一类型枚举）；仓库/库位概念。
+
+**测算口径 (Yarn demand calculation)**：
+按"勾选胚布指示单 → 查 yarn_recipe_bom 拿配比 → 按纱线规格合并多单需求 → 查 StockLedger 拿在库量 → 算实采量"的核心业务流测算。算法：
+- `baseQty = Σ(胚布单成品量 × ratio/100)`，按 yarn_spec_id 合并多张胚布单
+- `requiredQty = baseQty × (1 + lossRate/100)`（lossRate 为百分比数字 5 = 5%）
+- `purchaseQty = max(0, requiredQty - stockQty)`
+- `totalAmount = unitPrice × purchaseQty`（金额服务端权威重算）
+
+**与胚布单 loss_rate 小数+除法公式刻意不一致**：胚布单用 `demand_qty = finished_qty ÷ (1 - loss_rate)`（loss_rate 为小数 0.05 = 5%）。这是两个单据业务语义不同（胚布单是投胚需求折算、纱线采购单是含损耗的采购量），刻意不一致（ADR-0010）。
+
+测算接口为后端 `POST /admin-api/lunaerp/production/yarn-order/calculate`，前端只展示结果不做计算（ADR-0010）。
+
+**入库来源 (StockInSource)**：
+采购单 ACTIVE→COMPLETED 时后端自动写一条 STOCK_IN 台账，related_doc_type='yarn_order'、related_doc_id=采购单 ID、quantity=该采购单全部明细 purchase_qty 之和（按 yarn_spec_id 拆分多行）。**不做独立"纱线入库单"流程**（用户决策，ADR-0012）。
+
 ## 状态与生命周期
 
 **客户状态 (Status)**：
@@ -134,6 +178,8 @@ _避免_：颜色明细（口语）、colors（旧系统 JSON 字段名）。
 
 胚布单落在 `production`（生产管理）子包，与 `baseinfo` / `business` 平级：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.greigeorder[.color]`，前端 `lunaerp-elmui/production/greige-order/`（视图与 API 目录镜像）。
 
+纱线采购域同样落在 `production` 子包下，新增 5 个并列子包：`production.yarntype`（材质 CRUD，无字典）、`production.yarnspec`（规格 CRUD + cascade-options 两级级联数据源）、`production.yarnrecipebom`（配比 BOM 主从表 CRUD + get-by-product-id）、`production.stockledger`（库存台账仅余额查询，无 CRUD 端点）、`production.yarnorder`（采购单主从表 CRUD + 状态操作 + calculate 测算接口 + 完成时自动写 STOCK_IN）。前端视图 `lunaerp-elmui/production/yarn-master/`（材质+规格合并管理页）、`yarn-recipe-bom/`（配比 BOM 管理页）、`yarn-order/`（采购单列表+编辑页）。URL 前缀 `/admin-api/lunaerp/production/{yarn-type|yarn-spec|yarn-recipe-bom|yarn-order}`、`/admin-api/lunaerp/production/yarn-stock/balance`，权限码前缀 `lunaerp:production:<子域>:`。详见 ADR-0011。
+
 供应商与客户同落 `baseinfo` 子包：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.baseinfo.supplier[.suppliercontact]`；前端视图 `luna-ui/src/views/lunaerp-elmui/baseinfo/supplier/`、前端 API `luna-ui/src/api/lunaerp-elmui/baseinfo/supplier/`（含 supplier-contact）。URL 前缀 `/admin-api/lunaerp/baseinfo/supplier[-contact]`，权限码前缀 `lunaerp:baseinfo:supplier[-contact]:`。
 
 **租户 (Tenant)**：
@@ -156,8 +202,11 @@ _避免_：颜色明细（口语）、colors（旧系统 JSON 字段名）。
 **供应商字典 (Supplier dictionaries)**：
 供应商枚举字段走 `system_dict_*`，前缀 `lunaerp_supplier_`：MVP 仅 `lunaerp_supplier_type`（18 项经营类别，见 `供应商类型`）。状态 ACTIVE/INACTIVE 不建字典，与客户一致。
 
+**纱线采购域字典 (Yarn domain dictionaries)**：
+纱线采购域只建一个字典：`lunaerp_yarn_order_status`（DRAFT/ACTIVE/COMPLETED/CANCELLED，仿染色单）。**纱线材质不入字典**（直接 seed 表，见 ADR-0011）。纱线规格的 spin_method/luster 等均为自由文本不建字典。库存台账 type 枚举不入字典（仅后端服务内部使用）。
+
 ## 错误码
 
-**错误码段位全表**：`1-030-001-xxx` 产品、`1-030-002-xxx` 胚布品种（`GreigeErrorCodeConstants`，随产品模块迁移先行占用）、`1-030-003-xxx` 销售合同（主表与明细共用）、`1-030-004-xxx` 客户（customer 与 customer-contact 共用）、`1-030-005-xxx` 供应商（supplier 与 supplier-contact 共用：000 供应商不存在 / 001 供应商编号重复 / 002 供应商联系人不存在）、`1-030-006-xxx` 胚布单（主表与颜色分配共用：000 胚布单不存在 / 001 胚布单号重复 / 002 关联引用不存在）、`1-030-007-xxx` 染色单（主表与颜色明细共用：000 染色单不存在 / 001 状态不允许该操作 / 002 关联引用不存在）。
+**错误码段位全表**：`1-030-001-xxx` 产品、`1-030-002-xxx` 胚布品种（`GreigeErrorCodeConstants`，随产品模块迁移先行占用）、`1-030-003-xxx` 销售合同（主表与明细共用）、`1-030-004-xxx` 客户（customer 与 customer-contact 共用）、`1-030-005-xxx` 供应商（supplier 与 supplier-contact 共用：000 供应商不存在 / 001 供应商编号重复 / 002 供应商联系人不存在）、`1-030-006-xxx` 胚布单（主表与颜色分配共用：000 胚布单不存在 / 001 胚布单号重复 / 002 关联引用不存在）、`1-030-007-xxx` 染色单（主表与颜色明细共用：000 染色单不存在 / 001 状态不允许该操作 / 002 关联引用不存在）、`1-030-008-xxx` 纱线档案（材质+规格+配比BOM+库存台账共用：000 材质不存在 / 001 材质名重复 / 002 规格不存在 / 003 规格名重复 / 004 配比BOM不存在 / 005 配比BOM明细不存在 / 006 库存台账不存在）、`1-030-009-xxx` 纱线采购单（主表+明细共用：000 采购单不存在 / 001 采购单号重复 / 002 状态不允许该操作 / 003 关联引用不存在）。
 
 客户最初设计误记为 002 段，落地时发现与胚布品种整段重号，因胚布品种已随主线先行上线，客户（后开发模块）改用 004 段。胚布单设计时误记 005 段空闲，落地前核实发现供应商已占用 005 段，胚布单顺延为 006 段。
