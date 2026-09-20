@@ -225,19 +225,11 @@
         </div>
       </template>
 
-      <!-- 状态提示 -->
+      <!-- 已完成态入库提示 -->
       <el-alert
         v-if="formData.status === 'COMPLETED'"
-        :title="`该采购单已完成，已自动写入库存台账入库记录（共 ${formData.items.length} 条规格记录）`"
+        :title="`该采购单已完成，已自动写入库存台账入库记录（共 ${distinctSpecCount} 条规格记录）`"
         type="success"
-        show-icon
-        :closable="false"
-        class="mb-15px"
-      />
-      <el-alert
-        v-else-if="formData.status === 'CANCELLED'"
-        title="该采购单已取消，未生成库存入库记录"
-        type="info"
         show-icon
         :closable="false"
         class="mb-15px"
@@ -449,6 +441,10 @@ const totalPurchaseQty = computed(() => {
 
 const totalAmount = computed(() => {
   return formData.items.reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0)
+})
+
+const distinctSpecCount = computed(() => {
+  return new Set(formData.items.map(item => item.yarnSpecId).filter(Boolean)).size
 })
 
 // 单价/实采量改动时前端实时重算该行金额

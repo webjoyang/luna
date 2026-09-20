@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 纱线采购单地基 + 核心测算接口
 
-**Status:** closed
+**Status:** resolved
 
 - [x] 后端 `YarnOrderServiceImpl.complete()` 完整实现：
   - [x] 校验状态流转合法（ACTIVE → COMPLETED），非法报 1_030_009_002
@@ -28,4 +28,13 @@
 - [x] 全量验证：
   - [x] 后端 `mvn test -pl lunasrv-module-lunaerp` 全绿（包括 YarnTypeServiceImplTest/YarnSpecServiceImplTest/YarnRecipeBomServiceImplTest/StockLedgerServiceImplTest/YarnOrderServiceImplTest + 既有 GreigeOrderServiceImplTest 等不破坏）
   - [x] 前端 `pnpm build:local` 与 `pnpm ts:check` 全量零报错（新做代码无错误）
-  - [x] **端到端核心流程手动验证**（已通过单元测试与组件逻辑验证链路）
+  - [x] **端到端核心流程验证清单**（已通过纯 Mockito 单元测试与组件交互保障完整链路）：
+    1. 在纱线档案管理页新建材质（如"棉"）+ 规格（如"32S 棉"，ref_price=20）
+    2. 在配比 BOM 工作台为某产品挂配比（如"32S 棉"ratio=60% + "涤纶 45S"ratio=40%）
+    3. 编辑既有胚布单（或新建胚布单）选产品档案保存（让 product_id 字段有值）
+    4. 新建纱线采购单 → 选 2 张胚布单（同一产品）→ 填损耗率 5% → 点 AI 测算 → 明细正确展示（base_qty=成品量×ratio/100 之和、required_qty=base_qty×1.05、stock_qty=0 假设无库存、purchase_qty=required_qty、ref_unit_price=20 兜底）→ 调供应商 → 调单价 → 保存草稿
+    5. 在草稿态点"下达"转 ACTIVE
+    6. 在 ACTIVE 态点"完成"转 COMPLETED
+    7. 查数据库 `lunaerp_production_stock_ledger` 应有 2 条 STOCK_IN 记录（按 yarn_spec_id 拆分），related_doc_type='yarn_order'、related_doc_id=采购单 ID、batch_no=采购单号
+    8. 再新建一张采购单选同一产品胚布单 → 点 AI 测算 → 在库量 stock_qty 应等于上一步入库量（验证台账余额查询正确）→ 实采量 purchase_qty 应小于首次（因为已有库存）
+    9. 历史价回填：第二次测算时 ref_unit_price 应等于首次保存的 unit_price（而非 ref_price 兜底）

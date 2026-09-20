@@ -57,6 +57,9 @@ public class YarnOrderServiceImpl implements YarnOrderService {
     private static final String STATUS_COMPLETED = "COMPLETED";
     private static final String STATUS_CANCELLED = "CANCELLED";
 
+    private static final String RELATED_DOC_TYPE_YARN_ORDER = "yarn_order";
+    private static final String STOCK_IN_REMARK_AUTO = "采购单完成自动入库";
+
     private static final String ORDER_NO_PREFIX = "YP";
     private static final int NO_MIN_DIGITS = 3;
     private static final int MAX_GENERATE_RETRY = 5;
@@ -206,7 +209,7 @@ public class YarnOrderServiceImpl implements YarnOrderService {
         yarnOrderMapper.updateById(new YarnOrderDO().setId(id).setStatus(STATUS_COMPLETED));
 
         // 幂等检查：存在则跳过写入（防止重复入库）
-        if (!stockLedgerService.existsByRelatedDoc("yarn_order", id)) {
+        if (!stockLedgerService.existsByRelatedDoc(RELATED_DOC_TYPE_YARN_ORDER, id)) {
             List<YarnOrderItemDO> items = yarnOrderItemMapper.selectListByOrderId(id);
             if (CollUtil.isNotEmpty(items)) {
                 // 按 yarn_spec_id 聚合求和 purchase_qty（应对同规格多行情况）
@@ -221,10 +224,10 @@ public class YarnOrderServiceImpl implements YarnOrderService {
                     stockLedgerService.writeStockIn(
                             entry.getKey(),
                             entry.getValue(),
-                            "yarn_order",
+                            RELATED_DOC_TYPE_YARN_ORDER,
                             existing.getId(),
                             existing.getOrderNo(),
-                            "采购单完成自动入库"
+                            STOCK_IN_REMARK_AUTO
                     );
                 }
             }
