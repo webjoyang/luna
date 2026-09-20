@@ -532,6 +532,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/production/dyeing-order'
         }
+      },
+      {
+        path: 'yarn-recipe-bom/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/production/yarn-recipe-bom/workspace/index.vue'),
+        name: 'LunaerpElmuiProductionYarnRecipeBomWorkspace',
+        meta: {
+          title: '纱线配比BOM工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/production/yarn-recipe-bom'
+        }
       }
     ]
   },
