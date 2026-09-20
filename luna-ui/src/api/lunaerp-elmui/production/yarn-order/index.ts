@@ -129,50 +129,50 @@ export interface YarnOrderCalculateRespVO {
 
 // 获得采购单分页
 export const getYarnOrderPage = (params: YarnOrderPageReqVO) => {
-  return request.get({ url: '/admin-api/lunaerp/production/yarn-order/page', params })
+  return request.get({ url: '/lunaerp/production/yarn-order/page', params })
 }
 
 // 获得采购单详情
 export const getYarnOrder = (id: number) => {
-  return request.get({ url: `/admin-api/lunaerp/production/yarn-order/get?id=${id}` })
+  return request.get({ url: `/lunaerp/production/yarn-order/get?id=${id}` })
 }
 
 // 创建采购单
 export const createYarnOrder = (data: YarnOrderSaveReqVO) => {
-  return request.post({ url: '/admin-api/lunaerp/production/yarn-order/create', data })
+  return request.post({ url: '/lunaerp/production/yarn-order/create', data })
 }
 
 // 更新采购单
 export const updateYarnOrder = (data: YarnOrderSaveReqVO) => {
-  return request.put({ url: '/admin-api/lunaerp/production/yarn-order/update', data })
+  return request.put({ url: '/lunaerp/production/yarn-order/update', data })
 }
 
 // 删除采购单
 export const deleteYarnOrder = (id: number) => {
-  return request.delete({ url: `/admin-api/lunaerp/production/yarn-order/delete?id=${id}` })
+  return request.delete({ url: `/lunaerp/production/yarn-order/delete?id=${id}` })
 }
 
 // 下达采购单
 export const effectYarnOrder = (id: number) => {
-  return request.put({ url: `/admin-api/lunaerp/production/yarn-order/effect?id=${id}` })
+  return request.put({ url: `/lunaerp/production/yarn-order/effect?id=${id}` })
 }
 
 // 完成采购单
 export const completeYarnOrder = (id: number) => {
-  return request.put({ url: `/admin-api/lunaerp/production/yarn-order/complete?id=${id}` })
+  return request.put({ url: `/lunaerp/production/yarn-order/complete?id=${id}` })
 }
 
 // 取消采购单
 export const cancelYarnOrder = (id: number) => {
-  return request.put({ url: `/admin-api/lunaerp/production/yarn-order/cancel?id=${id}` })
+  return request.put({ url: `/lunaerp/production/yarn-order/cancel?id=${id}` })
 }
 
 // 核心测算
 export const calculateYarnOrder = (data: YarnOrderCalculateReqVO) => {
-  return request.post({ url: '/admin-api/lunaerp/production/yarn-order/calculate', data })
+  return request.post({ url: '/lunaerp/production/yarn-order/calculate', data })
 }
 
 // 预览下一个采购单号
 export const getNextYarnOrderNo = () => {
-  return request.get({ url: '/admin-api/lunaerp/production/yarn-order/get-next-no' })
+  return request.get({ url: '/lunaerp/production/yarn-order/get-next-no' })
 }
