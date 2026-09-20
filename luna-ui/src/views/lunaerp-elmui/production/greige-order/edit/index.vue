@@ -78,6 +78,32 @@
             />
           </el-form-item>
         </el-col>
+        <el-col :span="12">
+          <el-form-item label="产品档案" prop="productId">
+            <el-select
+              v-model="formData.productId"
+              placeholder="输入关键词搜索产品档案（可空）"
+              clearable
+              filterable
+              remote
+              reserve-keyword
+              :remote-method="searchProducts"
+              :loading="productLoading"
+              class="!w-full"
+              @change="handleProductChange"
+            >
+              <el-option
+                v-for="product in productOptions"
+                :key="product.id"
+                :label="productOptionLabel(product)"
+                :value="product.id!"
+              >
+                <span>{{ product.code }}</span>
+                <span class="product-option-name">{{ product.name }}</span>
+              </el-option>
+            </el-select>
+          </el-form-item>
+        </el-col>
       </el-row>
 
       <div class="section-title">坯布厂与染厂</div>
@@ -139,35 +165,22 @@
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="产品编号" prop="productCode">
-            <el-select
+            <el-input
               v-model="formData.productCode"
-              placeholder="搜编号/品名回填或手填"
-              clearable
-              filterable
-              remote
-              allow-create
-              default-first-option
-              reserve-keyword
-              :remote-method="searchProducts"
-              :loading="productLoading"
-              class="!w-full"
-              @change="handleProductChange"
-            >
-              <el-option
-                v-for="product in productOptions"
-                :key="product.id"
-                :label="product.code"
-                :value="product.code"
-              >
-                <span>{{ product.code }}</span>
-                <span class="product-option-name">{{ product.name }}</span>
-              </el-option>
-            </el-select>
+              maxlength="64"
+              :disabled="isViewMode || !!formData.productId"
+              :placeholder="formData.productId ? '已关联产品档案（自动带出）' : '可手填产品编号'"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="产品名称" prop="productName">
-            <el-input v-model="formData.productName" maxlength="128" />
+            <el-input
+              v-model="formData.productName"
+              maxlength="128"
+              :disabled="isViewMode || !!formData.productId"
+              :placeholder="formData.productId ? '已关联产品档案（自动带出）' : '可手填产品名称'"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -426,6 +439,7 @@ const formData = reactive<GreigeOrderVO>({
   orderNo: '',
   salesContractId: undefined,
   contractNo: '',
+  productId: undefined,
   greigeFactoryId: undefined as unknown as number,
   greigeFactoryName: '',
   dyeingFactoryId: undefined,
@@ -614,6 +628,9 @@ const handleContractChange = (contractId: number | undefined) => {
 const productLoading = ref(false)
 const productOptions = ref<ProductVO[]>([])
 
+const productOptionLabel = (item: ProductVO): string =>
+  [item.code, item.name].filter(Boolean).join(' ')
+
 const searchProducts = async (query: string) => {
   productLoading.value = true
   try {
@@ -625,10 +642,15 @@ const searchProducts = async (query: string) => {
   }
 }
 
-/** 选中产品后回填品名/成分/幅宽/克重，全部字段仍可手改；选中值不在候选中即为手填，不回填 */
-const handleProductChange = (val: string) => {
-  const product = productOptions.value.find((p) => p.code === val)
-  if (!product) return
+/** 选中产品后回填编号/品名/成分/幅宽/克重，全部字段仍可手改 */
+const handleProductChange = (productId?: number) => {
+  const product = productOptions.value.find((p) => p.id === productId)
+  if (!product) {
+    formData.productId = undefined
+    return
+  }
+  formData.productId = product.id
+  formData.productCode = product.code || ''
   formData.productName = product.name || ''
   formData.composition = product.composition || ''
   formData.width = product.widthCm != null ? String(product.widthCm) : ''
@@ -709,6 +731,15 @@ const loadGreigeOrder = async () => {
         { id: data.salesContractId, contractNo: data.contractNo || '' } as SalesContractVO
       ]
     }
+    if (data.productId) {
+      productOptions.value = [
+        {
+          id: data.productId,
+          code: data.productCode || '',
+          name: data.productName || ''
+        } as ProductVO
+      ]
+    }
   } finally {
     restoring.value = false
     loading.value = false
@@ -728,7 +759,9 @@ const handleSubmit = async () => {
       greigeFactoryName: formData.greigeFactoryName?.trim() || undefined,
       dyeingFactoryName: formData.dyeingFactoryName?.trim() || undefined,
       suggestedLoss: toSuggestedLoss(),
+      productId: formData.productId ?? undefined,
       productCode: formData.productCode?.trim() || undefined,
+      productName: formData.productName?.trim() || undefined,
       greigeTypeId: formData.greigeTypeId || undefined,
       // 颜色行并入载荷整体保存：损耗率百分比 → 小数；投胚需求传前端预览值（服务端权威重算覆盖）
       colors: colorRows.value.map((row) => ({
@@ -761,10 +794,11 @@ const handleBack = () => {
 onMounted(() => {
   loadGreigeTypes()
   if (isCreateMode.value) {
-    // 新建：预取一批供应商/合同候选，保证下拉一打开就有内容可看
+    // 新建：预取一批供应商/合同/产品候选，保证下拉一打开就有内容可看
     searchSuppliers('', 'greige')
     searchSuppliers('', 'dyeing')
     searchContracts('')
+    searchProducts('')
   } else {
     // 编辑/查看：按 id 回填全部字段（远程下拉用快照预置选中态）
     loadGreigeOrder()

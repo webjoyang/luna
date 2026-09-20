@@ -49,6 +49,9 @@ public class GreigeOrderSaveReqVO {
     @Schema(description = "交货日期", example = "2026-10-19")
     private LocalDate deliveryDate;
 
+    @Schema(description = "产品档案ID（远程搜索产品档案，强关联，用于纱线测算查配比BOM，可空）", example = "4096")
+    private Long productId;
+
     @Schema(description = "产品编号（可远程搜索产品档案回填后再改）", example = "P001")
     @Size(max = 64, message = "产品编号长度不能超过 64 位")
     private String productCode;

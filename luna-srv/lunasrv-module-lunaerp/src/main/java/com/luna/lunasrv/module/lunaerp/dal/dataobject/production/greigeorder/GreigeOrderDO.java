@@ -74,6 +74,11 @@ public class GreigeOrderDO extends TenantBaseDO {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDate deliveryDate;
     /**
+     * 产品档案ID（强关联，用于纱线测算时查配比BOM，见 ADR-0011）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long productId;
+    /**
      * 产品编号
      */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)

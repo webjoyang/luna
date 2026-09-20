@@ -42,6 +42,9 @@ public class GreigeOrderRespVO {
     @Schema(description = "交货日期", example = "2026-10-19")
     private LocalDate deliveryDate;
 
+    @Schema(description = "产品档案ID", example = "4096")
+    private Long productId;
+
     @Schema(description = "产品编号", example = "P001")
     private String productCode;
 

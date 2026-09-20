@@ -24,6 +24,7 @@ export interface GreigeOrderVO {
   dyeingFactoryName?: string // 染厂公司名快照
   orderDate?: string // 单据日期，缺省今天
   deliveryDate?: string
+  productId?: number | null // 产品档案ID（强关联，用于纱线测算查配比BOM，可空）
   productCode?: string
   productName?: string
   composition?: string
@@ -43,6 +44,9 @@ export interface GreigeOrderVO {
   colors?: GreigeOrderColorVO[] // 颜色投胚分配行（详情嵌套返回，保存时整体替换）
   createTime?: Date | string
 }
+
+// 胚布单保存请求 VO（同 GreigeOrderVO，productId 可空）
+export type GreigeOrderSaveReqVO = GreigeOrderVO
 
 // 胚布单分页查询参数
 export interface GreigeOrderPageParam {

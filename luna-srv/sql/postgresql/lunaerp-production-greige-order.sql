@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS lunaerp_production_greige_order (
     dyeing_factory_name      varchar(128)  NULL,
     order_date               date          NOT NULL,
     delivery_date            date          NULL,
+    product_id               int8          NULL,
     product_code             varchar(64)   NULL,
     product_name             varchar(128)  NULL,
     composition              varchar(128)  NULL,
@@ -63,6 +64,8 @@ CREATE INDEX IF NOT EXISTS idx_lb_greige_order_status
     ON lunaerp_production_greige_order (status);
 CREATE INDEX IF NOT EXISTS idx_lb_greige_order_order_date
     ON lunaerp_production_greige_order (order_date);
+CREATE INDEX IF NOT EXISTS idx_lb_greige_order_product_id
+    ON lunaerp_production_greige_order (product_id);
 
 COMMENT ON TABLE lunaerp_production_greige_order IS '生产管理-胚布单主表';
 COMMENT ON COLUMN lunaerp_production_greige_order.id IS '胚布单ID';
@@ -75,6 +78,7 @@ COMMENT ON COLUMN lunaerp_production_greige_order.dyeing_factory_id IS '指定�
 COMMENT ON COLUMN lunaerp_production_greige_order.dyeing_factory_name IS '染厂公司名快照（选中供应商时保存）';
 COMMENT ON COLUMN lunaerp_production_greige_order.order_date IS '单据日期（必填，创建缺省当天）';
 COMMENT ON COLUMN lunaerp_production_greige_order.delivery_date IS '交货日期（可空）';
+COMMENT ON COLUMN lunaerp_production_greige_order.product_id IS '产品档案ID（强关联，用于纱线测算时查配比BOM，见 ADR-0011）';
 COMMENT ON COLUMN lunaerp_production_greige_order.product_code IS '产品编号';
 COMMENT ON COLUMN lunaerp_production_greige_order.product_name IS '产品名称';
 COMMENT ON COLUMN lunaerp_production_greige_order.composition IS '成分';

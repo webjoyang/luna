@@ -11,11 +11,13 @@ import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.Grei
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.color.GreigeOrderColorDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
@@ -69,6 +71,9 @@ class GreigeOrderServiceImplTest {
 
     @Mock
     private SupplierMapper supplierMapper;
+
+    @Mock
+    private ProductMapper productMapper;
 
     @Mock
     private SalesContractMapper salesContractMapper;
@@ -293,6 +298,39 @@ class GreigeOrderServiceImplTest {
         assertEquals(1_030_006_002, exception.getCode());
     }
 
+    @Test
+    void createGreigeOrder_productIdNotFound_throwsReferenceNotFound() {
+        stubSupplier(1L, "海宁坯布厂");
+        when(productMapper.selectById(999L)).thenReturn(null);
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductId(999L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+        assertTrue(exception.getMessage().contains("产品档案"), "错误提示应指出产品档案不存在或不可用");
+    }
+
+    @Test
+    void createGreigeOrder_productIdExists_productCodeAndNameSnapshotsWritten() {
+        stubSupplier(1L, "海宁坯布厂");
+        stubProduct(10L, "P001", "全棉汗布");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductId(10L);
+        // 即使请求中传了旧值或空值，也由产品档案快照覆盖
+        reqVO.setProductCode("OLD_CODE");
+        reqVO.setProductName("OLD_NAME");
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        GreigeOrderDO inserted = captor.getValue();
+        assertEquals(10L, inserted.getProductId());
+        assertEquals("P001", inserted.getProductCode(), "product_code 快照应写入产品档案最新值");
+        assertEquals("全棉汗布", inserted.getProductName(), "product_name 快照应写入产品档案最新值");
+    }
+
     // ==================== createGreigeOrder：快照回填与缺省值 ====================
 
     @Test
@@ -436,6 +474,50 @@ class GreigeOrderServiceImplTest {
         // 请求未携带染厂（编辑清空场景）：DO 携带 null，配合 updateStrategy=ALWAYS 落库为清空
         assertNull(updated.getDyeingFactoryId(),
                 "编辑清空染厂时应以 null 提交，由 ALWAYS 更新策略落库");
+    }
+
+    @Test
+    void updateGreigeOrder_productIdExists_refreshesProductSnapshots() {
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919777");
+        existing.setProductId(10L);
+        existing.setProductCode("OLD_CODE");
+        existing.setProductName("旧品名");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+        stubSupplier(1L, "海宁坯布厂");
+        // 产品档案已改名/改编号
+        stubProduct(10L, "P002-NEW", "新全棉汗布");
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setProductId(10L);
+        reqVO.setProductCode("OLD_CODE");
+        reqVO.setProductName("旧品名");
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).updateById(captor.capture());
+        GreigeOrderDO updated = captor.getValue();
+        assertEquals(10L, updated.getProductId());
+        assertEquals("P002-NEW", updated.getProductCode(), "更新时应刷新 product_code 快照");
+        assertEquals("新全棉汗布", updated.getProductName(), "更新时应刷新 product_name 快照");
+    }
+
+    @Test
+    void updateGreigeOrder_productIdNotFound_throwsReferenceNotFound() {
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919777");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+        stubSupplier(1L, "海宁坯布厂");
+        when(productMapper.selectById(999L)).thenReturn(null);
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setProductId(999L);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.updateGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+        assertTrue(exception.getMessage().contains("产品档案"), "错误提示应指出产品档案不存在或不可用");
     }
 
     @Test
@@ -729,6 +811,14 @@ class GreigeOrderServiceImplTest {
         supplier.setId(id);
         supplier.setCompanyName(companyName);
         when(supplierMapper.selectById(id)).thenReturn(supplier);
+    }
+
+    private void stubProduct(Long id, String code, String name) {
+        ProductDO product = new ProductDO();
+        product.setId(id);
+        product.setCode(code);
+        product.setName(name);
+        when(productMapper.selectById(id)).thenReturn(product);
     }
 
     /**

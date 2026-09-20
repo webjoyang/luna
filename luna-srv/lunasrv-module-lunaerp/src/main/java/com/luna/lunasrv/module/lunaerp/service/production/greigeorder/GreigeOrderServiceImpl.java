@@ -10,11 +10,13 @@ import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.Grei
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.greigetype.GreigeTypeDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.color.GreigeOrderColorDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
@@ -98,6 +100,9 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     private SupplierMapper supplierMapper;
 
     @Resource
+    private ProductMapper productMapper;
+
+    @Resource
     private SalesContractMapper salesContractMapper;
 
     @Resource
@@ -127,7 +132,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
             order.setOrderNo(generateOrderNoWithRetry());
         }
         // 4. 快照回填 + 缺省值（先行执行，颜色行损耗缺省取主单预设损耗）
-        fillSnapshotsAndDefaults(order, refs.greigeFactory(), refs.dyeingFactory(), refs.contract());
+        fillSnapshotsAndDefaults(order, refs);
         // 5. 颜色投胚分配：按提交顺序重排 line_no、权威重算投胚需求（零颜色合法）
         List<GreigeOrderColorDO> colorDOList = buildColorDOList(null, createReqVO.getColors(),
                 order.getSuggestedLoss());
@@ -169,7 +174,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
             order.setOrderNo(generateOrderNoWithRetry());
         }
         // 5. 快照回填 + 缺省值（与创建一致；先行执行，颜色行损耗缺省取主单预设损耗）
-        fillSnapshotsAndDefaults(order, refs.greigeFactory(), refs.dyeingFactory(), refs.contract());
+        fillSnapshotsAndDefaults(order, refs);
         // 6. 整体保存：可空字段清空随 DO 的 updateStrategy=ALWAYS 一并落库
         greigeOrderMapper.updateById(order);
         // 7. 颜色投胚分配整体替换：事务内先按 order_id 删旧行，再插本次提交的全部颜色行
@@ -231,13 +236,13 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     }
 
     /**
-     * 引用校验结果：坯布厂/染厂供应商档案与销售合同档案，供快照回填
+     * 引用校验结果：坯布厂/染厂供应商档案、销售合同档案与产品档案，供快照回填
      */
-    private record ValidatedRefs(SupplierDO greigeFactory, SupplierDO dyeingFactory, SalesContractDO contract) {
+    private record ValidatedRefs(SupplierDO greigeFactory, SupplierDO dyeingFactory, SalesContractDO contract, ProductDO product) {
     }
 
     /**
-     * 引用校验（创建/更新共用）：坯布厂必填；染厂/销售合同/胚布品种非空时逐一校验存在
+     * 引用校验（创建/更新共用）：坯布厂必填；染厂/销售合同/产品档案/胚布品种非空时逐一校验存在
      * （ADR-0007 不校验供应商类型），任一不过抛 GREIGE_ORDER_REFERENCE_NOT_FOUND。
      */
     private ValidatedRefs validateReferences(GreigeOrderSaveReqVO reqVO) {
@@ -251,17 +256,29 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
                 throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "销售合同");
             }
         }
+        ProductDO product = null;
+        if (reqVO.getProductId() != null) {
+            product = productMapper.selectById(reqVO.getProductId());
+            if (product == null) {
+                throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "产品档案");
+            }
+        }
         validateGreigeTypeExists(reqVO.getGreigeTypeId());
-        return new ValidatedRefs(greigeFactory, dyeingFactory, contract);
+        return new ValidatedRefs(greigeFactory, dyeingFactory, contract, product);
     }
 
     /**
      * 快照回填 + 缺省值（创建/更新共用）：
      * 名称/合同号快照为空时用档案当前名称回填（选中供应商后档案改名的场景以前端传值为准）；
+     * 关联产品档案时刷新 product_code/product_name 快照（产品档案改名后跟随刷新）；
      * 单据日期缺省今天、状态缺省 ACTIVE、匹重缺省 25、预设损耗缺省 0。
      */
-    private void fillSnapshotsAndDefaults(GreigeOrderDO order, SupplierDO greigeFactory,
-                                          SupplierDO dyeingFactory, SalesContractDO contract) {
+    private void fillSnapshotsAndDefaults(GreigeOrderDO order, ValidatedRefs refs) {
+        SupplierDO greigeFactory = refs.greigeFactory();
+        SupplierDO dyeingFactory = refs.dyeingFactory();
+        SalesContractDO contract = refs.contract();
+        ProductDO product = refs.product();
+
         if (!StringUtils.hasText(order.getGreigeFactoryName()) && greigeFactory != null) {
             order.setGreigeFactoryName(greigeFactory.getCompanyName());
         }
@@ -271,6 +288,10 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         }
         if (order.getSalesContractId() != null && contract != null && !StringUtils.hasText(order.getContractNo())) {
             order.setContractNo(contract.getContractNo());
+        }
+        if (product != null) {
+            order.setProductCode(product.getCode());
+            order.setProductName(product.getName());
         }
         if (order.getOrderDate() == null) {
             order.setOrderDate(LocalDate.now());

@@ -60,3 +60,13 @@ COMMENT ON COLUMN lunaerp_production_stock_ledger.tenant_id IS '租户编号';
 
 -- 主键序列（MyBatis-Plus PostgreSQL INPUT 模式按 @KeySequence 取 nextval，可重复执行）
 CREATE SEQUENCE IF NOT EXISTS lunaerp_production_stock_ledger_seq;
+
+-- =============================================================================
+-- 胚布指示单结构变更（集中管理纱线域变更，见 ADR-0011 / Issue 03）
+-- 胚布指示单追加 product_id 字段强关联产品档案，用于纱线测算时查配比 BOM。
+-- （既有 product_code/product_name 列已存在弱关联快照，不重复添加）
+-- =============================================================================
+ALTER TABLE lunaerp_production_greige_order ADD COLUMN IF NOT EXISTS product_id int8 NULL;
+COMMENT ON COLUMN lunaerp_production_greige_order.product_id IS '产品档案ID（强关联，用于纱线测算时查配比BOM，见 ADR-0011）';
+CREATE INDEX IF NOT EXISTS idx_lb_greige_order_product_id ON lunaerp_production_greige_order (product_id);
+
