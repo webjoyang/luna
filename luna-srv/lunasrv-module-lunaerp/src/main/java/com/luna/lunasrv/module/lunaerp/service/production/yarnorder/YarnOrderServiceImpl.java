@@ -204,7 +204,31 @@ public class YarnOrderServiceImpl implements YarnOrderService {
             throw exception(YARN_ORDER_STATUS_NOT_ALLOWED);
         }
         yarnOrderMapper.updateById(new YarnOrderDO().setId(id).setStatus(STATUS_COMPLETED));
-        // Issue 06 将在此处添加自动写入库存台账逻辑
+
+        // 幂等检查：存在则跳过写入（防止重复入库）
+        if (!stockLedgerService.existsByRelatedDoc("yarn_order", id)) {
+            List<YarnOrderItemDO> items = yarnOrderItemMapper.selectListByOrderId(id);
+            if (CollUtil.isNotEmpty(items)) {
+                // 按 yarn_spec_id 聚合求和 purchase_qty（应对同规格多行情况）
+                Map<Long, BigDecimal> qtyBySpec = new LinkedHashMap<>();
+                for (YarnOrderItemDO item : items) {
+                    if (item.getYarnSpecId() != null) {
+                        BigDecimal qty = item.getPurchaseQty() != null ? item.getPurchaseQty() : BigDecimal.ZERO;
+                        qtyBySpec.merge(item.getYarnSpecId(), qty, BigDecimal::add);
+                    }
+                }
+                for (Map.Entry<Long, BigDecimal> entry : qtyBySpec.entrySet()) {
+                    stockLedgerService.writeStockIn(
+                            entry.getKey(),
+                            entry.getValue(),
+                            "yarn_order",
+                            existing.getId(),
+                            existing.getOrderNo(),
+                            "采购单完成自动入库"
+                    );
+                }
+            }
+        }
     }
 
     @Override

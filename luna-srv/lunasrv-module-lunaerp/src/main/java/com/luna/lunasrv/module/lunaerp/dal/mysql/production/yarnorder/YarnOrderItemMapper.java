@@ -35,11 +35,10 @@ public interface YarnOrderItemMapper extends BaseMapperX<YarnOrderItemDO> {
      * @param yarnSpecId 纱线规格ID
      * @return 最近单价，无记录返回 null
      */
-    @Select("SELECT i.unit_price FROM lunaerp_production_yarn_order_item i "
-            + "INNER JOIN lunaerp_production_yarn_order o ON i.order_id = o.id "
-            + "WHERE i.yarn_spec_id = #{yarnSpecId} AND i.deleted = 0 AND o.deleted = 0 "
-            + "AND o.status IN ('ACTIVE', 'COMPLETED') AND i.unit_price IS NOT NULL "
-            + "ORDER BY o.order_date DESC, i.id DESC LIMIT 1")
+    @Select("SELECT unit_price FROM lunaerp_production_yarn_order_item "
+            + "WHERE yarn_spec_id = #{yarnSpecId} AND deleted = 0 AND unit_price IS NOT NULL "
+            + "AND order_id IN (SELECT id FROM lunaerp_production_yarn_order WHERE status IN ('ACTIVE', 'COMPLETED') AND deleted = 0) "
+            + "ORDER BY update_time DESC, id DESC LIMIT 1")
     BigDecimal selectRecentUnitPriceBySpecId(@Param("yarnSpecId") Long yarnSpecId);
 
 }

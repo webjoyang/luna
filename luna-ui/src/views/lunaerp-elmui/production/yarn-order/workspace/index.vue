@@ -225,6 +225,24 @@
         </div>
       </template>
 
+      <!-- 状态提示 -->
+      <el-alert
+        v-if="formData.status === 'COMPLETED'"
+        :title="`该采购单已完成，已自动写入库存台账入库记录（共 ${formData.items.length} 条规格记录）`"
+        type="success"
+        show-icon
+        :closable="false"
+        class="mb-15px"
+      />
+      <el-alert
+        v-else-if="formData.status === 'CANCELLED'"
+        title="该采购单已取消，未生成库存入库记录"
+        type="info"
+        show-icon
+        :closable="false"
+        class="mb-15px"
+      />
+
       <el-table :data="formData.items" border stripe style="width: 100%">
         <el-table-column type="index" label="序号" width="55" align="center" />
         <el-table-column label="纱线规格" min-width="180" show-overflow-tooltip>
@@ -630,10 +648,10 @@ const handleSubmit = async (targetStatus: 'DRAFT' | 'ACTIVE') => {
 const handleComplete = async () => {
   if (!orderId.value) return
   try {
-    await message.confirm('确认完成该采购单吗？')
+    await message.confirm('确认完成该采购单吗？完成后将自动写入纱线库存台账。')
     actionLoading.value = true
     await YarnOrderApi.completeYarnOrder(orderId.value)
-    message.success('采购单已完成')
+    message.success('采购单已完成，已自动写入库存台账')
     await loadDetail(orderId.value)
   } catch {
   } finally {
