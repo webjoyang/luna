@@ -556,6 +556,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/production/yarn-order'
         }
+      },
+      {
+        path: 'inspection-order/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/production/inspection-order/workspace/index.vue'),
+        name: 'LunaerpElmuiProductionInspectionOrderWorkspace',
+        meta: {
+          title: '检验单工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/production/inspection-order'
+        }
       }
     ]
   },

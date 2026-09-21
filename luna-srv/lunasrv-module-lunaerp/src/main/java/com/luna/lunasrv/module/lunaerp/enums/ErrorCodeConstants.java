@@ -68,4 +68,12 @@ public interface ErrorCodeConstants {
     ErrorCode YARN_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_009_003, "关联的{}不存在或不可用");
     ErrorCode YARN_ORDER_GREIGE_ORDERS_EMPTY = new ErrorCode(1_030_009_004, "请至少选择一张胚布指示单");
 
+    // ========== 检验单模块 1-030-010-000（主表与明细共用） ==========
+    ErrorCode INSPECTION_ORDER_NOT_EXISTS = new ErrorCode(1_030_010_000, "检验单不存在");
+    ErrorCode INSPECTION_ORDER_NO_DUPLICATE = new ErrorCode(1_030_010_001, "检验单号【{}】已存在");
+    ErrorCode INSPECTION_ORDER_STATUS_NOT_ALLOWED = new ErrorCode(1_030_010_002, "当前状态不允许该操作");
+    ErrorCode INSPECTION_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_010_003, "关联的{}不存在或不可用");
+    ErrorCode INSPECTION_ORDER_ROLL_DUPLICATE = new ErrorCode(1_030_010_004, "单内卷号【{}】缸号【{}】已存在");
+    ErrorCode INSPECTION_ORDER_ITEM_NOT_EXISTS = new ErrorCode(1_030_010_100, "录检明细不存在");
+
 }
