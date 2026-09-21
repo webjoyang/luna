@@ -33,7 +33,7 @@
   - [x] 删除：级联逻辑删除明细
   - [x] getByProductId：返回 BOM + items
 - [x] 前端 API `luna-ui/src/api/lunaerp-elmui/production/yarn-recipe-bom/index.ts`：
-  - [x] URL 前缀 `/admin-api/lunaerp/production/yarn-recipe-bom`
+  - [x] URL 前缀 `/lunaerp/production/yarn-recipe-bom`
   - [x] page/get/create/update/delete + get-by-product-id
   - [x] TS 类型：YarnRecipeBomVO / YarnRecipeBomItemVO / YarnRecipeBomSaveReqVO
 - [x] 前端视图：

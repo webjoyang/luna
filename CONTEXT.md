@@ -177,7 +177,7 @@ _避免_：纱线采购指令、YarnPurchase（命名已纠正）。
 
 胚布单落在 `production`（生产管理）子包，与 `baseinfo` / `business` 平级：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.greigeorder[.color]`，前端 `lunaerp-elmui/production/greige-order/`（视图与 API 目录镜像）。
 
-纱线采购域同样落在 `production` 子包下，新增 5 个并列子包：`production.yarntype`（材质 CRUD，无字典）、`production.yarnspec`（规格 CRUD + cascade-options 两级级联数据源）、`production.yarnrecipebom`（配比 BOM 主从表 CRUD + get-by-product-id）、`production.stockledger`（库存台账仅余额查询，无 CRUD 端点）、`production.yarnorder`（采购单主从表 CRUD + 状态操作 + calculate 测算接口 + 完成时自动写 STOCK_IN）。前端视图 `lunaerp-elmui/production/yarn-master/`（材质+规格合并管理页）、`yarn-recipe-bom/`（配比 BOM 管理页）、`yarn-order/`（采购单列表+编辑页）。URL 前缀 `/lunaerp/production/{yarn-type|yarn-spec|yarn-recipe-bom|yarn-order}`、`/lunaerp/production/yarn-stock/balance`，权限码前缀 `lunaerp:production:<子域>:`。详见 ADR-0011。
+纱线采购域同样落在 `production` 子包下，包含 4 个并列子包：`production.yarntype`（材质 CRUD，无字典）、`production.yarnspec`（规格 CRUD + cascade-options 两级级联数据源）、`production.yarnrecipebom`（配比 BOM 主从表 CRUD + get-by-product-id）、`production.yarnorder`（采购单主从表 CRUD + 状态操作 + calculate 测算接口；原 stockledger 台账已于 2026-09-21 撤销回退）。前端视图 `lunaerp-elmui/production/yarn-master/`（材质+规格合并管理页）、`yarn-recipe-bom/`（配比 BOM 管理页）、`yarn-order/`（采购单列表+编辑页）。URL 前缀 `/lunaerp/production/{yarn-type|yarn-spec|yarn-recipe-bom|yarn-order}`，权限码前缀 `lunaerp:production:<子域>:`。详见 ADR-0011。
 
 供应商与客户同落 `baseinfo` 子包：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.baseinfo.supplier[.suppliercontact]`；前端视图 `luna-ui/src/views/lunaerp-elmui/baseinfo/supplier/`、前端 API `luna-ui/src/api/lunaerp-elmui/baseinfo/supplier/`（含 supplier-contact）。URL 前缀 `/lunaerp/baseinfo/supplier[-contact]`，权限码前缀 `lunaerp:baseinfo:supplier[-contact]:`。
 

@@ -1,12 +1,16 @@
 # 05: 纱线采购单地基 + 核心测算接口
 
-**What to build:** 落地纱线采购单主从表（主表+明细表，明细无 line_no）+ 列表页（可分页/按采购单号+关联胚布单号关键词/状态/日期区间查询）+ 工作台编辑页骨架（基本信息区 + 关联胚布单区 + AI 测算按钮 + 明细表格）+ **核心测算接口 POST /yarn-order/calculate**（按勾选胚布单 → 查配比 BOM → 按 yarn_spec_id 合并多单需求 → 查 StockLedger 拿在库量 → 算 requiredQty/purchaseQty → 历史价回填）。这是整个 MVP 的核心业务流（勾选胚布单→AI测算→生成明细）。
+> [!NOTE]
+> 2026-09-21 变更说明：因纱线库存台账（Issue 04）设计不完善且过早开发，已予以回退取消（标记 wontfix）。
+> 本任务中 `calculate` 测算逻辑同步解耦：不再依赖 `StockLedgerService`，在库量 `stockQty` 固定缺省返回 `0.00`，实采量 `purchaseQty = requiredQty`。
 
-**Blocked by:** 01 纱线档案 + 02 配比 BOM + 03 胚布单加 product_id + 04 库存台账
+**What to build:** 落地纱线采购单主从表（主表+明细表，明细无 line_no）+ 列表页（可分页/按采购单号+关联胚布单号关键词/状态/日期区间查询）+ 工作台编辑页骨架（基本信息区 + 关联胚布单区 + AI 测算按钮 + 明细表格）+ **核心测算接口 POST /yarn-order/calculate**（按勾选胚布单 → 查配比 BOM → 按 yarn_spec_id 合并多单需求 → 在库量 stockQty 缺省 0 → 算 requiredQty/purchaseQty → 历史价回填）。这是整个 MVP 的核心业务流（勾选胚布单→AI测算→生成明细）。
+
+**Blocked by:** 01 纱线档案 + 02 配比 BOM + 03 胚布单加 product_id
 
 **Status:** done
 
-- [x] `luna-srv/sql/postgresql/lunaerp-production-yarn-order.sql` 已落（包含 04 的 stock_ledger 段）：
+- [x] `luna-srv/sql/postgresql/lunaerp-production-yarn-order.sql` 已落（原 04 的 stock_ledger 段已于 2026-09-21 移除）：
   - [x] 表 6 `lunaerp_production_yarn_order` DDL（order_no/source_instructions(Text JSON)/order_date/delivery_date/loss_rate/status/remark + 框架列）+ 主键 DO 块 + 列注释 + 序列
   - [x] 唯一索引 `(tenant_id, order_no)`（含软删行，按天取号不释放）+ 普通索引 `(status)` `(order_date)`
   - [x] 表 7 `lunaerp_production_yarn_order_item` DDL（order_id/yarn_type_id/yarn_spec_id/supplier_id/supplier_name/ratio/loss_rate/base_qty/required_qty/stock_qty/purchase_qty/unit_price/total_amount/ref_unit_price/remark + 框架列，**无 line_no**）+ 主键 DO 块 + 列注释 + 序列
@@ -30,14 +34,14 @@
     - [x] update：仅 DRAFT 可更新，非 DRAFT 报 1_030_009_002；不存在报 1_030_009_000；明细整体替换；金额服务端权威重算
     - [x] delete：仅 DRAFT 可删，非 DRAFT 报 1_030_009_002；级联逻辑删除明细
     - [x] effect：DRAFT→ACTIVE
-    - [x] complete：ACTIVE→COMPLETED（**issue 06 落地自动写 STOCK_IN 台账**，本 issue 先留接口骨架）
+    - [x] complete：ACTIVE→COMPLETED（仅状态流转；原写台账设计已随 Issue 04 回退取消）
     - [x] cancel：ACTIVE→CANCELLED
     - [x] calculate（**核心测算**）：算法详见 spec.md "测算接口 POST /yarn-order/calculate 契约"
       - 校验 greigeOrderIds 非空
       - 按 greigeOrderIds 查胚布单，校验存在（不存在报 1_030_006_000）+ 有 product_id（无则报 1_030_009_003 "关联的产品档案不存在"）+ 有配比 BOM（无则报 1_030_008_004）
       - 按 yarn_spec_id 合并多单多 BOM 明细需求 baseQty
-      - 调 StockLedgerService.getBalances 一次拿 stockQty
-      - 算 requiredQty = baseQty × (1 + lossRate/100)、purchaseQty = max(0, requiredQty - stockQty)
+      - stockQty 固定缺省返回 0.00（原依赖 StockLedgerService 已解耦移除）
+      - 算 requiredQty = baseQty × (1 + lossRate/100)、purchaseQty = requiredQty
       - 查最近已下达（ACTIVE/COMPLETED）采购单明细 unit_price 历史价，无则取 yarn_spec.ref_price 兜底
       - 分组 sourceGreigeOrderIds/Nos 按 yarn_spec_id
   - [x] `YarnOrderController`（10 端点）：
@@ -53,7 +57,7 @@
   - [x] delete：仅 DRAFT 可删；级联逻辑删除明细
   - [x] effect/complete/cancel：状态流转校验，非法流转报 1_030_009_002
 - [x] 前端 API `luna-ui/src/api/lunaerp-elmui/production/yarn-order/index.ts`：
-  - [x] URL 前缀 `/admin-api/lunaerp/production/yarn-order`
+  - [x] URL 前缀 `/lunaerp/production/yarn-order`
   - [x] page/get/create/update/delete + effect/complete/cancel + calculate
   - [x] TS 类型：YarnOrderVO / YarnOrderItemVO / YarnOrderSaveReqVO / YarnOrderCalculateReqVO / YarnOrderCalculateRespVO
   - [x] dict.ts 追加 `lunaerp_yarn_order_status` 枚举（DRAFT/ACTIVE/COMPLETED/CANCELLED）

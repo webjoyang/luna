@@ -13,10 +13,10 @@ accepted
 - `ratio` 与 `lossRate` 均用**百分比数字**（49 = 49%，5 = 5%），与小数无关
 - 基础量公式：`baseQty = Σ(胚布单成品量 × 配比%)`，按纱线规格合并多单需求
 - 需求量公式：`requiredQty = baseQty × (1 + lossRate/100)`
-- 实采量公式：`purchaseQty = max(0, requiredQty - stockQty)`
+- 实采量公式：`purchaseQty = max(0, requiredQty - stockQty)`（注：2026-09-21 纱线库存台账回退后，在库量 `stockQty` 缺省为 0，`purchaseQty = requiredQty`）
 - 金额公式：`amount = unitPrice × purchaseQty`（单价可手改，服务端保存时重算）
 
-测算接口：**后端提供 `POST /admin-api/lunaerp/production/yarn-order/calculate`**，前端只展示测算结果。与参考系统"纯前端 buildPurchaseRows"模式刻意不一致——理由是金额（unitPrice/totalAmount）放后端算避免前端篡改、单源真理、与产品档案历史价回填同源。
+测算接口：**后端提供 `POST /lunaerp/production/yarn-order/calculate`**，前端只展示测算结果。与参考系统"纯前端 buildPurchaseRows"模式刻意不一致——理由是金额（unitPrice/totalAmount）放后端算避免前端篡改、单源真理、与产品档案历史价回填同源。
 
 ## 理由
 
@@ -36,4 +36,4 @@ accepted
 - 全系统出现两套损耗率口径：胚布单 `loss_rate` 用小数（0.05 = 5%）+ 除法公式；纱线采购单 `lossRate` 用百分比数字（5 = 5%）+ 乘法公式。CONTEXT.md 已显式记录该刻意不一致，未来工程师**不应**统一两套口径。
 - 前端编辑页需根据状态切换按钮显示与只读模式：DRAFT 显示"保存/下达/删除"，ACTIVE 显示"完成/取消"，COMPLETED/CANCELLED 全部只读。
 - 后端 `update` / `delete` 接口需校验状态，非 DRAFT 拒绝操作并返回 `1_030_009_002`。
-- 测算接口 `POST /yarn-order/calculate` 入参为胚布单 IDs 列表 + 损耗率，出参为测算后的明细行（含 `yarnTypeId` / `yarnSpecId` / `ratio` / `baseQty` / `lossRate` / `requiredQty` / `stockQty` / `purchaseQty` / `refUnitPrice`）。
+- 测算接口 `POST /yarn-order/calculate` 入参为胚布单 IDs 列表 + 损耗率，出参为测算后的明细行（含 `yarnTypeId` / `yarnSpecId` / `ratio` / `baseQty` / `lossRate` / `requiredQty` / `stockQty` / `purchaseQty` / `refUnitPrice`；台账回退后 `stockQty` 缺省 0，`purchaseQty = requiredQty`）。

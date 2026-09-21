@@ -30,8 +30,8 @@
   - [x] `YarnTypeServiceImplTest`（创建撞名/更新不存在/删除逻辑删/分页条件）
   - [x] `YarnSpecServiceImplTest`（创建 yarn_type_id 不存在/standard_name 撞名/cascade-options 两级结构与 keyword 过滤）
 - [x] 前端 API `luna-ui/src/api/lunaerp-elmui/production/yarn-master/index.ts`：
-  - [x] yarn-type CRUD（URL 前缀 `/admin-api/lunaerp/production/yarn-type`）
-  - [x] yarn-spec CRUD + cascade-options（URL 前缀 `/admin-api/lunaerp/production/yarn-spec`）
+  - [x] yarn-type CRUD（URL 前缀 `/lunaerp/production/yarn-type`）
+  - [x] yarn-spec CRUD + cascade-options（URL 前缀 `/lunaerp/production/yarn-spec`）
   - [x] TS 类型：YarnTypeVO / YarnSpecVO / YarnSpecCascadeOptionVO
 - [x] 前端视图 `luna-ui/src/views/lunaerp-elmui/production/yarn-master/index.vue`：
   - [x] 上下两栏布局（el-row 或 el-container）

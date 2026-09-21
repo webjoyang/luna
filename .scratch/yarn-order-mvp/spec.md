@@ -1,40 +1,39 @@
-# 生产管理 - 纱线采购 MVP（材质/规格主数据 + 配比BOM + 库存台账 + 采购单 + 核心测算流）
+# 生产管理 - 纱线采购 MVP（材质/规格主数据 + 配比BOM + 采购单 + 核心测算流）
 
 Status: ready-for-agent
 
 ## Problem Statement
 
-业务侧需要在新 Luna ERP 系统里管理"生产管理-纱线采购"功能。核心业务流是：**勾选胚布指示单 → 后端按纱线配比 BOM + 实时库存测算需求量 → 生成采购明细 → 保存下达 → 完成时自动入库**。
+业务侧需要在新 Luna ERP 系统里管理"生产管理-纱线采购"功能。核心业务流是：**勾选胚布指示单 → 后端按纱线配比 BOM 测算需求量 → 生成采购明细 → 保存下达 → 完成**。（注：纱线库存台账功能已于 2026-09-21 撤销回退，暂不开发）。
 
 旧系统（linaagi，Prisma + Next.js/React）已有完整实现：
 - 纱线配比存在 `Product.yarnSpecs` JSON 字段（数组：`{yarnSpec:'32S 棉', spinMethod, ratio:49, remark, price}`），胚布单 `GreigeInstruction` 也有 `yarnSpecs` 快照
 - 测算在前端跑（`web/lib/yarn-purchase-calc.ts` `buildPurchaseRows`）：`baseQty = Σ(成品量 × ratio/100)`，`requiredQty = baseQty × (1 + loss/100)`，`purchaseQty = max(0, requiredQty - stockQty)`
-- 库存走 `StockLedger` 流水台账（contractNumber/productCode/batchNo/type/sourceLocation/targetLocation/quantity），余额 = `Σ(STOCK_IN) + Σ(PROCESS_IN target=YARN_WAREHOUSE) − Σ(PROCESS_OUT)`
+- 库存走 `StockLedger` 流水台账（原规划移植，后于 2026-09-21 撤销回退）
 - 入库是独立"纱线入库单"流程触发 STOCK_IN 台账
 
 新系统（Spring Boot + MyBatis-Plus + PostgreSQL + Vue3 + Element Plus + lunaerp-elmui）已有：胚布指示单（production-greigeorder 模块 + `lunaerp_production_greige_order` 表，无 product_id 强关联、无 yarn_specs 字段）、产品档案（baseinfo-product 模块，含 yarn_specs 字段但已被本功能废弃不用）。
 
 业务侧希望：
-1. 在新栈下完整复刻核心业务流，跑通"勾选胚布指示单 → AI 按配比+库存测算 → 生成采购明细 → 下达 → 完成入库"
+1. 在新栈下完整复刻核心业务流，跑通"勾选胚布指示单 → AI 按配比测算 → 生成采购明细 → 下达 → 完成"
 2. 配比 BOM 独立成表（不依赖产品档案 yarn_specs），按产品档案挂配比
-3. 补齐纱线库存台账表+后端服务（前端库存页暂不做），库存口径沿用参考系统流水台账
+3. 纱线库存台账（经排查设计不完善，已于 2026-09-21 撤销回退，暂不开发；在库量缺省 0）
 4. 纱线档案做管理页（材质+规格两级主数据 + 参考价）
 5. 采购单多供应商挂在明细行，明细保留三量字段（需求量/在库量/实采量），无 line_no 行号
-6. 采购单完成时自动写 STOCK_IN 台账，不做独立纱线入库单流程
+6. 采购单完成（原自动写 STOCK_IN 台账已取消）
 
 ## Solution
 
-在 luna-srv 的 `lunasrv-module-lunaerp` 模块 `production` 子包下新增 5 个并列子包：
+在 luna-srv 的 `lunasrv-module-lunaerp` 模块 `production` 子包下新增 4 个并列子包：
 
 - `production.yarntype` — 纱线材质 CRUD（无字典，seed 表）
 - `production.yarnspec` — 纱线规格 CRUD + cascade-options 两级级联数据源
 - `production.yarnrecipebom` — 配比 BOM 主从表 CRUD + get-by-product-id
-- `production.stockledger` — 库存台账余额查询（无 CRUD 端点，仅 Service 内部调用 + 1 个余额查询接口）
-- `production.yarnorder` — 采购单主从表 CRUD + 状态操作 + calculate 测算接口 + 完成时自动写 STOCK_IN
+- `production.yarnorder` — 采购单主从表 CRUD + 状态操作 + calculate 测算接口（原 stockledger 已撤销回退）
 
 在 luna-ui 的 `views/lunaerp-elmui/production/` 下新增 3 个视图：`yarn-master/`（材质+规格合并管理页，两级级联带搜索）、`yarn-recipe-bom/`（配比 BOM 管理页，按产品挂配比）、`yarn-order/`（采购单列表+编辑页 + 核心流程交互）。
 
-配套 PostgreSQL 脚本（拆 3 个文件）+ 修改 1 个既有文件（胚布单加 product_id）+ 菜单（10230/10240/10250 ID 段）+ 1 个字典（2230 lunaerp_yarn_order_status）+ 错误码追加（1-030-008/009 段，已落 ErrorCodeConstants.java）。
+配套 PostgreSQL 脚本（拆 2 个文件）+ 修改 1 个既有文件（胚布单加 product_id）+ 菜单（10230/10240/10250 ID 段）+ 1 个字典（2230 lunaerp_yarn_order_status）+ 错误码追加（1-030-008/009 段，已落 ErrorCodeConstants.java）。
 
 ### 核心设计决策（已确认）
 
@@ -43,13 +42,13 @@ Status: ready-for-agent
 | 配比挂载点 | 新建独立 `yarn_recipe_bom` 表，product_id 强关联产品档案 | ADR-0011 |
 | 产品档案 yarn_specs 字段 | 废弃不用，配比权威源是 yarn_recipe_bom 表 | ADR-0011 |
 | 胚布单加 product_id 字段 | 是，强关联产品档案（用于测算时查配比 BOM） | ADR-0011 |
-| 库存表设计 | 通用 StockLedger 流水台账（保留 STOCK_IN/STOCK_OUT/PROCESS_IN/PROCESS_OUT 四类枚举占位） | ADR-0012 |
-| 库存表去库位字段 | 去掉 source_location/target_location 两列（MVP 无库位概念） | ADR-0012 |
-| 测算口径 | 沿用参考系统 - 百分比数字（49=49%, 5=5%）+ 乘法公式 `requiredQty = baseQty × (1 + loss/100)` | ADR-0010 |
-| 测算接口 | 后端 `POST /admin-api/lunaerp/production/yarn-order/calculate`（前端只展示） | ADR-0010 |
-| 入库来源 | 采购单 ACTIVE→COMPLETED 时后端自动写 STOCK_IN 台账（不做独立纱线入库单流程） | ADR-0012 |
+| 库存表设计 | 暂不开发（2026-09-21 已回退撤销） | ADR-0012（deprecated） |
+| 库存表去库位字段 | 暂不开发（2026-09-21 已回退撤销） | ADR-0012（deprecated） |
+| 测算口径 | 沿用参考系统 - 百分比数字（49=49%, 5=5%）+ 乘法公式 `requiredQty = baseQty × (1 + loss/100)`，stockQty 缺省 0 | ADR-0010 |
+| 测算接口 | 后端 `POST /lunaerp/production/yarn-order/calculate`（前端只展示） | ADR-0010 |
+| 入库来源 | 暂不开发（2026-09-21 已回退撤销） | ADR-0012（deprecated） |
 | 多供应商挂载 | 明细行挂 supplier_id+公司名快照，主表不放供应商 | （用户决策） |
-| 明细三量字段 | required_qty/stock_qty/purchase_qty 三量字段全保留 | （用户决策） |
+| 明细三量字段 | required_qty/stock_qty/purchase_qty 三量字段全保留（stock_qty 缺省 0） | （用户决策） |
 | 金额重算 | 服务端权威重算 total_amount = unit_price × purchase_qty | （用户决策） |
 | 状态机 | 四态 DRAFT/ACTIVE/COMPLETED/CANCELLED，仿染色单 ADR-0008 | ADR-0010 |
 | 历史价回填 | 选规格后自动带出（最近已下达采购单明细 unit_price > yarn_spec.ref_price 兜底），可手改 | （用户决策） |
@@ -80,7 +79,7 @@ Status: ready-for-agent
 ### 纱线库存台账
 
 11. 作为后端服务，我想在采购单完成（ACTIVE→COMPLETED）时自动按明细的 yarn_spec_id 拆分写入 STOCK_IN 台账（related_doc_type='yarn_order'、related_doc_id=采购单 ID、quantity=purchase_qty），以便记录纱线入库流水。
-12. 作为后端服务，我想暴露 `GET /admin-api/lunaerp/production/yarn-stock/balance?yarnSpecId=` 余额查询接口，返回某纱线规格的当前在库量（= SUM(quantity) WHERE yarn_spec_id AND type='STOCK_IN'，MVP 简化只汇总 STOCK_IN），以便测算时取在库量。
+12. 作为后端服务，我想暴露 `GET /lunaerp/production/yarn-stock/balance?yarnSpecId=` 余额查询接口，返回某纱线规格的当前在库量（= SUM(quantity) WHERE yarn_spec_id AND type='STOCK_IN'，MVP 简化只汇总 STOCK_IN），以便测算时取在库量。
 13. 作为后端服务，我想 StockLedger 仅作为流水台账（append-only），不允许从外部 API 修改/删除单条台账记录（无 CRUD 端点），以便保证库存流水不可篡改。
 
 ### 纱线采购单列表
@@ -206,7 +205,12 @@ Status: ready-for-agent
 
 明细不作为独立资源（同 ADR-0003 模式）：随配比 BOM 整体保存、级联逻辑删除。无 line_no（与采购明细一致决策）。
 
-#### 表 5：`lunaerp_production_stock_ledger` 纱线库存台账
+#### 表 5：`lunaerp_production_stock_ledger` 纱线库存台账（已于 2026-09-21 撤销回退，暂不开发）
+
+> [!NOTE]
+> 经排查，纱线库存台账功能设计不完善，过早开发。2026-09-21 已回退该表及相关前后端程序（对应 Issue 04 标记 wontfix，ADR-0012 标记 deprecated）。本表 DDL 已从 SQL 脚本中移除。
+
+（原设计保留归档供未来参考）：
 
 继承 TenantBaseDO。
 
@@ -368,7 +372,7 @@ Status: ready-for-agent
 
 ### Controller 与 API 契约
 
-所有路径前缀 `/admin-api/lunaerp/production`，所有端点 `@PreAuthorize("@ss.hasPermission('lunaerp:production:<子域>:<action>')")`。
+所有路径前缀 `/lunaerp/production`，所有端点 `@PreAuthorize("@ss.hasPermission('lunaerp:production:<子域>:<action>')")`。
 
 #### yarn-type（材质 CRUD）
 
@@ -402,12 +406,13 @@ Status: ready-for-agent
 
 权限码：`lunaerp:production:yarn-recipe-bom:query/create/update/delete`。
 
-#### yarn-stock（库存台账余额查询）
+#### yarn-stock（库存台账余额查询，已于 2026-09-21 撤销回退，暂不开发）
 
-- **`GET /yarn-stock/balance?yarnSpecId=`** — 查某纱线规格当前在库量（MVP 简化为 SUM(quantity) WHERE yarn_spec_id=? AND type='STOCK_IN'）
-- `GET /yarn-stock/balances?yarnSpecIds=1,2,3` — 批量查（用于测算一次性取多个规格的在库量），返回 `[{yarnSpecId, stockQty}]`
+> [!NOTE]
+> 经排查，纱线库存台账功能设计不完善，过早开发。2026-09-21 已回退撤销相关接口与实现（对应 Issue 04 标记 wontfix）。
 
-权限码：`lunaerp:production:yarn-stock:query`。无 create/update/delete 端点。
+- ~~`GET /yarn-stock/balance?yarnSpecId=`~~
+- ~~`GET /yarn-stock/balances?yarnSpecIds=1,2,3`~~
 
 #### yarn-order（采购单主从表 CRUD + 状态操作 + 测算）
 
@@ -417,7 +422,7 @@ Status: ready-for-agent
 - `PUT /yarn-order/update` — 编辑（仅 DRAFT 可改）
 - `DELETE /yarn-order/delete?id=` — 删除（仅 DRAFT 可删）
 - `PUT /yarn-order/effect?id=` — DRAFT → ACTIVE
-- `PUT /yarn-order/complete?id=` — ACTIVE → COMPLETED，**自动写 STOCK_IN 台账**
+- `PUT /yarn-order/complete?id=` — ACTIVE → COMPLETED，状态流转（注：原自动写 STOCK_IN 台账设计已于 2026-09-21 回退取消）
 - `PUT /yarn-order/cancel?id=` — ACTIVE → CANCELLED
 - **`POST /yarn-order/calculate`** — 核心测算接口（入参 YarnOrderCalculateReqVO，出参 YarnOrderCalculateRespVO）
 - `GET /yarn-order/get-next-no` — 预览下一个采购单号（仿供应商/胚布单模式，可选实现）
@@ -439,8 +444,8 @@ Status: ready-for-agent
 - `lunaerp:production:yarn-type:query` / `:create` / `:update` / `:delete`
 - `lunaerp:production:yarn-spec:query` / `:create` / `:update` / `:delete`
 - `lunaerp:production:yarn-recipe-bom:query` / `:create` / `:update` / `:delete`
-- `lunaerp:production:yarn-stock:query`
 - `lunaerp:production:yarn-order:query` / `:create` / `:update` / `:delete`
+- ~~`lunaerp:production:yarn-stock:query`~~（已随 Issue 04 回退移除）
 
 ### 错误码（已落 ErrorCodeConstants.java）
 
@@ -450,7 +455,7 @@ Status: ready-for-agent
 - `1_030_008_003` — YARN_SPEC_NAME_DUPLICATE（纱线规格【{}】已存在）
 - `1_030_008_004` — YARN_RECIPE_BOM_NOT_EXISTS（纱线配比BOM不存在）
 - `1_030_008_005` — YARN_RECIPE_BOM_ITEM_NOT_EXISTS（纱线配比BOM明细不存在）
-- `1_030_008_006` — STOCK_LEDGER_NOT_EXISTS（库存台账记录不存在）
+- ~~`1_030_008_006` — STOCK_LEDGER_NOT_EXISTS（库存台账记录不存在）~~（已于 2026-09-21 随台账回退移除）
 - `1_030_009_000` — YARN_ORDER_NOT_EXISTS（纱线采购单不存在）
 - `1_030_009_001` — YARN_ORDER_NO_DUPLICATE（纱线采购单号【{}】已存在）
 - `1_030_009_002` — YARN_ORDER_STATUS_NOT_ALLOWED（当前状态不允许该操作）
@@ -460,7 +465,7 @@ Status: ready-for-agent
 
 - `lunaerp_yarn_order_status`：DRAFT 草稿(warning) / ACTIVE 进行中(success) / COMPLETED 已完成(info) / CANCELLED 已取消(danger)
 
-材质不入字典（seed 表）。规格的 spin_method/luster 自由文本。StockLedger type 枚举仅服务内部使用不入字典。
+材质不入字典（seed 表）。规格的 spin_method/luster 自由文本。原 StockLedger type 枚举已随台账回退移除。
 
 ### 菜单与路由
 
@@ -504,21 +509,21 @@ SQL 菜单（ID 段 10230/10240/10250，可重复执行，先 DELETE 再 INSERT�
      - 已选胚布单表格：胚布单号 / 产品 / 成品量 / 损耗预设 / 操作（移除）
    - **AI 测算按钮**（高亮 primary）：点击调 `POST /yarn-order/calculate`，入参 greigeOrderIds + lossRate
    - 采购明细表格（测算结果展示 + 可编辑）：
-     - 列：纱线规格（材质+规格名级联展示）/ 配比 ratio（只读）/ 基础量 base_qty（只读）/ 需求量 required_qty（只读）/ 在库量 stock_qty（只读）/ 实采量 purchase_qty（可编辑）/ 供应商（每行独立远程搜索下拉）/ 单价 unit_price（可编辑，默认 ref_unit_price）/ 金额 total_amount（只读 = unit_price × purchase_qty 前端实时算）/ 历史 价 ref_unit_price（只读）/ 备注 / 操作（删行）
-     - 底部汇总行：合计实采量 / 合计金额
-   - 操作栏（按状态显示）：
-     - 草稿态：[保存草稿][下达][删除]
-     - 进行中态：[完成][取消]
-     - 已完成/已取消：全只读
-   - 只读模式（非草稿态查看）：全部控件 disabled，隐藏编辑按钮
+      - 列：纱线规格（材质+规格名级联展示）/ 配比 ratio（只读）/ 基础量 base_qty（只读）/ 需求量 required_qty（只读）/ 在库量 stock_qty（只读，因台账回退固定返回 0.00）/ 实采量 purchase_qty（可编辑，默认等于 required_qty）/ 供应商（每行独立远程搜索下拉）/ 单价 unit_price（可编辑，默认 ref_unit_price）/ 金额 total_amount（只读 = unit_price × purchase_qty 前端实时算）/ 历史 价 ref_unit_price（只读）/ 备注 / 操作（删行）
+      - 底部汇总行：合计实采量 / 合计金额
+    - 操作栏（按状态显示）：
+      - 草稿态：[保存草稿][下达][删除]
+      - 进行中态：[完成][取消]
+      - 已完成/已取消：全只读
+    - 只读模式（非草稿态查看）：全部控件 disabled，隐藏编辑按钮
 
 5. **纱线配比 BOM 工作台** `yarn-recipe-bom/workspace/index.vue`：
-   - 顶部：产品档案远程搜索（必选，选中带出 productId/productCode/productName 快照）+ 状态 + 备注
-   - 配比明细表格（可编辑行）：
-     - 列：纱线规格（两级级联带搜索下拉，选规格自动带出 yarn_type_id+yarn_spec_id+ref_price 兜底）/ 配比 ratio（必填，百分比数字 49=49%）/ 纺纱工艺 spin_method（可空，覆盖默认）/ 参考价 ref_price（可空）/ 备注 / 操作（删行）
-     - 底部"添加明细行"按钮
-     - 配比之和不强制等于 100（展示当前合计值，仅提示不阻断）
-   - 操作栏：[保存][删除]（仅新建/编辑态可操作，已停用只读）
+    - 顶部：产品档案远程搜索（必选，选中带出 productId/productCode/productName 快照）+ 状态 + 备注
+    - 配比明细表格（可编辑行）：
+      - 列：纱线规格（两级级联带搜索下拉，选规格自动带出 yarn_type_id+yarn_spec_id+ref_price 兜底）/ 配比 ratio（必填，百分比数字 49=49%）/ 纺纱工艺 spin_method（可空，覆盖默认）/ 参考价 ref_price（可空）/ 备注 / 操作（删行）
+      - 底部"添加明细行"按钮
+      - 配比之和不强制等于 100（展示当前合计值，仅提示不阻断）
+    - 操作栏：[保存][删除]（仅新建/编辑态可操作，已停用只读）
 
 #### 修改：胚布单编辑页加产品档案远程下拉
 
@@ -542,7 +547,7 @@ SQL 菜单（ID 段 10230/10240/10250，可重复执行，先 DELETE 再 INSERT�
    - 无字典
 
 3. **`luna-srv/sql/postgresql/lunaerp-production-yarn-order.sql`**：
-   - 表 5 `lunaerp_production_stock_ledger` DDL + 主键 DO 块 + 列注释 + 序列 + 索引（无菜单无字典）
+   - （原表 5 `lunaerp_production_stock_ledger` DDL 已于 2026-09-21 移除）
    - 表 6 `lunaerp_production_yarn_order` DDL + 主键 DO 块 + 列注释 + 序列 + 唯一索引
    - 表 7 `lunaerp_production_yarn_order_item` DDL + 主键 DO 块 + 列注释 + 序列 + 索引
    - 菜单 10230 + 按钮 10231-10233
@@ -584,18 +589,14 @@ Prior art：`CustomerServiceImplTest` / `SupplierServiceImplTest` / `SalesContra
 3. 删除：级联逻辑删除明细
 4. get-by-product-id：按 product_id 查 BOM + items
 
-#### StockLedgerServiceImplTest
-
-1. 余额查询：单 yarn_spec_id 余额 = SUM(STOCK_IN quantity)
-2. 批量余额查询：多 yarn_spec_id 一次返回
-3. writeStockIn：写入一条 STOCK_IN 记录（采购单完成时调用，幂等检查）
+#### StockLedgerServiceImplTest（已随 Issue 04 回退移除）
 
 #### YarnOrderServiceImplTest（核心）
 
 1. 创建：order_no 缺省由服务端生成（按天取号）；撞号报 `1_030_009_001`；source_instructions 中胚布单不存在报 `1_030_009_003`；明细 yarn_spec_id 不存在报 `1_030_009_003`；status 缺省 DRAFT；传 ACTIVE 直接下达
 2. 更新：仅 DRAFT 可更新，非 DRAFT 报 `1_030_009_002`；不存在报 `1_030_009_000`；明细整体替换；金额服务端权威重算 total_amount = unit_price × purchase_qty
 3. 删除：仅 DRAFT 可删；级联逻辑删除明细
-4. 状态操作：effect（DRAFT→ACTIVE）、complete（ACTIVE→COMPLETED + 自动写 STOCK_IN 台账）、cancel（ACTIVE→CANCELLED）；非法流转报 `1_030_009_002`
+4. 状态操作：effect（DRAFT→ACTIVE）、complete（ACTIVE→COMPLETED，仅流转状态，不写台账）、cancel（ACTIVE→CANCELLED）；非法流转报 `1_030_009_002`
 5. complete 幂等：已 COMPLETED 不能再 complete
 6. calculate（核心测算）：
    - greigeOrderIds 为空报错
@@ -604,7 +605,7 @@ Prior art：`CustomerServiceImplTest` / `SupplierServiceImplTest` / `SalesContra
    - product_id 无配比 BOM 报 `1_030_008_004`
    - baseQty 合并多单多 BOM 明细正确
    - requiredQty = baseQty × (1 + lossRate/100)
-   - purchaseQty = max(0, requiredQty - stockQty)
+   - stockQty 固定返回 0.00，purchaseQty = requiredQty
    - refUnitPrice 历史价回填（最近已下达采购单 unit_price > 规格 ref_price 兜底）
    - sourceGreigeOrderIds/Nos 正确分组
 
@@ -637,10 +638,10 @@ Prior art：`CustomerServiceImplTest` / `SupplierServiceImplTest` / `SalesContra
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 已新增"生产管理：纱线采购"术语分区：纱线材质/纱线规格/纱线配比BOM/纱线采购单/纱线采购明细/纱线采购单号/纱线采购单状态/纱线库存台账/测算口径/入库来源；并更新模块边界（5 个新子包）、字典段位（2230）、错误码段位表（1-030-008/009）
+- [CONTEXT.md](../../CONTEXT.md) — 已新增"生产管理：纱线采购"术语分区：纱线材质/纱线规格/纱线配比BOM/纱线采购单/纱线采购明细/纱线采购单号/纱线采购单状态/测算口径/入库来源；并更新模块边界（4 个子包）、字典段位（2230）、错误码段位表（1-030-008/009）
 - [ADR-0010](../../docs/adr/0010-yarn-order-state-and-calculation.md) — 纱线采购单状态四态 + 测算口径百分比+乘法公式 + 后端测算接口
 - [ADR-0011](../../docs/adr/0011-yarn-recipe-bom-independent-table.md) — 配比独立 yarn_recipe_bom 表 + 废弃产品档案 yarn_specs + 胚布单加 product_id
-- [ADR-0012](../../docs/adr/0012-yarn-stock-ledger-no-location.md) — 通用 StockLedger 流水台账 + 去库位字段 + 采购单完成自动写 STOCK_IN
+- [ADR-0012](../../docs/adr/0012-yarn-stock-ledger-no-location.md) — （已于 2026-09-21 废弃 deprecated）通用 StockLedger 流水台账
 - [ADR-0003](../../docs/adr/0003-sales-contract-item-aggregate-persistence.md) — 明细聚合整体保存模式（配比 BOM 明细 + 采购单明细沿用）
 - [ADR-0006](../../docs/adr/0006-greige-order-number-by-day.md) — 胚布单号按天取号模式（采购单号 YP+年月日+3位 沿用）
 - [ADR-0008](../../docs/adr/0008-dyeing-order-draft-state.md) — 染色单四态（采购单状态沿用）
@@ -649,11 +650,11 @@ Prior art：`CustomerServiceImplTest` / `SupplierServiceImplTest` / `SalesContra
 ### 实现顺序建议
 
 1. SQL 脚本（3 个新文件 + 修改 1 个既有）—— 最先落，建表+seed+菜单+字典
-2. 后端 DO×7 + Mapper×7（含 GreigeOrderDO 加 productId 改造）
+2. 后端 DO×6 + Mapper×6（含 GreigeOrderDO 加 productId 改造；去 stock_ledger）
 3. VO 套装（SaveReqVO 内嵌 items、PageReqVO、RespVO 内嵌 items、CalculateReqVO/RespVO）+ 错误码常量（已落）
-4. Service×5（yarntype/yarnspec/yarnrecipebom/stockledger/yarnorder）+ Controller×5
-5. ServiceImpl 纯 Mockito 单元测试（重点 YarnOrderServiceImplTest 覆盖测算+状态+台账）
-6. 前端 API 与 TS 类型（4 个 index.ts）+ dict.ts 枚举 + 隐藏路由
+4. Service×4（yarntype/yarnspec/yarnrecipebom/yarnorder；stockledger 已回退）+ Controller×4
+5. ServiceImpl 纯 Mockito 单元测试（重点 YarnOrderServiceImplTest 覆盖测算+状态）
+6. 前端 API 与 TS 类型（3 个 index.ts；yarn-stock 已回退）+ dict.ts 枚举 + 隐藏路由
 7. 前端纱线档案管理页（材质+规格双区）
 8. 前端配比 BOM 列表+工作台
 9. 前端采购单列表页
