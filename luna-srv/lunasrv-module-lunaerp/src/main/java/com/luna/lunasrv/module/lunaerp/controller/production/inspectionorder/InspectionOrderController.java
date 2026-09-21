@@ -4,15 +4,16 @@ import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.InspectionOrderService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
@@ -30,6 +31,36 @@ public class InspectionOrderController {
     @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-order:query')")
     public CommonResult<PageResult<InspectionOrderRespVO>> getInspectionOrderPage(@Validated InspectionOrderPageReqVO pageReqVO) {
         return success(inspectionOrderService.getInspectionOrderPage(pageReqVO));
+    }
+
+    @GetMapping("/get")
+    @Operation(summary = "获得检验单")
+    @Parameter(name = "id", description = "检验单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-order:query')")
+    public CommonResult<InspectionOrderRespVO> getInspectionOrder(@RequestParam("id") Long id) {
+        return success(inspectionOrderService.getInspectionOrder(id));
+    }
+
+    @GetMapping("/get-next-no")
+    @Operation(summary = "预览下一个检验单号（只读、不占号）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-order:query')")
+    public CommonResult<String> getNextInspectionOrderNo() {
+        return success(inspectionOrderService.getNextInspectionOrderNo());
+    }
+
+    @PostMapping("/create")
+    @Operation(summary = "创建检验单")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-order:create')")
+    public CommonResult<Long> createInspectionOrder(@Valid @RequestBody InspectionOrderSaveReqVO createReqVO) {
+        return success(inspectionOrderService.createInspectionOrder(createReqVO));
+    }
+
+    @PutMapping("/update")
+    @Operation(summary = "修改检验单")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-order:update')")
+    public CommonResult<Boolean> updateInspectionOrder(@Valid @RequestBody InspectionOrderSaveReqVO updateReqVO) {
+        inspectionOrderService.updateInspectionOrder(updateReqVO);
+        return success(true);
     }
 
 }

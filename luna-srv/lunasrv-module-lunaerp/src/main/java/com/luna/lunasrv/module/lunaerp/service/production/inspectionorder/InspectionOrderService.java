@@ -19,4 +19,34 @@ public interface InspectionOrderService {
      */
     PageResult<InspectionOrderRespVO> getInspectionOrderPage(InspectionOrderPageReqVO pageReqVO);
 
+    /**
+     * 获得检验单详情
+     *
+     * @param id 检验单编号
+     * @return 检验单详情
+     */
+    InspectionOrderRespVO getInspectionOrder(Long id);
+
+    /**
+     * 预览下一个检验单号（只读、不占号）
+     *
+     * @return 检验单号
+     */
+    String getNextInspectionOrderNo();
+
+    /**
+     * 创建检验单
+     *
+     * @param createReqVO 创建信息
+     * @return 编号
+     */
+    Long createInspectionOrder(com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO createReqVO);
+
+    /**
+     * 更新检验单
+     *
+     * @param updateReqVO 更新信息
+     */
+    void updateInspectionOrder(com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO updateReqVO);
+
 }
