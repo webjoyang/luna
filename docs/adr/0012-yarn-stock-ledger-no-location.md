@@ -2,7 +2,7 @@
 
 ## 状态
 
-accepted
+deprecated（2026-09-21 回退：经排查功能设计不完善，过早开发，前后端程序和表全部取消）
 
 ## 上下文与决定
 
@@ -46,7 +46,7 @@ accepted
 
 - 表 `lunaerp_production_stock_ledger` 单表，无主从结构。
 - `type` 枚举值保留 4 个（`STOCK_IN` / `STOCK_OUT` / `PROCESS_IN` / `PROCESS_OUT`），MVP 实际只用 `STOCK_IN`，其余枚举值为未来扩展预留。
-- 余额查询 API：`GET /admin-api/lunaerp/production/yarn-stock/balance?yarnSpecId=` 返回 `{yarnSpecId, stockQty, ...}`。
+- 余额查询 API：`GET /lunaerp/production/yarn-stock/balance?yarnSpecId=` 返回 `{yarnSpecId, stockQty, ...}`。
 - 采购单 `ServiceImpl` 完成状态流转时事务内追加写 `StockLedger` 流水（一条采购单 N 条明细行写 N 条 `STOCK_IN` 台账）。
 - 测算时后端按 `yarn_spec_id` 查 `StockLedger` `SUM(quantity)` 拿 `stockQty`。
 - 错误码段位 `1-030-008` 给纱线档案 + 配比 BOM 共用，`1-030-009` 给纱线采购单 + 明细共用。

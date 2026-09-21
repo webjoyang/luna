@@ -17,7 +17,6 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder.YarnOrderI
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder.YarnOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarntype.YarnTypeMapper;
-import com.luna.lunasrv.module.lunaerp.service.production.stockledger.StockLedgerService;
 import com.luna.lunasrv.module.lunaerp.service.production.yarnrecipebom.YarnRecipeBomService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,9 +49,6 @@ class YarnOrderServiceImplTest {
 
     @Mock
     private YarnRecipeBomService yarnRecipeBomService;
-
-    @Mock
-    private StockLedgerService stockLedgerService;
 
     @Mock
     private YarnSpecMapper yarnSpecMapper;
@@ -187,13 +183,6 @@ class YarnOrderServiceImplTest {
         bom2.setItems(Arrays.asList(b2Item1, b2Item2));
         when(yarnRecipeBomService.getYarnRecipeBomByProductId(2L)).thenReturn(bom2);
 
-        // 库存在库量
-        Map<Long, BigDecimal> balances = new HashMap<>();
-        balances.put(201L, new BigDecimal("500.00"));
-        balances.put(202L, new BigDecimal("100.00"));
-        balances.put(203L, BigDecimal.ZERO);
-        when(stockLedgerService.getBalances(any())).thenReturn(balances);
-
         // 历史价: 201 有最近已下达价格 28.50; 202/203 无最近价格，走规格 refPrice 兜底
         when(yarnOrderItemMapper.selectRecentUnitPriceBySpecId(201L)).thenReturn(new BigDecimal("28.5000"));
         when(yarnOrderItemMapper.selectRecentUnitPriceBySpecId(202L)).thenReturn(null);
@@ -245,8 +234,8 @@ class YarnOrderServiceImplTest {
         // 查找 201 规格行：
         // baseQty = 1000 * 60% + 2000 * 50% = 600 + 1000 = 1600.00
         // requiredQty = 1600 * (1 + 5/100) = 1680.00
-        // stockQty = 500.00
-        // purchaseQty = max(0, 1680 - 500) = 1180.00
+        // stockQty = 0.00（库存台账未启用，缺省 0）
+        // purchaseQty = 1680.00
         // refUnitPrice = 28.5000 (最近采购单价格)
         // sourceGreigeOrderIds = [101, 102], sourceGreigeOrderNos = ["PB0920001", "PB0920002"]
         YarnOrderCalculateItemRespVO item201 = resp.getItems().stream()
@@ -254,8 +243,8 @@ class YarnOrderServiceImplTest {
         assertNotNull(item201);
         assertEquals(new BigDecimal("1600.00"), item201.getBaseQty());
         assertEquals(new BigDecimal("1680.00"), item201.getRequiredQty());
-        assertEquals(new BigDecimal("500.00"), item201.getStockQty());
-        assertEquals(new BigDecimal("1180.00"), item201.getPurchaseQty());
+        assertEquals(new BigDecimal("0.00"), item201.getStockQty());
+        assertEquals(new BigDecimal("1680.00"), item201.getPurchaseQty());
         assertEquals(new BigDecimal("28.5000"), item201.getRefUnitPrice());
         assertEquals(Arrays.asList(101L, 102L), item201.getSourceGreigeOrderIds());
         assertEquals(Arrays.asList("PB0920001", "PB0920002"), item201.getSourceGreigeOrderNos());
@@ -263,8 +252,8 @@ class YarnOrderServiceImplTest {
         // 查找 202 规格行：
         // baseQty = 1000 * 40% = 400.00
         // requiredQty = 400 * 1.05 = 420.00
-        // stockQty = 100.00
-        // purchaseQty = 320.00
+        // stockQty = 0.00（库存台账未启用，缺省 0）
+        // purchaseQty = 420.00
         // refUnitPrice = 18.0000 (规格兜底价)
         // sourceGreigeOrderIds = [101]
         YarnOrderCalculateItemRespVO item202 = resp.getItems().stream()
@@ -272,8 +261,8 @@ class YarnOrderServiceImplTest {
         assertNotNull(item202);
         assertEquals(new BigDecimal("400.00"), item202.getBaseQty());
         assertEquals(new BigDecimal("420.00"), item202.getRequiredQty());
-        assertEquals(new BigDecimal("100.00"), item202.getStockQty());
-        assertEquals(new BigDecimal("320.00"), item202.getPurchaseQty());
+        assertEquals(new BigDecimal("0.00"), item202.getStockQty());
+        assertEquals(new BigDecimal("420.00"), item202.getPurchaseQty());
         assertEquals(new BigDecimal("18.0000"), item202.getRefUnitPrice());
         assertEquals(Collections.singletonList(101L), item202.getSourceGreigeOrderIds());
 
@@ -289,7 +278,7 @@ class YarnOrderServiceImplTest {
         assertNotNull(item203);
         assertEquals(new BigDecimal("1000.00"), item203.getBaseQty());
         assertEquals(new BigDecimal("1050.00"), item203.getRequiredQty());
-        assertEquals(BigDecimal.ZERO.setScale(2), item203.getStockQty());
+        assertEquals(new BigDecimal("0.00"), item203.getStockQty());
         assertEquals(new BigDecimal("1050.00"), item203.getPurchaseQty());
         assertEquals(new BigDecimal("45.0000"), item203.getRefUnitPrice());
         assertEquals(Collections.singletonList(102L), item203.getSourceGreigeOrderIds());
@@ -575,31 +564,12 @@ class YarnOrderServiceImplTest {
     }
 
     @Test
-    void completeYarnOrder_active_writesStockIn_and_aggregatesBySpec() {
+    void completeYarnOrder_active_success() {
         YarnOrderDO existing = new YarnOrderDO();
         existing.setId(100L);
         existing.setOrderNo("YP20260920001");
         existing.setStatus("ACTIVE");
         when(yarnOrderMapper.selectById(100L)).thenReturn(existing);
-        when(stockLedgerService.existsByRelatedDoc("yarn_order", 100L)).thenReturn(false);
-
-        // 3 items: two with spec 201 (100 + 50 = 150), one with spec 202 (80)
-        YarnOrderItemDO item1 = new YarnOrderItemDO();
-        item1.setOrderId(100L);
-        item1.setYarnSpecId(201L);
-        item1.setPurchaseQty(new BigDecimal("100.00"));
-
-        YarnOrderItemDO item2 = new YarnOrderItemDO();
-        item2.setOrderId(100L);
-        item2.setYarnSpecId(201L);
-        item2.setPurchaseQty(new BigDecimal("50.00"));
-
-        YarnOrderItemDO item3 = new YarnOrderItemDO();
-        item3.setOrderId(100L);
-        item3.setYarnSpecId(202L);
-        item3.setPurchaseQty(new BigDecimal("80.00"));
-
-        when(yarnOrderItemMapper.selectListByOrderId(100L)).thenReturn(Arrays.asList(item1, item2, item3));
 
         yarnOrderService.completeYarnOrder(100L);
 
@@ -607,29 +577,6 @@ class YarnOrderServiceImplTest {
         ArgumentCaptor<YarnOrderDO> captor = ArgumentCaptor.forClass(YarnOrderDO.class);
         verify(yarnOrderMapper).updateById(captor.capture());
         assertEquals("COMPLETED", captor.getValue().getStatus());
-
-        // 验证写台账：按 spec 聚合
-        verify(stockLedgerService).writeStockIn(201L, new BigDecimal("150.00"), "yarn_order", 100L, "YP20260920001", "采购单完成自动入库");
-        verify(stockLedgerService).writeStockIn(202L, new BigDecimal("80.00"), "yarn_order", 100L, "YP20260920001", "采购单完成自动入库");
-        verify(stockLedgerService, times(2)).writeStockIn(any(), any(), any(), any(), any(), any());
-    }
-
-    @Test
-    void completeYarnOrder_idempotent_whenStockInAlreadyExists_skipsWrite() {
-        YarnOrderDO existing = new YarnOrderDO();
-        existing.setId(100L);
-        existing.setOrderNo("YP20260920001");
-        existing.setStatus("ACTIVE");
-        when(yarnOrderMapper.selectById(100L)).thenReturn(existing);
-        when(stockLedgerService.existsByRelatedDoc("yarn_order", 100L)).thenReturn(true);
-
-        yarnOrderService.completeYarnOrder(100L);
-
-        // 状态更新仍正常
-        verify(yarnOrderMapper).updateById(any(YarnOrderDO.class));
-        // 幂等：已存在台账时不重复写
-        verify(stockLedgerService, never()).writeStockIn(any(), any(), any(), any(), any(), any());
-        verify(yarnOrderItemMapper, never()).selectListByOrderId(any());
     }
 
     @Test
@@ -660,8 +607,6 @@ class YarnOrderServiceImplTest {
         ServiceException ex3 = assertThrows(ServiceException.class,
                 () -> yarnOrderService.completeYarnOrder(102L));
         assertEquals(1_030_009_002, ex3.getCode());
-
-        verify(stockLedgerService, never()).writeStockIn(any(), any(), any(), any(), any(), any());
     }
 
     @Test

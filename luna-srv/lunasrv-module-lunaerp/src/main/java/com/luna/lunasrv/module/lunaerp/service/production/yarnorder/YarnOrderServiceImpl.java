@@ -20,7 +20,6 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder.YarnOrderI
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder.YarnOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarntype.YarnTypeMapper;
-import com.luna.lunasrv.module.lunaerp.service.production.stockledger.StockLedgerService;
 import com.luna.lunasrv.module.lunaerp.service.production.yarnrecipebom.YarnRecipeBomService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -57,9 +56,6 @@ public class YarnOrderServiceImpl implements YarnOrderService {
     private static final String STATUS_COMPLETED = "COMPLETED";
     private static final String STATUS_CANCELLED = "CANCELLED";
 
-    private static final String RELATED_DOC_TYPE_YARN_ORDER = "yarn_order";
-    private static final String STOCK_IN_REMARK_AUTO = "采购单完成自动入库";
-
     private static final String ORDER_NO_PREFIX = "YP";
     private static final int NO_MIN_DIGITS = 3;
     private static final int MAX_GENERATE_RETRY = 5;
@@ -77,9 +73,6 @@ public class YarnOrderServiceImpl implements YarnOrderService {
 
     @Resource
     private YarnRecipeBomService yarnRecipeBomService;
-
-    @Resource
-    private StockLedgerService stockLedgerService;
 
     @Resource
     private YarnSpecMapper yarnSpecMapper;
@@ -207,31 +200,6 @@ public class YarnOrderServiceImpl implements YarnOrderService {
             throw exception(YARN_ORDER_STATUS_NOT_ALLOWED);
         }
         yarnOrderMapper.updateById(new YarnOrderDO().setId(id).setStatus(STATUS_COMPLETED));
-
-        // 幂等检查：存在则跳过写入（防止重复入库）
-        if (!stockLedgerService.existsByRelatedDoc(RELATED_DOC_TYPE_YARN_ORDER, id)) {
-            List<YarnOrderItemDO> items = yarnOrderItemMapper.selectListByOrderId(id);
-            if (CollUtil.isNotEmpty(items)) {
-                // 按 yarn_spec_id 聚合求和 purchase_qty（应对同规格多行情况）
-                Map<Long, BigDecimal> qtyBySpec = new LinkedHashMap<>();
-                for (YarnOrderItemDO item : items) {
-                    if (item.getYarnSpecId() != null) {
-                        BigDecimal qty = item.getPurchaseQty() != null ? item.getPurchaseQty() : BigDecimal.ZERO;
-                        qtyBySpec.merge(item.getYarnSpecId(), qty, BigDecimal::add);
-                    }
-                }
-                for (Map.Entry<Long, BigDecimal> entry : qtyBySpec.entrySet()) {
-                    stockLedgerService.writeStockIn(
-                            entry.getKey(),
-                            entry.getValue(),
-                            RELATED_DOC_TYPE_YARN_ORDER,
-                            existing.getId(),
-                            existing.getOrderNo(),
-                            STOCK_IN_REMARK_AUTO
-                    );
-                }
-            }
-        }
     }
 
     @Override
@@ -397,13 +365,7 @@ public class YarnOrderServiceImpl implements YarnOrderService {
             }
         }
 
-        // 4. 批量查询在库量
-        Map<Long, BigDecimal> balances = stockLedgerService.getBalances(baseQtyMap.keySet());
-        if (balances == null) {
-            balances = Collections.emptyMap();
-        }
-
-        // 5. 算 requiredQty = baseQty × (1 + lossRate/100)、purchaseQty = max(0, requiredQty - stockQty)、历史价回填
+        // 4. 算 requiredQty = baseQty × (1 + lossRate/100)、purchaseQty = requiredQty（库存台账未启用，在库量缺省 0）、历史价回填
         BigDecimal lossRate = calculateReqVO.getLossRate() != null ? calculateReqVO.getLossRate() : BigDecimal.ZERO;
         BigDecimal lossMultiplier = BigDecimal.ONE.add(lossRate.divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP));
 
@@ -412,8 +374,8 @@ public class YarnOrderServiceImpl implements YarnOrderService {
             Long specId = entry.getKey();
             BigDecimal baseQty = entry.getValue().setScale(2, RoundingMode.HALF_UP);
             BigDecimal requiredQty = baseQty.multiply(lossMultiplier).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal stockQty = balances.getOrDefault(specId, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal purchaseQty = requiredQty.subtract(stockQty).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal stockQty = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal purchaseQty = requiredQty;
 
             // 历史价：最近已下达单价 > 规格 refPrice 兜底
             BigDecimal recentUnitPrice = yarnOrderItemMapper.selectRecentUnitPriceBySpecId(specId);

@@ -59,7 +59,6 @@ public interface ErrorCodeConstants {
     ErrorCode YARN_SPEC_NAME_DUPLICATE = new ErrorCode(1_030_008_003, "纱线规格【{}】已存在");
     ErrorCode YARN_RECIPE_BOM_NOT_EXISTS = new ErrorCode(1_030_008_004, "纱线配比BOM不存在");
     ErrorCode YARN_RECIPE_BOM_ITEM_NOT_EXISTS = new ErrorCode(1_030_008_005, "纱线配比BOM明细不存在");
-    ErrorCode STOCK_LEDGER_NOT_EXISTS = new ErrorCode(1_030_008_006, "库存台账记录不存在");
     ErrorCode YARN_RECIPE_BOM_PRODUCT_EXISTS = new ErrorCode(1_030_008_007, "该产品已存在纱线配比BOM");
 
     // ========== 纱线采购单模块 1-030-009-000（主表+明细共用） ==========

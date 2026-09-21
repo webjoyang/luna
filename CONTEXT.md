@@ -135,25 +135,24 @@ _避免_：纱线采购指令、YarnPurchase（命名已纠正）。
 形如 `YP20260920001`：`YP` + 年月日 + 3 位日流水（超 999 自然扩位），**按天取号**，租户内全量唯一、软删不释放（仿胚布单 ADR-0006 模式）。新建缺省由服务端生成、也可手填（撞号报错）。
 
 **纱线采购单状态 (YarnOrderStatus)**：
-四态：`DRAFT` 草稿（缺省）/ `ACTIVE` 进行中 / `COMPLETED` 已完成 / `CANCELLED` 已取消，仿染色单 ADR-0008。完成（ACTIVE→COMPLETED）时后端自动写一条 STOCK_IN 台账记录采购入库，是采购单与库存台账的联动接缝（ADR-0012）。MVP 无审批流。
+四态：`DRAFT` 草稿（缺省）/ `ACTIVE` 进行中 / `COMPLETED` 已完成 / `CANCELLED` 已取消，仿染色单 ADR-0008。MVP 无审批流。（原规划完成时写 STOCK_IN 台账已于 2026-09-21 撤销回退，库存台账暂缓开发）。
 
 **纱线库存台账 (StockLedger)**：
-所有纱线库存变动的单式流水台账，`lunaerp_production_stock_ledger` 单表含 yarn_spec_id + type（枚举 STOCK_IN/STOCK_OUT/PROCESS_IN/PROCESS_OUT）+ quantity（正负值，STOCK_IN 为正）+ related_doc_type/related_doc_id（关联单据类型与 ID，如 yarn_order）+ batch_no + remark。**MVP 实际只用 STOCK_IN**（采购单完成自动写入），其余类型为未来扩展占位。**去掉 source_location/target_location 两列**（MVP 无库位概念，ADR-0012）。余额查询 = 按 yarn_spec_id 聚合 SUM(quantity)。
-_避免_：纱线库存表（旧系统 StockLedger 单一类型枚举）；仓库/库位概念。
+（已于 2026-09-21 撤销回退，暂不开发；前后端程序与表全部取消）。
 
 **测算口径 (Yarn demand calculation)**：
-按"勾选胚布指示单 → 查 yarn_recipe_bom 拿配比 → 按纱线规格合并多单需求 → 查 StockLedger 拿在库量 → 算实采量"的核心业务流测算。算法：
+按"勾选胚布指示单 → 查 yarn_recipe_bom 拿配比 → 按纱线规格合并多单需求 → 算实采量"的核心业务流测算。算法：
 - `baseQty = Σ(胚布单成品量 × ratio/100)`，按 yarn_spec_id 合并多张胚布单
 - `requiredQty = baseQty × (1 + lossRate/100)`（lossRate 为百分比数字 5 = 5%）
-- `purchaseQty = max(0, requiredQty - stockQty)`
+- `purchaseQty = requiredQty`（库存台账未启用，在库量 stockQty 缺省 0）
 - `totalAmount = unitPrice × purchaseQty`（金额服务端权威重算）
 
 **与胚布单 loss_rate 小数+除法公式刻意不一致**：胚布单用 `demand_qty = finished_qty ÷ (1 - loss_rate)`（loss_rate 为小数 0.05 = 5%）。这是两个单据业务语义不同（胚布单是投胚需求折算、纱线采购单是含损耗的采购量），刻意不一致（ADR-0010）。
 
-测算接口为后端 `POST /admin-api/lunaerp/production/yarn-order/calculate`，前端只展示结果不做计算（ADR-0010）。
+测算接口为后端 `POST /lunaerp/production/yarn-order/calculate`，前端只展示结果不做计算（ADR-0010）。
 
 **入库来源 (StockInSource)**：
-采购单 ACTIVE→COMPLETED 时后端自动写一条 STOCK_IN 台账，related_doc_type='yarn_order'、related_doc_id=采购单 ID、quantity=该采购单全部明细 purchase_qty 之和（按 yarn_spec_id 拆分多行）。**不做独立"纱线入库单"流程**（用户决策，ADR-0012）。
+（已于 2026-09-21 撤销回退，暂不开发）。
 
 ## 状态与生命周期
 
@@ -178,9 +177,9 @@ _避免_：纱线库存表（旧系统 StockLedger 单一类型枚举）；仓�
 
 胚布单落在 `production`（生产管理）子包，与 `baseinfo` / `business` 平级：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.greigeorder[.color]`，前端 `lunaerp-elmui/production/greige-order/`（视图与 API 目录镜像）。
 
-纱线采购域同样落在 `production` 子包下，新增 5 个并列子包：`production.yarntype`（材质 CRUD，无字典）、`production.yarnspec`（规格 CRUD + cascade-options 两级级联数据源）、`production.yarnrecipebom`（配比 BOM 主从表 CRUD + get-by-product-id）、`production.stockledger`（库存台账仅余额查询，无 CRUD 端点）、`production.yarnorder`（采购单主从表 CRUD + 状态操作 + calculate 测算接口 + 完成时自动写 STOCK_IN）。前端视图 `lunaerp-elmui/production/yarn-master/`（材质+规格合并管理页）、`yarn-recipe-bom/`（配比 BOM 管理页）、`yarn-order/`（采购单列表+编辑页）。URL 前缀 `/admin-api/lunaerp/production/{yarn-type|yarn-spec|yarn-recipe-bom|yarn-order}`、`/admin-api/lunaerp/production/yarn-stock/balance`，权限码前缀 `lunaerp:production:<子域>:`。详见 ADR-0011。
+纱线采购域同样落在 `production` 子包下，新增 5 个并列子包：`production.yarntype`（材质 CRUD，无字典）、`production.yarnspec`（规格 CRUD + cascade-options 两级级联数据源）、`production.yarnrecipebom`（配比 BOM 主从表 CRUD + get-by-product-id）、`production.stockledger`（库存台账仅余额查询，无 CRUD 端点）、`production.yarnorder`（采购单主从表 CRUD + 状态操作 + calculate 测算接口 + 完成时自动写 STOCK_IN）。前端视图 `lunaerp-elmui/production/yarn-master/`（材质+规格合并管理页）、`yarn-recipe-bom/`（配比 BOM 管理页）、`yarn-order/`（采购单列表+编辑页）。URL 前缀 `/lunaerp/production/{yarn-type|yarn-spec|yarn-recipe-bom|yarn-order}`、`/lunaerp/production/yarn-stock/balance`，权限码前缀 `lunaerp:production:<子域>:`。详见 ADR-0011。
 
-供应商与客户同落 `baseinfo` 子包：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.baseinfo.supplier[.suppliercontact]`；前端视图 `luna-ui/src/views/lunaerp-elmui/baseinfo/supplier/`、前端 API `luna-ui/src/api/lunaerp-elmui/baseinfo/supplier/`（含 supplier-contact）。URL 前缀 `/admin-api/lunaerp/baseinfo/supplier[-contact]`，权限码前缀 `lunaerp:baseinfo:supplier[-contact]:`。
+供应商与客户同落 `baseinfo` 子包：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.baseinfo.supplier[.suppliercontact]`；前端视图 `luna-ui/src/views/lunaerp-elmui/baseinfo/supplier/`、前端 API `luna-ui/src/api/lunaerp-elmui/baseinfo/supplier/`（含 supplier-contact）。URL 前缀 `/lunaerp/baseinfo/supplier[-contact]`，权限码前缀 `lunaerp:baseinfo:supplier[-contact]:`。
 
 **租户 (Tenant)**：
 多租户通过后端 `TenantBaseDO` 强制（自动注入 `tenant_id` 列、自动过滤查询）。Customer/CustomerContact 与 Supplier/SupplierContact 都继承 `TenantBaseDO`。

@@ -4,7 +4,9 @@
 
 **Blocked by:** 01 纱线档案地基（需要 yarn_spec 表）
 
-**Status:** closed
+**Status:** wontfix
+
+> **回退说明 (2026-09-21)**: 经排查，纱线库存台账功能设计不完善，过早开发。经决定回退本任务，暂不开发相关功能。相关数据库表（lunaerp_production_stock_ledger）、后端 Service/Mapper/DO/Controller/单测及前端 API 全部取消删除，采购单测算在库量缺省为 0，采购单完成不自动写台账。
 
 - [x] `luna-srv/sql/postgresql/lunaerp-production-yarn-order.sql` 内追加表 5 段（同一 SQL 文件，集中管理纱线域变更）：
   - [x] 表 5 `lunaerp_production_stock_ledger` DDL（yarn_spec_id/type/quantity/related_doc_type/related_doc_id/batch_no/remark + 框架列）+ 主键 DO 块 + 列注释 + 序列
