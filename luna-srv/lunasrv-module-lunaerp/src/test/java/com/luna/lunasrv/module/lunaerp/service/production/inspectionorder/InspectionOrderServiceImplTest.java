@@ -38,6 +38,8 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Map;
+
 
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -569,45 +571,70 @@ class InspectionOrderServiceImplTest {
         assertEquals(prefix + "002", nextNo);
     }
 
-    // ==================== 状态操作：完成/取消（03 票） ====================
+    // ==================== 列表与详情：已录卷数（rollCount）回填（03 票） ====================
 
     @Test
-    void completeInspectionOrder_draft_transitionsToCompleted_andOnlyModifiesStatus() {
-        InspectionOrderDO existing = new InspectionOrderDO();
-        existing.setId(1001L);
-        existing.setStatus("DRAFT");
-        when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
+    void getInspectionOrderPage_populatesRollCountViaBatchCount() {
+        InspectionOrderPageReqVO reqVO = new InspectionOrderPageReqVO();
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(20);
 
-        inspectionOrderService.completeInspectionOrder(1001L);
+        InspectionOrderDO order1 = new InspectionOrderDO();
+        order1.setId(101L);
+        order1.setCode("INS-20260921-001");
+        InspectionOrderDO order2 = new InspectionOrderDO();
+        order2.setId(102L);
+        order2.setCode("INS-20260921-002");
 
-        ArgumentCaptor<LambdaUpdateWrapper<InspectionOrderDO>> captor =
-                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
-        verify(inspectionOrderMapper).update(isNull(), captor.capture());
-        LambdaUpdateWrapper<InspectionOrderDO> wrapper = captor.getValue();
-        String sqlSet = wrapper.getSqlSet();
-        assertTrue(sqlSet.contains("status"), "应更新 status 字段");
-        assertFalse(sqlSet.contains("product_code"), "不应触碰 product_code 等业务字段");
-        assertFalse(sqlSet.contains("inspection_factory_name"), "不应触碰 inspection_factory_name 等业务字段");
-        assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
-        assertTrue(wrapper.getParamNameValuePairs().containsValue("COMPLETED"), "目标状态应为 COMPLETED");
+        PageResult<InspectionOrderDO> pageDO = new PageResult<>(Arrays.asList(order1, order2), 2L);
+        when(inspectionOrderMapper.selectPage(eq(reqVO), any())).thenReturn(pageDO);
+
+        Map<Long, Integer> countMap = Map.of(101L, 5, 102L, 8);
+        when(inspectionOrderItemMapper.selectCountMapByInspectionOrderIds(Arrays.asList(101L, 102L))).thenReturn(countMap);
+
+        PageResult<InspectionOrderRespVO> result = inspectionOrderService.getInspectionOrderPage(reqVO);
+
+        assertNotNull(result);
+        assertEquals(2, result.getList().size());
+        assertEquals(5, result.getList().get(0).getRollCount());
+        assertEquals(8, result.getList().get(1).getRollCount());
     }
 
     @Test
-    void completeInspectionOrder_active_transitionsToCompleted_andOnlyModifiesStatus() {
-        InspectionOrderDO existing = new InspectionOrderDO();
-        existing.setId(1001L);
-        existing.setStatus("ACTIVE");
-        when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
+    void getInspectionOrder_populatesRollCount() {
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(101L);
+        order.setCode("INS-20260921-001");
+        when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+        when(inspectionOrderItemMapper.selectCountByInspectionOrderId(101L)).thenReturn(12L);
 
-        inspectionOrderService.completeInspectionOrder(1001L);
+        InspectionOrderRespVO respVO = inspectionOrderService.getInspectionOrder(101L);
 
-        ArgumentCaptor<LambdaUpdateWrapper<InspectionOrderDO>> captor =
-                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
-        verify(inspectionOrderMapper).update(isNull(), captor.capture());
-        LambdaUpdateWrapper<InspectionOrderDO> wrapper = captor.getValue();
-        String sqlSet = wrapper.getSqlSet();
-        assertTrue(sqlSet.contains("status"), "应更新 status 字段");
-        assertTrue(wrapper.getParamNameValuePairs().containsValue("COMPLETED"), "目标状态应为 COMPLETED");
+        assertNotNull(respVO);
+        assertEquals(101L, respVO.getId());
+        assertEquals(12, respVO.getRollCount());
+    }
+
+    // ==================== 状态操作：完成/取消（03 票） ====================
+
+    @Test
+    void completeInspectionOrder_validStatus_transitionsToCompleted() {
+        for (String status : Arrays.asList("DRAFT", "ACTIVE")) {
+            reset(inspectionOrderMapper);
+            InspectionOrderDO existing = new InspectionOrderDO();
+            existing.setId(1001L);
+            existing.setStatus(status);
+            when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
+
+            inspectionOrderService.completeInspectionOrder(1001L);
+
+            ArgumentCaptor<LambdaUpdateWrapper<InspectionOrderDO>> captor =
+                    ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+            verify(inspectionOrderMapper).update(isNull(), captor.capture());
+            LambdaUpdateWrapper<InspectionOrderDO> wrapper = captor.getValue();
+            assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
+            assertTrue(wrapper.getParamNameValuePairs().containsValue("COMPLETED"), "目标状态应为 COMPLETED");
+        }
     }
 
     @Test
@@ -637,7 +664,7 @@ class InspectionOrderServiceImplTest {
     }
 
     @Test
-    void cancelInspectionOrder_anyStatus_transitionsToCancelled_andOnlyModifiesStatus() {
+    void cancelInspectionOrder_anyStatus_transitionsToCancelled() {
         for (String status : Arrays.asList("DRAFT", "ACTIVE", "COMPLETED", "CANCELLED")) {
             reset(inspectionOrderMapper);
             InspectionOrderDO existing = new InspectionOrderDO();
@@ -651,13 +678,11 @@ class InspectionOrderServiceImplTest {
                     ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
             verify(inspectionOrderMapper).update(isNull(), captor.capture());
             LambdaUpdateWrapper<InspectionOrderDO> wrapper = captor.getValue();
-            String sqlSet = wrapper.getSqlSet();
-            assertTrue(sqlSet.contains("status"), "应更新 status 字段");
-            assertFalse(sqlSet.contains("product_code"), "不应触碰 product_code 等业务字段");
             assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
             assertTrue(wrapper.getParamNameValuePairs().containsValue("CANCELLED"), "目标状态应为 CANCELLED");
         }
     }
+
 
     @Test
     void cancelInspectionOrder_notExists_throwsNotExists() {

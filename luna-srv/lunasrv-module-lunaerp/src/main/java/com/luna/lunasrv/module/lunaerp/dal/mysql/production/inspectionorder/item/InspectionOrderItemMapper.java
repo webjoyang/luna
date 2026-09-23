@@ -57,6 +57,26 @@ public interface InspectionOrderItemMapper extends BaseMapperX<InspectionOrderIt
     }
 
     /**
+     * 批量查询多个检验单下的明细数量（分组统计，避免 N+1 查询）
+     *
+     * @param inspectionOrderIds 检验单ID集合
+     * @return 检验单ID -> 明细数量 Map
+     */
+    default java.util.Map<Long, Integer> selectCountMapByInspectionOrderIds(java.util.Collection<Long> inspectionOrderIds) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(inspectionOrderIds)) {
+            return java.util.Collections.emptyMap();
+        }
+        java.util.List<InspectionOrderItemDO> list = selectList(new LambdaQueryWrapperX<InspectionOrderItemDO>()
+                .in(InspectionOrderItemDO::getInspectionOrderId, inspectionOrderIds)
+                .select(InspectionOrderItemDO::getInspectionOrderId, InspectionOrderItemDO::getId));
+        java.util.Map<Long, Integer> countMap = new java.util.HashMap<>();
+        for (InspectionOrderItemDO item : list) {
+            countMap.merge(item.getInspectionOrderId(), 1, Integer::sum);
+        }
+        return countMap;
+    }
+
+    /**
      * 根据检验单ID批量逻辑删除明细（级联删除用）
      *
      * @param inspectionOrderId 检验单ID
@@ -66,5 +86,6 @@ public interface InspectionOrderItemMapper extends BaseMapperX<InspectionOrderIt
         return delete(new LambdaQueryWrapperX<InspectionOrderItemDO>()
                 .eq(InspectionOrderItemDO::getInspectionOrderId, inspectionOrderId));
     }
+
 
 }

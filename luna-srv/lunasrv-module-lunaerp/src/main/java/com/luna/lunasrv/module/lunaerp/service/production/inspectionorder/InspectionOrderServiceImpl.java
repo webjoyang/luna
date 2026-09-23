@@ -20,8 +20,9 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.Insp
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.item.InspectionOrderItemMapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;
-import org.springframework.stereotype.Service;
+import cn.hutool.core.collection.CollUtil;
 
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
@@ -29,8 +30,11 @@ import org.springframework.validation.annotation.Validated;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
@@ -65,9 +69,18 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
      */
     private static final Pattern NO_SUFFIX_NUMBER_PATTERN = Pattern.compile("^\\d+");
     /**
+     * 检验单状态常量
+     */
+    public static final String STATUS_DRAFT = "DRAFT";
+    public static final String STATUS_ACTIVE = "ACTIVE";
+    public static final String STATUS_COMPLETED = "COMPLETED";
+    public static final String STATUS_CANCELLED = "CANCELLED";
+
+    /**
      * 检验单默认状态：草稿
      */
-    private static final String DEFAULT_STATUS = "DRAFT";
+    private static final String DEFAULT_STATUS = STATUS_DRAFT;
+
 
     @Resource
     private InspectionOrderMapper inspectionOrderMapper;
@@ -90,16 +103,19 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
         wrapper.orderByDesc(InspectionOrderDO::getOrderDate);
         PageResult<InspectionOrderDO> pageResult = inspectionOrderMapper.selectPage(reqVO, wrapper);
         PageResult<InspectionOrderRespVO> result = BeanUtils.toBean(pageResult, InspectionOrderRespVO.class);
-        if (result != null && result.getList() != null) {
+        if (result != null && CollUtil.isNotEmpty(result.getList())) {
+            List<Long> orderIds = result.getList().stream()
+                    .map(InspectionOrderRespVO::getId)
+                    .filter(Objects::nonNull)
+                    .toList();
+            Map<Long, Integer> countMap = inspectionOrderItemMapper.selectCountMapByInspectionOrderIds(orderIds);
             for (InspectionOrderRespVO item : result.getList()) {
-                if (item.getId() != null) {
-                    Long count = inspectionOrderItemMapper.selectCountByInspectionOrderId(item.getId());
-                    item.setRollCount(count != null ? count.intValue() : 0);
-                }
+                item.setRollCount(countMap.getOrDefault(item.getId(), 0));
             }
         }
         return result;
     }
+
 
     @Override
     public InspectionOrderRespVO getInspectionOrder(Long id) {
@@ -168,48 +184,45 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateInspectionOrderStatus(Long id, String status) {
-        validateInspectionOrderExists(id);
-        InspectionOrderDO updateObj = new InspectionOrderDO();
-        updateObj.setId(id);
-        updateObj.setStatus(status);
-        inspectionOrderMapper.updateById(updateObj);
+        transitionStatus(id, status);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void completeInspectionOrder(Long id) {
         InspectionOrderDO order = validateInspectionOrderExists(id);
-        if (!"DRAFT".equals(order.getStatus()) && !"ACTIVE".equals(order.getStatus())) {
+        if (!STATUS_DRAFT.equals(order.getStatus()) && !STATUS_ACTIVE.equals(order.getStatus())) {
             throw exception(INSPECTION_ORDER_STATUS_NOT_ALLOWED);
         }
-        inspectionOrderMapper.update(null, new LambdaUpdateWrapper<InspectionOrderDO>()
-                .eq(InspectionOrderDO::getId, id)
-                .set(InspectionOrderDO::getStatus, "COMPLETED"));
+        transitionStatus(id, STATUS_COMPLETED);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void cancelInspectionOrder(Long id) {
-        validateInspectionOrderExists(id);
-        inspectionOrderMapper.update(null, new LambdaUpdateWrapper<InspectionOrderDO>()
-                .eq(InspectionOrderDO::getId, id)
-                .set(InspectionOrderDO::getStatus, "CANCELLED"));
+        transitionStatus(id, STATUS_CANCELLED);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteInspectionOrder(Long id) {
         InspectionOrderDO order = validateInspectionOrderExists(id);
-        if (!"DRAFT".equals(order.getStatus())) {
+        if (!STATUS_DRAFT.equals(order.getStatus())) {
             throw exception(INSPECTION_ORDER_STATUS_NOT_ALLOWED);
         }
         inspectionOrderMapper.deleteById(id);
         inspectionOrderItemMapper.deleteByInspectionOrderId(id);
     }
 
-
-
     // ==================== 私有方法 ====================
+
+    private void transitionStatus(Long id, String toStatus) {
+        validateInspectionOrderExists(id);
+        inspectionOrderMapper.update(null, new LambdaUpdateWrapper<InspectionOrderDO>()
+                .eq(InspectionOrderDO::getId, id)
+                .set(InspectionOrderDO::getStatus, toStatus));
+    }
+
 
     private InspectionOrderDO validateInspectionOrderExists(Long id) {
         if (id == null) {
