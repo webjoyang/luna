@@ -34,4 +34,9 @@
     - `InspectionOrderServiceImplTest` 用例扩充至 30 例，全面覆盖分页条件透传、complete/cancel 状态切换、非合法状态限制、单据不存在报错、删除仅限 DRAFT、删除级联逻辑删除明细子表等场景。
     - `lunasrv-module-lunaerp` 全量单测 261 例全部绿色通过。
     - 前端 ESLint 检查通过，vue-tsc 检查目标文件零错误。
+- 2026-09-23（agent）- Code Review 与重构优化：
+  - 规避 N+1 查询：在 `InspectionOrderItemMapper` 中新增 `selectCountMapByInspectionOrderIds`，列表分页查询使用 IN (ids) 分组投影统计批量回填 `rollCount`。
+  - 抽象状态流转方法 `transitionStatus`，严格确保只单字段更新 `status` 字段，提升代码内聚度。
+  - 补充批量与详情 `rollCount` 回填单元测试，优化状态流转断言。单测用例增至 31 例，`lunasrv-module-lunaerp` 模块 262 例测试全部 GREEN 通过。
+
 
