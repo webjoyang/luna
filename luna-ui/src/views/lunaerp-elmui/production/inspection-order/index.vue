@@ -282,7 +282,9 @@ const handleDelete = async (id: number) => {
 /** 初始化 */
 onMounted(() => {
   getList()
+  searchSuppliers('')
 })
+
 </script>
 
 <style lang="scss" scoped>

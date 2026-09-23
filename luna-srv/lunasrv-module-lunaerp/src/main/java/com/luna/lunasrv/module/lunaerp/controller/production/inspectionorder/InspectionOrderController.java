@@ -63,4 +63,32 @@ public class InspectionOrderController {
         return success(true);
     }
 
+    @PutMapping("/complete")
+    @Operation(summary = "完成检验单")
+    @Parameter(name = "id", description = "检验单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-order:update')")
+    public CommonResult<Boolean> completeInspectionOrder(@RequestParam("id") Long id) {
+        inspectionOrderService.completeInspectionOrder(id);
+        return success(true);
+    }
+
+    @PutMapping("/cancel")
+    @Operation(summary = "取消检验单")
+    @Parameter(name = "id", description = "检验单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-order:update')")
+    public CommonResult<Boolean> cancelInspectionOrder(@RequestParam("id") Long id) {
+        inspectionOrderService.cancelInspectionOrder(id);
+        return success(true);
+    }
+
+    @DeleteMapping("/delete")
+    @Operation(summary = "删除检验单")
+    @Parameter(name = "id", description = "检验单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-order:delete')")
+    public CommonResult<Boolean> deleteInspectionOrder(@RequestParam("id") Long id) {
+        inspectionOrderService.deleteInspectionOrder(id);
+        return success(true);
+    }
+
 }
+

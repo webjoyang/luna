@@ -15,13 +15,17 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.Sal
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
+
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.item.InspectionOrderItemMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -64,8 +68,11 @@ class InspectionOrderServiceImplTest {
     private DyeingOrderMapper dyeingOrderMapper;
     @Mock
     private SalesContractMapper salesContractMapper;
+    @Mock
+    private InspectionOrderItemMapper inspectionOrderItemMapper;
 
     @InjectMocks
+
     private InspectionOrderServiceImpl inspectionOrderService;
 
     @BeforeEach
@@ -562,4 +569,148 @@ class InspectionOrderServiceImplTest {
         assertEquals(prefix + "002", nextNo);
     }
 
+    // ==================== 状态操作：完成/取消（03 票） ====================
+
+    @Test
+    void completeInspectionOrder_draft_transitionsToCompleted_andOnlyModifiesStatus() {
+        InspectionOrderDO existing = new InspectionOrderDO();
+        existing.setId(1001L);
+        existing.setStatus("DRAFT");
+        when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
+
+        inspectionOrderService.completeInspectionOrder(1001L);
+
+        ArgumentCaptor<LambdaUpdateWrapper<InspectionOrderDO>> captor =
+                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(inspectionOrderMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<InspectionOrderDO> wrapper = captor.getValue();
+        String sqlSet = wrapper.getSqlSet();
+        assertTrue(sqlSet.contains("status"), "应更新 status 字段");
+        assertFalse(sqlSet.contains("product_code"), "不应触碰 product_code 等业务字段");
+        assertFalse(sqlSet.contains("inspection_factory_name"), "不应触碰 inspection_factory_name 等业务字段");
+        assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("COMPLETED"), "目标状态应为 COMPLETED");
+    }
+
+    @Test
+    void completeInspectionOrder_active_transitionsToCompleted_andOnlyModifiesStatus() {
+        InspectionOrderDO existing = new InspectionOrderDO();
+        existing.setId(1001L);
+        existing.setStatus("ACTIVE");
+        when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
+
+        inspectionOrderService.completeInspectionOrder(1001L);
+
+        ArgumentCaptor<LambdaUpdateWrapper<InspectionOrderDO>> captor =
+                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(inspectionOrderMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<InspectionOrderDO> wrapper = captor.getValue();
+        String sqlSet = wrapper.getSqlSet();
+        assertTrue(sqlSet.contains("status"), "应更新 status 字段");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("COMPLETED"), "目标状态应为 COMPLETED");
+    }
+
+    @Test
+    void completeInspectionOrder_notExists_throwsNotExists() {
+        when(inspectionOrderMapper.selectById(1001L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> inspectionOrderService.completeInspectionOrder(1001L));
+        assertEquals(INSPECTION_ORDER_NOT_EXISTS.getCode(), exception.getCode());
+        verify(inspectionOrderMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void completeInspectionOrder_illegalStatus_throwsStatusNotAllowed() {
+        for (String status : Arrays.asList("COMPLETED", "CANCELLED")) {
+            InspectionOrderDO existing = new InspectionOrderDO();
+            existing.setId(1001L);
+            existing.setStatus(status);
+            when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
+
+            ServiceException exception = assertThrows(ServiceException.class,
+                    () -> inspectionOrderService.completeInspectionOrder(1001L),
+                    "状态为 " + status + " 时完成应抛出状态不允许异常");
+            assertEquals(INSPECTION_ORDER_STATUS_NOT_ALLOWED.getCode(), exception.getCode());
+        }
+        verify(inspectionOrderMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void cancelInspectionOrder_anyStatus_transitionsToCancelled_andOnlyModifiesStatus() {
+        for (String status : Arrays.asList("DRAFT", "ACTIVE", "COMPLETED", "CANCELLED")) {
+            reset(inspectionOrderMapper);
+            InspectionOrderDO existing = new InspectionOrderDO();
+            existing.setId(1001L);
+            existing.setStatus(status);
+            when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
+
+            inspectionOrderService.cancelInspectionOrder(1001L);
+
+            ArgumentCaptor<LambdaUpdateWrapper<InspectionOrderDO>> captor =
+                    ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+            verify(inspectionOrderMapper).update(isNull(), captor.capture());
+            LambdaUpdateWrapper<InspectionOrderDO> wrapper = captor.getValue();
+            String sqlSet = wrapper.getSqlSet();
+            assertTrue(sqlSet.contains("status"), "应更新 status 字段");
+            assertFalse(sqlSet.contains("product_code"), "不应触碰 product_code 等业务字段");
+            assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
+            assertTrue(wrapper.getParamNameValuePairs().containsValue("CANCELLED"), "目标状态应为 CANCELLED");
+        }
+    }
+
+    @Test
+    void cancelInspectionOrder_notExists_throwsNotExists() {
+        when(inspectionOrderMapper.selectById(1001L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> inspectionOrderService.cancelInspectionOrder(1001L));
+        assertEquals(INSPECTION_ORDER_NOT_EXISTS.getCode(), exception.getCode());
+        verify(inspectionOrderMapper, never()).update(any(), any());
+    }
+
+    // ==================== 删除检验单：仅 DRAFT 可删 + 级联删除明细（03 票） ====================
+
+    @Test
+    void deleteInspectionOrder_draft_successAndCascadesItemDelete() {
+        InspectionOrderDO existing = new InspectionOrderDO();
+        existing.setId(1001L);
+        existing.setStatus("DRAFT");
+        when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
+
+        inspectionOrderService.deleteInspectionOrder(1001L);
+
+        verify(inspectionOrderMapper).deleteById(1001L);
+        verify(inspectionOrderItemMapper).deleteByInspectionOrderId(1001L);
+    }
+
+    @Test
+    void deleteInspectionOrder_notExists_throwsNotExists() {
+        when(inspectionOrderMapper.selectById(1001L)).thenReturn(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> inspectionOrderService.deleteInspectionOrder(1001L));
+        assertEquals(INSPECTION_ORDER_NOT_EXISTS.getCode(), exception.getCode());
+        verify(inspectionOrderMapper, never()).deleteById(any());
+        verify(inspectionOrderItemMapper, never()).deleteByInspectionOrderId(any());
+    }
+
+    @Test
+    void deleteInspectionOrder_illegalStatus_throwsStatusNotAllowed() {
+        for (String status : Arrays.asList("ACTIVE", "COMPLETED", "CANCELLED")) {
+            InspectionOrderDO existing = new InspectionOrderDO();
+            existing.setId(1001L);
+            existing.setStatus(status);
+            when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
+
+            ServiceException exception = assertThrows(ServiceException.class,
+                    () -> inspectionOrderService.deleteInspectionOrder(1001L),
+                    "状态为 " + status + " 时删除应抛出状态不允许异常");
+            assertEquals(INSPECTION_ORDER_STATUS_NOT_ALLOWED.getCode(), exception.getCode());
+        }
+        verify(inspectionOrderMapper, never()).deleteById(any());
+        verify(inspectionOrderItemMapper, never()).deleteByInspectionOrderId(any());
+    }
+
 }
+
