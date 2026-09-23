@@ -5,6 +5,9 @@
         <template #content>
           <div class="flex items-center gap-3">
             <span class="font-bold text-16px">{{ pageTitle }}</span>
+            <span v-if="currentOrder?.code" class="text-gray-500 font-mono text-14px">
+              {{ currentOrder.code }}
+            </span>
             <DictTag
               v-if="currentOrder?.status"
               :type="DICT_TYPE.LUNAERP_INSPECTION_ORDER_STATUS"
@@ -18,12 +21,13 @@
       <div class="action-buttons flex items-center gap-2">
         <el-button @click="handleBack">返回</el-button>
 
-        <!-- 草稿态 / 新建态操作：[保存草稿][完成][取消][删除] -->
-        <template v-if="isDraftOrNew">
+        <!-- 草稿态 / 新建态操作：[删除][保存草稿][完成][取消] -->
+        <template v-if="!isAllReadOnly && isDraftOrNew">
           <el-button
-            v-if="orderId"
+            v-if="numericOrderId"
             type="danger"
             plain
+            :loading="actionLoading"
             @click="handleDelete"
             v-hasPermi="['lunaerp:production:inspection-order:delete']"
           >
@@ -38,7 +42,7 @@
             保存草稿
           </el-button>
           <el-button
-            v-if="orderId"
+            v-if="numericOrderId"
             type="success"
             plain
             :loading="actionLoading"
@@ -48,7 +52,7 @@
             完成
           </el-button>
           <el-button
-            v-if="orderId"
+            v-if="numericOrderId"
             type="warning"
             plain
             :loading="actionLoading"
@@ -60,7 +64,7 @@
         </template>
 
         <!-- 录检中态操作：[完成][取消] -->
-        <template v-else-if="currentOrder?.status === 'ACTIVE'">
+        <template v-else-if="!isAllReadOnly && currentOrder?.status === 'ACTIVE'">
           <el-button
             type="success"
             plain
@@ -89,7 +93,7 @@
         <BasicInfoTab
           ref="basicInfoTabRef"
           :order-id="numericOrderId"
-          :is-view-mode="isViewMode"
+          :is-view-mode="isAllReadOnly"
           @loaded="handleOrderLoaded"
           @saved="handleOrderSaved"
           @cancel="handleBack"
@@ -97,14 +101,20 @@
       </el-tab-pane>
 
       <el-tab-pane label="录检明细" name="items">
-        <el-empty
-          :description="isCreateMode ? '请先保存基本信息后再录检' : '录检明细功能建设中（将在后续 Issue 04 落地）'"
-          :image-size="100"
+        <ItemsTab
+          ref="itemsTabRef"
+          :order-id="numericOrderId"
+          :order-status="currentOrder?.status"
+          :is-view-mode="isAllReadOnly"
+          :default-product-code="currentOrder?.productCode"
+          :default-product-name="currentOrder?.productName"
+          @item-changed="handleItemChanged"
+          @switch-to-basic="activeTab = 'basic'"
         />
       </el-tab-pane>
 
       <el-tab-pane label="操作日志" name="logs">
-        <el-empty description="操作日志功能建设中" :image-size="100" />
+        <LogsTab />
       </el-tab-pane>
     </el-tabs>
   </ContentWrap>
@@ -113,6 +123,8 @@
 <script lang="ts" setup>
 import { DICT_TYPE } from '@/utils/dict'
 import BasicInfoTab from './BasicInfoTab.vue'
+import ItemsTab from './ItemsTab.vue'
+import LogsTab from './LogsTab.vue'
 import * as InspectionOrderApi from '@/api/lunaerp-elmui/production/inspection-order'
 import type { InspectionOrderVO } from '@/api/lunaerp-elmui/production/inspection-order'
 
@@ -124,6 +136,7 @@ const message = useMessage()
 
 const activeTab = ref('basic')
 const basicInfoTabRef = ref<InstanceType<typeof BasicInfoTab>>()
+const itemsTabRef = ref<InstanceType<typeof ItemsTab>>()
 const actionLoading = ref(false)
 
 const orderId = computed(() => (route.params.id as string) || null)
@@ -133,22 +146,20 @@ const isViewMode = computed(() => route.query.mode === 'view')
 
 const currentOrder = ref<InspectionOrderVO | null>(null)
 
+const isAllReadOnly = computed(() => {
+  if (isViewMode.value) return true
+  const st = currentOrder.value?.status
+  return st === 'COMPLETED' || st === 'CANCELLED'
+})
+
 const isDraftOrNew = computed(() => {
   if (isCreateMode.value) return true
   return currentOrder.value?.status === 'DRAFT'
 })
 
-const isReadOnly = computed(() => {
-  if (isViewMode.value) return true
-  if (!isCreateMode.value && currentOrder.value?.status && currentOrder.value.status !== 'DRAFT') {
-    return true
-  }
-  return false
-})
-
 const pageTitle = computed(() => {
   if (isCreateMode.value) return '新建检验单'
-  if (isReadOnly.value) return '查看检验单'
+  if (isAllReadOnly.value) return '查看检验单'
   return '编辑检验单'
 })
 
@@ -168,7 +179,14 @@ const handleOrderSaved = async (id: number) => {
 }
 
 const handleSave = async () => {
-  await basicInfoTabRef.value?.submit()
+  try {
+    actionLoading.value = true
+    await basicInfoTabRef.value?.submit()
+  } catch (err) {
+    activeTab.value = 'basic'
+  } finally {
+    actionLoading.value = false
+  }
 }
 
 const reloadOrder = async (id?: number) => {
@@ -177,8 +195,16 @@ const reloadOrder = async (id?: number) => {
     try {
       const data = await InspectionOrderApi.getInspectionOrder(targetId)
       currentOrder.value = data
+      // 触发基本信息 Tab 同步重载回显与状态
+      if (basicInfoTabRef.value?.init) {
+        await basicInfoTabRef.value.init()
+      }
     } catch {}
   }
+}
+
+const handleItemChanged = async () => {
+  await reloadOrder()
 }
 
 const handleComplete = async () => {
@@ -212,7 +238,7 @@ const handleCancel = async () => {
 const handleDelete = async () => {
   if (!numericOrderId.value) return
   try {
-    await message.delConfirm()
+    await message.delConfirm('确认删除该检验单吗？')
     actionLoading.value = true
     await InspectionOrderApi.deleteInspectionOrder(numericOrderId.value)
     message.success('删除成功')
@@ -222,6 +248,17 @@ const handleDelete = async () => {
     actionLoading.value = false
   }
 }
+
+watch(
+  () => route.params.id,
+  async (newId) => {
+    if (newId) {
+      await reloadOrder(Number(newId))
+    } else {
+      currentOrder.value = null
+    }
+  }
+)
 </script>
 
 <style lang="scss" scoped>

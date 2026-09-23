@@ -518,9 +518,19 @@ const init = async () => {
   }
 }
 
+watch(
+  () => props.orderId,
+  (newId) => {
+    if (newId) {
+      init()
+    }
+  }
+)
+
 defineExpose({
   submit,
-  formData
+  formData,
+  init
 })
 
 onMounted(() => {
