@@ -15,9 +15,13 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.item.InspectionOrderItemMapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
@@ -77,20 +81,35 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
     private DyeingOrderMapper dyeingOrderMapper;
     @Resource
     private SalesContractMapper salesContractMapper;
+    @Resource
+    private InspectionOrderItemMapper inspectionOrderItemMapper;
 
     @Override
     public PageResult<InspectionOrderRespVO> getInspectionOrderPage(InspectionOrderPageReqVO reqVO) {
         LambdaQueryWrapperX<InspectionOrderDO> wrapper = buildPageWrapper(reqVO);
         wrapper.orderByDesc(InspectionOrderDO::getOrderDate);
         PageResult<InspectionOrderDO> pageResult = inspectionOrderMapper.selectPage(reqVO, wrapper);
-        return BeanUtils.toBean(pageResult, InspectionOrderRespVO.class);
+        PageResult<InspectionOrderRespVO> result = BeanUtils.toBean(pageResult, InspectionOrderRespVO.class);
+        if (result != null && result.getList() != null) {
+            for (InspectionOrderRespVO item : result.getList()) {
+                if (item.getId() != null) {
+                    Long count = inspectionOrderItemMapper.selectCountByInspectionOrderId(item.getId());
+                    item.setRollCount(count != null ? count.intValue() : 0);
+                }
+            }
+        }
+        return result;
     }
 
     @Override
     public InspectionOrderRespVO getInspectionOrder(Long id) {
         InspectionOrderDO order = validateInspectionOrderExists(id);
-        return BeanUtils.toBean(order, InspectionOrderRespVO.class);
+        InspectionOrderRespVO respVO = BeanUtils.toBean(order, InspectionOrderRespVO.class);
+        Long count = inspectionOrderItemMapper.selectCountByInspectionOrderId(id);
+        respVO.setRollCount(count != null ? count.intValue() : 0);
+        return respVO;
     }
+
 
     @Override
     public String getNextInspectionOrderNo() {
@@ -145,6 +164,50 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
 
         inspectionOrderMapper.updateById(updateObj);
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateInspectionOrderStatus(Long id, String status) {
+        validateInspectionOrderExists(id);
+        InspectionOrderDO updateObj = new InspectionOrderDO();
+        updateObj.setId(id);
+        updateObj.setStatus(status);
+        inspectionOrderMapper.updateById(updateObj);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void completeInspectionOrder(Long id) {
+        InspectionOrderDO order = validateInspectionOrderExists(id);
+        if (!"DRAFT".equals(order.getStatus()) && !"ACTIVE".equals(order.getStatus())) {
+            throw exception(INSPECTION_ORDER_STATUS_NOT_ALLOWED);
+        }
+        inspectionOrderMapper.update(null, new LambdaUpdateWrapper<InspectionOrderDO>()
+                .eq(InspectionOrderDO::getId, id)
+                .set(InspectionOrderDO::getStatus, "COMPLETED"));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelInspectionOrder(Long id) {
+        validateInspectionOrderExists(id);
+        inspectionOrderMapper.update(null, new LambdaUpdateWrapper<InspectionOrderDO>()
+                .eq(InspectionOrderDO::getId, id)
+                .set(InspectionOrderDO::getStatus, "CANCELLED"));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteInspectionOrder(Long id) {
+        InspectionOrderDO order = validateInspectionOrderExists(id);
+        if (!"DRAFT".equals(order.getStatus())) {
+            throw exception(INSPECTION_ORDER_STATUS_NOT_ALLOWED);
+        }
+        inspectionOrderMapper.deleteById(id);
+        inspectionOrderItemMapper.deleteByInspectionOrderId(id);
+    }
+
+
 
     // ==================== 私有方法 ====================
 

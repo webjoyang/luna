@@ -49,4 +49,34 @@ public interface InspectionOrderService {
      */
     void updateInspectionOrder(com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO updateReqVO);
 
+    /**
+     * 更新检验单状态
+     *
+     * @param id 检验单编号
+     * @param status 状态
+     */
+    void updateInspectionOrderStatus(Long id, String status);
+
+    /**
+     * 完成检验单（DRAFT/ACTIVE -> COMPLETED）
+     *
+     * @param id 检验单编号
+     */
+    void completeInspectionOrder(Long id);
+
+    /**
+     * 取消检验单（任意态 -> CANCELLED）
+     *
+     * @param id 检验单编号
+     */
+    void cancelInspectionOrder(Long id);
+
+    /**
+     * 删除检验单（仅 DRAFT 可删，级联逻辑删除明细）
+     *
+     * @param id 检验单编号
+     */
+    void deleteInspectionOrder(Long id);
+
 }
+
