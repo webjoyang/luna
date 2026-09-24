@@ -24,6 +24,9 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemPlacementMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouselocation.WarehouseLocationMapper;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemPlacementDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouselocation.WarehouseLocationDO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,10 +55,11 @@ import static org.mockito.Mockito.*;
  * 2. 手填单号查重（含已删除行，撞号报 1_030_011_001）
  * 3. 关联存在性校验与快照回填（仓库/供应商/合同/胚布单/染色单/胚布品种/产品）
  * 4. 聚合保存与服务端金额权威重算（零明细草稿允许）
- * 5. 状态机守卫：仅草稿态可编辑/删除（非草稿报 1_030_011_002）
- * 6. 级联逻辑删除明细
- * 7. 详情查询与分页查询
- * 8. 只读取号预览
+ * 5. 库位分配与归属校验（placement 必须属于本单仓库，否则报 1_030_011_004）
+ * 6. 状态机守卫：仅草稿态可编辑/删除（非草稿报 1_030_011_002）
+ * 7. 级联逻辑删除明细及放置记录
+ * 8. 详情查询与分页查询
+ * 9. 只读取号预览
  *
  * @author luna
  */
@@ -72,6 +76,9 @@ class StockInServiceImplTest {
 
     @Mock
     private WarehouseMapper warehouseMapper;
+
+    @Mock
+    private WarehouseLocationMapper warehouseLocationMapper;
 
     @Mock
     private SupplierMapper supplierMapper;
@@ -103,10 +110,26 @@ class StockInServiceImplTest {
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockInDO.class);
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockInItemDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockInItemPlacementDO.class);
 
         when(stockInMapper.insert(any(StockInDO.class))).thenAnswer(invocation -> {
             StockInDO dobj = invocation.getArgument(0);
             dobj.setId(100L);
+            return 1;
+        });
+        when(stockInItemMapper.insert(any(StockInItemDO.class))).thenAnswer(invocation -> {
+            StockInItemDO item = invocation.getArgument(0);
+            if (item.getId() == null) {
+                item.setId(200L);
+            }
+            return 1;
+        });
+        when(stockInItemPlacementMapper.insert(any(StockInItemPlacementDO.class))).thenAnswer(invocation -> {
+            StockInItemPlacementDO placement = invocation.getArgument(0);
+            if (placement.getId() == null) {
+                placement.setId(300L);
+            }
             return 1;
         });
     }
@@ -117,6 +140,16 @@ class StockInServiceImplTest {
         warehouse.setName(name);
         warehouse.setStatus(status);
         return warehouse;
+    }
+
+    private WarehouseLocationDO mockLocation(Long id, Long warehouseId, String code, String name) {
+        WarehouseLocationDO loc = new WarehouseLocationDO();
+        loc.setId(id);
+        loc.setWarehouseId(warehouseId);
+        loc.setCode(code);
+        loc.setName(name);
+        loc.setStatus("ACTIVE");
+        return loc;
     }
 
     private StockInSaveReqVO buildCreateReqVO() {
@@ -205,11 +238,9 @@ class StockInServiceImplTest {
         assertEquals(new BigDecimal("2500.00"), saved.getTotalAmount());
 
         // 验证明细保存
-        ArgumentCaptor<List<StockInItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
-        verify(stockInItemMapper).insertBatch(itemsCaptor.capture());
-        List<StockInItemDO> savedItems = itemsCaptor.getValue();
-        assertEquals(1, savedItems.size());
-        StockInItemDO item0 = savedItems.get(0);
+        ArgumentCaptor<StockInItemDO> itemCaptor = ArgumentCaptor.forClass(StockInItemDO.class);
+        verify(stockInItemMapper).insert(itemCaptor.capture());
+        StockInItemDO item0 = itemCaptor.getValue();
         assertEquals(100L, item0.getStockInId());
         assertEquals("P-1001", item0.getProductCode());
         assertEquals("纯棉汗布", item0.getProductName());
@@ -268,7 +299,7 @@ class StockInServiceImplTest {
         ArgumentCaptor<StockInDO> captor = ArgumentCaptor.forClass(StockInDO.class);
         verify(stockInMapper).insert(captor.capture());
         assertNull(captor.getValue().getTotalAmount());
-        verify(stockInItemMapper, never()).insertBatch(anyList());
+        verify(stockInItemMapper, never()).insert(any(StockInItemDO.class));
     }
 
     // ==================== 关联校验异常 ====================
@@ -336,8 +367,9 @@ class StockInServiceImplTest {
         stockInService.updateStockIn(req);
 
         verify(stockInMapper).updateById(any(StockInDO.class));
+        verify(stockInItemPlacementMapper).deleteByStockInId(100L);
         verify(stockInItemMapper).deleteByStockInId(100L);
-        verify(stockInItemMapper).insertBatch(anyList());
+        verify(stockInItemMapper).insert(any(StockInItemDO.class));
     }
 
     @Test
@@ -461,6 +493,237 @@ class StockInServiceImplTest {
         assertEquals(1L, result.getTotal());
         assertEquals(1, result.getList().size());
         assertEquals("IN-20260924-001", result.getList().get(0).getInNo());
+    }
+
+    // ==================== 库位分配与归属校验 ====================
+
+    @Test
+    void createStockIn_withPlacements_success() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        StockInItemSaveReqVO item = req.getItems().get(0);
+        item.setPieceCount(10);
+        item.setQuantity(new BigDecimal("100.00"));
+
+        List<StockInItemPlacementSaveReqVO> placements = new ArrayList<>();
+        StockInItemPlacementSaveReqVO p1 = new StockInItemPlacementSaveReqVO();
+        p1.setLocationId(301L);
+        p1.setPieceCount(6);
+        p1.setQuantity(new BigDecimal("60.00"));
+        p1.setRemark("A区首层");
+        placements.add(p1);
+
+        StockInItemPlacementSaveReqVO p2 = new StockInItemPlacementSaveReqVO();
+        p2.setLocationId(302L);
+        p2.setPieceCount(4);
+        p2.setQuantity(new BigDecimal("40.00"));
+        p2.setRemark("A区二层");
+        placements.add(p2);
+
+        item.setPlacements(placements);
+
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+        when(warehouseLocationMapper.selectById(302L)).thenReturn(mockLocation(302L, 10L, "A-02", "A区02"));
+
+        when(stockInMapper.selectListByInNoPrefixIncludingDeleted(anyString())).thenReturn(Collections.emptyList());
+
+        Long id = stockInService.createStockIn(req);
+        assertEquals(100L, id);
+
+        ArgumentCaptor<StockInItemPlacementDO> placementCaptor = ArgumentCaptor.forClass(StockInItemPlacementDO.class);
+        verify(stockInItemPlacementMapper, times(2)).insert(placementCaptor.capture());
+        List<StockInItemPlacementDO> savedPlacements = placementCaptor.getAllValues();
+        assertEquals(2, savedPlacements.size());
+
+        StockInItemPlacementDO savedP1 = savedPlacements.get(0);
+        assertEquals(100L, savedP1.getStockInId());
+        assertEquals(200L, savedP1.getStockInItemId());
+        assertEquals(301L, savedP1.getLocationId());
+        assertEquals("A-01", savedP1.getLocationCode());
+        assertEquals(6, savedP1.getPieceCount());
+        assertEquals(new BigDecimal("60.00"), savedP1.getQuantity());
+        assertEquals("KG", savedP1.getUnit());
+
+        StockInItemPlacementDO savedP2 = savedPlacements.get(1);
+        assertEquals(100L, savedP2.getStockInId());
+        assertEquals(200L, savedP2.getStockInItemId());
+        assertEquals(302L, savedP2.getLocationId());
+        assertEquals("A-02", savedP2.getLocationCode());
+        assertEquals(4, savedP2.getPieceCount());
+        assertEquals(new BigDecimal("40.00"), savedP2.getQuantity());
+        assertEquals("KG", savedP2.getUnit());
+    }
+
+    @Test
+    void createStockIn_partialPlacements_unequalTotals_allowed_success() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        StockInItemSaveReqVO item = req.getItems().get(0);
+        item.setPieceCount(10);
+        item.setQuantity(new BigDecimal("100.00"));
+
+        // 仅分配一条 6 匹 / 60 KG（不齐套/不等于明细匹数和数量），验证不报错、顺利创建（Spec L395）
+        List<StockInItemPlacementSaveReqVO> placements = new ArrayList<>();
+        StockInItemPlacementSaveReqVO p1 = new StockInItemPlacementSaveReqVO();
+        p1.setLocationId(301L);
+        p1.setPieceCount(6);
+        p1.setQuantity(new BigDecimal("60.00"));
+        placements.add(p1);
+        item.setPlacements(placements);
+
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+        when(stockInMapper.selectListByInNoPrefixIncludingDeleted(anyString())).thenReturn(Collections.emptyList());
+
+        Long id = stockInService.createStockIn(req);
+        assertEquals(100L, id);
+
+        ArgumentCaptor<StockInItemPlacementDO> placementCaptor = ArgumentCaptor.forClass(StockInItemPlacementDO.class);
+        verify(stockInItemPlacementMapper).insert(placementCaptor.capture());
+        StockInItemPlacementDO saved = placementCaptor.getValue();
+        assertEquals(100L, saved.getStockInId());
+        assertEquals(301L, saved.getLocationId());
+        assertEquals(6, saved.getPieceCount());
+        assertEquals(new BigDecimal("60.00"), saved.getQuantity());
+    }
+
+    @Test
+    void createStockIn_placementLocationNotExists_throwsException() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        StockInItemSaveReqVO item = req.getItems().get(0);
+        StockInItemPlacementSaveReqVO p = new StockInItemPlacementSaveReqVO();
+        p.setLocationId(999L);
+        p.setQuantity(new BigDecimal("10.00"));
+        item.setPlacements(List.of(p));
+
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        when(warehouseLocationMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockIn(req));
+        assertEquals(STOCK_IN_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createStockIn_placementLocationNotInWarehouse_throwsException() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        StockInItemSaveReqVO item = req.getItems().get(0);
+        StockInItemPlacementSaveReqVO p = new StockInItemPlacementSaveReqVO();
+        p.setLocationId(301L);
+        p.setQuantity(new BigDecimal("10.00"));
+        item.setPlacements(List.of(p));
+
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        // 库位 301 属于二号仓 20L，不属于本单仓库 10L
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 20L, "B-01", "B区01"));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockIn(req));
+        assertEquals(STOCK_IN_LOCATION_NOT_IN_WAREHOUSE.getCode(), ex.getCode());
+        verify(stockInMapper, never()).insert(any(StockInDO.class));
+    }
+
+    @Test
+    void updateStockIn_replacePlacements_success() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        req.setId(100L);
+        req.setInNo("IN-20260924-001");
+        StockInItemSaveReqVO item = req.getItems().get(0);
+        StockInItemPlacementSaveReqVO p = new StockInItemPlacementSaveReqVO();
+        p.setLocationId(301L);
+        p.setQuantity(new BigDecimal("50.00"));
+        item.setPlacements(List.of(p));
+
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        existing.setInNo("IN-20260924-001");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+
+        stockInService.updateStockIn(req);
+
+        verify(stockInMapper).updateById(any(StockInDO.class));
+        verify(stockInItemPlacementMapper).deleteByStockInId(100L);
+        verify(stockInItemMapper).deleteByStockInId(100L);
+        verify(stockInItemPlacementMapper).insert(any(StockInItemPlacementDO.class));
+    }
+
+    @Test
+    void getStockIn_withPlacements_returnsNestedPlacements() {
+        StockInDO stockIn = new StockInDO();
+        stockIn.setId(100L);
+        stockIn.setInNo("IN-20260924-001");
+        stockIn.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(stockIn);
+
+        StockInItemDO item = new StockInItemDO();
+        item.setId(201L);
+        item.setStockInId(100L);
+        item.setProductId(1L);
+        item.setProductCode("P-1001");
+        item.setProductName("纯棉汗布");
+        item.setQuantity(new BigDecimal("100.00"));
+        item.setUnit("KG");
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(List.of(item));
+
+        StockInItemPlacementDO p1 = new StockInItemPlacementDO();
+        p1.setId(501L);
+        p1.setStockInId(100L);
+        p1.setStockInItemId(201L);
+        p1.setLocationId(301L);
+        p1.setLocationCode("A-01");
+        p1.setPieceCount(6);
+        p1.setQuantity(new BigDecimal("60.00"));
+        p1.setUnit("KG");
+
+        StockInItemPlacementDO p2 = new StockInItemPlacementDO();
+        p2.setId(502L);
+        p2.setStockInId(100L);
+        p2.setStockInItemId(201L);
+        p2.setLocationId(302L);
+        p2.setLocationCode("A-02");
+        p2.setPieceCount(4);
+        p2.setQuantity(new BigDecimal("40.00"));
+        p2.setUnit("KG");
+
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(List.of(p1, p2));
+
+        StockInRespVO resp = stockInService.getStockIn(100L);
+        assertNotNull(resp);
+        assertEquals(1, resp.getItems().size());
+        StockInItemRespVO itemResp = resp.getItems().get(0);
+        assertNotNull(itemResp.getPlacements());
+        assertEquals(2, itemResp.getPlacements().size());
+        assertEquals("A-01", itemResp.getPlacements().get(0).getLocationCode());
+        assertEquals(new BigDecimal("60.00"), itemResp.getPlacements().get(0).getQuantity());
+        assertEquals("A-02", itemResp.getPlacements().get(1).getLocationCode());
+        assertEquals(new BigDecimal("40.00"), itemResp.getPlacements().get(1).getQuantity());
     }
 
 }

@@ -240,6 +240,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: StockInVO): void
+  (e: 'warehouseChange', warehouseId: number): void
 }>()
 
 const formRef = ref<FormInstance>()
@@ -265,6 +266,7 @@ const loadWarehouses = async () => {
 const handleWarehouseChange = (val: number) => {
   const target = warehouseOptions.value.find((w) => w.id === val)
   formData.value.warehouseName = target?.name
+  emit('warehouseChange', val)
 }
 
 // 供应商远程

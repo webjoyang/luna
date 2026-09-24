@@ -48,7 +48,7 @@
       </el-table-column>
 
       <!-- 批次号/缸号 -->
-      <el-table-column label="批次/缸号" min-width="140">
+      <el-table-column label="批次/缸号" min-width="130">
         <template #default="{ row }">
           <el-input
             v-if="!isReadOnly"
@@ -61,7 +61,7 @@
       </el-table-column>
 
       <!-- 卷号 -->
-      <el-table-column label="卷号" width="110">
+      <el-table-column label="卷号" width="100">
         <template #default="{ row }">
           <el-input
             v-if="!isReadOnly"
@@ -74,7 +74,7 @@
       </el-table-column>
 
       <!-- 匹数 -->
-      <el-table-column label="匹数" width="100">
+      <el-table-column label="匹数" width="90">
         <template #default="{ row }">
           <el-input-number
             v-if="!isReadOnly"
@@ -89,7 +89,7 @@
       </el-table-column>
 
       <!-- 数量（必填，>0） -->
-      <el-table-column label="数量" width="130">
+      <el-table-column label="数量" width="120">
         <template #default="{ row }">
           <el-input-number
             v-if="!isReadOnly"
@@ -106,7 +106,7 @@
       </el-table-column>
 
       <!-- 单位（KG/M） -->
-      <el-table-column label="单位" width="110">
+      <el-table-column label="单位" width="100">
         <template #default="{ row }">
           <el-select
             v-if="!isReadOnly"
@@ -128,7 +128,7 @@
       </el-table-column>
 
       <!-- 单价 -->
-      <el-table-column label="单价" width="120">
+      <el-table-column label="单价" width="110">
         <template #default="{ row }">
           <el-input-number
             v-if="!isReadOnly"
@@ -145,14 +145,64 @@
       </el-table-column>
 
       <!-- 金额（数量*单价，服务端权威重算） -->
-      <el-table-column label="金额" width="120" align="right">
+      <el-table-column label="金额" width="110" align="right">
         <template #default="{ row }">
           <span>{{ row.amount != null ? `¥ ${Number(row.amount).toFixed(2)}` : '—' }}</span>
         </template>
       </el-table-column>
 
+      <!-- 库位分配去向（展示分配去向与打开分配弹层） -->
+      <el-table-column label="库位分配去向" min-width="210">
+        <template #default="{ row, $index }">
+          <div class="space-y-1">
+            <!-- 已有库位放置展示 -->
+            <div v-if="row.placements && row.placements.length > 0" class="flex flex-col gap-1">
+              <div
+                v-for="(p, pIdx) in row.placements"
+                :key="pIdx"
+                class="text-12px flex items-center gap-1.5"
+              >
+                <el-tag size="small" type="info" class="font-mono">{{ p.locationCode || '库位' }}</el-tag>
+                <span class="text-gray-700">
+                  <span v-if="p.pieceCount != null" class="text-gray-900 font-medium">{{ p.pieceCount }}匹 / </span>
+                  <span class="font-semibold text-gray-900">{{ p.quantity }}</span> {{ row.unit || 'KG' }}
+                </span>
+                <span v-if="p.remark" class="text-gray-400 text-11px">({{ p.remark }})</span>
+              </div>
+            </div>
+
+            <!-- 操作按钮：草稿态"分配库位"/"修改分配"，只读态"查看详情"或未分配提示 -->
+            <div class="pt-1">
+              <template v-if="!isReadOnly">
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  @click="handleOpenPlacement(row, $index)"
+                >
+                  <Icon icon="ep:location" class="mr-1" />
+                  {{ row.placements && row.placements.length > 0 ? `修改分配 (${row.placements.length}处)` : '分配库位' }}
+                </el-button>
+              </template>
+              <template v-else>
+                <el-button
+                  v-if="row.placements && row.placements.length > 0"
+                  link
+                  type="primary"
+                  size="small"
+                  @click="handleOpenPlacement(row, $index)"
+                >
+                  查看详情 ({{ row.placements.length }}处)
+                </el-button>
+                <span v-else class="text-gray-400 text-12px">未分配</span>
+              </template>
+            </div>
+          </div>
+        </template>
+      </el-table-column>
+
       <!-- 备注 -->
-      <el-table-column label="备注" min-width="140">
+      <el-table-column label="备注" min-width="130">
         <template #default="{ row }">
           <el-input
             v-if="!isReadOnly"
@@ -165,7 +215,7 @@
       </el-table-column>
 
       <!-- 操作列 -->
-      <el-table-column v-if="!isReadOnly" label="操作" width="80" align="center" fixed="right">
+      <el-table-column v-if="!isReadOnly" label="操作" width="70" align="center" fixed="right">
         <template #default="{ $index }">
           <el-button link type="danger" @click="handleDeleteRow($index)">
             <Icon icon="ep:delete" />
@@ -177,19 +227,33 @@
         <el-empty description="暂无明细数据（草稿允许先保存单头后补明细）" :image-size="80" />
       </template>
     </el-table>
+
+    <!-- 逐匹库位分配弹层 -->
+    <PlacementDialog
+      v-model="placementDialogVisible"
+      :warehouse-id="warehouseId"
+      :warehouse-name="warehouseName"
+      :item="currentPlacementItem"
+      :is-read-only="isReadOnly"
+      @confirm="handlePlacementConfirm"
+    />
   </div>
 </template>
 
 <script lang="ts" setup>
+import { useMessage } from '@/hooks/web/useMessage'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
-import type { StockInItemVO } from '@/api/lunaerp-elmui/stock/stock-in'
+import type { StockInItemVO, StockInItemPlacementVO } from '@/api/lunaerp-elmui/stock/stock-in'
 import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
+import PlacementDialog from './PlacementDialog.vue'
 
 defineOptions({ name: 'StockInItemsTab' })
 
 const props = defineProps<{
   items?: StockInItemVO[]
+  warehouseId?: number
+  warehouseName?: string
   isReadOnly: boolean
 }>()
 
@@ -197,6 +261,8 @@ const emit = defineEmits<{
   (e: 'update:items', val: StockInItemVO[]): void
   (e: 'recalculate'): void
 }>()
+
+const message = useMessage()
 
 const itemsList = computed({
   get: () => props.items || [],
@@ -265,7 +331,8 @@ const handleAddRow = () => {
     unit: 'KG',
     unitPrice: undefined,
     amount: undefined,
-    remark: ''
+    remark: '',
+    placements: []
   })
   emit('update:items', newList)
   emit('recalculate')
@@ -276,6 +343,28 @@ const handleDeleteRow = (index: number) => {
   newList.splice(index, 1)
   emit('update:items', newList)
   emit('recalculate')
+}
+
+// 库位分配弹层控制
+const placementDialogVisible = ref(false)
+const currentPlacementItem = ref<StockInItemVO>()
+const currentPlacementIndex = ref<number>(-1)
+
+const handleOpenPlacement = (row: StockInItemVO, index: number) => {
+  if (!props.warehouseId && !props.isReadOnly) {
+    message.warning('请先在【基本信息】选择入库仓库后再分配库位')
+    return
+  }
+  currentPlacementItem.value = row
+  currentPlacementIndex.value = index
+  placementDialogVisible.value = true
+}
+
+const handlePlacementConfirm = (placements: StockInItemPlacementVO[]) => {
+  if (currentPlacementIndex.value >= 0 && currentPlacementIndex.value < itemsList.value.length) {
+    itemsList.value[currentPlacementIndex.value].placements = placements
+    emit('update:items', [...itemsList.value])
+  }
 }
 
 onMounted(() => {

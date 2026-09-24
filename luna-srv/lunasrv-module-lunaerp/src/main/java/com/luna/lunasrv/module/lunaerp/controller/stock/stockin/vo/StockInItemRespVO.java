@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "管理后台 - 库存管理 - 入库明细 Response VO")
 @Data
@@ -51,5 +52,8 @@ public class StockInItemRespVO {
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "库位分配列表")
+    private List<StockInItemPlacementRespVO> placements;
 
 }

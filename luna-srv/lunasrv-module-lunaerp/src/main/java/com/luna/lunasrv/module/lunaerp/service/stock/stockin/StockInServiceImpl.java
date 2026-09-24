@@ -14,7 +14,9 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.Dye
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemPlacementDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouse.WarehouseDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouselocation.WarehouseLocationDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
@@ -25,6 +27,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemPlacementMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouselocation.WarehouseLocationMapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,9 +38,13 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
@@ -93,6 +100,9 @@ public class StockInServiceImpl implements StockInService {
     private WarehouseMapper warehouseMapper;
 
     @Resource
+    private WarehouseLocationMapper warehouseLocationMapper;
+
+    @Resource
     private SupplierMapper supplierMapper;
 
     @Resource
@@ -131,13 +141,16 @@ public class StockInServiceImpl implements StockInService {
         // 3. 关联存在性校验与快照回填
         fillSnapshotsAndValidateRefs(stockIn, createReqVO);
 
-        // 4. 明细聚合：服务端权威重算行金额与主表汇总（允许零明细草稿保存）
+        // 4. 库位放置归属校验并收集库位信息
+        Map<Long, WarehouseLocationDO> locationMap = validateAndGetPlacementLocations(stockIn.getWarehouseId(), stockIn.getWarehouseName(), createReqVO.getItems());
+
+        // 5. 明细聚合：服务端权威重算行金额与主表汇总（允许零明细草稿保存）
         List<StockInItemDO> itemDOList = buildItemDOList(createReqVO.getItems());
         stockIn.setTotalAmount(recalculateTotalAmount(itemDOList));
 
-        // 5. 保存主表与明细
+        // 6. 保存主表与明细及放置记录
         stockInMapper.insert(stockIn);
-        saveItems(stockIn.getId(), itemDOList);
+        saveItemsAndPlacements(stockIn.getId(), locationMap, createReqVO.getItems(), itemDOList);
 
         return stockIn.getId();
     }
@@ -165,14 +178,18 @@ public class StockInServiceImpl implements StockInService {
         // 4. 关联存在性校验与快照回填
         fillSnapshotsAndValidateRefs(updateObj, updateReqVO);
 
-        // 5. 明细整表替换与金额权威重算
+        // 5. 库位放置归属校验并收集库位信息
+        Map<Long, WarehouseLocationDO> locationMap = validateAndGetPlacementLocations(updateObj.getWarehouseId(), updateObj.getWarehouseName(), updateReqVO.getItems());
+
+        // 6. 明细整表替换与金额权威重算
         List<StockInItemDO> itemDOList = buildItemDOList(updateReqVO.getItems());
         updateObj.setTotalAmount(recalculateTotalAmount(itemDOList));
 
-        // 6. 更新主表并替换明细
+        // 7. 更新主表并替换明细及放置记录
         stockInMapper.updateById(updateObj);
+        stockInItemPlacementMapper.deleteByStockInId(updateReqVO.getId());
         stockInItemMapper.deleteByStockInId(updateReqVO.getId());
-        saveItems(updateReqVO.getId(), itemDOList);
+        saveItemsAndPlacements(updateReqVO.getId(), locationMap, updateReqVO.getItems(), itemDOList);
     }
 
     @Override
@@ -197,9 +214,25 @@ public class StockInServiceImpl implements StockInService {
         StockInDO stockIn = validateStockInExists(id);
         StockInRespVO respVO = BeanUtils.toBean(stockIn, StockInRespVO.class);
 
-        // 嵌套返回明细
+        // 嵌套返回明细及库位分配去向
         List<StockInItemDO> itemDOList = stockInItemMapper.selectListByStockInId(id);
-        respVO.setItems(BeanUtils.toBean(itemDOList, StockInItemRespVO.class));
+        if (CollUtil.isNotEmpty(itemDOList)) {
+            List<StockInItemPlacementDO> placementDOList = stockInItemPlacementMapper.selectListByStockInId(id);
+            Map<Long, List<StockInItemPlacementDO>> placementsByItemId = CollUtil.isEmpty(placementDOList)
+                    ? Collections.emptyMap()
+                    : placementDOList.stream().collect(Collectors.groupingBy(StockInItemPlacementDO::getStockInItemId));
+
+            List<StockInItemRespVO> itemRespVOList = new ArrayList<>();
+            for (StockInItemDO itemDO : itemDOList) {
+                StockInItemRespVO itemResp = BeanUtils.toBean(itemDO, StockInItemRespVO.class);
+                List<StockInItemPlacementDO> itemPlacements = placementsByItemId.getOrDefault(itemDO.getId(), Collections.emptyList());
+                itemResp.setPlacements(BeanUtils.toBean(itemPlacements, StockInItemPlacementRespVO.class));
+                itemRespVOList.add(itemResp);
+            }
+            respVO.setItems(itemRespVOList);
+        } else {
+            respVO.setItems(Collections.emptyList());
+        }
         return respVO;
     }
 
@@ -401,16 +434,64 @@ public class StockInServiceImpl implements StockInService {
     }
 
     /**
-     * 批量插入明细
+     * 校验库位放置合法性并获取库位映射表：库位必须存在且必须属于本单入库仓库（1_030_011_004）
      */
-    private void saveItems(Long stockInId, List<StockInItemDO> items) {
+    private Map<Long, WarehouseLocationDO> validateAndGetPlacementLocations(Long warehouseId, String warehouseName, List<StockInItemSaveReqVO> items) {
         if (CollUtil.isEmpty(items)) {
+            return Collections.emptyMap();
+        }
+        Map<Long, WarehouseLocationDO> locationMap = new HashMap<>();
+        for (StockInItemSaveReqVO item : items) {
+            if (CollUtil.isEmpty(item.getPlacements())) {
+                continue;
+            }
+            for (StockInItemPlacementSaveReqVO placement : item.getPlacements()) {
+                if (placement.getLocationId() == null) {
+                    continue;
+                }
+                locationMap.computeIfAbsent(placement.getLocationId(), id -> {
+                    WarehouseLocationDO loc = warehouseLocationMapper.selectById(id);
+                    if (loc == null) {
+                        throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "库位");
+                    }
+                    if (!loc.getWarehouseId().equals(warehouseId)) {
+                        throw exception(STOCK_IN_LOCATION_NOT_IN_WAREHOUSE, loc.getCode(), warehouseName);
+                    }
+                    return loc;
+                });
+            }
+        }
+        return locationMap;
+    }
+
+    /**
+     * 保存明细与库位分配记录（整体替换）
+     */
+    private void saveItemsAndPlacements(Long stockInId, Map<Long, WarehouseLocationDO> locationMap,
+                                       List<StockInItemSaveReqVO> itemReqs, List<StockInItemDO> itemDOList) {
+        if (CollUtil.isEmpty(itemReqs) || CollUtil.isEmpty(itemDOList)) {
             return;
         }
-        for (StockInItemDO item : items) {
-            item.setStockInId(stockInId);
+        for (int i = 0; i < itemDOList.size(); i++) {
+            StockInItemDO itemDO = itemDOList.get(i);
+            itemDO.setId(null);
+            itemDO.setStockInId(stockInId);
+            stockInItemMapper.insert(itemDO);
+
+            StockInItemSaveReqVO itemReq = itemReqs.get(i);
+            if (CollUtil.isNotEmpty(itemReq.getPlacements())) {
+                for (StockInItemPlacementSaveReqVO placementReq : itemReq.getPlacements()) {
+                    WarehouseLocationDO location = locationMap.get(placementReq.getLocationId());
+                    StockInItemPlacementDO placementDO = BeanUtils.toBean(placementReq, StockInItemPlacementDO.class);
+                    placementDO.setId(null);
+                    placementDO.setStockInId(stockInId);
+                    placementDO.setStockInItemId(itemDO.getId());
+                    placementDO.setLocationCode(location != null ? location.getCode() : null);
+                    placementDO.setUnit(itemDO.getUnit());
+                    stockInItemPlacementMapper.insert(placementDO);
+                }
+            }
         }
-        stockInItemMapper.insertBatch(items);
     }
 
     /**

@@ -1,5 +1,19 @@
 import request from '@/config/axios'
 
+// 库位分配放置记录 VO
+export interface StockInItemPlacementVO {
+  id?: number
+  stockInId?: number
+  stockInItemId?: number
+  locationId?: number
+  locationCode?: string
+  pieceCount?: number
+  quantity?: number
+  unit?: string
+  remark?: string
+  createTime?: Date | string
+}
+
 // 入库明细 VO
 export interface StockInItemVO {
   id?: number
@@ -16,6 +30,7 @@ export interface StockInItemVO {
   amount?: number
   remark?: string
   createTime?: Date | string
+  placements?: StockInItemPlacementVO[]
 }
 
 // 入库单 VO

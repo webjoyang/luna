@@ -54,12 +54,15 @@
           :is-read-only="isAllReadOnly"
           :is-create="isCreateMode"
           :preview-no="previewNo"
+          @warehouse-change="handleWarehouseChange"
         />
       </el-tab-pane>
 
       <el-tab-pane label="入库明细" name="items">
         <ItemsTab
           v-model:items="formData.items"
+          :warehouse-id="formData.warehouseId"
+          :warehouse-name="formData.warehouseName"
           :is-read-only="isAllReadOnly"
           @recalculate="recalculateTotalAmount"
         />
@@ -176,6 +179,15 @@ const recalculateTotalAmount = () => {
     }
   }
   formData.value.totalAmount = hasAmount ? Number(sum.toFixed(2)) : undefined
+}
+
+/** 仓库变更处理：清空明细中已分配的库位（库位属于特定仓库） */
+const handleWarehouseChange = () => {
+  if (formData.value.items && formData.value.items.length > 0) {
+    formData.value.items.forEach((item) => {
+      item.placements = []
+    })
+  }
 }
 
 /** 返回列表 */

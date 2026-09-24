@@ -4,10 +4,10 @@
 
 **Blocked by:** 03 (入库单 CRUD)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] placement 子表 DO/Mapper 就位，聚合保存时与明细一起整体替换
-- [ ] 库位归属校验：placement 的 location_id 必须属于本单 warehouse_id，否则报 1_030_011_004
-- [ ] 前端 PlacementDialog：库位下拉限本单仓库启用库位 + 匹数 + 数量 + 备注子表 + 已分配/共 X 匹对比提示
-- [ ] 工作台只读展示每条明细的库位分配去向
-- [ ] StockInServiceImplTest 增补放置替换/归属校验用例
+- [x] placement 子表 DO/Mapper 就位，聚合保存时与明细一起整体替换
+- [x] 库位归属校验：placement 的 location_id 必须属于本单 warehouse_id，否则报 1_030_011_004
+- [x] 前端 PlacementDialog：库位下拉限本单仓库启用库位 + 匹数 + 数量 + 备注子表 + 已分配/共 X 匹对比提示
+- [x] 工作台只读展示每条明细的库位分配去向
+- [x] StockInServiceImplTest 增补放置替换/归属校验用例
