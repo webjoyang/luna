@@ -60,7 +60,7 @@ public class WarehouseController {
     @GetMapping("/list-all")
     @Operation(summary = "获得所有仓库简表（供下拉选择使用）")
     @Parameter(name = "status", description = "状态，可空（默认查 ACTIVE）", example = "ACTIVE")
-    @PreAuthorize("@ss.hasPermission('lunaerp:stock:warehouse:query')")
+    @PreAuthorize("@ss.hasPermission('lunaerp:stock:warehouse:query') or @ss.hasPermission('lunaerp:stock:stock-in:query') or @ss.hasPermission('lunaerp:stock:stock-in:create')")
     public CommonResult<List<WarehouseRespVO>> getWarehouseListAll(@RequestParam(value = "status", required = false) String status) {
         return success(warehouseService.getWarehouseListAll(status));
     }

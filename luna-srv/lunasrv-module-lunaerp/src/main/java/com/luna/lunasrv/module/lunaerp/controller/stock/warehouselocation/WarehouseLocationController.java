@@ -54,7 +54,7 @@ public class WarehouseLocationController {
     @Operation(summary = "获得仓库下的启用库位列表（供下拉选择使用）")
     @Parameter(name = "warehouseId", description = "仓库ID", required = true, example = "1024")
     @Parameter(name = "status", description = "状态，可空（默认查 ACTIVE）", example = "ACTIVE")
-    @PreAuthorize("@ss.hasPermission('lunaerp:stock:warehouse:query') or @ss.hasPermission('lunaerp:stock:warehouse-location:query')")
+    @PreAuthorize("@ss.hasPermission('lunaerp:stock:warehouse:query') or @ss.hasPermission('lunaerp:stock:warehouse-location:query') or @ss.hasPermission('lunaerp:stock:stock-in:query') or @ss.hasPermission('lunaerp:stock:stock-in:create')")
     public CommonResult<List<WarehouseLocationRespVO>> getWarehouseLocationListByWarehouse(
             @RequestParam("warehouseId") Long warehouseId,
             @RequestParam(value = "status", required = false) String status) {

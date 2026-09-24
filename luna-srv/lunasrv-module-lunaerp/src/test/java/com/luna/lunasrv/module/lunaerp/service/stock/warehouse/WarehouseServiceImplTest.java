@@ -296,4 +296,34 @@ class WarehouseServiceImplTest {
         verify(warehouseMapper, never()).insert(any(WarehouseDO.class));
     }
 
+    @Test
+    void getWarehouseListAll_filtersByActiveByDefault() {
+        WarehouseDO activeItem = new WarehouseDO();
+        activeItem.setId(100L);
+        activeItem.setWarehouseNo(YEAR_PREFIX + "0001");
+        activeItem.setName("成品一号仓");
+        activeItem.setStatus("ACTIVE");
+
+        when(warehouseMapper.selectList(any())).thenReturn(List.of(activeItem));
+
+        List<WarehouseRespVO> list = warehouseService.getWarehouseListAll(null);
+        assertEquals(1, list.size());
+        assertEquals("ACTIVE", list.get(0).getStatus());
+    }
+
+    @Test
+    void getWarehouseListAll_withCustomStatus() {
+        WarehouseDO inactiveItem = new WarehouseDO();
+        inactiveItem.setId(101L);
+        inactiveItem.setWarehouseNo(YEAR_PREFIX + "0002");
+        inactiveItem.setName("停用仓");
+        inactiveItem.setStatus("INACTIVE");
+
+        when(warehouseMapper.selectList(any())).thenReturn(List.of(inactiveItem));
+
+        List<WarehouseRespVO> list = warehouseService.getWarehouseListAll("INACTIVE");
+        assertEquals(1, list.size());
+        assertEquals("INACTIVE", list.get(0).getStatus());
+    }
+
 }

@@ -145,6 +145,7 @@ class WarehouseLocationServiceImplTest {
         exist.setWarehouseId(100L);
         exist.setCode("A-01-01");
         when(warehouseLocationMapper.selectById(200L)).thenReturn(exist);
+        when(warehouseMapper.selectById(100L)).thenReturn(new WarehouseDO());
         when(warehouseLocationMapper.selectByWarehouseIdAndCodeIncludingDeleted(100L, "A-01-01")).thenReturn(exist);
 
         warehouseLocationService.updateWarehouseLocation(req);
@@ -176,6 +177,7 @@ class WarehouseLocationServiceImplTest {
         exist.setWarehouseId(100L);
         exist.setCode("A-01-01");
         when(warehouseLocationMapper.selectById(200L)).thenReturn(exist);
+        when(warehouseMapper.selectById(100L)).thenReturn(new WarehouseDO());
 
         WarehouseLocationDO other = new WarehouseLocationDO();
         other.setId(201L);
@@ -256,6 +258,38 @@ class WarehouseLocationServiceImplTest {
         PageResult<WarehouseLocationRespVO> result = warehouseLocationService.getWarehouseLocationPage(req);
         assertEquals(1L, result.getTotal());
         assertEquals("A-01-01", result.getList().get(0).getCode());
+    }
+
+    @Test
+    void getWarehouseLocationListByWarehouse_filtersByActiveByDefault() {
+        WarehouseLocationDO activeItem = new WarehouseLocationDO();
+        activeItem.setId(200L);
+        activeItem.setWarehouseId(100L);
+        activeItem.setCode("A-01-01");
+        activeItem.setStatus("ACTIVE");
+
+        when(warehouseLocationMapper.selectList(any())).thenReturn(List.of(activeItem));
+
+        List<WarehouseLocationRespVO> list = warehouseLocationService.getWarehouseLocationListByWarehouse(100L, null);
+        assertEquals(1, list.size());
+        assertEquals("ACTIVE", list.get(0).getStatus());
+    }
+
+    @Test
+    void updateWarehouseLocation_warehouseNotExists_throwsException() {
+        WarehouseLocationSaveReqVO req = buildCreateReqVO();
+        req.setId(200L);
+        req.setWarehouseId(999L);
+
+        WarehouseLocationDO exist = new WarehouseLocationDO();
+        exist.setId(200L);
+        exist.setWarehouseId(100L);
+        when(warehouseLocationMapper.selectById(200L)).thenReturn(exist);
+        when(warehouseMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> warehouseLocationService.updateWarehouseLocation(req));
+        assertEquals(WAREHOUSE_NOT_EXISTS.getCode(), ex.getCode());
     }
 
 }

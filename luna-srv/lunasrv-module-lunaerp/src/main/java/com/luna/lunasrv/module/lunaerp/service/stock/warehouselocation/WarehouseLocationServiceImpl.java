@@ -75,6 +75,11 @@ public class WarehouseLocationServiceImpl implements WarehouseLocationService {
         WarehouseLocationDO oldLocation = validateWarehouseLocationExists(updateReqVO.getId());
         Long warehouseId = updateReqVO.getWarehouseId() != null ? updateReqVO.getWarehouseId() : oldLocation.getWarehouseId();
 
+        // 校验仓库存在
+        if (warehouseMapper.selectById(warehouseId) == null) {
+            throw exception(WAREHOUSE_NOT_EXISTS);
+        }
+
         // 校验同仓库内编码唯一（排除自身，含软删行）
         if (StringUtils.hasText(updateReqVO.getCode())) {
             validateLocationCodeUnique(updateReqVO.getId(), warehouseId, updateReqVO.getCode());
