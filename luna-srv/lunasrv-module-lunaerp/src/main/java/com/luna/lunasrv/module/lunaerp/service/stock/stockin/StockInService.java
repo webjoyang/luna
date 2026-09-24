@@ -1,0 +1,64 @@
+package com.luna.lunasrv.module.lunaerp.service.stock.stockin;
+
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInSaveReqVO;
+import jakarta.validation.Valid;
+
+import java.time.LocalDate;
+
+/**
+ * 库存管理 - 入库单 Service 接口
+ *
+ * @author luna
+ */
+public interface StockInService {
+
+    /**
+     * 创建入库单（聚合保存入库单主表 + 明细表）
+     *
+     * @param createReqVO 创建信息
+     * @return 编号
+     */
+    Long createStockIn(@Valid StockInSaveReqVO createReqVO);
+
+    /**
+     * 更新入库单（仅草稿态可编辑，整表替换明细并重算金额）
+     *
+     * @param updateReqVO 更新信息
+     */
+    void updateStockIn(@Valid StockInSaveReqVO updateReqVO);
+
+    /**
+     * 删除入库单（仅草稿态可删除，级联逻辑删除明细）
+     *
+     * @param id 入库单编号
+     */
+    void deleteStockIn(Long id);
+
+    /**
+     * 获得入库单详情（包含明细列表）
+     *
+     * @param id 入库单编号
+     * @return 入库单详情
+     */
+    StockInRespVO getStockIn(Long id);
+
+    /**
+     * 获得入库单分页列表（不含明细）
+     *
+     * @param pageReqVO 分页查询条件
+     * @return 分页结果
+     */
+    PageResult<StockInRespVO> getStockInPage(StockInPageReqVO pageReqVO);
+
+    /**
+     * 预览下一个入库单号（只读、不占号）
+     *
+     * @param inDate 单据日期（可空，默认今天）
+     * @return 下一个单号（IN-YYYYMMDD-NNN）
+     */
+    String getNextInNo(LocalDate inDate);
+
+}

@@ -22,4 +22,23 @@ public interface StockInItemPlacementMapper extends BaseMapperX<StockInItemPlace
         return selectCount(StockInItemPlacementDO::getLocationId, locationId);
     }
 
+    /**
+     * 按入库单ID查询放置记录列表
+     *
+     * @param stockInId 入库单ID
+     * @return 放置记录列表
+     */
+    default java.util.List<StockInItemPlacementDO> selectListByStockInId(Long stockInId) {
+        return selectList(StockInItemPlacementDO::getStockInId, stockInId);
+    }
+
+    /**
+     * 按入库单ID逻辑删除全部放置记录
+     *
+     * @param stockInId 入库单ID
+     */
+    default void deleteByStockInId(Long stockInId) {
+        delete(StockInItemPlacementDO::getStockInId, stockInId);
+    }
+
 }

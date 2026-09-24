@@ -572,6 +572,26 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/stock',
+    component: Layout,
+    name: 'lunaerpElmuiStockStatic',
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'stock-in/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/stock/stock-in/workspace/index.vue'),
+        name: 'LunaerpElmuiStockStockInWorkspace',
+        meta: {
+          title: '入库单工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/stock/stock-in'
+        }
+      }
+    ]
+  },
+  {
     path: '/hrm',
     component: Layout,
     name: 'HrmCenter',

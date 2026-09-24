@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
@@ -49,38 +51,47 @@ public class StockInDO extends TenantBaseDO {
     /**
      * 供应商ID
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long supplierId;
     /**
      * 供应商名称快照
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String supplierName;
     /**
      * 关联销售合同ID
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long salesContractId;
     /**
      * 关联合同号快照
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String contractNo;
     /**
      * 关联胚布指示单ID
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long greigeOrderId;
     /**
      * 关联胚布指示单号快照
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String greigeOrderNo;
     /**
      * 关联染色指示单ID
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long dyeingOrderId;
     /**
      * 关联胚布品种ID
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long greigeTypeId;
     /**
      * 胚布品种名称快照
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String greigeTypeName;
     /**
      * 金额合计（服务端重算，明细金额之和）
@@ -93,6 +104,7 @@ public class StockInDO extends TenantBaseDO {
     /**
      * 备注
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String remark;
 
 }
