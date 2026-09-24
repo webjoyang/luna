@@ -473,5 +473,10 @@ export enum DICT_TYPE {
 
   // ========== LunaERP - 生产管理-检验单模块 ==========
   LUNAERP_INSPECTION_ORDER_STATUS = 'lunaerp_inspection_order_status', // 检验单状态
-  LUNAERP_INSPECTION_GRADE = 'lunaerp_inspection_grade' // 检验等级
+  LUNAERP_INSPECTION_GRADE = 'lunaerp_inspection_grade', // 检验等级
+
+  // ========== LunaERP - 库存管理-入库模块 ==========
+  LUNAERP_STOCK_IN_STATUS = 'lunaerp_stock_in_status', // 入库单状态
+  LUNAERP_STOCK_IN_TYPE = 'lunaerp_stock_in_type', // 入库类型
+  LUNAERP_STOCK_IN_UNIT = 'lunaerp_stock_in_unit' // 入库单位
 }
