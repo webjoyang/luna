@@ -76,4 +76,21 @@ public interface ErrorCodeConstants {
     ErrorCode INSPECTION_ORDER_ROLL_DUPLICATE = new ErrorCode(1_030_010_004, "单内卷号【{}】缸号【{}】已存在");
     ErrorCode INSPECTION_ORDER_ITEM_NOT_EXISTS = new ErrorCode(1_030_010_100, "录检明细不存在");
 
+    // ========== 入库单模块 1-030-011-000（主表/明细/放置共用） ==========
+    ErrorCode STOCK_IN_NOT_EXISTS = new ErrorCode(1_030_011_000, "入库单不存在");
+    ErrorCode STOCK_IN_NO_DUPLICATE = new ErrorCode(1_030_011_001, "入库单号【{}】已存在");
+    ErrorCode STOCK_IN_STATUS_NOT_ALLOWED = new ErrorCode(1_030_011_002, "当前状态不允许该操作");
+    ErrorCode STOCK_IN_REFERENCE_NOT_FOUND = new ErrorCode(1_030_011_003, "关联的{}不存在或不可用");
+    ErrorCode STOCK_IN_LOCATION_NOT_IN_WAREHOUSE = new ErrorCode(1_030_011_004, "库位【{}】不属于入库仓库【{}】");
+    ErrorCode STOCK_IN_ITEM_EMPTY = new ErrorCode(1_030_011_005, "审核失败：入库单没有明细");
+
+    // ========== 仓库与库位模块 1-030-013-000 ==========
+    ErrorCode WAREHOUSE_NOT_EXISTS = new ErrorCode(1_030_013_000, "仓库不存在");
+    ErrorCode WAREHOUSE_NO_DUPLICATE = new ErrorCode(1_030_013_001, "仓库编号【{}】已存在");
+    ErrorCode WAREHOUSE_HAS_LOCATION = new ErrorCode(1_030_013_002, "仓库下存在库位，不能删除，请停用");
+    ErrorCode WAREHOUSE_REFERENCED_BY_STOCK_IN = new ErrorCode(1_030_013_003, "仓库已有入库单引用，不能删除，请停用");
+    ErrorCode WAREHOUSE_LOCATION_NOT_EXISTS = new ErrorCode(1_030_013_100, "库位不存在");
+    ErrorCode WAREHOUSE_LOCATION_CODE_DUPLICATE = new ErrorCode(1_030_013_101, "库位编码【{}】在同一仓库下已存在");
+    ErrorCode WAREHOUSE_LOCATION_IN_USE = new ErrorCode(1_030_013_102, "库位已被入库放置记录引用，不能删除，请停用");
+
 }
