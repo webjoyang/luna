@@ -79,4 +79,22 @@ public class StockInController {
         return success(stockInService.getNextInNo(inDate));
     }
 
+    @PutMapping("/audit")
+    @Operation(summary = "审核入库单（DRAFT -> COMPLETED，同事务写正数库存流水）")
+    @Parameter(name = "id", description = "入库单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:stock:stock-in:audit')")
+    public CommonResult<Boolean> auditStockIn(@RequestParam("id") Long id) {
+        stockInService.auditStockIn(id);
+        return success(true);
+    }
+
+    @PutMapping("/cancel")
+    @Operation(summary = "取消入库单（草稿态作废 / 已审核态红冲）")
+    @Parameter(name = "id", description = "入库单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:stock:stock-in:update', 'lunaerp:stock:stock-in:audit')")
+    public CommonResult<Boolean> cancelStockIn(@RequestParam("id") Long id) {
+        stockInService.cancelStockIn(id);
+        return success(true);
+    }
+
 }

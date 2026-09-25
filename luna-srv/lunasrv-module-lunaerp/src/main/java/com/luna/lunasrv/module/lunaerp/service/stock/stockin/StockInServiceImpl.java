@@ -17,6 +17,8 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemD
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemPlacementDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouse.WarehouseDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouselocation.WarehouseLocationDO;
+import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
@@ -26,9 +28,11 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOr
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemPlacementMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouselocation.WarehouseLocationMapper;
 import jakarta.annotation.Resource;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -54,7 +58,8 @@ import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
  *
  * 编号生成：IN-YYYYMMDD-NNN 按天取号、租户内全量唯一含软删行（ADR-0015）；
  * 聚合保存：明细整体替换，服务端权威重算金额（ADR-0003）；
- * 状态机守卫：三态过账状态机，草稿态可编辑/删除，非草稿态报 1_030_011_002（ADR-0016）。
+ * 状态机守卫：三态过账状态机，草稿态可编辑/删除，非草稿态报 1_030_011_002（ADR-0016）；
+ * 审核过账与红冲：审核写正数库存流水，取消已审核写负数反向行（ADR-0016, ADR-0017）。
  *
  * @author luna
  */
@@ -86,6 +91,34 @@ public class StockInServiceImpl implements StockInService {
      * 默认状态：草稿
      */
     private static final String DEFAULT_STATUS = "DRAFT";
+    /**
+     * 已完成状态：已审核
+     */
+    private static final String STATUS_COMPLETED = "COMPLETED";
+    /**
+     * 已取消状态：作废或红冲终态
+     */
+    private static final String STATUS_CANCELLED = "CANCELLED";
+    /**
+     * 关联单据类型：入库单
+     */
+    private static final String DOC_TYPE_STOCK_IN = "STOCK_IN";
+    /**
+     * 交易类型：入库正数
+     */
+    private static final String TXN_TYPE_STOCK_IN = "STOCK_IN";
+    /**
+     * 交易类型：红冲负数
+     */
+    private static final String TXN_TYPE_STOCK_IN_REVERSAL = "STOCK_IN_REVERSAL";
+    /**
+     * 权限标识：入库单修改（含草稿作废）
+     */
+    private static final String PERMISSION_UPDATE = "lunaerp:stock:stock-in:update";
+    /**
+     * 权限标识：入库单审核（含审核过账与红冲）
+     */
+    private static final String PERMISSION_AUDIT = "lunaerp:stock:stock-in:audit";
 
     @Resource
     private StockInMapper stockInMapper;
@@ -95,6 +128,9 @@ public class StockInServiceImpl implements StockInService {
 
     @Resource
     private StockInItemPlacementMapper stockInItemPlacementMapper;
+
+    @Resource
+    private StockLedgerMapper stockLedgerMapper;
 
     @Resource
     private WarehouseMapper warehouseMapper;
@@ -119,6 +155,9 @@ public class StockInServiceImpl implements StockInService {
 
     @Resource
     private ProductMapper productMapper;
+
+    @Resource
+    private SecurityFrameworkService securityFrameworkService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -167,6 +206,7 @@ public class StockInServiceImpl implements StockInService {
         }
 
         StockInDO updateObj = BeanUtils.toBean(updateReqVO, StockInDO.class);
+        updateObj.setStatus(null); // 禁止通过 update 篡改单据状态
 
         // 3. 编号：若有传且变更则查重；若未传则保持原编号（置 null 避免被覆盖为空）
         if (StringUtils.hasText(updateObj.getInNo())) {
@@ -248,6 +288,129 @@ public class StockInServiceImpl implements StockInService {
         // 只读预览、不占号：直接扫描同前缀单号（含已删除行，ADR-0015）
         LocalDate date = inDate != null ? inDate : LocalDate.now();
         return generateInNo(date);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void auditStockIn(Long id) {
+        // 1. 校验存在
+        StockInDO existing = validateStockInExists(id);
+
+        // 2. 状态机守卫：仅草稿态可审核，否则报 1_030_011_002
+        if (!DEFAULT_STATUS.equals(existing.getStatus())) {
+            throw exception(STOCK_IN_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 明细非空校验：零明细不可审核，报 1_030_011_005
+        List<StockInItemDO> items = stockInItemMapper.selectListByStockInId(id);
+        if (CollUtil.isEmpty(items)) {
+            throw exception(STOCK_IN_ITEM_EMPTY);
+        }
+
+        // 4. 更新单据状态为 COMPLETED
+        StockInDO updateObj = new StockInDO();
+        updateObj.setId(id);
+        updateObj.setStatus(STATUS_COMPLETED);
+        stockInMapper.updateById(updateObj);
+
+        // 5. 过账流水展开写入（同一事务，ADR-0016, ADR-0017）
+        List<StockInItemPlacementDO> placementList = stockInItemPlacementMapper.selectListByStockInId(id);
+        Map<Long, List<StockInItemPlacementDO>> placementsByItemId = CollUtil.isEmpty(placementList)
+                ? Collections.emptyMap()
+                : placementList.stream().collect(Collectors.groupingBy(StockInItemPlacementDO::getStockInItemId));
+
+        for (StockInItemDO item : items) {
+            List<StockInItemPlacementDO> itemPlacements = placementsByItemId.get(item.getId());
+            if (CollUtil.isNotEmpty(itemPlacements)) {
+                // 有 placement：按放置记录逐条写入，带 location
+                for (StockInItemPlacementDO placement : itemPlacements) {
+                    StockLedgerDO ledger = buildBaseStockLedger(existing, item);
+                    ledger.setLocationId(placement.getLocationId());
+                    ledger.setLocationCode(placement.getLocationCode());
+                    ledger.setTxnType(TXN_TYPE_STOCK_IN);
+                    ledger.setQuantity(placement.getQuantity());
+                    ledger.setUnit(StringUtils.hasText(placement.getUnit()) ? placement.getUnit() : item.getUnit());
+                    if (item.getUnitPrice() != null && placement.getQuantity() != null) {
+                        ledger.setAmount(item.getUnitPrice().multiply(placement.getQuantity()).setScale(2, RoundingMode.HALF_UP));
+                    } else {
+                        ledger.setAmount(null);
+                    }
+                    ledger.setRemark(StringUtils.hasText(placement.getRemark()) ? placement.getRemark() : item.getRemark());
+                    stockLedgerMapper.insert(ledger);
+                }
+            } else {
+                // 无 placement：按明细行写入一条，location 为空
+                StockLedgerDO ledger = buildBaseStockLedger(existing, item);
+                ledger.setLocationId(null);
+                ledger.setLocationCode(null);
+                ledger.setTxnType(TXN_TYPE_STOCK_IN);
+                ledger.setQuantity(item.getQuantity());
+                ledger.setUnit(item.getUnit());
+                ledger.setAmount(item.getAmount());
+                ledger.setRemark(item.getRemark());
+                stockLedgerMapper.insert(ledger);
+            }
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelStockIn(Long id) {
+        // 1. 校验存在
+        StockInDO existing = validateStockInExists(id);
+
+        if (DEFAULT_STATUS.equals(existing.getStatus())) {
+            // 2.1 草稿态作废：校验 :update 权限
+            if (securityFrameworkService != null && !securityFrameworkService.hasPermission(PERMISSION_UPDATE)) {
+                throw new AccessDeniedException("没有作废入库单草稿权限");
+            }
+            // 仅作废单据，不写流水
+            StockInDO updateObj = new StockInDO();
+            updateObj.setId(id);
+            updateObj.setStatus(STATUS_CANCELLED);
+            stockInMapper.updateById(updateObj);
+
+        } else if (STATUS_COMPLETED.equals(existing.getStatus())) {
+            // 2.2 已审核态红冲：校验 :audit 权限
+            if (securityFrameworkService != null && !securityFrameworkService.hasPermission(PERMISSION_AUDIT)) {
+                throw new AccessDeniedException("没有红冲已审核入库单权限");
+            }
+            // 更新单据状态为已取消终态
+            StockInDO updateObj = new StockInDO();
+            updateObj.setId(id);
+            updateObj.setStatus(STATUS_CANCELLED);
+            stockInMapper.updateById(updateObj);
+
+            // 红冲过账：同事务反查原流水逐条写入负数反向行（原流水永不物理删除）
+            List<StockLedgerDO> origList = stockLedgerMapper.selectListByRelatedDoc(DOC_TYPE_STOCK_IN, id, TXN_TYPE_STOCK_IN);
+
+            if (CollUtil.isNotEmpty(origList)) {
+                for (StockLedgerDO orig : origList) {
+                    StockLedgerDO reversal = new StockLedgerDO();
+                    reversal.setProductId(orig.getProductId());
+                    reversal.setProductCode(orig.getProductCode());
+                    reversal.setProductName(orig.getProductName());
+                    reversal.setWarehouseId(orig.getWarehouseId());
+                    reversal.setWarehouseName(orig.getWarehouseName());
+                    reversal.setLocationId(orig.getLocationId());
+                    reversal.setLocationCode(orig.getLocationCode());
+                    reversal.setBatchNo(orig.getBatchNo());
+                    reversal.setTxnType(TXN_TYPE_STOCK_IN_REVERSAL);
+                    reversal.setQuantity(orig.getQuantity() != null ? orig.getQuantity().negate() : BigDecimal.ZERO);
+                    reversal.setUnit(orig.getUnit());
+                    reversal.setUnitPrice(orig.getUnitPrice());
+                    reversal.setAmount(orig.getAmount() != null ? orig.getAmount().negate() : null);
+                    reversal.setRelatedDocType(DOC_TYPE_STOCK_IN);
+                    reversal.setRelatedDocId(orig.getRelatedDocId());
+                    reversal.setRelatedDocNo(orig.getRelatedDocNo());
+                    reversal.setRemark(orig.getRemark());
+                    stockLedgerMapper.insert(reversal);
+                }
+            }
+        } else {
+            // 2.3 CANCELLED 终态或非法状态：报 1_030_011_002
+            throw exception(STOCK_IN_STATUS_NOT_ALLOWED);
+        }
     }
 
     // ==================== 私有方法 ====================
@@ -553,6 +716,24 @@ public class StockInServiceImpl implements StockInService {
 
         wrapper.orderByDesc(StockInDO::getInDate).orderByDesc(StockInDO::getId);
         return wrapper;
+    }
+
+    /**
+     * 构建基础库存流水台账记录（公共字段映射）
+     */
+    private StockLedgerDO buildBaseStockLedger(StockInDO stockIn, StockInItemDO item) {
+        StockLedgerDO ledger = new StockLedgerDO();
+        ledger.setProductId(item.getProductId());
+        ledger.setProductCode(item.getProductCode());
+        ledger.setProductName(item.getProductName());
+        ledger.setWarehouseId(stockIn.getWarehouseId());
+        ledger.setWarehouseName(stockIn.getWarehouseName());
+        ledger.setBatchNo(item.getBatchNo());
+        ledger.setUnitPrice(item.getUnitPrice());
+        ledger.setRelatedDocType(DOC_TYPE_STOCK_IN);
+        ledger.setRelatedDocId(stockIn.getId());
+        ledger.setRelatedDocNo(stockIn.getInNo());
+        return ledger;
     }
 
 }

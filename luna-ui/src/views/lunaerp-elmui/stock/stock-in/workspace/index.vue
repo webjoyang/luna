@@ -21,26 +21,75 @@
       <div class="action-buttons flex items-center gap-2">
         <el-button @click="handleBack">返回</el-button>
 
-        <!-- 草稿态 / 新建态操作：[删除][保存草稿] -->
-        <template v-if="!isAllReadOnly && isDraftOrNew">
-          <el-button
-            v-if="numericStockInId"
-            type="danger"
-            plain
-            :loading="actionLoading"
-            @click="handleDelete"
-            v-hasPermi="['lunaerp:stock:stock-in:delete']"
-          >
-            删除
-          </el-button>
-          <el-button
-            type="primary"
-            :loading="actionLoading"
-            @click="handleSave"
-            v-hasPermi="['lunaerp:stock:stock-in:create', 'lunaerp:stock:stock-in:update']"
-          >
-            保存草稿
-          </el-button>
+        <!-- 查看模式不显示任何写入/修改/状态流转按钮 -->
+        <template v-if="!isViewMode">
+          <!-- 新建模式：保存草稿 -->
+          <template v-if="isCreateMode">
+            <el-button
+              type="primary"
+              :loading="actionLoading"
+              @click="handleSave"
+              v-hasPermi="['lunaerp:stock:stock-in:create']"
+            >
+              保存草稿
+            </el-button>
+          </template>
+
+          <!-- 编辑模式：按状态显示操作按钮 -->
+          <template v-else>
+            <!-- 草稿态 DRAFT：[删除][作废][保存草稿][审核] -->
+            <template v-if="formData.status === 'DRAFT'">
+              <el-button
+                type="danger"
+                plain
+                :loading="actionLoading"
+                @click="handleDelete"
+                v-hasPermi="['lunaerp:stock:stock-in:delete']"
+              >
+                删除
+              </el-button>
+              <el-button
+                type="warning"
+                plain
+                :loading="actionLoading"
+                @click="handleCancelDraft"
+                v-hasPermi="['lunaerp:stock:stock-in:update']"
+              >
+                作废
+              </el-button>
+              <el-button
+                type="primary"
+                plain
+                :loading="actionLoading"
+                @click="handleSave"
+                v-hasPermi="['lunaerp:stock:stock-in:update']"
+              >
+                保存草稿
+              </el-button>
+              <el-button
+                type="primary"
+                :loading="actionLoading"
+                @click="handleAudit"
+                v-hasPermi="['lunaerp:stock:stock-in:audit']"
+              >
+                审核
+              </el-button>
+            </template>
+
+            <!-- 已审核态 COMPLETED：[取消（红冲）] -->
+            <template v-else-if="formData.status === 'COMPLETED'">
+              <el-button
+                type="danger"
+                :loading="actionLoading"
+                @click="handleCancelReversal"
+                v-hasPermi="['lunaerp:stock:stock-in:audit']"
+              >
+                取消（红冲）
+              </el-button>
+            </template>
+
+            <!-- 已取消态 CANCELLED：终态全只读，无操作按钮 -->
+          </template>
         </template>
       </div>
     </div>
@@ -102,11 +151,6 @@ const isAllReadOnly = computed(() => {
   if (isViewMode.value) return true
   if (formData.value.status && formData.value.status !== 'DRAFT') return true
   return false
-})
-
-const isDraftOrNew = computed(() => {
-  if (isCreateMode.value) return true
-  return formData.value.status === 'DRAFT'
 })
 
 const pageTitle = computed(() => {
@@ -254,6 +298,91 @@ const handleDelete = async () => {
     await StockInApi.deleteStockIn(numericStockInId.value)
     message.success('删除成功')
     handleBack()
+  } catch {
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 审核入库单 */
+const handleAudit = async () => {
+  if (!numericStockInId.value) return
+
+  // 1. 校验基本信息必填项
+  const basicValid = await basicInfoTabRef.value?.validate()
+  if (!basicValid) {
+    activeTab.value = 'basic'
+    message.warning('请完善基本信息必填项')
+    return
+  }
+
+  // 2. 校验明细非空（零明细不可审核）
+  if (!formData.value.items || formData.value.items.length === 0) {
+    activeTab.value = 'items'
+    message.warning('审核失败：入库单没有明细')
+    return
+  }
+
+  // 3. 校验明细数据完整性
+  for (let i = 0; i < formData.value.items.length; i++) {
+    const item = formData.value.items[i]
+    if (!item.productId) {
+      activeTab.value = 'items'
+      message.warning(`第 ${i + 1} 行明细未选择产品`)
+      return
+    }
+    if (!item.quantity || item.quantity <= 0) {
+      activeTab.value = 'items'
+      message.warning(`第 ${i + 1} 行明细数量必须大于0`)
+      return
+    }
+    if (!item.unit) {
+      activeTab.value = 'items'
+      message.warning(`第 ${i + 1} 行明细未选择单位`)
+      return
+    }
+  }
+
+  try {
+    await message.confirm('确定要审核该入库单吗？审核后将记入正数库存流水并不可修改。')
+    actionLoading.value = true
+    // 执行审核过账
+    await StockInApi.auditStockIn(numericStockInId.value)
+    message.success('审核成功')
+    await loadDetail(numericStockInId.value)
+  } catch {
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 草稿作废操作 */
+const handleCancelDraft = async () => {
+  if (!numericStockInId.value) return
+  try {
+    await message.confirm('确定要作废该入库单草稿吗？作废后不可恢复。')
+    actionLoading.value = true
+    await StockInApi.cancelStockIn(numericStockInId.value)
+    message.success('作废成功')
+    await loadDetail(numericStockInId.value)
+  } catch {
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 已审核单红冲取消操作 */
+const handleCancelReversal = async () => {
+  if (!numericStockInId.value) return
+  try {
+    await message.confirm(
+      '确定要取消并红冲该入库单吗？将生成负数库存流水并冲减库存，且不可撤销！',
+      '红冲确认'
+    )
+    actionLoading.value = true
+    await StockInApi.cancelStockIn(numericStockInId.value)
+    message.success('红冲取消成功')
+    await loadDetail(numericStockInId.value)
   } catch {
   } finally {
     actionLoading.value = false

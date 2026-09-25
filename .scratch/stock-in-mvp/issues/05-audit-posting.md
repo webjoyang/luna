@@ -4,11 +4,11 @@
 
 **Blocked by:** 04 (库位分配)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 三态状态机：DRAFT/COMPLETED/CANCELLED 严格守卫，非草稿禁改禁删
-- [ ] audit 端点：DRAFT→COMPLETED，至少一条明细，同事务写正数流水（按 placement 展开）
-- [ ] cancel 端点：DRAFT→CANCELLED 不写流水；COMPLETED→CANCELLED 红冲（反查原流水逐条写负数）
-- [ ] 权限分权：审核/红冲走 `:audit`，草稿作废走 `:update`
-- [ ] 前端操作栏按状态+权限渲染，红冲二次确认提示
-- [ ] StockInServiceImplTest 增补状态机/过账/红冲用例
+- [x] 三态状态机：DRAFT/COMPLETED/CANCELLED 严格守卫，非草稿禁改禁删
+- [x] audit 端点：DRAFT→COMPLETED，至少一条明细，同事务写正数流水（按 placement 展开）
+- [x] cancel 端点：DRAFT→CANCELLED 不写流水；COMPLETED→CANCELLED 红冲（反查原流水逐条写负数）
+- [x] 权限分权：审核/红冲走 `:audit`，草稿作废走 `:update`
+- [x] 前端操作栏按状态+权限渲染，红冲二次确认提示
+- [x] StockInServiceImplTest 增补状态机/过账/红冲用例

@@ -106,3 +106,14 @@ export const updateStockIn = (data: StockInVO) => {
 export const deleteStockIn = (id: number) => {
   return request.delete({ url: '/lunaerp/stock/stock-in/delete?id=' + id })
 }
+
+// 审核入库单（DRAFT -> COMPLETED，同事务写正数库存流水）
+export const auditStockIn = (id: number) => {
+  return request.put({ url: '/lunaerp/stock/stock-in/audit?id=' + id })
+}
+
+// 取消入库单（草稿作废 / 已审核红冲）
+export const cancelStockIn = (id: number) => {
+  return request.put({ url: '/lunaerp/stock/stock-in/cancel?id=' + id })
+}
+

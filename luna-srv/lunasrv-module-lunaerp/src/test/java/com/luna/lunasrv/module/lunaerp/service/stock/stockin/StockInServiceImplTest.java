@@ -20,9 +20,12 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemPlacementMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouselocation.WarehouseLocationMapper;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemPlacementDO;
@@ -34,6 +37,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -56,10 +60,13 @@ import static org.mockito.Mockito.*;
  * 3. 关联存在性校验与快照回填（仓库/供应商/合同/胚布单/染色单/胚布品种/产品）
  * 4. 聚合保存与服务端金额权威重算（零明细草稿允许）
  * 5. 库位分配与归属校验（placement 必须属于本单仓库，否则报 1_030_011_004）
- * 6. 状态机守卫：仅草稿态可编辑/删除（非草稿报 1_030_011_002）
+ * 6. 状态机守卫：仅草稿态可编辑/删除/审核（非草稿报 1_030_011_002）
  * 7. 级联逻辑删除明细及放置记录
  * 8. 详情查询与分页查询
  * 9. 只读取号预览
+ * 10. 审核过账（DRAFT→COMPLETED，按 placement 展开写正数流水；零明细报 1_030_011_005）
+ * 11. 取消作废与红冲（DRAFT→CANCELLED 作废不写流水；COMPLETED→CANCELLED 红冲写负数流水）
+ * 12. 权限分权（草稿作废 :update，审核与红冲 :audit）
  *
  * @author luna
  */
@@ -73,6 +80,9 @@ class StockInServiceImplTest {
 
     @Mock
     private StockInItemPlacementMapper stockInItemPlacementMapper;
+
+    @Mock
+    private StockLedgerMapper stockLedgerMapper;
 
     @Mock
     private WarehouseMapper warehouseMapper;
@@ -98,6 +108,9 @@ class StockInServiceImplTest {
     @Mock
     private ProductMapper productMapper;
 
+    @Mock
+    private SecurityFrameworkService securityFrameworkService;
+
     @InjectMocks
     private StockInServiceImpl stockInService;
 
@@ -112,6 +125,12 @@ class StockInServiceImplTest {
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockInItemDO.class);
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockInItemPlacementDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockLedgerDO.class);
+
+        when(securityFrameworkService.hasPermission(anyString())).thenReturn(true);
+        when(stockInMapper.updateById(any(StockInDO.class))).thenReturn(1);
+        when(stockLedgerMapper.insert(any(StockLedgerDO.class))).thenReturn(1);
 
         when(stockInMapper.insert(any(StockInDO.class))).thenAnswer(invocation -> {
             StockInDO dobj = invocation.getArgument(0);
@@ -726,4 +745,350 @@ class StockInServiceImplTest {
         assertEquals(new BigDecimal("40.00"), itemResp.getPlacements().get(1).getQuantity());
     }
 
+    // ==================== Issue 05: 审核过账与红冲测试 ====================
+
+    @Test
+    void auditStockIn_draftWithPlacements_success() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setInNo("IN-20260925-001");
+        existing.setStatus("DRAFT");
+        existing.setWarehouseId(10L);
+        existing.setWarehouseName("原料仓");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        StockInItemDO item = new StockInItemDO();
+        item.setId(201L);
+        item.setStockInId(100L);
+        item.setProductId(1001L);
+        item.setProductCode("P001");
+        item.setProductName("涤纶纱");
+        item.setBatchNo("B01");
+        item.setQuantity(new BigDecimal("100.00"));
+        item.setUnit("KG");
+        item.setUnitPrice(new BigDecimal("10.00"));
+        item.setAmount(new BigDecimal("1000.00"));
+        item.setRemark("明细备注");
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(List.of(item));
+
+        StockInItemPlacementDO p1 = new StockInItemPlacementDO();
+        p1.setId(301L);
+        p1.setStockInId(100L);
+        p1.setStockInItemId(201L);
+        p1.setLocationId(401L);
+        p1.setLocationCode("L-01");
+        p1.setPieceCount(5);
+        p1.setQuantity(new BigDecimal("60.00"));
+        p1.setUnit("KG");
+        p1.setRemark("放置A");
+
+        StockInItemPlacementDO p2 = new StockInItemPlacementDO();
+        p2.setId(302L);
+        p2.setStockInId(100L);
+        p2.setStockInItemId(201L);
+        p2.setLocationId(402L);
+        p2.setLocationCode("L-02");
+        p2.setPieceCount(4);
+        p2.setQuantity(new BigDecimal("40.00"));
+        p2.setUnit("KG");
+        p2.setRemark("放置B");
+
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(List.of(p1, p2));
+
+        stockInService.auditStockIn(100L);
+
+        // 验证主表状态更新为 COMPLETED
+        ArgumentCaptor<StockInDO> updateCaptor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).updateById(updateCaptor.capture());
+        assertEquals("COMPLETED", updateCaptor.getValue().getStatus());
+
+        // 验证写库存流水：按 placement 展开 2 条正数流水
+        ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
+        verify(stockLedgerMapper, times(2)).insert(ledgerCaptor.capture());
+        List<StockLedgerDO> ledgers = ledgerCaptor.getAllValues();
+
+        StockLedgerDO l1 = ledgers.get(0);
+        assertEquals(1001L, l1.getProductId());
+        assertEquals("P001", l1.getProductCode());
+        assertEquals("涤纶纱", l1.getProductName());
+        assertEquals(10L, l1.getWarehouseId());
+        assertEquals("原料仓", l1.getWarehouseName());
+        assertEquals(401L, l1.getLocationId());
+        assertEquals("L-01", l1.getLocationCode());
+        assertEquals("B01", l1.getBatchNo());
+        assertEquals("STOCK_IN", l1.getTxnType());
+        assertEquals(new BigDecimal("60.00"), l1.getQuantity());
+        assertEquals("KG", l1.getUnit());
+        assertEquals(new BigDecimal("10.00"), l1.getUnitPrice());
+        assertEquals(new BigDecimal("600.00"), l1.getAmount());
+        assertEquals("STOCK_IN", l1.getRelatedDocType());
+        assertEquals(100L, l1.getRelatedDocId());
+        assertEquals("IN-20260925-001", l1.getRelatedDocNo());
+        assertEquals("放置A", l1.getRemark());
+
+        StockLedgerDO l2 = ledgers.get(1);
+        assertEquals(402L, l2.getLocationId());
+        assertEquals("L-02", l2.getLocationCode());
+        assertEquals(new BigDecimal("40.00"), l2.getQuantity());
+        assertEquals(new BigDecimal("400.00"), l2.getAmount());
+        assertEquals("放置B", l2.getRemark());
+    }
+
+    @Test
+    void auditStockIn_draftWithoutPlacements_success() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setInNo("IN-20260925-002");
+        existing.setStatus("DRAFT");
+        existing.setWarehouseId(10L);
+        existing.setWarehouseName("原料仓");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        StockInItemDO item = new StockInItemDO();
+        item.setId(202L);
+        item.setStockInId(100L);
+        item.setProductId(1002L);
+        item.setProductCode("P002");
+        item.setProductName("全棉布");
+        item.setBatchNo("B02");
+        item.setQuantity(new BigDecimal("80.00"));
+        item.setUnit("M");
+        item.setUnitPrice(new BigDecimal("15.00"));
+        item.setAmount(new BigDecimal("1200.00"));
+        item.setRemark("整批未分配库位");
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(List.of(item));
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        stockInService.auditStockIn(100L);
+
+        // 验证主表状态更新为 COMPLETED
+        ArgumentCaptor<StockInDO> updateCaptor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).updateById(updateCaptor.capture());
+        assertEquals("COMPLETED", updateCaptor.getValue().getStatus());
+
+        // 验证写库存流水：无 placement，按明细行写入 1 条，库位为空
+        ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
+        verify(stockLedgerMapper, times(1)).insert(ledgerCaptor.capture());
+        StockLedgerDO ledger = ledgerCaptor.getValue();
+        assertEquals(1002L, ledger.getProductId());
+        assertNull(ledger.getLocationId());
+        assertNull(ledger.getLocationCode());
+        assertEquals("STOCK_IN", ledger.getTxnType());
+        assertEquals(new BigDecimal("80.00"), ledger.getQuantity());
+        assertEquals("M", ledger.getUnit());
+        assertEquals(new BigDecimal("15.00"), ledger.getUnitPrice());
+        assertEquals(new BigDecimal("1200.00"), ledger.getAmount());
+        assertEquals("整批未分配库位", ledger.getRemark());
+    }
+
+    @Test
+    void auditStockIn_draftEmptyItems_throws1030011005() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.auditStockIn(100L));
+        assertEquals(STOCK_IN_ITEM_EMPTY.getCode(), ex.getCode());
+        verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
+        verify(stockInMapper, never()).updateById(any(StockInDO.class));
+    }
+
+    @Test
+    void auditStockIn_completedStatus_throws1030011002() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("COMPLETED");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.auditStockIn(100L));
+        assertEquals(STOCK_IN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
+    }
+
+    @Test
+    void auditStockIn_cancelledStatus_throws1030011002() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("CANCELLED");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.auditStockIn(100L));
+        assertEquals(STOCK_IN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
+    }
+
+    @Test
+    void auditStockIn_notExists_throwsException() {
+        when(stockInMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.auditStockIn(999L));
+        assertEquals(STOCK_IN_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void cancelStockIn_draftStatus_success() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        stockInService.cancelStockIn(100L);
+
+        ArgumentCaptor<StockInDO> updateCaptor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).updateById(updateCaptor.capture());
+        assertEquals("CANCELLED", updateCaptor.getValue().getStatus());
+
+        // 草稿作废不写流水
+        verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
+    }
+
+    @Test
+    void cancelStockIn_completedStatus_redFlush_success() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setInNo("IN-20260925-005");
+        existing.setStatus("COMPLETED");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        // 模拟已审核单据对应的 2 条原流水
+        StockLedgerDO orig1 = new StockLedgerDO();
+        orig1.setId(1001L);
+        orig1.setProductId(1001L);
+        orig1.setProductCode("P001");
+        orig1.setProductName("涤纶纱");
+        orig1.setWarehouseId(10L);
+        orig1.setWarehouseName("原料仓");
+        orig1.setLocationId(401L);
+        orig1.setLocationCode("L-01");
+        orig1.setBatchNo("B01");
+        orig1.setTxnType("STOCK_IN");
+        orig1.setQuantity(new BigDecimal("60.00"));
+        orig1.setUnit("KG");
+        orig1.setUnitPrice(new BigDecimal("10.00"));
+        orig1.setAmount(new BigDecimal("600.00"));
+        orig1.setRelatedDocType("STOCK_IN");
+        orig1.setRelatedDocId(100L);
+        orig1.setRelatedDocNo("IN-20260925-005");
+        orig1.setRemark("放置A");
+
+        StockLedgerDO orig2 = new StockLedgerDO();
+        orig2.setId(1002L);
+        orig2.setProductId(1001L);
+        orig2.setProductCode("P001");
+        orig2.setProductName("涤纶纱");
+        orig2.setWarehouseId(10L);
+        orig2.setWarehouseName("原料仓");
+        orig2.setLocationId(402L);
+        orig2.setLocationCode("L-02");
+        orig2.setBatchNo("B01");
+        orig2.setTxnType("STOCK_IN");
+        orig2.setQuantity(new BigDecimal("40.00"));
+        orig2.setUnit("KG");
+        orig2.setUnitPrice(new BigDecimal("10.00"));
+        orig2.setAmount(new BigDecimal("400.00"));
+        orig2.setRelatedDocType("STOCK_IN");
+        orig2.setRelatedDocId(100L);
+        orig2.setRelatedDocNo("IN-20260925-005");
+        orig2.setRemark("放置B");
+
+        when(stockLedgerMapper.selectListByRelatedDoc("STOCK_IN", 100L, "STOCK_IN")).thenReturn(List.of(orig1, orig2));
+
+        stockInService.cancelStockIn(100L);
+
+        // 验证主表状态更新为已取消终态
+        ArgumentCaptor<StockInDO> updateCaptor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).updateById(updateCaptor.capture());
+        assertEquals("CANCELLED", updateCaptor.getValue().getStatus());
+
+        // 验证红冲：插入 2 条负数反向行
+        ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
+        verify(stockLedgerMapper, times(2)).insert(ledgerCaptor.capture());
+        List<StockLedgerDO> reversals = ledgerCaptor.getAllValues();
+
+        StockLedgerDO r1 = reversals.get(0);
+        assertEquals("STOCK_IN_REVERSAL", r1.getTxnType());
+        assertEquals(new BigDecimal("-60.00"), r1.getQuantity());
+        assertEquals(new BigDecimal("-600.00"), r1.getAmount());
+        assertEquals(401L, r1.getLocationId());
+        assertEquals("L-01", r1.getLocationCode());
+        assertEquals("B01", r1.getBatchNo());
+        assertEquals("放置A", r1.getRemark());
+
+        StockLedgerDO r2 = reversals.get(1);
+        assertEquals("STOCK_IN_REVERSAL", r2.getTxnType());
+        assertEquals(new BigDecimal("-40.00"), r2.getQuantity());
+        assertEquals(new BigDecimal("-400.00"), r2.getAmount());
+        assertEquals(402L, r2.getLocationId());
+        assertEquals("L-02", r2.getLocationCode());
+        assertEquals("B01", r2.getBatchNo());
+        assertEquals("放置B", r2.getRemark());
+
+        // 原流水永不物理删除
+        verify(stockLedgerMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void cancelStockIn_cancelledStatus_throws1030011002() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("CANCELLED");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.cancelStockIn(100L));
+        assertEquals(STOCK_IN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
+    }
+
+    @Test
+    void cancelStockIn_draftNoUpdatePermission_throwsAccessDenied() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(securityFrameworkService.hasPermission("lunaerp:stock:stock-in:update")).thenReturn(false);
+
+        assertThrows(AccessDeniedException.class, () -> stockInService.cancelStockIn(100L));
+        verify(stockInMapper, never()).updateById(any(StockInDO.class));
+    }
+
+    @Test
+    void cancelStockIn_completedNoAuditPermission_throwsAccessDenied() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("COMPLETED");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(securityFrameworkService.hasPermission("lunaerp:stock:stock-in:audit")).thenReturn(false);
+
+        assertThrows(AccessDeniedException.class, () -> stockInService.cancelStockIn(100L));
+        verify(stockInMapper, never()).updateById(any(StockInDO.class));
+    }
+
+    @Test
+    void updateStockIn_cancelledStatus_throws1030011002() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        req.setId(100L);
+
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("CANCELLED");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.updateStockIn(req));
+        assertEquals(STOCK_IN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    void deleteStockIn_cancelledStatus_throws1030011002() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("CANCELLED");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.deleteStockIn(100L));
+        assertEquals(STOCK_IN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
 }
+

@@ -126,7 +126,7 @@
         align="center"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" width="180" align="center" fixed="right">
+      <el-table-column label="操作" width="280" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -148,11 +148,38 @@
           <el-button
             v-if="row.status === 'DRAFT'"
             link
+            type="success"
+            @click="handleAudit(row.id)"
+            v-hasPermi="['lunaerp:stock:stock-in:audit']"
+          >
+            <Icon icon="ep:check" class="mr-2px" />审核
+          </el-button>
+          <el-button
+            v-if="row.status === 'DRAFT'"
+            link
+            type="warning"
+            @click="handleCancelDraft(row.id)"
+            v-hasPermi="['lunaerp:stock:stock-in:update']"
+          >
+            <Icon icon="ep:circle-close" class="mr-2px" />作废
+          </el-button>
+          <el-button
+            v-if="row.status === 'DRAFT'"
+            link
             type="danger"
             @click="handleDelete(row.id)"
             v-hasPermi="['lunaerp:stock:stock-in:delete']"
           >
             <Icon icon="ep:delete" class="mr-2px" />删除
+          </el-button>
+          <el-button
+            v-if="row.status === 'COMPLETED'"
+            link
+            type="danger"
+            @click="handleCancelReversal(row.id)"
+            v-hasPermi="['lunaerp:stock:stock-in:audit']"
+          >
+            <Icon icon="ep:refresh-left" class="mr-2px" />红冲
           </el-button>
         </template>
       </el-table-column>
@@ -297,6 +324,39 @@ const handleDelete = async (id: number) => {
     await message.confirm('确定要删除该入库单吗？删除后明细将一并删除。')
     await StockInApi.deleteStockIn(id)
     message.success('删除成功')
+    getList()
+  } catch {}
+}
+
+/** 审核操作 */
+const handleAudit = async (id: number) => {
+  try {
+    await message.confirm('确定要审核该入库单吗？审核后将记入正数库存流水并不可修改。')
+    await StockInApi.auditStockIn(id)
+    message.success('审核成功')
+    getList()
+  } catch {}
+}
+
+/** 草稿作废操作 */
+const handleCancelDraft = async (id: number) => {
+  try {
+    await message.confirm('确定要作废该入库单草稿吗？作废后不可恢复。')
+    await StockInApi.cancelStockIn(id)
+    message.success('作废成功')
+    getList()
+  } catch {}
+}
+
+/** 已审核单红冲取消操作 */
+const handleCancelReversal = async (id: number) => {
+  try {
+    await message.confirm(
+      '确定要取消并红冲该入库单吗？将生成负数库存流水并冲减库存，且不可撤销！',
+      '红冲确认'
+    )
+    await StockInApi.cancelStockIn(id)
+    message.success('红冲取消成功')
     getList()
   } catch {}
 }

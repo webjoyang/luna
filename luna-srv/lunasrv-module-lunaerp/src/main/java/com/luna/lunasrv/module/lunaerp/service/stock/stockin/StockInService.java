@@ -61,4 +61,18 @@ public interface StockInService {
      */
     String getNextInNo(LocalDate inDate);
 
+    /**
+     * 审核入库单（DRAFT -> COMPLETED，同事务按库位分配展开写正数 STOCK_IN 流水，ADR-0016, ADR-0017）
+     *
+     * @param id 入库单编号
+     */
+    void auditStockIn(Long id);
+
+    /**
+     * 取消入库单（DRAFT -> CANCELLED 作废不写流水；COMPLETED -> CANCELLED 红冲逐条写入负数反向行，ADR-0016, ADR-0017）
+     *
+     * @param id 入库单编号
+     */
+    void cancelStockIn(Long id);
+
 }
