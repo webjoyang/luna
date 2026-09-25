@@ -6,7 +6,7 @@
 
 **Status:** ready-for-human（代码实现与单测完成，运行时验收待人工执行，见 Comments）
 
-- [x] 后端新增 `GET /admin-api/lunaerp/business/sales-contract/get-next-no`：复用 01/02 的取号入口返回当前租户当年下一个合同编号字符串；挂 query 权限 `lunaerp:business:sales-contract:query`；只读、不占号（多次调用在无新建时返回相同值）
+- [x] 后端新增 `GET /lunaerp/business/sales-contract/get-next-no`：复用 01/02 的取号入口返回当前租户当年下一个合同编号字符串；挂 query 权限 `lunaerp:business:sales-contract:query`；只读、不占号（多次调用在无新建时返回相同值）
 - [x] 前端编号输入框旁增加"获取编号"按钮，点击调用 get-next-no 回填合同编号输入框；用户已手工输入时不自动覆盖（或仅在输入为空/占位时回填）
 - [x] 前端客户远程选择增强：选中客户后调用客户详情，自动回填 clientContact（取主联系人姓名，可空则留空）与 clientAddress，两字段仍可手工修改；快照 clientName 仍按 01 票保存
 - [x] 前端明细行产品编号改为远程搜索 el-select：调用现有产品分页/查询接口按编号或品名模糊搜索；下拉显示编号+品名；选中后回填 productName/composition/width/weight/unitPrice（字段名以产品库实际模型为准，缺失字段留空不报错）

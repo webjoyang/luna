@@ -125,7 +125,7 @@ public class LunasrvSwaggerAutoConfiguration {
     public static GroupedOpenApi buildGroupedOpenApi(String group, String path) {
         return GroupedOpenApi.builder()
                 .group(group)
-                .pathsToMatch("/admin-api/" + path + "/**", "/app-api/" + path + "/**")
+                .pathsToMatch("/admin-api/" + path + "/**", "/app-api/" + path + "/**", "/lunaerp/**")
                 .addOperationCustomizer((operation, handlerMethod) -> operation
                         .addParametersItem(buildTenantHeaderParameter())
                         .addParametersItem(buildSecurityHeaderParameter()))

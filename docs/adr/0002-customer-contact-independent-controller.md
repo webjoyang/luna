@@ -6,7 +6,7 @@ accepted
 
 ## 上下文与决定
 
-`CustomerContact`（客户联系人）作为独立子资源，拥有自己的 `/admin-api/lunaerp/baseinfo/customer-contact/*` Controller、自己的权限码 `lunaerp:baseinfo:customer-contact:*`，UI 工作台"联系人"Tab 内对单条联系人的新增/编辑/删除都走独立端点。`CustomerRespVO` 仍嵌套 `contacts` 列表用于展示，但写操作不走父级 `CustomerSaveReqVO` 整体替换。
+`CustomerContact`（客户联系人）作为独立子资源，拥有自己的 `/lunaerp/baseinfo/customer-contact/*` Controller、自己的权限码 `lunaerp:baseinfo:customer-contact:*`，UI 工作台"联系人"Tab 内对单条联系人的新增/编辑/删除都走独立端点。`CustomerRespVO` 仍嵌套 `contacts` 列表用于展示，但写操作不走父级 `CustomerSaveReqVO` 整体替换。
 
 ## 理由
 

@@ -19,7 +19,7 @@ import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
 @Tag(name = "生产管理 - 纱线材质")
 @RestController
-@RequestMapping("/admin-api/lunaerp/production/yarn-type")
+@RequestMapping("/lunaerp/production/yarn-type")
 @Validated
 public class YarnTypeController {
 

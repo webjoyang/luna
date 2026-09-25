@@ -19,7 +19,7 @@ import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
 @Tag(name = "生产管理 - 纱线配比BOM")
 @RestController
-@RequestMapping("/admin-api/lunaerp/production/yarn-recipe-bom")
+@RequestMapping("/lunaerp/production/yarn-recipe-bom")
 @Validated
 public class YarnRecipeBomController {
 

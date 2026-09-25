@@ -49,6 +49,10 @@ const service: AxiosInstance = axios.create({
 // request拦截器
 service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // lunaerp 模块不需要 /admin-api 前缀，直接使用 VITE_BASE_URL
+    if (config.url?.startsWith('/lunaerp')) {
+      config.baseURL = import.meta.env.VITE_BASE_URL || ''
+    }
     // 是否需要设置 token；命中白名单的接口（如 /login）不带 token
     let isToken = (config!.headers || {}).isToken !== false
     if (isToken && whiteList.some((v) => config.url?.includes(v))) {

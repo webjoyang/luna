@@ -43,6 +43,11 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
             //     changeOrigin: true,
             //     rewrite: (path) => path.replace(new RegExp(`^/admin-api`), ''),
             //   },
+            //   ['/lunaerp']: {
+            //     target: env.VITE_BASE_URL,
+            //     ws: false,
+            //     changeOrigin: true,
+            //   },
             // },
         },
         // 项目使用的vite插件。 单独提取到build/vite/plugin中管理

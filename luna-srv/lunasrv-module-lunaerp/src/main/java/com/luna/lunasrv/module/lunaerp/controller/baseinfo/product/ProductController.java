@@ -20,11 +20,9 @@ import java.util.List;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
-// 注意：本模块包名是 controller.baseinfo（不含 .controller.admin. 段），框架不会自动追加
-// /admin-api 前缀，因此类级 @RequestMapping 必须显式写全 /admin-api 路径（前端 axios baseURL 为 /admin-api）。
 @Tag(name = "基本信息-产品信息")
 @RestController
-@RequestMapping("/admin-api/lunaerp/baseinfo/product")
+@RequestMapping("/lunaerp/baseinfo/product")
 @Validated
 public class ProductController {
 

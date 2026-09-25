@@ -11,7 +11,7 @@
 - [ ] `CustomerDO` 继承 `TenantBaseDO`，`@TableName("lunaerp_baseinfo_customer")`，`@KeySequence("lunaerp_baseinfo_customer_seq")`，12 字段（company/shortName/phone/address/clientType/industry/scale/source/cooperationStatus/unifiedSocialCreditCode/remark/status），无 code 无 businessOwnership 无业务唯一约束
 - [ ] `CustomerMapper` 继承 `BaseMapperX<CustomerDO>`，含 `selectPage` 方法支持 `search` 智能词（PostgreSQL 用 `LOWER(...) LIKE LOWER({0})` 对 company/short_name/phone/unified_social_credit_code 做 OR ILIKE）+ `status` 过滤
 - [ ] `CustomerService` 接口与 `CustomerServiceImpl` 含 `createCustomer(SaveReqVO)`/`getCustomer(id)`/`getCustomerPage(PageReqVO)`；create 时若 shortName 为空则用 company 回填；status 缺省 ACTIVE
-- [ ] `CustomerController` `@RequestMapping("/admin-api/lunaerp/baseinfo/customer")`，`POST /create` + `GET /page` + `GET /get?id=`；`@PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:customer:query|create')")`
+- [ ] `CustomerController` `@RequestMapping("/lunaerp/baseinfo/customer")`，`POST /create` + `GET /page` + `GET /get?id=`；`@PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:customer:query|create')")`
 - [ ] `ErrorCodeConstants.java` 末尾追加 `1_030_002_000` CUSTOMER_NOT_EXISTS
 - [ ] 前端 `luna-ui/src/api/lunaerp-elmui/baseinfo/customer/index.ts` 含 `getCustomer/getCustomerPage/createCustomer` 三个 API 方法
 - [ ] 前端 `luna-ui/src/views/lunaerp-elmui/baseinfo/customer/index.vue` 列表页：5 列精简（company 主显示 + shortName 副标题 / clientType DictTag / phone / cooperationStatus DictTag / createTime）+ 操作列（查看/编辑/删除占位，本票只接"查看"路由跳工作台）+ 搜索区（单 search 输入框 + status 下拉筛选）+ 分页 + 工具栏"新建"按钮（跳 workspace create 模式）；顶部带 `v-hasPermi="['lunaerp:baseinfo:customer:create']"` 权限指令

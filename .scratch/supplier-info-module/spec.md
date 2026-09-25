@@ -110,7 +110,7 @@ Status: ready-for-agent
 
 ### Controller 与 API 契约
 
-**供应商 Controller**：`/admin-api/lunaerp/baseinfo/supplier`
+**供应商 Controller**：`/lunaerp/baseinfo/supplier`
 
 - `GET /page` — 分页，参数 `pageNo/pageSize/search/supplierType/status`；`search` 对 supplier_no/company_name/short_name/phone 做 OR ILIKE（PostgreSQL `LOWER(...) LIKE LOWER(...)`）；`supplierType` 等值过滤；`status` 等值过滤；按 create_time 倒序
 - `GET /get?id=` — 单条详情
@@ -120,7 +120,7 @@ Status: ready-for-agent
 - `DELETE /delete-list?ids=...` — 批量删除，逐条置 INACTIVE 后整体逻辑删除
 - `GET /get-next-no` — 预览当前租户当年下一个编号（只读不占号）
 
-**供应商联系人 Controller**：`/admin-api/lunaerp/baseinfo/supplier-contact`
+**供应商联系人 Controller**：`/lunaerp/baseinfo/supplier-contact`
 
 - `GET /page` — 参数 `pageNo/pageSize/supplierId`（必填），主联系人优先排序
 - `GET /get?id=` / `POST /create`（body 含 supplierId）/ `PUT /update` / `DELETE /delete?id=`（直接逻辑删除，无状态联动）

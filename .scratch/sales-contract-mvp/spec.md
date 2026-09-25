@@ -150,7 +150,7 @@ Status: ready-for-agent
 
 ### Controller 与 API 契约
 
-基础路径 `/admin-api/lunaerp/business/sales-contract`：
+基础路径 `/lunaerp/business/sales-contract`：
 
 - `GET /page` — 参数 pageNo/pageSize/keyword/status/tradeType/customerId(预留)；keyword 对 contract_no / client_name / client_contract_no 做 OR 模糊（PostgreSQL LOWER+LIKE）；默认 sign_date DESC；返回 PageResult（不含 items）
 - `GET /get?id=` — 详情，RespVO 内嵌 items，按 line_no 排序

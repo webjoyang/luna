@@ -164,7 +164,7 @@ Status: ready-for-agent
 
 ### Controller 与 API 契约
 
-基础路径 `/admin-api/lunaerp/production/dyeing-order`：
+基础路径 `/lunaerp/production/dyeing-order`：
 
 - `GET /page` — 参数 pageNo/pageSize/keyword/status/customerId/dyeingFactoryId/orderDateStart/orderDateEnd/deliveryDateStart/deliveryDateEnd；keyword 对 contract_no / client_name / product_code / product_name 做 OR 模糊（PostgreSQL LOWER+LIKE）；默认 order_date DESC；返回 PageResult（不含 colors）
 - `GET /get?id=` — 详情，RespVO 内嵌 colors，按 line_no 排序

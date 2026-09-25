@@ -17,11 +17,9 @@ import org.springframework.web.bind.annotation.*;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
-// 注意：本模块包名是 controller.business（不含 .controller.admin. 段），框架不会自动追加
-// /admin-api 前缀，因此类级 @RequestMapping 必须显式写全 /admin-api 路径（前端 axios baseURL 为 /admin-api）。
 @Tag(name = "业务管理-销售合同")
 @RestController
-@RequestMapping("/admin-api/lunaerp/business/sales-contract")
+@RequestMapping("/lunaerp/business/sales-contract")
 @Validated
 public class SalesContractController {
 

@@ -94,7 +94,7 @@ Status: ready-for-agent
 
 ### Controller 与 API 契约
 
-**客户 Controller**（`/admin-api/lunaerp/baseinfo/customer`）：
+**客户 Controller**（`/lunaerp/baseinfo/customer`）：
 
 - `GET /page` — 分页查询，参数 `pageNo/pageSize/search/status`；`search` 智能词对 company/short_name/phone/unified_social_credit_code 做 OR ILIKE（PostgreSQL 用 `LOWER(...) LIKE LOWER({0})`）；`status` 缺省查 ACTIVE
 - `GET /get?id=` — 单条详情（带 contacts 嵌套返回用于展示）
@@ -103,7 +103,7 @@ Status: ready-for-agent
 - `DELETE /delete?id=` — 单条删除（先置 status=INACTIVE 再逻辑删除）
 - `DELETE /delete-list?ids=1,2,3` — 批量删除
 
-**客户联系人 Controller**（`/admin-api/lunaerp/baseinfo/customer-contact`）：
+**客户联系人 Controller**（`/lunaerp/baseinfo/customer-contact`）：
 
 - `GET /page` — 分页查询，参数 `pageNo/pageSize/customerId`（必填）；按 customerId 过滤
 - `GET /get?id=` — 单条详情

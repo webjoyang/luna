@@ -22,7 +22,7 @@ import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
  */
 @Tag(name = "生产管理-纱线采购单")
 @RestController
-@RequestMapping("/admin-api/lunaerp/production/yarn-order")
+@RequestMapping("/lunaerp/production/yarn-order")
 @Validated
 public class YarnOrderController {
 

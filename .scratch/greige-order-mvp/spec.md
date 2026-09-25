@@ -163,7 +163,7 @@ Status: ready-for-agent
 
 ### Controller 与 API 契约
 
-基础路径 `/admin-api/lunaerp/production/greige-order`：
+基础路径 `/lunaerp/production/greige-order`：
 
 - `GET /page` — 参数 pageNo/pageSize/keyword/status；keyword 对 order_no / contract_no / product_name / product_code 做 OR 模糊（PostgreSQL LOWER+LIKE）；默认 order_date DESC；返回 PageResult（不含颜色行）
 - `GET /get?id=` — 详情，RespVO 内嵌 colors，按 line_no 排序

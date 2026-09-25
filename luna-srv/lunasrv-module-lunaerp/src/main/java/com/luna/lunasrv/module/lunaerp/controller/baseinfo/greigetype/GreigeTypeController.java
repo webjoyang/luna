@@ -25,14 +25,11 @@ import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 /**
  * 胚布品种 Controller
  *
- * 注意：本类在 controller.baseinfo 包下（不在 controller.admin 包），
- * 框架不会自动补 /admin-api 前缀，因此类级路径显式写全。
- *
  * @author luna
  */
 @Tag(name = "基本信息-胚布品种")
 @RestController
-@RequestMapping("/admin-api/lunaerp/baseinfo/greige-type")
+@RequestMapping("/lunaerp/baseinfo/greige-type")
 @Validated
 public class GreigeTypeController {
 
