@@ -4,10 +4,11 @@
 
 **Blocked by:** 05 (审核过账与红冲)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 库存余额接口：SUM(quantity) GROUP BY product_id, unit, warehouse_id，支持产品/仓库筛选分页
-- [ ] 库存流水接口：只读分页，支持产品/仓库/收支类型/关联单号/时间区间筛选
-- [ ] 前端库存查询页两 Tab：余额列表 + 流水列表，余额行"查看流水"联动筛选
-- [ ] 流水数量带正负号颜色区分（正绿负红）
-- [ ] 权限：仅 `lunaerp:stock:inventory-balance:query` 一个查询权限
+- [x] 库存余额接口：SUM(quantity) GROUP BY product_id, unit, warehouse_id，支持产品/仓库筛选分页
+- [x] 库存流水接口：只读分页，支持产品/仓库/收支类型/关联单号/时间区间筛选
+- [x] 前端库存查询页两 Tab：余额列表 + 流水列表，余额行"查看流水"联动筛选
+- [x] 流水数量带正负号颜色区分（正绿负红）
+- [x] 权限：仅 `lunaerp:stock:inventory-balance:query` 一个查询权限
+
