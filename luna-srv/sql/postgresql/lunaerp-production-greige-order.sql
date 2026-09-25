@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS lunaerp_production_greige_order (
     order_no                 varchar(32)   NOT NULL,
     sales_contract_id        int8          NULL,
     contract_no              varchar(32)   NULL,
-    greige_factory_id        int8          NOT NULL,
-    greige_factory_name      varchar(128)  NOT NULL,
+    greige_factory_id        int8          NULL,
+    greige_factory_name      varchar(128)  NULL,
     dyeing_factory_id        int8          NULL,
     dyeing_factory_name      varchar(128)  NULL,
     order_date               date          NOT NULL,
@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS lunaerp_production_greige_order (
     production_remark        varchar(1000) NULL,
     remark                   varchar(1000) NULL,
     status                   varchar(16)   NOT NULL DEFAULT 'ACTIVE',
+    production_mode          varchar(16)   NOT NULL DEFAULT 'OUTSOURCE',
     creator                  varchar(64)   NULL DEFAULT '',
     create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater                  varchar(64)   NULL DEFAULT '',
@@ -56,6 +57,11 @@ BEGIN
     END IF;
 END $$;
 
+-- 存量表结构变更与默认值补齐（可重复执行）
+ALTER TABLE lunaerp_production_greige_order ALTER COLUMN greige_factory_id DROP NOT NULL;
+ALTER TABLE lunaerp_production_greige_order ALTER COLUMN greige_factory_name DROP NOT NULL;
+ALTER TABLE lunaerp_production_greige_order ADD COLUMN IF NOT EXISTS production_mode varchar(16) NOT NULL DEFAULT 'OUTSOURCE';
+
 -- 胚布单号租户内全量唯一（ADR-0006）：普通唯一索引、不带 WHERE deleted=0，
 -- 按天取号、软删不释放编号。勿"修正"为部分唯一索引。
 CREATE UNIQUE INDEX IF NOT EXISTS uk_lb_greige_order_tenant_no
@@ -66,14 +72,21 @@ CREATE INDEX IF NOT EXISTS idx_lb_greige_order_order_date
     ON lunaerp_production_greige_order (order_date);
 CREATE INDEX IF NOT EXISTS idx_lb_greige_order_product_id
     ON lunaerp_production_greige_order (product_id);
+-- 承织坯布厂复合索引（ADR-0022：按承织厂过滤，B-tree 索引包含 NULL）
+CREATE INDEX IF NOT EXISTS idx_lb_greige_order_tenant_factory
+    ON lunaerp_production_greige_order (tenant_id, greige_factory_id);
+-- 自织模式部分索引（ADR-0022：自织单检索与织造单来源过滤，部分索引体积小、命中快）
+CREATE INDEX IF NOT EXISTS idx_lb_greige_order_self_mode
+    ON lunaerp_production_greige_order (tenant_id)
+    WHERE production_mode = 'SELF';
 
 COMMENT ON TABLE lunaerp_production_greige_order IS '生产管理-胚布单主表';
 COMMENT ON COLUMN lunaerp_production_greige_order.id IS '胚布单ID';
 COMMENT ON COLUMN lunaerp_production_greige_order.order_no IS '胚布单号（PB+月日+3位顺序号，按天取号，可手填，租户内全量唯一含已删除行，见 ADR-0006）';
 COMMENT ON COLUMN lunaerp_production_greige_order.sales_contract_id IS '销售合同ID（lunaerp_business_sales_contract.id，逻辑关联可空）';
 COMMENT ON COLUMN lunaerp_production_greige_order.contract_no IS '合同号快照（选中合同时保存）';
-COMMENT ON COLUMN lunaerp_production_greige_order.greige_factory_id IS '承织坯布厂供应商ID（lunaerp_baseinfo_supplier.id，必填，见 ADR-0007）';
-COMMENT ON COLUMN lunaerp_production_greige_order.greige_factory_name IS '坯布厂公司名快照（选中供应商时保存，必填）';
+COMMENT ON COLUMN lunaerp_production_greige_order.greige_factory_id IS '承织坯布厂供应商ID（lunaerp_baseinfo_supplier.id，外发必填，自织可空，见 ADR-0007 / ADR-0022）';
+COMMENT ON COLUMN lunaerp_production_greige_order.greige_factory_name IS '坯布厂公司名快照（选中供应商时保存，外发必填，自织可空）';
 COMMENT ON COLUMN lunaerp_production_greige_order.dyeing_factory_id IS '指定染厂供应商ID（lunaerp_baseinfo_supplier.id，可空，见 ADR-0007）';
 COMMENT ON COLUMN lunaerp_production_greige_order.dyeing_factory_name IS '染厂公司名快照（选中供应商时保存）';
 COMMENT ON COLUMN lunaerp_production_greige_order.order_date IS '单据日期（必填，创建缺省当天）';
@@ -95,6 +108,7 @@ COMMENT ON COLUMN lunaerp_production_greige_order.greige_type_id IS '所属胚�
 COMMENT ON COLUMN lunaerp_production_greige_order.production_remark IS '生产工艺备注';
 COMMENT ON COLUMN lunaerp_production_greige_order.remark IS '备注';
 COMMENT ON COLUMN lunaerp_production_greige_order.status IS '胚布单状态（字典 lunaerp_greige_order_status：ACTIVE/COMPLETED/CANCELLED），创建缺省 ACTIVE';
+COMMENT ON COLUMN lunaerp_production_greige_order.production_mode IS '生产模式（字典 lunaerp_greige_production_mode：SELF 自织 / OUTSOURCE 外发，缺省 OUTSOURCE，见 ADR-0022）';
 COMMENT ON COLUMN lunaerp_production_greige_order.creator IS '创建者';
 COMMENT ON COLUMN lunaerp_production_greige_order.create_time IS '创建时间';
 COMMENT ON COLUMN lunaerp_production_greige_order.updater IS '更新者';
@@ -177,20 +191,27 @@ COMMIT;
 
 -- =============================================================================
 -- 4. 字典类型与字典数据（system_dict_type / system_dict_data，可重复执行）
---    dict_type id 2221（紧接供应商 2220），dict_data id 3568-3570（紧接供应商 3550-3567）。
+--    dict_type id 2221（状态）、2241（生产模式，ADR-0022）；
+--    dict_data id 3568-3570（状态）、3622-3623（生产模式）。
 -- =============================================================================
 -- @formatter:off
 BEGIN;
 
-DELETE FROM system_dict_type WHERE id IN (2221);
-DELETE FROM system_dict_data WHERE dict_type IN ('lunaerp_greige_order_status');
+DELETE FROM system_dict_type WHERE id IN (2221, 2241);
+DELETE FROM system_dict_data WHERE dict_type IN ('lunaerp_greige_order_status', 'lunaerp_greige_production_mode')
+    OR id IN (3622, 3623);
 
 INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time) VALUES (2221, '胚布单状态', 'lunaerp_greige_order_status', 0, 'LunaERP 胚布单-状态', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0', NULL);
+INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time) VALUES (2241, '胚布单生产模式', 'lunaerp_greige_production_mode', 0, 'LunaERP 胚布单-生产模式', 'admin', '2026-09-25 00:00:00', '1', '2026-09-25 00:00:00', '0', NULL);
 
 -- 胚布单状态：进行中/已完成/已取消（与销售合同状态口径一致）
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3568, 1, '进行中', 'ACTIVE', 'lunaerp_greige_order_status', 0, 'success', '', NULL, 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3569, 2, '已完成', 'COMPLETED', 'lunaerp_greige_order_status', 0, 'info', '', NULL, 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3570, 3, '已取消', 'CANCELLED', 'lunaerp_greige_order_status', 0, 'danger', '', NULL, 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
+
+-- 胚布单生产模式：自织 / 外发（缺省 OUTSOURCE，ADR-0022）
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3622, 1, '自织', 'SELF', 'lunaerp_greige_production_mode', 0, 'primary', '', '自有车间织造，作为织造单上游计划', 'admin', '2026-09-25 00:00:00', '1', '2026-09-25 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3623, 2, '外发', 'OUTSOURCE', 'lunaerp_greige_production_mode', 0, 'info', '', '向外部坯布厂下达织造委托（缺省）', 'admin', '2026-09-25 00:00:00', '1', '2026-09-25 00:00:00', '0');
 
 COMMIT;
 -- @formatter:on

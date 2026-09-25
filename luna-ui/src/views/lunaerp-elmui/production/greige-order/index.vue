@@ -21,6 +21,16 @@
           />
         </el-select>
       </el-form-item>
+      <el-form-item label="生产模式" prop="productionMode">
+        <el-select v-model="queryParams.productionMode" placeholder="全部" clearable class="!w-140px">
+          <el-option
+            v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_GREIGE_PRODUCTION_MODE)"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
+      </el-form-item>
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" />重置</el-button>
@@ -43,9 +53,18 @@
           <span class="cell-no">{{ row.orderNo }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="生产模式" prop="productionMode" width="100" align="center">
+        <template #default="{ row }">
+          <DictTag :type="DICT_TYPE.LUNAERP_GREIGE_PRODUCTION_MODE" :value="row.productionMode || 'OUTSOURCE'" />
+        </template>
+      </el-table-column>
       <el-table-column label="合同号" prop="contractNo" min-width="130" />
       <el-table-column label="产品名称" prop="productName" min-width="160" show-overflow-tooltip />
-      <el-table-column label="坯布厂" prop="greigeFactoryName" min-width="170" show-overflow-tooltip />
+      <el-table-column label="坯布厂" prop="greigeFactoryName" min-width="170" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span>{{ row.greigeFactoryName || (row.productionMode === 'SELF' ? '-' : '') }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="指定染厂" prop="dyeingFactoryName" min-width="170" show-overflow-tooltip />
       <el-table-column label="计划投胚(KG)" prop="plannedQty" width="130" align="right">
         <template #default="{ row }">{{ formatQty(row.plannedQty) }}</template>
@@ -117,7 +136,8 @@ const queryParams = reactive({
   pageNo: 1,
   pageSize: 20,
   keyword: '',
-  status: ''
+  status: '',
+  productionMode: ''
 })
 
 /** 查询胚布单分页 */

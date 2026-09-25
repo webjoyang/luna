@@ -172,6 +172,9 @@ spring:
 
 # 日志文件配置
 logging:
+  charset:
+    console: UTF-8
+    file: UTF-8
   file:
     name: ${user.home}/logs/${spring.application.name}.log # 日志文件名，全路径
   level:

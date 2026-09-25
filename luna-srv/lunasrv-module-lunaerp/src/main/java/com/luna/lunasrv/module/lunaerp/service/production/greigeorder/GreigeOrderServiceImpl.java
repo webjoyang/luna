@@ -9,6 +9,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.Grei
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderWeavingProgressVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.greigetype.GreigeTypeDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
@@ -22,6 +23,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesCon
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -108,6 +110,9 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     @Resource
     private GreigeTypeMapper greigeTypeMapper;
 
+    @Autowired(required = false)
+    private GreigeOrderWeavingProgressProvider weavingProgressProvider;
+
     @Override
     public PageResult<GreigeOrderRespVO> getGreigeOrderPage(GreigeOrderPageReqVO reqVO) {
         // 构造查询条件
@@ -152,6 +157,8 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         // 嵌套返回颜色行（按 line_no 升序）
         List<GreigeOrderColorDO> colorDOList = greigeOrderColorMapper.selectListByOrderId(id);
         respVO.setColors(BeanUtils.toBean(colorDOList, GreigeOrderColorRespVO.class));
+        // 自织单实时聚合织造进度（不落库、零回写，见 ADR-0022）
+        enrichWeavingProgress(respVO);
         return respVO;
     }
 
@@ -213,6 +220,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         LambdaQueryWrapperX<GreigeOrderDO> wrapper = new LambdaQueryWrapperX<>();
         // 等值过滤（为空则不过滤，便于"全部"场景）
         wrapper.eqIfPresent(GreigeOrderDO::getStatus, reqVO.getStatus());
+        wrapper.eqIfPresent(GreigeOrderDO::getProductionMode, reqVO.getProductionMode());
         // keyword：命中 order_no / contract_no / product_name / product_code 之一
         String keyword = reqVO.getKeyword() == null ? "" : reqVO.getKeyword().trim();
         if (!keyword.isEmpty()) {
@@ -242,11 +250,23 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     }
 
     /**
-     * 引用校验（创建/更新共用）：坯布厂必填；染厂/销售合同/产品档案/胚布品种非空时逐一校验存在
-     * （ADR-0007 不校验供应商类型），任一不过抛 GREIGE_ORDER_REFERENCE_NOT_FOUND。
+     * 引用校验（创建/更新共用）：
+     * 模式与承织厂联动校验（ADR-0022）：OUTSOURCE（缺省）坯布厂必填；SELF 坯布厂可空，非空时校验存在。
+     * 染厂/销售合同/产品档案/胚布品种非空时逐一校验存在（ADR-0007 不校验供应商类型），
+     * 任一不过抛 GREIGE_ORDER_REFERENCE_NOT_FOUND。
      */
     private ValidatedRefs validateReferences(GreigeOrderSaveReqVO reqVO) {
-        SupplierDO greigeFactory = validateSupplierExists(reqVO.getGreigeFactoryId(), "坯布厂");
+        String mode = StringUtils.hasText(reqVO.getProductionMode())
+                ? reqVO.getProductionMode().trim() : "OUTSOURCE";
+        SupplierDO greigeFactory = null;
+        if ("SELF".equals(mode)) {
+            if (reqVO.getGreigeFactoryId() != null) {
+                greigeFactory = validateSupplierExists(reqVO.getGreigeFactoryId(), "坯布厂");
+            }
+        } else {
+            // OUTSOURCE 外发模式：坯布厂必填
+            greigeFactory = validateSupplierExists(reqVO.getGreigeFactoryId(), "坯布厂");
+        }
         SupplierDO dyeingFactory = reqVO.getDyeingFactoryId() == null
                 ? null : validateSupplierExists(reqVO.getDyeingFactoryId(), "指定染厂");
         SalesContractDO contract = null;
@@ -269,6 +289,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
 
     /**
      * 快照回填 + 缺省值（创建/更新共用）：
+     * 生产模式缺省 OUTSOURCE；
      * 名称/合同号快照为空时用档案当前名称回填（选中供应商后档案改名的场景以前端传值为准）；
      * 关联产品档案时刷新 product_code/product_name 快照（产品档案改名后跟随刷新）；
      * 单据日期缺省今天、状态缺省 ACTIVE、匹重缺省 25、预设损耗缺省 0。
@@ -279,8 +300,13 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         SalesContractDO contract = refs.contract();
         ProductDO product = refs.product();
 
-        if (!StringUtils.hasText(order.getGreigeFactoryName()) && greigeFactory != null) {
+        if (!StringUtils.hasText(order.getProductionMode())) {
+            order.setProductionMode("OUTSOURCE");
+        }
+        if (order.getGreigeFactoryId() != null && !StringUtils.hasText(order.getGreigeFactoryName()) && greigeFactory != null) {
             order.setGreigeFactoryName(greigeFactory.getCompanyName());
+        } else if (order.getGreigeFactoryId() == null) {
+            order.setGreigeFactoryName(null);
         }
         if (order.getDyeingFactoryId() != null && !StringUtils.hasText(order.getDyeingFactoryName())
                 && dyeingFactory != null) {
@@ -305,6 +331,28 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         if (order.getSuggestedLoss() == null) {
             order.setSuggestedLoss(DEFAULT_SUGGESTED_LOSS);
         }
+    }
+
+    /**
+     * 自织单实时聚合织造进度：计划匹数 / 已完工匹数（零回写、不落库，ADR-0022）；外发单置空。
+     */
+    private void enrichWeavingProgress(GreigeOrderRespVO respVO) {
+        if (!"SELF".equals(respVO.getProductionMode())) {
+            respVO.setWeavingProgress(null);
+            respVO.setWeavingPlannedPieces(null);
+            respVO.setWeavingCompletedPieces(null);
+            return;
+        }
+        GreigeOrderWeavingProgressVO progress = null;
+        if (weavingProgressProvider != null) {
+            progress = weavingProgressProvider.getWeavingProgress(respVO.getId());
+        }
+        if (progress == null) {
+            progress = new GreigeOrderWeavingProgressVO(0, 0);
+        }
+        respVO.setWeavingProgress(progress);
+        respVO.setWeavingPlannedPieces(progress.getPlannedPieces() != null ? progress.getPlannedPieces() : 0);
+        respVO.setWeavingCompletedPieces(progress.getCompletedPieces() != null ? progress.getCompletedPieces() : 0);
     }
 
     // ==================== 颜色投胚分配聚合私有方法（ADR-0003） ====================

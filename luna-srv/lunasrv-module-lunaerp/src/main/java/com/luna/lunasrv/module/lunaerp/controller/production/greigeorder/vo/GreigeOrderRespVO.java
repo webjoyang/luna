@@ -24,10 +24,10 @@ public class GreigeOrderRespVO {
     @Schema(description = "合同号快照", example = "CH20260001")
     private String contractNo;
 
-    @Schema(description = "承织坯布厂供应商ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "3072")
+    @Schema(description = "承织坯布厂供应商ID（外发必填，自织可空）", example = "3072")
     private Long greigeFactoryId;
 
-    @Schema(description = "坯布厂公司名快照", requiredMode = Schema.RequiredMode.REQUIRED, example = "海宁坯布厂")
+    @Schema(description = "坯布厂公司名快照（外发必填，自织可空）", example = "海宁坯布厂")
     private String greigeFactoryName;
 
     @Schema(description = "指定染厂供应商ID", example = "3073")
@@ -92,6 +92,18 @@ public class GreigeOrderRespVO {
 
     @Schema(description = "胚布单状态（字典 lunaerp_greige_order_status）", requiredMode = Schema.RequiredMode.REQUIRED, example = "ACTIVE")
     private String status;
+
+    @Schema(description = "生产模式（字典 lunaerp_greige_production_mode：SELF 自织 / OUTSOURCE 外发）", requiredMode = Schema.RequiredMode.REQUIRED, example = "OUTSOURCE")
+    private String productionMode;
+
+    @Schema(description = "织造执行进度（自织单实时聚合其下有效织造单进度，不落库；外发单为 null）")
+    private GreigeOrderWeavingProgressVO weavingProgress;
+
+    @Schema(description = "织造计划总匹数（自织单实时聚合，不落库；外发单为 null）", example = "50")
+    private Integer weavingPlannedPieces;
+
+    @Schema(description = "织造已完工总匹数（自织单实时聚合，不落库；外发单为 null）", example = "30")
+    private Integer weavingCompletedPieces;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

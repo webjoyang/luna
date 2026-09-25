@@ -34,6 +34,23 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
+          <el-form-item label="生产模式" prop="productionMode">
+            <el-radio-group
+              v-model="formData.productionMode"
+              :disabled="isViewMode"
+              @change="handleProductionModeChange"
+            >
+              <el-radio-button
+                v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_GREIGE_PRODUCTION_MODE)"
+                :key="dict.value"
+                :label="dict.value"
+              >
+                {{ dict.label }}
+              </el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
           <el-form-item label="销售合同" prop="salesContractId">
             <el-select
               v-model="formData.salesContractId"
@@ -112,14 +129,19 @@
           <el-form-item label="坯布厂" prop="greigeFactoryId">
             <el-select
               v-model="formData.greigeFactoryId"
-              placeholder="输入关键词搜索供应商（必选）"
+              :placeholder="
+                formData.productionMode === 'SELF'
+                  ? '自织模式坯布厂可为空'
+                  : '输入关键词搜索供应商（必选）'
+              "
+              :clearable="formData.productionMode === 'SELF'"
               filterable
               remote
               reserve-keyword
               :remote-method="(query: string) => searchSuppliers(query, 'greige')"
               :loading="greigeSupplierLoading"
               class="!w-full"
-              @change="(val: number) => handleSupplierChange(val, 'greige')"
+              @change="(val?: number) => handleSupplierChange(val, 'greige')"
             >
               <el-option
                 v-for="item in greigeSupplierOptions"
@@ -299,6 +321,50 @@
         </el-col>
       </el-row>
 
+      <!-- 织造执行进度（自织模式且非新建状态展示，只读聚合视图） -->
+      <template v-if="formData.productionMode === 'SELF' && !isCreateMode">
+        <div class="section-title section-title-flex">
+          <span>织造执行进度</span>
+          <el-button
+            type="primary"
+            size="small"
+            plain
+            :disabled="false"
+            @click="handleCreateWeavingOrder"
+          >
+            生成织造单
+          </el-button>
+        </div>
+        <div class="weaving-progress-wrap">
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <div class="stat-card">
+                <div class="stat-title">织造计划匹数</div>
+                <div class="stat-value">{{ weavingPlannedPieces }} 匹</div>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="stat-card">
+                <div class="stat-title">织造已完成匹数</div>
+                <div class="stat-value">{{ weavingCompletedPieces }} 匹</div>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="stat-card">
+                <div class="stat-title">完成进度</div>
+                <div class="stat-value">
+                  <el-progress
+                    :percentage="weavingProgressPercentage"
+                    :stroke-width="14"
+                    :format="() => `${weavingCompletedPieces} / ${weavingPlannedPieces} 匹 (${weavingProgressPercentage}%)`"
+                  />
+                </div>
+              </div>
+            </el-col>
+          </el-row>
+        </div>
+      </template>
+
       <div class="section-title">颜色投胚分配</div>
       <el-table :data="colorRows" border size="small" class="color-table" empty-text="暂无颜色行，可点击下方按钮添加（零颜色单据也可保存）">
         <el-table-column label="行号" type="index" width="50" align="center" />
@@ -436,6 +502,7 @@ const loading = ref(false)
 const submitting = ref(false)
 
 const formData = reactive<GreigeOrderVO>({
+  productionMode: 'OUTSOURCE',
   orderNo: '',
   salesContractId: undefined,
   contractNo: '',
@@ -513,10 +580,47 @@ const totalDemandQty = computed(() =>
 /** 数量格式化（两位小数） */
 const formatQty = (val: number): string => val.toFixed(2)
 
-const rules = {
-  greigeFactoryId: [{ required: true, message: '坯布厂不能为空', trigger: 'change' }],
+const handleProductionModeChange = (mode: string) => {
+  if (mode === 'SELF') {
+    formRef.value?.clearValidate('greigeFactoryId')
+  } else {
+    formRef.value?.validateField('greigeFactoryId').catch(() => {})
+  }
+}
+
+const rules = computed(() => ({
+  greigeFactoryId: [
+    {
+      required: formData.productionMode !== 'SELF',
+      message: '坯布厂不能为空',
+      trigger: 'change'
+    }
+  ],
   orderDate: [{ required: true, message: '单据日期不能为空', trigger: 'change' }],
   plannedQty: [{ required: true, message: '计划投胚量不能为空', trigger: 'blur' }]
+}))
+
+const weavingPlannedPieces = computed(() => {
+  return formData.weavingProgress?.plannedPieces ?? formData.weavingPlannedPieces ?? 0
+})
+
+const weavingCompletedPieces = computed(() => {
+  return formData.weavingProgress?.completedPieces ?? formData.weavingCompletedPieces ?? 0
+})
+
+const weavingProgressPercentage = computed(() => {
+  const planned = weavingPlannedPieces.value
+  const completed = weavingCompletedPieces.value
+  if (!planned || planned <= 0) return 0
+  const pct = Math.round((completed / planned) * 100)
+  return Math.min(100, Math.max(0, pct))
+})
+
+const handleCreateWeavingOrder = () => {
+  router.push({
+    path: '/production/weaving-order/workspace',
+    query: { greigeOrderId: String(orderId.value) }
+  })
 }
 
 const orderId = computed(() => (route.params.id as string) || null)
@@ -708,6 +812,7 @@ const loadGreigeOrder = async () => {
   try {
     const data = await GreigeOrderApi.getGreigeOrder(Number(orderId.value))
     Object.assign(formData, data)
+    formData.productionMode = data.productionMode || 'OUTSOURCE'
     // 预设损耗小数 → 百分比展示
     lossPercent.value = Number(((data.suggestedLoss ?? 0) * 100).toFixed(2))
     // 颜色行回填：损耗率小数 → 百分比展示（后端保存时已把空值解析为主单损耗/0）
@@ -754,9 +859,17 @@ const handleSubmit = async () => {
   try {
     const payload: GreigeOrderVO = {
       ...formData,
+      productionMode: formData.productionMode || 'OUTSOURCE',
       orderNo: formData.orderNo?.trim() || undefined, // 留空走后端自动号
       contractNo: formData.contractNo?.trim() || undefined,
-      greigeFactoryName: formData.greigeFactoryName?.trim() || undefined,
+      greigeFactoryId:
+        formData.productionMode === 'SELF'
+          ? (formData.greigeFactoryId ?? (null as unknown as number))
+          : formData.greigeFactoryId,
+      greigeFactoryName:
+        formData.productionMode === 'SELF'
+          ? (formData.greigeFactoryName?.trim() || (null as unknown as string))
+          : (formData.greigeFactoryName?.trim() || undefined),
       dyeingFactoryName: formData.dyeingFactoryName?.trim() || undefined,
       suggestedLoss: toSuggestedLoss(),
       productId: formData.productId ?? undefined,
@@ -821,6 +934,39 @@ onMounted(() => {
   padding-left: 8px;
   font-weight: 600;
   border-left: 3px solid var(--el-color-primary);
+}
+
+.section-title-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.weaving-progress-wrap {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+
+  .stat-card {
+    background: var(--el-bg-color);
+    padding: 12px 16px;
+    border-radius: 4px;
+    border: 1px solid var(--el-border-color-lighter);
+
+    .stat-title {
+      font-size: 13px;
+      color: var(--el-text-color-secondary);
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--el-text-color-primary);
+    }
+  }
 }
 
 .greige-form {

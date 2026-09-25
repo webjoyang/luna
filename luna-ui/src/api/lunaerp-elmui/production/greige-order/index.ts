@@ -12,13 +12,19 @@ export interface GreigeOrderColorVO {
   remark?: string
 }
 
+// 胚布单自织进度 VO（自织单详情实时聚合展示，不落库）
+export interface GreigeOrderWeavingProgressVO {
+  plannedPieces?: number // 计划总匹数
+  completedPieces?: number // 已完工总匹数
+}
+
 // 胚布单 VO（颜色投胚分配行随单整体保存；计划投胚量与颜色投胚需求合计不强制相等）
 export interface GreigeOrderVO {
   id?: number
   orderNo?: string
   salesContractId?: number
   contractNo?: string
-  greigeFactoryId: number // 承织坯布厂（供应商 id），必填
+  greigeFactoryId?: number | null // 承织坯布厂（供应商 id），外发必填，自织可空
   greigeFactoryName?: string // 坯布厂公司名快照，保存供应商档案时复制
   dyeingFactoryId?: number // 指定染厂（供应商 id），可空
   dyeingFactoryName?: string // 染厂公司名快照
@@ -41,6 +47,10 @@ export interface GreigeOrderVO {
   productionRemark?: string
   remark?: string
   status?: string
+  productionMode?: string // 生产模式：SELF 自织 / OUTSOURCE 外发（缺省 OUTSOURCE）
+  weavingProgress?: GreigeOrderWeavingProgressVO // 织造进度（自织单聚合展示）
+  weavingPlannedPieces?: number // 织造计划总匹数
+  weavingCompletedPieces?: number // 织造已完工总匹数
   colors?: GreigeOrderColorVO[] // 颜色投胚分配行（详情嵌套返回，保存时整体替换）
   createTime?: Date | string
 }
@@ -54,6 +64,7 @@ export interface GreigeOrderPageParam {
   pageSize?: number
   keyword?: string
   status?: string
+  productionMode?: string // 生产模式：SELF 自织 / OUTSOURCE 外发
 }
 
 // 查询胚布单分页

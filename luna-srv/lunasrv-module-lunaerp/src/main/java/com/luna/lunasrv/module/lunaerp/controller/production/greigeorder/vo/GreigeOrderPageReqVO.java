@@ -16,4 +16,7 @@ public class GreigeOrderPageReqVO extends PageParam {
     @Schema(description = "胚布单状态：ACTIVE/COMPLETED/CANCELLED", example = "ACTIVE")
     private String status;
 
+    @Schema(description = "生产模式：SELF 自织 / OUTSOURCE 外发", example = "OUTSOURCE")
+    private String productionMode;
+
 }

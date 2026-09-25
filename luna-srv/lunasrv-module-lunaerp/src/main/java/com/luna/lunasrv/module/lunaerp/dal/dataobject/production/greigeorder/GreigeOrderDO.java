@@ -47,12 +47,14 @@ public class GreigeOrderDO extends TenantBaseDO {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String contractNo;
     /**
-     * 承织坯布厂供应商ID（lunaerp_baseinfo_supplier.id，必填，见 ADR-0007）
+     * 承织坯布厂供应商ID（lunaerp_baseinfo_supplier.id，外发必填，自织可空，见 ADR-0007 / ADR-0022）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long greigeFactoryId;
     /**
-     * 坯布厂公司名快照（选中供应商时保存，必填）
+     * 坯布厂公司名快照（选中供应商时保存，外发必填，自织可空）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String greigeFactoryName;
     /**
      * 指定染厂供应商ID（lunaerp_baseinfo_supplier.id，可空，见 ADR-0007）
@@ -154,5 +156,9 @@ public class GreigeOrderDO extends TenantBaseDO {
      * 胚布单状态（字典 lunaerp_greige_order_status：ACTIVE 进行中 / COMPLETED 已完成 / CANCELLED 已取消），创建缺省 ACTIVE
      */
     private String status;
+    /**
+     * 生产模式（字典 lunaerp_greige_production_mode：SELF 自织 / OUTSOURCE 外发），缺省 OUTSOURCE
+     */
+    private String productionMode;
 
 }

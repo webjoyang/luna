@@ -28,8 +28,7 @@ public class GreigeOrderSaveReqVO {
     @Size(max = 32, message = "合同号长度不能超过 32 位")
     private String contractNo;
 
-    @Schema(description = "承织坯布厂供应商ID（供应商远程选择，必填，引用不做类型强过滤见 ADR-0007）", requiredMode = Schema.RequiredMode.REQUIRED, example = "3072")
-    @NotNull(message = "坯布厂不能为空")
+    @Schema(description = "承织坯布厂供应商ID（供应商远程选择，外发 OUTSOURCE 必填、自织 SELF 可空，见 ADR-0007 / ADR-0022）", example = "3072")
     private Long greigeFactoryId;
 
     @Schema(description = "坯布厂公司名快照（为空时后端用供应商档案公司名称回填）", example = "海宁坯布厂")
@@ -107,6 +106,9 @@ public class GreigeOrderSaveReqVO {
 
     @Schema(description = "胚布单状态（字典 lunaerp_greige_order_status），缺省 ACTIVE", example = "ACTIVE")
     private String status;
+
+    @Schema(description = "生产模式（字典 lunaerp_greige_production_mode：SELF 自织 / OUTSOURCE 外发，缺省 OUTSOURCE）", example = "OUTSOURCE")
+    private String productionMode;
 
     @Schema(description = "颜色投胚分配行列表（整体替换：服务端按数组顺序重排 line_no、"
             + "权威重算投胚需求 = 成品量÷(1−损耗率)；为 null/空表示零颜色单据，合法）")

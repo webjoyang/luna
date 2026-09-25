@@ -464,6 +464,7 @@ export enum DICT_TYPE {
 
   // ========== LunaERP - 生产管理-胚布单模块 ==========
   LUNAERP_GREIGE_ORDER_STATUS = 'lunaerp_greige_order_status', // 胚布单状态
+  LUNAERP_GREIGE_PRODUCTION_MODE = 'lunaerp_greige_production_mode', // 胚布单生产模式（自织/外发）
 
   // ========== LunaERP - 生产管理-染色单模块 ==========
   LUNAERP_DYEING_ORDER_STATUS = 'lunaerp_dyeing_order_status', // 染色单状态

@@ -11,6 +11,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.Grei
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.GreigeOrderWeavingProgressVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
@@ -84,6 +85,9 @@ class GreigeOrderServiceImplTest {
     @Mock
     private GreigeOrderColorMapper greigeOrderColorMapper;
 
+    @Mock
+    private GreigeOrderWeavingProgressProvider weavingProgressProvider;
+
     @InjectMocks
     private GreigeOrderServiceImpl greigeOrderService;
 
@@ -150,6 +154,25 @@ class GreigeOrderServiceImplTest {
         assertTrue(sqlSegment.contains("ORDER BY order_date DESC"));
         assertFalse(sqlSegment.contains("LOWER(order_no) LIKE"), "无 keyword 时不应拼接模糊条件");
         assertFalse(sqlSegment.contains("status ="), "无 status 时不应拼接等值过滤");
+        assertFalse(sqlSegment.contains("production_mode ="), "无 productionMode 时不应拼接等值过滤");
+    }
+
+    @Test
+    void getGreigeOrderPage_withProductionMode_filtersCondition() {
+        GreigeOrderPageReqVO reqVO = new GreigeOrderPageReqVO();
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(20);
+        reqVO.setProductionMode("SELF");
+        when(greigeOrderMapper.selectPage(any(GreigeOrderPageReqVO.class), any(Wrapper.class)))
+                .thenReturn(PageResult.empty());
+
+        greigeOrderService.getGreigeOrderPage(reqVO);
+
+        ArgumentCaptor<LambdaQueryWrapperX<GreigeOrderDO>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapperX.class);
+        verify(greigeOrderMapper).selectPage(eq(reqVO), captor.capture());
+        String sqlSegment = captor.getValue().getSqlSegment();
+        assertTrue(sqlSegment.contains("production_mode ="), "productionMode 应透传等值过滤");
     }
 
     @Test
@@ -245,6 +268,73 @@ class GreigeOrderServiceImplTest {
     void createGreigeOrder_greigeFactoryMissing_throwsReferenceNotFound() {
         when(supplierMapper.selectById(1L)).thenReturn(null);
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+    }
+
+    @Test
+    void createGreigeOrder_outsourceMode_missingGreigeFactory_throwsReferenceNotFound() {
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductionMode("OUTSOURCE");
+        reqVO.setGreigeFactoryId(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+    }
+
+    @Test
+    void createGreigeOrder_defaultMode_nullGreigeFactory_throwsReferenceNotFound() {
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductionMode(null); // 缺省 OUTSOURCE
+        reqVO.setGreigeFactoryId(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
+    }
+
+    @Test
+    void createGreigeOrder_selfMode_nullGreigeFactory_success() {
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductionMode("SELF");
+        reqVO.setGreigeFactoryId(null);
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        GreigeOrderDO inserted = captor.getValue();
+        assertEquals("SELF", inserted.getProductionMode(), "自织单 productionMode 应为 SELF");
+        assertNull(inserted.getGreigeFactoryId(), "自织单承织厂可空");
+        assertNull(inserted.getGreigeFactoryName(), "自织单承织厂名称快照可空");
+    }
+
+    @Test
+    void createGreigeOrder_selfMode_withGreigeFactory_validatesAndSucceeds() {
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductionMode("SELF");
+        reqVO.setGreigeFactoryId(1L);
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        GreigeOrderDO inserted = captor.getValue();
+        assertEquals("SELF", inserted.getProductionMode());
+        assertEquals(1L, inserted.getGreigeFactoryId());
+        assertEquals("海宁坯布厂", inserted.getGreigeFactoryName());
+    }
+
+    @Test
+    void createGreigeOrder_selfMode_invalidGreigeFactory_throwsReferenceNotFound() {
+        when(supplierMapper.selectById(999L)).thenReturn(null);
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductionMode("SELF");
+        reqVO.setGreigeFactoryId(999L);
 
         ServiceException exception = assertThrows(ServiceException.class,
                 () -> greigeOrderService.createGreigeOrder(reqVO));
@@ -432,6 +522,58 @@ class GreigeOrderServiceImplTest {
         assertEquals("ACTIVE", respVO.getStatus());
     }
 
+    @Test
+    void getGreigeOrder_selfMode_enrichesWeavingProgress() {
+        GreigeOrderDO order = greigeOrder(1L, "PB0919001");
+        order.setProductionMode("SELF");
+        order.setStatus("ACTIVE");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(order);
+        when(weavingProgressProvider.getWeavingProgress(1L))
+                .thenReturn(new GreigeOrderWeavingProgressVO(50, 30));
+
+        GreigeOrderRespVO respVO = greigeOrderService.getGreigeOrder(1L);
+
+        assertEquals("SELF", respVO.getProductionMode());
+        org.junit.jupiter.api.Assertions.assertNotNull(respVO.getWeavingProgress(), "自织单应聚合织造进度");
+        assertEquals(50, respVO.getWeavingProgress().getPlannedPieces());
+        assertEquals(30, respVO.getWeavingProgress().getCompletedPieces());
+        assertEquals(50, respVO.getWeavingPlannedPieces());
+        assertEquals(30, respVO.getWeavingCompletedPieces());
+        verify(weavingProgressProvider).getWeavingProgress(1L);
+    }
+
+    @Test
+    void getGreigeOrder_selfMode_nullProgressProviderResult_defaultsToZero() {
+        GreigeOrderDO order = greigeOrder(1L, "PB0919001");
+        order.setProductionMode("SELF");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(order);
+        when(weavingProgressProvider.getWeavingProgress(1L)).thenReturn(null);
+
+        GreigeOrderRespVO respVO = greigeOrderService.getGreigeOrder(1L);
+
+        assertEquals("SELF", respVO.getProductionMode());
+        org.junit.jupiter.api.Assertions.assertNotNull(respVO.getWeavingProgress());
+        assertEquals(0, respVO.getWeavingProgress().getPlannedPieces(), "无进度数据时计划匹数缺省 0");
+        assertEquals(0, respVO.getWeavingProgress().getCompletedPieces(), "无进度数据时完工匹数缺省 0");
+        assertEquals(0, respVO.getWeavingPlannedPieces());
+        assertEquals(0, respVO.getWeavingCompletedPieces());
+    }
+
+    @Test
+    void getGreigeOrder_outsourceMode_weavingProgressIsNull() {
+        GreigeOrderDO order = greigeOrder(1L, "PB0919001");
+        order.setProductionMode("OUTSOURCE");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(order);
+
+        GreigeOrderRespVO respVO = greigeOrderService.getGreigeOrder(1L);
+
+        assertEquals("OUTSOURCE", respVO.getProductionMode());
+        assertNull(respVO.getWeavingProgress(), "外发单织造进度应为 null");
+        assertNull(respVO.getWeavingPlannedPieces());
+        assertNull(respVO.getWeavingCompletedPieces());
+        verify(weavingProgressProvider, never()).getWeavingProgress(any());
+    }
+
     // ==================== updateGreigeOrder：修改（03 票） ====================
 
     @Test
@@ -518,6 +660,48 @@ class GreigeOrderServiceImplTest {
                 () -> greigeOrderService.updateGreigeOrder(reqVO));
         assertEquals(1_030_006_002, exception.getCode());
         assertTrue(exception.getMessage().contains("产品档案"), "错误提示应指出产品档案不存在或不可用");
+    }
+
+    @Test
+    void updateGreigeOrder_switchOutsourceToSelf_clearsGreigeFactory() {
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919777");
+        existing.setGreigeFactoryId(1L);
+        existing.setGreigeFactoryName("海宁坯布厂");
+        existing.setProductionMode("OUTSOURCE");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setOrderNo("PB0919777");
+        reqVO.setProductionMode("SELF");
+        reqVO.setGreigeFactoryId(null);
+        reqVO.setGreigeFactoryName(null);
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).updateById(captor.capture());
+        GreigeOrderDO updated = captor.getValue();
+        assertEquals("SELF", updated.getProductionMode());
+        assertNull(updated.getGreigeFactoryId(), "外发切自织时坯布厂清空为 null");
+        assertNull(updated.getGreigeFactoryName(), "外发切自织时坯布厂快照清空为 null");
+    }
+
+    @Test
+    void updateGreigeOrder_switchSelfToOutsource_nullGreigeFactory_throwsReferenceNotFound() {
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919777");
+        existing.setProductionMode("SELF");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setOrderNo("PB0919777");
+        reqVO.setProductionMode("OUTSOURCE");
+        reqVO.setGreigeFactoryId(null);
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> greigeOrderService.updateGreigeOrder(reqVO));
+        assertEquals(1_030_006_002, exception.getCode());
     }
 
     @Test
