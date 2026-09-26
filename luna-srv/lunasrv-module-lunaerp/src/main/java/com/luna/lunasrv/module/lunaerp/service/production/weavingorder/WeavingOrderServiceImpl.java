@@ -181,9 +181,9 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
         // 完工匹数（Issue 03 缺省 0，若单据为 COMPLETED 则为计划匹数）
         respVO.setCompletedQty("COMPLETED".equals(order.getStatus()) ? order.getPlannedQty() : 0);
 
-        // 实时超量警告
+        // 实时超量警告（非取消态单据返回当前胚布单下是否超量）
         GreigeOrderDO greigeOrder = greigeOrderMapper.selectById(order.getGreigeOrderId());
-        if (greigeOrder != null) {
+        if (greigeOrder != null && !"CANCELLED".equals(order.getStatus())) {
             respVO.setWarning(calculateWarning(greigeOrder, null, 0));
         }
         return respVO;
@@ -305,12 +305,12 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
         }
     }
 
-    /**
-     * 为胚布单派生下一个单号：ZZ-{胚布单号去符号}-{2位序号}
-     */
-    private String generateCode(String greigeOrderNo) {
+    private String buildGreigeCodePrefix(String greigeOrderNo) {
         String cleanNo = greigeOrderNo == null ? "" : greigeOrderNo.replaceAll("[^a-zA-Z0-9]", "");
-        String prefix = "ZZ-" + cleanNo + "-";
+        return "ZZ-" + cleanNo + "-";
+    }
+
+    private int getMaxSequence(String prefix) {
         List<WeavingOrderDO> candidates = weavingOrderMapper.selectListByCodePrefixIncludingDeleted(prefix);
         int maxSeq = 0;
         if (CollUtil.isNotEmpty(candidates)) {
@@ -329,7 +329,15 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
                 }
             }
         }
-        int nextSeq = maxSeq + 1;
+        return maxSeq;
+    }
+
+    /**
+     * 为胚布单派生下一个单号：ZZ-{胚布单号去符号}-{2位序号}
+     */
+    private String generateCode(String greigeOrderNo) {
+        String prefix = buildGreigeCodePrefix(greigeOrderNo);
+        int nextSeq = getMaxSequence(prefix) + 1;
         return String.format("%s%02d", prefix, nextSeq);
     }
 
@@ -337,25 +345,8 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
      * 生成单号并带有限次顺延重试
      */
     private String generateCodeWithRetry(String greigeOrderNo) {
-        String cleanNo = greigeOrderNo == null ? "" : greigeOrderNo.replaceAll("[^a-zA-Z0-9]", "");
-        String prefix = "ZZ-" + cleanNo + "-";
-        List<WeavingOrderDO> candidates = weavingOrderMapper.selectListByCodePrefixIncludingDeleted(prefix);
-        int maxSeq = 0;
-        if (CollUtil.isNotEmpty(candidates)) {
-            for (WeavingOrderDO candidate : candidates) {
-                String code = candidate.getCode();
-                if (code != null && code.startsWith(prefix)) {
-                    String seqStr = code.substring(prefix.length());
-                    try {
-                        int seq = Integer.parseInt(seqStr);
-                        if (seq > maxSeq) {
-                            maxSeq = seq;
-                        }
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
-        }
+        String prefix = buildGreigeCodePrefix(greigeOrderNo);
+        int maxSeq = getMaxSequence(prefix);
         for (int i = 1; i <= MAX_GENERATE_RETRY; i++) {
             int seq = maxSeq + i;
             String candidate = String.format("%s%02d", prefix, seq);

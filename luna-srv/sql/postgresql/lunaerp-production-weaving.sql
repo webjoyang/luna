@@ -15,6 +15,9 @@
 --    状态 ACTIVE/INACTIVE，不建字典，缺省 ACTIVE；
 --    删除守卫：被机台任务引用时禁止删除并引导停用（1-030-015-202），不提供物理删除。
 -- =============================================================================
+CREATE SEQUENCE IF NOT EXISTS lunaerp_production_loom_seq;
+CREATE SEQUENCE IF NOT EXISTS lunaerp_production_weaving_order_seq;
+
 CREATE TABLE IF NOT EXISTS lunaerp_production_loom (
     id            int8          NOT NULL,
     loom_no       varchar(32)   NOT NULL,

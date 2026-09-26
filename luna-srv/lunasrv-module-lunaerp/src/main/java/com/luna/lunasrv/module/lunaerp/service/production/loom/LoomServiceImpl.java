@@ -168,13 +168,14 @@ public class LoomServiceImpl implements LoomService {
     }
 
     private String generateLoomNoWithRetry() {
+        String candidate = null;
         for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
-            String candidate = generateLoomNo();
+            candidate = generateLoomNo();
             if (loomMapper.selectByLoomNoIncludingDeleted(candidate) == null) {
                 return candidate;
             }
         }
-        throw exception(LOOM_NO_DUPLICATE, generateLoomNo());
+        throw exception(LOOM_NO_DUPLICATE, candidate);
     }
 
     private String generateLoomNo() {
