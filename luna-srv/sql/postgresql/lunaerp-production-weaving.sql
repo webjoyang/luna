@@ -186,3 +186,85 @@ FROM system_role r
 CROSS JOIN (SELECT id FROM system_menu WHERE id IN (10280, 10281, 10282, 10283, 10284, 10285, 10286, 10287, 10288)) m
 WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)
 ON CONFLICT DO NOTHING;
+
+-- =============================================================================
+-- 5. 机台任务表 lunaerp_production_machine_task（Issue 04）
+--    织造单排产到某台织机的派工任务——"哪台机织多少匹"的载体；
+--    派生编号：MT-{织造单号去符号}-{单内 2 位序号}，租户内全量唯一含软删行（ADR-0023）；
+--    状态：PENDING/IN_PROGRESS/HALTED/COMPLETED；
+--    单内任务计划匹数合计超出织造单计划匹数时警告不拦截。
+-- =============================================================================
+CREATE SEQUENCE IF NOT EXISTS lunaerp_production_machine_task_seq;
+
+CREATE TABLE IF NOT EXISTS lunaerp_production_machine_task (
+    id                int8          NOT NULL,
+    code              varchar(64)   NOT NULL,
+    weaving_order_id  int8          NOT NULL,
+    loom_id           int8          NOT NULL,
+    loom_no           varchar(32)   NOT NULL,
+    worker_user_id    int8          NULL,
+    worker_name       varchar(64)   NULL,
+    planned_qty       int4          NOT NULL,
+    actual_qty        int4          NOT NULL DEFAULT 0,
+    planned_start     date          NULL,
+    planned_end       date          NULL,
+    status            varchar(16)   NOT NULL DEFAULT 'PENDING',
+    halt_reason       varchar(255)  NULL,
+    halt_at           timestamp     NULL,
+    remark            varchar(500)  NULL,
+    creator           varchar(64)   NULL DEFAULT '',
+    create_time       timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater           varchar(64)   NULL DEFAULT '',
+    update_time       timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted           int2          NOT NULL DEFAULT 0,
+    tenant_id         int8          NOT NULL DEFAULT 0
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pk_lb_production_machine_task') THEN
+        ALTER TABLE lunaerp_production_machine_task ADD CONSTRAINT pk_lb_production_machine_task PRIMARY KEY (id);
+    END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_lb_machine_task_tenant_code
+    ON lunaerp_production_machine_task (tenant_id, code);
+CREATE INDEX IF NOT EXISTS idx_lb_machine_task_weaving_order_id
+    ON lunaerp_production_machine_task (weaving_order_id);
+CREATE INDEX IF NOT EXISTS idx_lb_machine_task_loom_id
+    ON lunaerp_production_machine_task (loom_id);
+CREATE INDEX IF NOT EXISTS idx_lb_machine_task_status
+    ON lunaerp_production_machine_task (status);
+
+COMMENT ON TABLE lunaerp_production_machine_task IS '生产管理-机台任务表';
+COMMENT ON COLUMN lunaerp_production_machine_task.id IS '机台任务ID';
+COMMENT ON COLUMN lunaerp_production_machine_task.code IS '任务编号（派生式：MT-{织造单号去符号}-{单内 2 位序号}）';
+COMMENT ON COLUMN lunaerp_production_machine_task.weaving_order_id IS '关联织造单ID';
+COMMENT ON COLUMN lunaerp_production_machine_task.loom_id IS '关联织机ID（仅 ACTIVE 织机可选）';
+COMMENT ON COLUMN lunaerp_production_machine_task.loom_no IS '机台号快照';
+COMMENT ON COLUMN lunaerp_production_machine_task.worker_user_id IS '挡车工用户ID（关联 system User，可空，ADR-0021）';
+COMMENT ON COLUMN lunaerp_production_machine_task.worker_name IS '挡车工姓名快照';
+COMMENT ON COLUMN lunaerp_production_machine_task.planned_qty IS '计划匹数（正整数）';
+COMMENT ON COLUMN lunaerp_production_machine_task.actual_qty IS '完工/实织匹数（布票聚合只读，缺省 0）';
+COMMENT ON COLUMN lunaerp_production_machine_task.planned_start IS '计划开始日期（普通日期可空）';
+COMMENT ON COLUMN lunaerp_production_machine_task.planned_end IS '计划结束日期（普通日期可空，end ≥ start）';
+COMMENT ON COLUMN lunaerp_production_machine_task.status IS '任务状态（PENDING/IN_PROGRESS/HALTED/COMPLETED，缺省 PENDING）';
+COMMENT ON COLUMN lunaerp_production_machine_task.halt_reason IS '停机原因';
+COMMENT ON COLUMN lunaerp_production_machine_task.halt_at IS '停机时间';
+COMMENT ON COLUMN lunaerp_production_machine_task.remark IS '备注';
+
+-- =============================================================================
+-- 6. 字典类型与数据（id=2239 lunaerp_weaving_task_status）
+-- =============================================================================
+DELETE FROM system_dict_type WHERE id = 2239;
+DELETE FROM system_dict_data WHERE dict_type = 'lunaerp_weaving_task_status';
+
+INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time)
+VALUES (2239, '机台任务状态', 'lunaerp_weaving_task_status', 0, 'LunaERP 生产管理-机台任务状态', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0', NULL);
+
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES
+(3640, 1, '待开始', 'PENDING', 'lunaerp_weaving_task_status', 0, 'info', '', '初始未开工状态', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0'),
+(3641, 2, '生产中', 'IN_PROGRESS', 'lunaerp_weaving_task_status', 0, 'primary', '', '布票开工推导进入', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0'),
+(3642, 3, '暂停异常', 'HALTED', 'lunaerp_weaving_task_status', 0, 'danger', '', '人工停机终态，须手动恢复解除', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0'),
+(3643, 4, '已完工', 'COMPLETED', 'lunaerp_weaving_task_status', 0, 'success', '', '全部有效布票完工推导进入', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
+

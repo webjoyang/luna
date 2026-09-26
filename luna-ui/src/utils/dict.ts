@@ -474,6 +474,7 @@ export enum DICT_TYPE {
 
   // ========== LunaERP - 生产管理-检验单模块 ==========
   LUNAERP_INSPECTION_ORDER_STATUS = 'lunaerp_inspection_order_status', // 检验单状态
+  LUNAERP_INSPECTION_PACKAGE_MODE = 'lunaerp_inspection_package_mode', // 包装模式（卷装/匹装）
   LUNAERP_INSPECTION_GRADE = 'lunaerp_inspection_grade', // 检验等级
 
   // ========== LunaERP - 库存管理-入库模块 ==========
@@ -482,5 +483,6 @@ export enum DICT_TYPE {
   LUNAERP_STOCK_IN_UNIT = 'lunaerp_stock_in_unit', // 入库单位
 
   // ========== LunaERP - 生产管理-织造执行模块 ==========
-  LUNAERP_WEAVING_ORDER_STATUS = 'lunaerp_weaving_order_status' // 织造单状态（待排产/生产中/已完工/已取消）
+  LUNAERP_WEAVING_ORDER_STATUS = 'lunaerp_weaving_order_status', // 织造单状态（待排产/生产中/已完工/已取消）
+  LUNAERP_WEAVING_TASK_STATUS = 'lunaerp_weaving_task_status' // 机台任务状态（待开始/生产中/暂停异常/已完工）
 }

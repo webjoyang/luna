@@ -74,6 +74,10 @@ public interface ErrorCodeConstants {
     ErrorCode INSPECTION_ORDER_STATUS_NOT_ALLOWED = new ErrorCode(1_030_010_002, "当前状态不允许该操作");
     ErrorCode INSPECTION_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_010_003, "关联的{}不存在或不可用");
     ErrorCode INSPECTION_ORDER_ROLL_DUPLICATE = new ErrorCode(1_030_010_004, "单内卷号【{}】缸号【{}】已存在");
+    ErrorCode INSPECTION_ORDER_ROLL_NO_REQUIRED = new ErrorCode(1_030_010_002, "卷装模式下卷号不能为空");
+    ErrorCode INSPECTION_ORDER_PIECE_NO_FORBIDDEN = new ErrorCode(1_030_010_002, "卷装模式下禁止填写匹号");
+    ErrorCode INSPECTION_ORDER_PIECE_NO_REQUIRED = new ErrorCode(1_030_010_002, "匹装模式下匹号不能为空");
+    ErrorCode INSPECTION_ORDER_PIECE_DUPLICATE = new ErrorCode(1_030_010_004, "单内匹号【{}】缸号【{}】已存在");
     ErrorCode INSPECTION_ORDER_ITEM_NOT_EXISTS = new ErrorCode(1_030_010_100, "录检明细不存在");
 
     // ========== 入库单模块 1-030-011-000（主表/明细/放置共用） ==========
@@ -83,6 +87,9 @@ public interface ErrorCodeConstants {
     ErrorCode STOCK_IN_REFERENCE_NOT_FOUND = new ErrorCode(1_030_011_003, "关联的{}不存在或不可用");
     ErrorCode STOCK_IN_LOCATION_NOT_IN_WAREHOUSE = new ErrorCode(1_030_011_004, "库位【{}】不属于入库仓库【{}】");
     ErrorCode STOCK_IN_ITEM_EMPTY = new ErrorCode(1_030_011_005, "审核失败：入库单没有明细");
+    ErrorCode STOCK_IN_ITEM_MUTEX_FAILED = new ErrorCode(1_030_011_006, "入库明细物品必须二选一且产品与纱线规格互斥");
+    ErrorCode STOCK_IN_ITEM_YARN_UNIT_INVALID = new ErrorCode(1_030_011_007, "纱线规格入库单位必须为KG");
+    ErrorCode STOCK_IN_ITEM_TYPE_INVALID = new ErrorCode(1_030_011_008, "入库明细物品类型【{}】非法");
 
     // ========== 仓库与库位模块 1-030-013-000 ==========
     ErrorCode WAREHOUSE_NOT_EXISTS = new ErrorCode(1_030_013_000, "仓库不存在");
@@ -99,6 +106,15 @@ public interface ErrorCodeConstants {
     ErrorCode WEAVING_ORDER_STATUS_NOT_ALLOW = new ErrorCode(1_030_015_002, "织造单状态不允许该操作");
     ErrorCode WEAVING_ORDER_GREIGE_ORDER_INVALID = new ErrorCode(1_030_015_003, "关联胚布单不存在或非自织状态");
     ErrorCode WEAVING_ORDER_PLANNED_QTY_INVALID = new ErrorCode(1_030_015_004, "计划匹数必须为正整数");
+
+    // ========== 织造执行 - 机台任务模块 1-030-015-100 ==========
+    ErrorCode MACHINE_TASK_NOT_EXISTS = new ErrorCode(1_030_015_100, "机台任务不存在");
+    ErrorCode MACHINE_TASK_CODE_DUPLICATE = new ErrorCode(1_030_015_101, "机台任务编号【{}】已存在");
+    ErrorCode MACHINE_TASK_STATUS_NOT_ALLOW = new ErrorCode(1_030_015_102, "机台任务状态不允许该操作");
+    ErrorCode MACHINE_TASK_PLANNED_QTY_INVALID = new ErrorCode(1_030_015_103, "计划匹数必须为正整数");
+    ErrorCode MACHINE_TASK_DATE_RANGE_INVALID = new ErrorCode(1_030_015_104, "计划结束日期不能早于计划开始日期");
+    ErrorCode MACHINE_TASK_HALT_REASON_EMPTY = new ErrorCode(1_030_015_105, "停机原因不能为空");
+    ErrorCode MACHINE_TASK_COMPLETED_CANNOT_HALT = new ErrorCode(1_030_015_106, "已完工的机台任务不能标停机");
 
     // ========== 织造执行 - 织机模块 1-030-015-200 ==========
     ErrorCode LOOM_NOT_EXISTS = new ErrorCode(1_030_015_200, "织机不存在");
