@@ -56,30 +56,40 @@ public interface StockLedgerMapper extends BaseMapperX<StockLedgerDO> {
     /**
      * 实时聚合库存余额分页查询
      *
-     * 按 product_id, warehouse_id, unit 分组求和 SUM(quantity)；
-     * 支持仓库ID与产品关键词筛选。
+     * 按 item_type, product_id, yarn_spec_id, warehouse_id, unit 分组求和 SUM(quantity)；
+     * 支持物品类型、仓库ID与关键词（产品编码/产品名称/纱线规格）筛选。
      *
      * @param page 分页参数
      * @param reqVO 筛选条件
      * @return 分页结果
      */
     @Select("<script>"
-            + "SELECT product_id, "
+            + "SELECT item_type, "
+            + "product_id, "
             + "MAX(product_code) AS product_code, "
             + "MAX(product_name) AS product_name, "
+            + "yarn_spec_id, "
+            + "MAX(yarn_spec_name) AS yarn_spec_name, "
             + "warehouse_id, "
             + "MAX(warehouse_name) AS warehouse_name, "
             + "unit, "
             + "SUM(quantity) AS quantity "
             + "FROM lunaerp_stock_ledger "
             + "WHERE deleted = 0 "
+            + "<if test='reqVO.itemType != null and reqVO.itemType != \"\"'> AND item_type = #{reqVO.itemType} </if>"
             + "<if test='reqVO.warehouseId != null'> AND warehouse_id = #{reqVO.warehouseId} </if>"
-            + "<if test='reqVO.productKeyword != null and reqVO.productKeyword != \"\"'> "
-            + "AND (LOWER(product_code) LIKE LOWER(CONCAT('%', #{reqVO.productKeyword}, '%')) "
-            + "OR LOWER(product_name) LIKE LOWER(CONCAT('%', #{reqVO.productKeyword}, '%'))) "
+            + "<if test='reqVO.keyword != null and reqVO.keyword != \"\"'> "
+            + "AND (LOWER(product_code) LIKE LOWER(CONCAT('%', #{reqVO.keyword}, '%')) "
+            + "OR LOWER(product_name) LIKE LOWER(CONCAT('%', #{reqVO.keyword}, '%')) "
+            + "OR LOWER(yarn_spec_name) LIKE LOWER(CONCAT('%', #{reqVO.keyword}, '%'))) "
             + "</if>"
-            + "GROUP BY product_id, warehouse_id, unit "
-            + "ORDER BY product_id, warehouse_id, unit"
+            + "<if test='(reqVO.keyword == null or reqVO.keyword == \"\") and reqVO.productKeyword != null and reqVO.productKeyword != \"\"'> "
+            + "AND (LOWER(product_code) LIKE LOWER(CONCAT('%', #{reqVO.productKeyword}, '%')) "
+            + "OR LOWER(product_name) LIKE LOWER(CONCAT('%', #{reqVO.productKeyword}, '%')) "
+            + "OR LOWER(yarn_spec_name) LIKE LOWER(CONCAT('%', #{reqVO.productKeyword}, '%'))) "
+            + "</if>"
+            + "GROUP BY item_type, product_id, yarn_spec_id, warehouse_id, unit "
+            + "ORDER BY item_type, product_id, yarn_spec_id, warehouse_id, unit"
             + "</script>")
     IPage<InventoryBalanceRespVO> selectBalancePage(IPage<?> page, @Param("reqVO") InventoryBalancePageReqVO reqVO);
 
@@ -109,17 +119,20 @@ public interface StockLedgerMapper extends BaseMapperX<StockLedgerDO> {
      */
     default PageResult<StockLedgerDO> selectLedgerPage(StockLedgerPageReqVO reqVO) {
         LambdaQueryWrapperX<StockLedgerDO> wrapper = new LambdaQueryWrapperX<>();
-        wrapper.eqIfPresent(StockLedgerDO::getWarehouseId, reqVO.getWarehouseId())
+        wrapper.eqIfPresent(StockLedgerDO::getItemType, reqVO.getItemType())
+                .eqIfPresent(StockLedgerDO::getWarehouseId, reqVO.getWarehouseId())
                 .eqIfPresent(StockLedgerDO::getLocationId, reqVO.getLocationId())
                 .eqIfPresent(StockLedgerDO::getTxnType, reqVO.getTxnType())
                 .likeIfPresent(StockLedgerDO::getRelatedDocNo, reqVO.getRelatedDocNo())
                 .betweenIfPresent(StockLedgerDO::getCreateTime, reqVO.getCreateTime());
 
-        String keyword = reqVO.getProductKeyword() == null ? "" : reqVO.getProductKeyword().trim();
+        String keyword = StringUtils.hasText(reqVO.getKeyword()) ? reqVO.getKeyword().trim()
+                : (StringUtils.hasText(reqVO.getProductKeyword()) ? reqVO.getProductKeyword().trim() : "");
         if (StringUtils.hasText(keyword)) {
             String like = "%" + keyword + "%";
             wrapper.and(w -> w.apply("LOWER(product_code) LIKE LOWER({0})", like)
-                    .or().apply("LOWER(product_name) LIKE LOWER({0})", like));
+                    .or().apply("LOWER(product_name) LIKE LOWER({0})", like)
+                    .or().apply("LOWER(yarn_spec_name) LIKE LOWER({0})", like));
         }
 
         wrapper.orderByDesc(StockLedgerDO::getCreateTime)

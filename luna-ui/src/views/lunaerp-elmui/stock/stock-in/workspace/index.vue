@@ -253,10 +253,18 @@ const handleSave = async () => {
   if (formData.value.items && formData.value.items.length > 0) {
     for (let i = 0; i < formData.value.items.length; i++) {
       const item = formData.value.items[i]
-      if (!item.productId) {
-        activeTab.value = 'items'
-        message.warning(`第 ${i + 1} 行明细未选择产品`)
-        return
+      if (item.itemType === 'YARN_SPEC') {
+        if (!item.yarnSpecId) {
+          activeTab.value = 'items'
+          message.warning(`第 ${i + 1} 行明细未选择纱线规格`)
+          return
+        }
+      } else {
+        if (!item.productId) {
+          activeTab.value = 'items'
+          message.warning(`第 ${i + 1} 行明细未选择产品`)
+          return
+        }
       }
       if (!item.quantity || item.quantity <= 0) {
         activeTab.value = 'items'
@@ -326,10 +334,18 @@ const handleAudit = async () => {
   // 3. 校验明细数据完整性
   for (let i = 0; i < formData.value.items.length; i++) {
     const item = formData.value.items[i]
-    if (!item.productId) {
-      activeTab.value = 'items'
-      message.warning(`第 ${i + 1} 行明细未选择产品`)
-      return
+    if (item.itemType === 'YARN_SPEC') {
+      if (!item.yarnSpecId) {
+        activeTab.value = 'items'
+        message.warning(`第 ${i + 1} 行明细未选择纱线规格`)
+        return
+      }
+    } else {
+      if (!item.productId) {
+        activeTab.value = 'items'
+        message.warning(`第 ${i + 1} 行明细未选择产品`)
+        return
+      }
     }
     if (!item.quantity || item.quantity <= 0) {
       activeTab.value = 'items'

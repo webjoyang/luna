@@ -3,9 +3,12 @@ import request from '@/config/axios'
 // 库存流水台账 VO
 export interface StockLedgerVO {
   id: number
-  productId: number
+  itemType?: string
+  productId?: number
   productCode?: string
   productName?: string
+  yarnSpecId?: number
+  yarnSpecName?: string
   warehouseId: number
   warehouseName?: string
   locationId?: number
@@ -28,6 +31,8 @@ export interface StockLedgerVO {
 export interface StockLedgerPageParam {
   pageNo?: number
   pageSize?: number
+  itemType?: string
+  keyword?: string
   productKeyword?: string
   warehouseId?: number
   locationId?: number

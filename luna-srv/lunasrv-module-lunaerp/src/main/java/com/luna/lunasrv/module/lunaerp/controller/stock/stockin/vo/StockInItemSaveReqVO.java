@@ -17,9 +17,17 @@ public class StockInItemSaveReqVO {
     @Schema(description = "明细ID（更新时传，可空）", example = "1024")
     private Long id;
 
-    @Schema(description = "产品ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "2048")
-    @NotNull(message = "产品不能为空")
+    @Schema(description = "物品类型（PRODUCT / YARN_SPEC），缺省 PRODUCT", example = "PRODUCT")
+    private String itemType;
+
+    @Schema(description = "产品ID（物品为 PRODUCT 时必填，与 yarnSpecId 互斥）", example = "2048")
     private Long productId;
+
+    @Schema(description = "纱线规格ID（物品为 YARN_SPEC 时必填，与 productId 互斥）", example = "101")
+    private Long yarnSpecId;
+
+    @Schema(description = "纱线规格名称快照", example = "32S 棉")
+    private String yarnSpecName;
 
     @Schema(description = "批次号/缸号", example = "BATCH-20260924")
     private String batchNo;

@@ -11,9 +11,10 @@
       <div class="bg-gray-50 p-4 rounded border border-gray-200">
         <div class="grid grid-cols-2 gap-4 text-13px text-gray-700 mb-3">
           <div>
-            <span class="text-gray-500">产品：</span>
-            <span class="font-medium">{{ item?.productName || '—' }}</span>
-            <span v-if="item?.productCode" class="text-gray-400 ml-1">({{ item.productCode }})</span>
+            <span class="text-gray-500">物品：</span>
+            <span v-if="item?.itemType === 'YARN_SPEC'" class="font-medium">{{ item?.yarnSpecName || '—' }}</span>
+            <span v-else class="font-medium">{{ item?.productName || '—' }}</span>
+            <span v-if="item?.itemType !== 'YARN_SPEC' && item?.productCode" class="text-gray-400 ml-1">({{ item.productCode }})</span>
           </div>
           <div>
             <span class="text-gray-500">入库仓库：</span>

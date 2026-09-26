@@ -18,9 +18,12 @@ export interface StockInItemPlacementVO {
 export interface StockInItemVO {
   id?: number
   stockInId?: number
-  productId: number
+  itemType?: string // 'PRODUCT' | 'YARN_SPEC'
+  productId?: number
   productCode?: string
   productName?: string
+  yarnSpecId?: number
+  yarnSpecName?: string
   batchNo?: string
   rollNo?: string
   pieceCount?: number
@@ -31,6 +34,7 @@ export interface StockInItemVO {
   remark?: string
   createTime?: Date | string
   placements?: StockInItemPlacementVO[]
+  specCascadeValue?: [number, number]
 }
 
 // 入库单 VO

@@ -18,31 +18,72 @@
     <el-table :data="itemsList" border stripe class="w-full">
       <el-table-column label="#" type="index" width="50" align="center" />
 
-      <!-- 产品选择（必选） -->
-      <el-table-column label="产品" min-width="220">
+      <!-- 物品类型选择 -->
+      <el-table-column label="物品类型" width="120">
         <template #default="{ row }">
-          <template v-if="!isReadOnly">
-            <el-select
-              v-model="row.productId"
-              placeholder="搜索产品编码/名称"
-              filterable
-              remote
-              reserve-keyword
-              :remote-method="searchProducts"
-              :loading="productLoading"
-              class="w-full"
-              @change="(val: number) => handleProductChange(row, val)"
-            >
-              <el-option
-                v-for="p in getAvailableProductOptions(row)"
-                :key="p.id"
-                :label="`${p.name} (${p.code})`"
-                :value="p.id!"
-              />
-            </el-select>
-          </template>
+          <el-select
+            v-if="!isReadOnly"
+            v-model="row.itemType"
+            placeholder="类型"
+            class="w-full"
+            @change="(val: string) => handleItemTypeChange(row, val)"
+          >
+            <el-option label="产品" value="PRODUCT" />
+            <el-option label="纱线规格" value="YARN_SPEC" />
+          </el-select>
           <template v-else>
-            <span>{{ row.productName || '—' }} <span v-if="row.productCode" class="text-gray-400">({{ row.productCode }})</span></span>
+            <el-tag v-if="row.itemType === 'YARN_SPEC'" type="warning" size="small">纱线规格</el-tag>
+            <el-tag v-else type="primary" size="small">产品</el-tag>
+          </template>
+        </template>
+      </el-table-column>
+
+      <!-- 物品选择（产品或纱线规格级联） -->
+      <el-table-column label="物品（产品 / 纱线规格）" min-width="240">
+        <template #default="{ row }">
+          <!-- 纱线规格模式：材质→规格级联选择 -->
+          <template v-if="row.itemType === 'YARN_SPEC'">
+            <template v-if="!isReadOnly">
+              <el-cascader
+                v-model="row.specCascadeValue"
+                :options="cascaderOptions"
+                :props="{ checkStrictly: false }"
+                placeholder="选择材质与规格"
+                filterable
+                class="!w-full"
+                @change="(val: any) => handleSpecCascadeChange(row, val)"
+              />
+            </template>
+            <template v-else>
+              <span>{{ row.yarnSpecName || '—' }}</span>
+            </template>
+          </template>
+
+          <!-- 产品模式：远程搜索产品档案 -->
+          <template v-else>
+            <template v-if="!isReadOnly">
+              <el-select
+                v-model="row.productId"
+                placeholder="搜索产品编码/名称"
+                filterable
+                remote
+                reserve-keyword
+                :remote-method="searchProducts"
+                :loading="productLoading"
+                class="w-full"
+                @change="(val: number) => handleProductChange(row, val)"
+              >
+                <el-option
+                  v-for="p in getAvailableProductOptions(row)"
+                  :key="p.id"
+                  :label="`${p.name} (${p.code})`"
+                  :value="p.id!"
+                />
+              </el-select>
+            </template>
+            <template v-else>
+              <span>{{ row.productName || '—' }} <span v-if="row.productCode" class="text-gray-400">({{ row.productCode }})</span></span>
+            </template>
           </template>
         </template>
       </el-table-column>
@@ -105,24 +146,29 @@
         </template>
       </el-table-column>
 
-      <!-- 单位（KG/M） -->
+      <!-- 单位（KG/M，纱线规格固定 KG） -->
       <el-table-column label="单位" width="100">
         <template #default="{ row }">
-          <el-select
-            v-if="!isReadOnly"
-            v-model="row.unit"
-            placeholder="单位"
-            class="!w-full"
-          >
-            <el-option
-              v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_STOCK_IN_UNIT)"
-              :key="dict.value"
-              :label="dict.label"
-              :value="dict.value"
-            />
-          </el-select>
+          <template v-if="row.itemType === 'YARN_SPEC'">
+            <el-tag size="small" type="info">KG</el-tag>
+          </template>
           <template v-else>
-            <DictTag :type="DICT_TYPE.LUNAERP_STOCK_IN_UNIT" :value="row.unit" />
+            <el-select
+              v-if="!isReadOnly"
+              v-model="row.unit"
+              placeholder="单位"
+              class="!w-full"
+            >
+              <el-option
+                v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_STOCK_IN_UNIT)"
+                :key="dict.value"
+                :label="dict.label"
+                :value="dict.value"
+              />
+            </el-select>
+            <template v-else>
+              <DictTag :type="DICT_TYPE.LUNAERP_STOCK_IN_UNIT" :value="row.unit" />
+            </template>
           </template>
         </template>
       </el-table-column>
@@ -246,6 +292,8 @@ import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import type { StockInItemVO, StockInItemPlacementVO } from '@/api/lunaerp-elmui/stock/stock-in'
 import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
+import { getYarnSpecCascadeOptions, type YarnSpecCascadeOptionVO } from '@/api/lunaerp-elmui/production/yarn-master'
+import type { CascaderOption } from 'element-plus'
 import PlacementDialog from './PlacementDialog.vue'
 
 defineOptions({ name: 'StockInItemsTab' })
@@ -268,6 +316,93 @@ const itemsList = computed({
   get: () => props.items || [],
   set: (val) => emit('update:items', val)
 })
+
+// 纱线规格级联选项
+const rawCascadeOptions = ref<YarnSpecCascadeOptionVO[]>([])
+const cascaderOptions = computed<CascaderOption[]>(() => {
+  return rawCascadeOptions.value.map((type) => ({
+    value: type.yarnTypeId,
+    label: type.yarnTypeName,
+    children: (type.specs || []).map((spec) => ({
+      value: spec.id,
+      label: spec.specName,
+      rawSpec: spec,
+      typeId: type.yarnTypeId,
+      typeName: type.yarnTypeName
+    }))
+  }))
+})
+
+// 加载纱线规格级联选项
+const loadYarnSpecOptions = async () => {
+  try {
+    const res = await getYarnSpecCascadeOptions()
+    rawCascadeOptions.value = res || []
+    initCascadeValues()
+  } catch (e) {
+    console.error('加载纱线规格级联选项失败', e)
+  }
+}
+
+// 物品类型切换事件
+const handleItemTypeChange = (row: StockInItemVO, newType: string) => {
+  if (newType === 'YARN_SPEC') {
+    row.productId = undefined
+    row.productCode = undefined
+    row.productName = undefined
+    row.unit = 'KG'
+  } else {
+    row.yarnSpecId = undefined
+    row.yarnSpecName = undefined
+    row.specCascadeValue = undefined
+  }
+}
+
+// 纱线规格级联选择事件
+const handleSpecCascadeChange = (row: StockInItemVO, val: any) => {
+  if (!val || val.length < 2) {
+    row.yarnSpecId = undefined
+    row.yarnSpecName = undefined
+    return
+  }
+  const [typeId, specId] = val as [number, number]
+  row.yarnSpecId = specId
+
+  const typeOpt = rawCascadeOptions.value.find((t) => t.yarnTypeId === typeId)
+  if (typeOpt) {
+    const specOpt = (typeOpt.specs || []).find((s) => s.id === specId)
+    if (specOpt) {
+      row.yarnSpecName = specOpt.specName
+      if ((row.unitPrice === undefined || row.unitPrice === null) && specOpt.refPrice != null) {
+        row.unitPrice = specOpt.refPrice
+        handleQtyOrPriceChange(row)
+      }
+    }
+  }
+}
+
+// 为已有 YARN_SPEC 明细回填 specCascadeValue
+const initCascadeValues = () => {
+  if (!props.items || !rawCascadeOptions.value.length) return
+  for (const item of props.items) {
+    if (item.itemType === 'YARN_SPEC' && item.yarnSpecId && !item.specCascadeValue) {
+      for (const t of rawCascadeOptions.value) {
+        if (t.specs?.some((s) => s.id === item.yarnSpecId)) {
+          item.specCascadeValue = [t.yarnTypeId, item.yarnSpecId]
+          break
+        }
+      }
+    }
+  }
+}
+
+watch(
+  [() => props.items, rawCascadeOptions],
+  () => {
+    initCascadeValues()
+  },
+  { deep: true, immediate: true }
+)
 
 // 产品远程搜索
 const productOptions = ref<ProductVO[]>([])
@@ -321,9 +456,13 @@ const handleQtyOrPriceChange = (row: StockInItemVO) => {
 const handleAddRow = () => {
   const newList = [...itemsList.value]
   newList.push({
-    productId: undefined as any,
+    itemType: 'PRODUCT',
+    productId: undefined,
     productCode: '',
     productName: '',
+    yarnSpecId: undefined,
+    yarnSpecName: '',
+    specCascadeValue: undefined,
     batchNo: '',
     rollNo: '',
     pieceCount: 1,
@@ -369,5 +508,6 @@ const handlePlacementConfirm = (placements: StockInItemPlacementVO[]) => {
 
 onMounted(() => {
   searchProducts('')
+  loadYarnSpecOptions()
 })
 </script>

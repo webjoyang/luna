@@ -25,6 +25,8 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnspec.YarnSpecDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemPlacementMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInMapper;
@@ -155,6 +157,9 @@ public class StockInServiceImpl implements StockInService {
 
     @Resource
     private ProductMapper productMapper;
+
+    @Resource
+    private YarnSpecMapper yarnSpecMapper;
 
     @Resource
     private SecurityFrameworkService securityFrameworkService;
@@ -387,9 +392,12 @@ public class StockInServiceImpl implements StockInService {
             if (CollUtil.isNotEmpty(origList)) {
                 for (StockLedgerDO orig : origList) {
                     StockLedgerDO reversal = new StockLedgerDO();
+                    reversal.setItemType(orig.getItemType() != null ? orig.getItemType() : "PRODUCT");
                     reversal.setProductId(orig.getProductId());
                     reversal.setProductCode(orig.getProductCode());
                     reversal.setProductName(orig.getProductName());
+                    reversal.setYarnSpecId(orig.getYarnSpecId());
+                    reversal.setYarnSpecName(orig.getYarnSpecName());
                     reversal.setWarehouseId(orig.getWarehouseId());
                     reversal.setWarehouseName(orig.getWarehouseName());
                     reversal.setLocationId(orig.getLocationId());
@@ -571,13 +579,48 @@ public class StockInServiceImpl implements StockInService {
         for (StockInItemSaveReqVO itemReq : items) {
             StockInItemDO itemDO = BeanUtils.toBean(itemReq, StockInItemDO.class);
 
-            // 校验产品存在并回填快照
-            ProductDO product = productMapper.selectById(itemReq.getProductId());
-            if (product == null) {
-                throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "产品");
+            // 1. 物品类型缺省 PRODUCT 并校验合法性
+            String itemType = StringUtils.hasText(itemReq.getItemType()) ? itemReq.getItemType().trim() : "PRODUCT";
+            if (!"PRODUCT".equals(itemType) && !"YARN_SPEC".equals(itemType)) {
+                throw exception(STOCK_IN_ITEM_TYPE_INVALID, itemType);
             }
-            itemDO.setProductCode(product.getCode());
-            itemDO.setProductName(product.getName());
+            itemDO.setItemType(itemType);
+
+            // 2. 根据物品类型进行产品 / 纱线规格互斥校验与快照回填
+            if ("PRODUCT".equals(itemType)) {
+                if (itemReq.getProductId() == null || itemReq.getYarnSpecId() != null) {
+                    throw exception(STOCK_IN_ITEM_MUTEX_FAILED);
+                }
+                ProductDO product = productMapper.selectById(itemReq.getProductId());
+                if (product == null) {
+                    throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "产品");
+                }
+                itemDO.setProductId(product.getId());
+                itemDO.setProductCode(product.getCode());
+                itemDO.setProductName(product.getName());
+                itemDO.setYarnSpecId(null);
+                itemDO.setYarnSpecName(null);
+            } else {
+                // YARN_SPEC
+                if (itemReq.getYarnSpecId() == null || itemReq.getProductId() != null) {
+                    throw exception(STOCK_IN_ITEM_MUTEX_FAILED);
+                }
+                // 纱线规格单位固定为 KG
+                if (StringUtils.hasText(itemReq.getUnit()) && !"KG".equalsIgnoreCase(itemReq.getUnit().trim())) {
+                    throw exception(STOCK_IN_ITEM_YARN_UNIT_INVALID);
+                }
+                itemDO.setUnit("KG");
+
+                YarnSpecDO yarnSpec = yarnSpecMapper.selectById(itemReq.getYarnSpecId());
+                if (yarnSpec == null) {
+                    throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "纱线规格");
+                }
+                itemDO.setYarnSpecId(yarnSpec.getId());
+                itemDO.setYarnSpecName(yarnSpec.getSpecName());
+                itemDO.setProductId(null);
+                itemDO.setProductCode(null);
+                itemDO.setProductName(null);
+            }
 
             // 匹数缺省 1
             if (itemDO.getPieceCount() == null) {
@@ -707,9 +750,9 @@ public class StockInServiceImpl implements StockInService {
                         .or().apply("LOWER(supplier_name) LIKE LOWER({0})", like)
                         .or().apply("LOWER(contract_no) LIKE LOWER({0})", like);
                 if (tenantId != null) {
-                    w.or().apply("id IN (SELECT stock_in_id FROM lunaerp_stock_in_item WHERE tenant_id = {1} AND deleted = 0 AND (LOWER(product_code) LIKE LOWER({0}) OR LOWER(product_name) LIKE LOWER({0})))", like, tenantId);
+                    w.or().apply("id IN (SELECT stock_in_id FROM lunaerp_stock_in_item WHERE tenant_id = {1} AND deleted = 0 AND (LOWER(product_code) LIKE LOWER({0}) OR LOWER(product_name) LIKE LOWER({0}) OR LOWER(yarn_spec_name) LIKE LOWER({0})))", like, tenantId);
                 } else {
-                    w.or().apply("id IN (SELECT stock_in_id FROM lunaerp_stock_in_item WHERE deleted = 0 AND (LOWER(product_code) LIKE LOWER({0}) OR LOWER(product_name) LIKE LOWER({0})))", like);
+                    w.or().apply("id IN (SELECT stock_in_id FROM lunaerp_stock_in_item WHERE deleted = 0 AND (LOWER(product_code) LIKE LOWER({0}) OR LOWER(product_name) LIKE LOWER({0}) OR LOWER(yarn_spec_name) LIKE LOWER({0})))", like);
                 }
             });
         }
@@ -723,9 +766,12 @@ public class StockInServiceImpl implements StockInService {
      */
     private StockLedgerDO buildBaseStockLedger(StockInDO stockIn, StockInItemDO item) {
         StockLedgerDO ledger = new StockLedgerDO();
+        ledger.setItemType(item.getItemType() != null ? item.getItemType() : "PRODUCT");
         ledger.setProductId(item.getProductId());
         ledger.setProductCode(item.getProductCode());
         ledger.setProductName(item.getProductName());
+        ledger.setYarnSpecId(item.getYarnSpecId());
+        ledger.setYarnSpecName(item.getYarnSpecName());
         ledger.setWarehouseId(stockIn.getWarehouseId());
         ledger.setWarehouseName(stockIn.getWarehouseName());
         ledger.setBatchNo(item.getBatchNo());

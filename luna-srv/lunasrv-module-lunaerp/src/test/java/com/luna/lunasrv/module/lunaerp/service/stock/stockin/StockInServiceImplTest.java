@@ -21,7 +21,9 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesCon
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnspec.YarnSpecDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemPlacementMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInMapper;
@@ -107,6 +109,9 @@ class StockInServiceImplTest {
 
     @Mock
     private ProductMapper productMapper;
+
+    @Mock
+    private YarnSpecMapper yarnSpecMapper;
 
     @Mock
     private SecurityFrameworkService securityFrameworkService;
@@ -1088,6 +1093,332 @@ class StockInServiceImplTest {
 
         ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.deleteStockIn(100L));
         assertEquals(STOCK_IN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    // ==================== 物品类型（纱线规格 / 产品互斥 / 混合单）测试 ====================
+
+    @Test
+    void createStockIn_yarnSpec_success() {
+        WarehouseDO wh = new WarehouseDO();
+        wh.setId(1L);
+        wh.setName("原料1号仓");
+        wh.setStatus("ACTIVE");
+        when(warehouseMapper.selectById(1L)).thenReturn(wh);
+
+        YarnSpecDO yarnSpec = new YarnSpecDO();
+        yarnSpec.setId(301L);
+        yarnSpec.setSpecName("32S 精梳棉纱");
+        when(yarnSpecMapper.selectById(301L)).thenReturn(yarnSpec);
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setInType("PURCHASE");
+        req.setWarehouseId(1L);
+        req.setInDate(LocalDate.of(2026, 9, 26));
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setItemType("YARN_SPEC");
+        itemReq.setYarnSpecId(301L);
+        itemReq.setQuantity(new BigDecimal("500.00"));
+        itemReq.setUnit("KG");
+        itemReq.setUnitPrice(new BigDecimal("22.50"));
+        req.setItems(Collections.singletonList(itemReq));
+
+        Long id = stockInService.createStockIn(req);
+        assertEquals(100L, id);
+
+        ArgumentCaptor<StockInItemDO> itemCaptor = ArgumentCaptor.forClass(StockInItemDO.class);
+        verify(stockInItemMapper).insert(itemCaptor.capture());
+        StockInItemDO savedItem = itemCaptor.getValue();
+        assertEquals("YARN_SPEC", savedItem.getItemType());
+        assertEquals(301L, savedItem.getYarnSpecId());
+        assertEquals("32S 精梳棉纱", savedItem.getYarnSpecName());
+        assertNull(savedItem.getProductId());
+        assertNull(savedItem.getProductCode());
+        assertNull(savedItem.getProductName());
+        assertEquals("KG", savedItem.getUnit());
+        assertEquals(new BigDecimal("11250.00"), savedItem.getAmount());
+    }
+
+    @Test
+    void createStockIn_itemMutex_bothNull_throwsMutexFailed() {
+        WarehouseDO wh = new WarehouseDO();
+        wh.setId(1L);
+        wh.setName("原料1号仓");
+        wh.setStatus("ACTIVE");
+        when(warehouseMapper.selectById(1L)).thenReturn(wh);
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setInType("PURCHASE");
+        req.setWarehouseId(1L);
+        req.setInDate(LocalDate.now());
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setItemType("PRODUCT");
+        itemReq.setQuantity(new BigDecimal("100.00"));
+        itemReq.setUnit("KG");
+        req.setItems(Collections.singletonList(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockIn(req));
+        assertEquals(STOCK_IN_ITEM_MUTEX_FAILED.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createStockIn_itemMutex_bothProvided_throwsMutexFailed() {
+        WarehouseDO wh = new WarehouseDO();
+        wh.setId(1L);
+        wh.setName("原料1号仓");
+        wh.setStatus("ACTIVE");
+        when(warehouseMapper.selectById(1L)).thenReturn(wh);
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setInType("PURCHASE");
+        req.setWarehouseId(1L);
+        req.setInDate(LocalDate.now());
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setItemType("PRODUCT");
+        itemReq.setProductId(10L);
+        itemReq.setYarnSpecId(301L);
+        itemReq.setQuantity(new BigDecimal("100.00"));
+        itemReq.setUnit("KG");
+        req.setItems(Collections.singletonList(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockIn(req));
+        assertEquals(STOCK_IN_ITEM_MUTEX_FAILED.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createStockIn_yarnSpec_unitNotKG_throwsYarnUnitInvalid() {
+        WarehouseDO wh = new WarehouseDO();
+        wh.setId(1L);
+        wh.setName("原料1号仓");
+        wh.setStatus("ACTIVE");
+        when(warehouseMapper.selectById(1L)).thenReturn(wh);
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setInType("PURCHASE");
+        req.setWarehouseId(1L);
+        req.setInDate(LocalDate.now());
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setItemType("YARN_SPEC");
+        itemReq.setYarnSpecId(301L);
+        itemReq.setQuantity(new BigDecimal("100.00"));
+        itemReq.setUnit("M"); // 纱线规格必须为 KG
+        req.setItems(Collections.singletonList(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockIn(req));
+        assertEquals(STOCK_IN_ITEM_YARN_UNIT_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createStockIn_invalidItemType_throwsItemTypeInvalid() {
+        WarehouseDO wh = new WarehouseDO();
+        wh.setId(1L);
+        wh.setName("原料1号仓");
+        wh.setStatus("ACTIVE");
+        when(warehouseMapper.selectById(1L)).thenReturn(wh);
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setInType("PURCHASE");
+        req.setWarehouseId(1L);
+        req.setInDate(LocalDate.now());
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setItemType("UNKNOWN_TYPE");
+        itemReq.setQuantity(new BigDecimal("100.00"));
+        itemReq.setUnit("KG");
+        req.setItems(Collections.singletonList(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockIn(req));
+        assertEquals(STOCK_IN_ITEM_TYPE_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    void auditStockIn_yarnSpecPosting_success() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setInNo("IN-20260926-001");
+        existing.setStatus("DRAFT");
+        existing.setWarehouseId(1L);
+        existing.setWarehouseName("原料1号仓");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        StockInItemDO item = new StockInItemDO();
+        item.setId(201L);
+        item.setStockInId(100L);
+        item.setItemType("YARN_SPEC");
+        item.setYarnSpecId(301L);
+        item.setYarnSpecName("32S 精梳棉纱");
+        item.setQuantity(new BigDecimal("350.00"));
+        item.setUnit("KG");
+        item.setUnitPrice(new BigDecimal("20.00"));
+        item.setAmount(new BigDecimal("7000.00"));
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(item));
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        stockInService.auditStockIn(100L);
+
+        ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
+        verify(stockLedgerMapper).insert(ledgerCaptor.capture());
+        StockLedgerDO ledger = ledgerCaptor.getValue();
+        assertEquals("YARN_SPEC", ledger.getItemType());
+        assertEquals(301L, ledger.getYarnSpecId());
+        assertEquals("32S 精梳棉纱", ledger.getYarnSpecName());
+        assertNull(ledger.getProductId());
+        assertEquals("STOCK_IN", ledger.getTxnType());
+        assertEquals(new BigDecimal("350.00"), ledger.getQuantity());
+        assertEquals("KG", ledger.getUnit());
+        assertEquals(new BigDecimal("7000.00"), ledger.getAmount());
+    }
+
+    @Test
+    void cancelStockIn_yarnSpecReversal_success() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setInNo("IN-20260926-001");
+        existing.setStatus("COMPLETED");
+        existing.setWarehouseId(1L);
+        existing.setWarehouseName("原料1号仓");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        StockLedgerDO orig = new StockLedgerDO();
+        orig.setId(501L);
+        orig.setItemType("YARN_SPEC");
+        orig.setYarnSpecId(301L);
+        orig.setYarnSpecName("32S 精梳棉纱");
+        orig.setWarehouseId(1L);
+        orig.setWarehouseName("原料1号仓");
+        orig.setTxnType("STOCK_IN");
+        orig.setQuantity(new BigDecimal("350.00"));
+        orig.setUnit("KG");
+        orig.setUnitPrice(new BigDecimal("20.00"));
+        orig.setAmount(new BigDecimal("7000.00"));
+        orig.setRelatedDocType("STOCK_IN");
+        orig.setRelatedDocId(100L);
+        orig.setRelatedDocNo("IN-20260926-001");
+        when(stockLedgerMapper.selectListByRelatedDoc("STOCK_IN", 100L, "STOCK_IN"))
+                .thenReturn(Collections.singletonList(orig));
+
+        stockInService.cancelStockIn(100L);
+
+        ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
+        verify(stockLedgerMapper).insert(ledgerCaptor.capture());
+        StockLedgerDO reversal = ledgerCaptor.getValue();
+        assertEquals("YARN_SPEC", reversal.getItemType());
+        assertEquals(301L, reversal.getYarnSpecId());
+        assertEquals("32S 精梳棉纱", reversal.getYarnSpecName());
+        assertNull(reversal.getProductId());
+        assertEquals("STOCK_IN_REVERSAL", reversal.getTxnType());
+        assertEquals(new BigDecimal("-350.00"), reversal.getQuantity());
+        assertEquals("KG", reversal.getUnit());
+        assertEquals(new BigDecimal("-7000.00"), reversal.getAmount());
+    }
+
+    @Test
+    void mixedItems_saveAuditAndReversal_success() {
+        // 1. 创建混合单（1条产品明细 + 1条纱线明细）
+        WarehouseDO wh = new WarehouseDO();
+        wh.setId(1L);
+        wh.setName("综合仓");
+        wh.setStatus("ACTIVE");
+        when(warehouseMapper.selectById(1L)).thenReturn(wh);
+
+        ProductDO prod = new ProductDO();
+        prod.setId(10L);
+        prod.setCode("P001");
+        prod.setName("纯棉汗布");
+        when(productMapper.selectById(10L)).thenReturn(prod);
+
+        YarnSpecDO yarnSpec = new YarnSpecDO();
+        yarnSpec.setId(301L);
+        yarnSpec.setSpecName("40S 涤棉纱");
+        when(yarnSpecMapper.selectById(301L)).thenReturn(yarnSpec);
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setInType("PURCHASE");
+        req.setWarehouseId(1L);
+        req.setInDate(LocalDate.of(2026, 9, 26));
+
+        StockInItemSaveReqVO item1 = new StockInItemSaveReqVO();
+        item1.setItemType("PRODUCT");
+        item1.setProductId(10L);
+        item1.setQuantity(new BigDecimal("100.00"));
+        item1.setUnit("M");
+        item1.setUnitPrice(new BigDecimal("15.00"));
+
+        StockInItemSaveReqVO item2 = new StockInItemSaveReqVO();
+        item2.setItemType("YARN_SPEC");
+        item2.setYarnSpecId(301L);
+        item2.setQuantity(new BigDecimal("200.00"));
+        item2.setUnit("KG");
+        item2.setUnitPrice(new BigDecimal("25.00"));
+
+        List<StockInItemSaveReqVO> items = new ArrayList<>();
+        items.add(item1);
+        items.add(item2);
+        req.setItems(items);
+
+        Long id = stockInService.createStockIn(req);
+        assertEquals(100L, id);
+
+        ArgumentCaptor<StockInItemDO> itemCaptor = ArgumentCaptor.forClass(StockInItemDO.class);
+        verify(stockInItemMapper, times(2)).insert(itemCaptor.capture());
+        List<StockInItemDO> savedItems = itemCaptor.getAllValues();
+        assertEquals(2, savedItems.size());
+        assertEquals("PRODUCT", savedItems.get(0).getItemType());
+        assertEquals(10L, savedItems.get(0).getProductId());
+        assertEquals("YARN_SPEC", savedItems.get(1).getItemType());
+        assertEquals(301L, savedItems.get(1).getYarnSpecId());
+
+        // 2. 审核混合单过账
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setInNo("IN-20260926-MIX");
+        existing.setStatus("DRAFT");
+        existing.setWarehouseId(1L);
+        existing.setWarehouseName("综合仓");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        savedItems.get(0).setId(201L);
+        savedItems.get(1).setId(202L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(savedItems);
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        stockInService.auditStockIn(100L);
+
+        ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
+        verify(stockLedgerMapper, times(2)).insert(ledgerCaptor.capture());
+        List<StockLedgerDO> ledgers = ledgerCaptor.getAllValues();
+        assertEquals(2, ledgers.size());
+        assertEquals("PRODUCT", ledgers.get(0).getItemType());
+        assertEquals(10L, ledgers.get(0).getProductId());
+        assertEquals("YARN_SPEC", ledgers.get(1).getItemType());
+        assertEquals(301L, ledgers.get(1).getYarnSpecId());
+
+        // 3. 红冲混合单
+        existing.setStatus("COMPLETED");
+        ledgers.get(0).setId(501L);
+        ledgers.get(0).setRelatedDocType("STOCK_IN");
+        ledgers.get(0).setRelatedDocId(100L);
+        ledgers.get(0).setRelatedDocNo("IN-20260926-MIX");
+        ledgers.get(1).setId(502L);
+        ledgers.get(1).setRelatedDocType("STOCK_IN");
+        ledgers.get(1).setRelatedDocId(100L);
+        ledgers.get(1).setRelatedDocNo("IN-20260926-MIX");
+        when(stockLedgerMapper.selectListByRelatedDoc("STOCK_IN", 100L, "STOCK_IN")).thenReturn(ledgers);
+
+        stockInService.cancelStockIn(100L);
+
+        ArgumentCaptor<StockLedgerDO> reversalCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
+        verify(stockLedgerMapper, times(4)).insert(reversalCaptor.capture());
+        List<StockLedgerDO> allInserts = reversalCaptor.getAllValues();
+        StockLedgerDO rev1 = allInserts.get(2);
+        StockLedgerDO rev2 = allInserts.get(3);
+        assertEquals("PRODUCT", rev1.getItemType());
+        assertEquals(new BigDecimal("-100.00"), rev1.getQuantity());
+        assertEquals("YARN_SPEC", rev2.getItemType());
+        assertEquals(new BigDecimal("-200.00"), rev2.getQuantity());
     }
 
 }

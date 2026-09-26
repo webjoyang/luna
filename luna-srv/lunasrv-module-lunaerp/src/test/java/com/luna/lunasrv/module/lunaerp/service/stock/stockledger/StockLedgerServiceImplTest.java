@@ -132,4 +132,69 @@ class StockLedgerServiceImplTest {
         assertTrue(respPageResult.getList().isEmpty());
     }
 
+    @Test
+    @DisplayName("获得库存余额分页 - 纱线规格物品")
+    void testGetInventoryBalancePage_yarnSpec() {
+        InventoryBalancePageReqVO reqVO = new InventoryBalancePageReqVO();
+        reqVO.setItemType("YARN_SPEC");
+        reqVO.setKeyword("32S");
+        reqVO.setWarehouseId(1L);
+
+        InventoryBalanceRespVO balance = new InventoryBalanceRespVO();
+        balance.setItemType("YARN_SPEC");
+        balance.setYarnSpecId(301L);
+        balance.setYarnSpecName("32S 精梳棉纱");
+        balance.setWarehouseId(1L);
+        balance.setWarehouseName("原料1号仓");
+        balance.setUnit("KG");
+        balance.setQuantity(new BigDecimal("2000.00"));
+
+        PageResult<InventoryBalanceRespVO> expectedResult = new PageResult<>(List.of(balance), 1L);
+        when(stockLedgerMapper.selectBalancePage(reqVO)).thenReturn(expectedResult);
+
+        PageResult<InventoryBalanceRespVO> actualResult = stockLedgerService.getInventoryBalancePage(reqVO);
+
+        assertNotNull(actualResult);
+        assertEquals(1L, actualResult.getTotal());
+        InventoryBalanceRespVO row = actualResult.getList().get(0);
+        assertEquals("YARN_SPEC", row.getItemType());
+        assertEquals(301L, row.getYarnSpecId());
+        assertEquals("32S 精梳棉纱", row.getYarnSpecName());
+        assertNull(row.getProductId());
+        assertEquals(new BigDecimal("2000.00"), row.getQuantity());
+    }
+
+    @Test
+    @DisplayName("获得库存流水分页 - 纱线规格物品转换")
+    void testGetStockLedgerPage_yarnSpec() {
+        StockLedgerPageReqVO reqVO = new StockLedgerPageReqVO();
+        reqVO.setItemType("YARN_SPEC");
+        reqVO.setKeyword("32S");
+
+        StockLedgerDO ledgerDO = new StockLedgerDO();
+        ledgerDO.setId(101L);
+        ledgerDO.setItemType("YARN_SPEC");
+        ledgerDO.setYarnSpecId(301L);
+        ledgerDO.setYarnSpecName("32S 精梳棉纱");
+        ledgerDO.setWarehouseId(1L);
+        ledgerDO.setWarehouseName("原料1号仓");
+        ledgerDO.setTxnType("STOCK_IN");
+        ledgerDO.setQuantity(new BigDecimal("500.00"));
+        ledgerDO.setUnit("KG");
+        ledgerDO.setCreateTime(LocalDateTime.now());
+
+        PageResult<StockLedgerDO> doPageResult = new PageResult<>(List.of(ledgerDO), 1L);
+        when(stockLedgerMapper.selectLedgerPage(reqVO)).thenReturn(doPageResult);
+
+        PageResult<StockLedgerRespVO> respPageResult = stockLedgerService.getStockLedgerPage(reqVO);
+
+        assertNotNull(respPageResult);
+        assertEquals(1L, respPageResult.getTotal());
+        StockLedgerRespVO resp = respPageResult.getList().get(0);
+        assertEquals("YARN_SPEC", resp.getItemType());
+        assertEquals(301L, resp.getYarnSpecId());
+        assertEquals("32S 精梳棉纱", resp.getYarnSpecName());
+        assertNull(resp.getProductId());
+    }
+
 }

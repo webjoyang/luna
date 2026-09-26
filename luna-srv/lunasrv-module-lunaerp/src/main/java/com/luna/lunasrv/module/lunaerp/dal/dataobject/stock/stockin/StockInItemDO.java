@@ -30,7 +30,11 @@ public class StockInItemDO extends TenantBaseDO {
      */
     private Long stockInId;
     /**
-     * 关联产品ID
+     * 物品类型（PRODUCT / YARN_SPEC），缺省 PRODUCT
+     */
+    private String itemType;
+    /**
+     * 关联产品ID（物品为 PRODUCT 时必填，与 yarnSpecId 互斥）
      */
     private Long productId;
     /**
@@ -41,6 +45,14 @@ public class StockInItemDO extends TenantBaseDO {
      * 产品名称快照
      */
     private String productName;
+    /**
+     * 关联纱线规格ID（物品为 YARN_SPEC 时必填，与 productId 互斥）
+     */
+    private Long yarnSpecId;
+    /**
+     * 纱线规格名称快照
+     */
+    private String yarnSpecName;
     /**
      * 批次号/缸号
      */

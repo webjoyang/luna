@@ -194,9 +194,12 @@ COMMENT ON COLUMN lunaerp_stock_in.tenant_id IS '租户编号';
 CREATE TABLE IF NOT EXISTS lunaerp_stock_in_item (
     id            int8          NOT NULL,
     stock_in_id   int8          NOT NULL,
-    product_id    int8          NOT NULL,
+    item_type     varchar(16)   NOT NULL DEFAULT 'PRODUCT',
+    product_id    int8          NULL,
     product_code  varchar(64)   NULL,
     product_name  varchar(128)  NULL,
+    yarn_spec_id  int8          NULL,
+    yarn_spec_name varchar(128) NULL,
     batch_no      varchar(64)   NULL,
     roll_no       varchar(64)   NULL,
     piece_count   int4          NULL DEFAULT 1,
@@ -224,13 +227,20 @@ CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_stock_in_id
     ON lunaerp_stock_in_item (stock_in_id);
 CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_product_id
     ON lunaerp_stock_in_item (product_id);
+CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_yarn_spec_id
+    ON lunaerp_stock_in_item (yarn_spec_id);
+CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_item_type
+    ON lunaerp_stock_in_item (item_type);
 
 COMMENT ON TABLE lunaerp_stock_in_item IS '库存管理-入库明细表';
 COMMENT ON COLUMN lunaerp_stock_in_item.id IS '明细ID';
 COMMENT ON COLUMN lunaerp_stock_in_item.stock_in_id IS '所属入库单ID（lunaerp_stock_in.id，必填）';
-COMMENT ON COLUMN lunaerp_stock_in_item.product_id IS '关联产品ID（lunaerp_baseinfo_product.id，必填）';
+COMMENT ON COLUMN lunaerp_stock_in_item.item_type IS '物品类型（PRODUCT 产品 / YARN_SPEC 纱线规格），缺省 PRODUCT';
+COMMENT ON COLUMN lunaerp_stock_in_item.product_id IS '关联产品ID（lunaerp_baseinfo_product.id，物品为 PRODUCT 时必填，与 yarn_spec_id 互斥）';
 COMMENT ON COLUMN lunaerp_stock_in_item.product_code IS '产品编码快照';
 COMMENT ON COLUMN lunaerp_stock_in_item.product_name IS '产品名称快照';
+COMMENT ON COLUMN lunaerp_stock_in_item.yarn_spec_id IS '关联纱线规格ID（lunaerp_production_yarn_spec.id，物品为 YARN_SPEC 时必填，与 product_id 互斥）';
+COMMENT ON COLUMN lunaerp_stock_in_item.yarn_spec_name IS '纱线规格名称快照';
 COMMENT ON COLUMN lunaerp_stock_in_item.batch_no IS '批次号/缸号';
 COMMENT ON COLUMN lunaerp_stock_in_item.roll_no IS '卷号';
 COMMENT ON COLUMN lunaerp_stock_in_item.piece_count IS '匹数（缺省 1）';
@@ -308,9 +318,12 @@ COMMENT ON COLUMN lunaerp_stock_in_item_placement.tenant_id IS '租户编号';
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS lunaerp_stock_ledger (
     id                int8          NOT NULL,
-    product_id        int8          NOT NULL,
+    item_type         varchar(16)   NOT NULL DEFAULT 'PRODUCT',
+    product_id        int8          NULL,
     product_code      varchar(64)   NULL,
     product_name      varchar(128)  NULL,
+    yarn_spec_id      int8          NULL,
+    yarn_spec_name    varchar(128)  NULL,
     warehouse_id      int8          NOT NULL,
     warehouse_name    varchar(128)  NULL,
     location_id       int8          NULL,
@@ -343,6 +356,10 @@ END $$;
 -- 余额聚合主路径、红冲反查原流水、仓库维度与时间排序普通索引
 CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_product_wh_unit
     ON lunaerp_stock_ledger (product_id, warehouse_id, unit);
+CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_yarn_spec_wh_unit
+    ON lunaerp_stock_ledger (yarn_spec_id, warehouse_id, unit);
+CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_item_type
+    ON lunaerp_stock_ledger (item_type);
 CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_related_doc
     ON lunaerp_stock_ledger (related_doc_type, related_doc_id);
 CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_warehouse_id
@@ -352,9 +369,12 @@ CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_create_time
 
 COMMENT ON TABLE lunaerp_stock_ledger IS '库存管理-库存流水台账表';
 COMMENT ON COLUMN lunaerp_stock_ledger.id IS '流水ID';
-COMMENT ON COLUMN lunaerp_stock_ledger.product_id IS '关联产品ID（lunaerp_baseinfo_product.id，必填）';
+COMMENT ON COLUMN lunaerp_stock_ledger.item_type IS '物品类型（PRODUCT 产品 / YARN_SPEC 纱线规格），缺省 PRODUCT';
+COMMENT ON COLUMN lunaerp_stock_ledger.product_id IS '关联产品ID（lunaerp_baseinfo_product.id，物品为 PRODUCT 时必填，与 yarn_spec_id 互斥）';
 COMMENT ON COLUMN lunaerp_stock_ledger.product_code IS '产品编码快照';
 COMMENT ON COLUMN lunaerp_stock_ledger.product_name IS '产品名称快照';
+COMMENT ON COLUMN lunaerp_stock_ledger.yarn_spec_id IS '关联纱线规格ID（lunaerp_production_yarn_spec.id，物品为 YARN_SPEC 时必填，与 product_id 互斥）';
+COMMENT ON COLUMN lunaerp_stock_ledger.yarn_spec_name IS '纱线规格名称快照';
 COMMENT ON COLUMN lunaerp_stock_ledger.warehouse_id IS '仓库ID（lunaerp_stock_warehouse.id，必填）';
 COMMENT ON COLUMN lunaerp_stock_ledger.warehouse_name IS '仓库名称快照';
 COMMENT ON COLUMN lunaerp_stock_ledger.location_id IS '库位ID（lunaerp_stock_warehouse_location.id，可空）';
@@ -459,5 +479,39 @@ INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_ti
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3599, 1, '千克', 'KG', 'lunaerp_stock_in_unit', 0, '', '', NULL, 'admin', '2026-09-24 00:00:00', '1', '2026-09-24 00:00:00', '0');
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3600, 2, '米', 'M', 'lunaerp_stock_in_unit', 0, '', '', NULL, 'admin', '2026-09-24 00:00:00', '1', '2026-09-24 00:00:00', '0');
 
+-- 字典类型：库存物品类型（ADR-0026）
+DELETE FROM system_dict_type WHERE id = 2236;
+DELETE FROM system_dict_data WHERE dict_type = 'lunaerp_stock_item_type' OR id IN (3601, 3602);
+INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time) VALUES (2236, '库存物品类型', 'lunaerp_stock_item_type', 0, 'LunaERP 库存管理-物品类型（产品/纱线规格）', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0', NULL);
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3601, 1, '产品', 'PRODUCT', 'lunaerp_stock_item_type', 0, 'primary', '', NULL, 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3602, 2, '纱线规格', 'YARN_SPEC', 'lunaerp_stock_item_type', 0, 'warning', '', NULL, 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
+
 COMMIT;
 -- @formatter:on
+
+-- =============================================================================
+-- 10. 增量脚本：支持物品类型（产品 PRODUCT / 纱线规格 YARN_SPEC，ADR-0026）
+--     入库明细表与库存流水表扩展 item_type, yarn_spec_id, yarn_spec_name；
+--     product_id 变为可空（与 yarn_spec_id 互斥）。
+-- =============================================================================
+ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS item_type varchar(16) NOT NULL DEFAULT 'PRODUCT';
+ALTER TABLE lunaerp_stock_in_item ALTER COLUMN product_id DROP NOT NULL;
+ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS yarn_spec_id int8 NULL;
+ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS yarn_spec_name varchar(128) NULL;
+CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_yarn_spec_id ON lunaerp_stock_in_item (yarn_spec_id);
+CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_item_type ON lunaerp_stock_in_item (item_type);
+
+ALTER TABLE lunaerp_stock_ledger ADD COLUMN IF NOT EXISTS item_type varchar(16) NOT NULL DEFAULT 'PRODUCT';
+ALTER TABLE lunaerp_stock_ledger ALTER COLUMN product_id DROP NOT NULL;
+ALTER TABLE lunaerp_stock_ledger ADD COLUMN IF NOT EXISTS yarn_spec_id int8 NULL;
+ALTER TABLE lunaerp_stock_ledger ADD COLUMN IF NOT EXISTS yarn_spec_name varchar(128) NULL;
+CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_yarn_spec_wh_unit ON lunaerp_stock_ledger (yarn_spec_id, warehouse_id, unit);
+CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_item_type ON lunaerp_stock_ledger (item_type);
+
+COMMENT ON COLUMN lunaerp_stock_in_item.item_type IS '物品类型（PRODUCT 产品 / YARN_SPEC 纱线规格），缺省 PRODUCT';
+COMMENT ON COLUMN lunaerp_stock_in_item.yarn_spec_id IS '关联纱线规格ID（lunaerp_production_yarn_spec.id，物品为 YARN_SPEC 时必填，与 product_id 互斥）';
+COMMENT ON COLUMN lunaerp_stock_in_item.yarn_spec_name IS '纱线规格名称快照';
+
+COMMENT ON COLUMN lunaerp_stock_ledger.item_type IS '物品类型（PRODUCT 产品 / YARN_SPEC 纱线规格），缺省 PRODUCT';
+COMMENT ON COLUMN lunaerp_stock_ledger.yarn_spec_id IS '关联纱线规格ID（lunaerp_production_yarn_spec.id，物品为 YARN_SPEC 时必填，与 product_id 互斥）';
+COMMENT ON COLUMN lunaerp_stock_ledger.yarn_spec_name IS '纱线规格名称快照';

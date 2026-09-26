@@ -9,7 +9,10 @@ import java.math.BigDecimal;
 @Data
 public class InventoryBalanceRespVO {
 
-    @Schema(description = "产品ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
+    @Schema(description = "物品类型（PRODUCT / YARN_SPEC）", example = "PRODUCT")
+    private String itemType;
+
+    @Schema(description = "产品ID（物品为 PRODUCT 时有值）", example = "10")
     private Long productId;
 
     @Schema(description = "产品编码", example = "PROD001")
@@ -17,6 +20,12 @@ public class InventoryBalanceRespVO {
 
     @Schema(description = "产品名称", example = "纯棉胚布")
     private String productName;
+
+    @Schema(description = "纱线规格ID（物品为 YARN_SPEC 时有值）", example = "101")
+    private Long yarnSpecId;
+
+    @Schema(description = "纱线规格名称", example = "32S 棉")
+    private String yarnSpecName;
 
     @Schema(description = "仓库ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Long warehouseId;

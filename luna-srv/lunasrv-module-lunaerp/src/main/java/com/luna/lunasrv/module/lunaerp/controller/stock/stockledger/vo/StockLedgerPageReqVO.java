@@ -15,7 +15,13 @@ import static com.luna.lunasrv.framework.common.util.date.DateUtils.FORMAT_YEAR_
 @EqualsAndHashCode(callSuper = true)
 public class StockLedgerPageReqVO extends PageParam {
 
-    @Schema(description = "产品关键词（产品编码或产品名称）", example = "棉纱")
+    @Schema(description = "物品类型（PRODUCT / YARN_SPEC）", example = "PRODUCT")
+    private String itemType;
+
+    @Schema(description = "物品关键词（编码/名称/纱线规格）", example = "棉纱")
+    private String keyword;
+
+    @Schema(description = "产品关键词（产品编码或产品名称，兼容旧字段）", example = "棉纱")
     private String productKeyword;
 
     @Schema(description = "仓库ID", example = "1")

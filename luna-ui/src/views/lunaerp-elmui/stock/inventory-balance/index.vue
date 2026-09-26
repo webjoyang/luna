@@ -12,10 +12,21 @@
             :inline="true"
             label-width="80px"
           >
-            <el-form-item label="产品" prop="productKeyword">
+            <el-form-item label="物品类型" prop="itemType">
+              <el-select
+                v-model="balanceQueryParams.itemType"
+                placeholder="全部类型"
+                clearable
+                class="!w-140px"
+              >
+                <el-option label="产品" value="PRODUCT" />
+                <el-option label="纱线规格" value="YARN_SPEC" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="物品" prop="keyword">
               <el-input
-                v-model="balanceQueryParams.productKeyword"
-                placeholder="产品编码 / 产品名称"
+                v-model="balanceQueryParams.keyword"
+                placeholder="产品编码 / 产品名称 / 纱线规格"
                 clearable
                 @keyup.enter="handleBalanceQuery"
                 class="!w-240px"
@@ -50,14 +61,22 @@
 
         <ContentWrap>
           <el-table v-loading="balanceLoading" :data="balanceList" border stripe>
-            <el-table-column label="产品编码" prop="productCode" min-width="140" show-overflow-tooltip>
+            <el-table-column label="物品类型" prop="itemType" width="110" align="center">
               <template #default="{ row }">
-                <span class="cell-code">{{ row.productCode || '—' }}</span>
+                <el-tag v-if="row.itemType === 'YARN_SPEC'" type="warning" size="small">纱线规格</el-tag>
+                <el-tag v-else type="primary" size="small">产品</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="产品名称" prop="productName" min-width="180" show-overflow-tooltip>
+            <el-table-column label="物品编码" prop="productCode" min-width="140" show-overflow-tooltip>
               <template #default="{ row }">
-                {{ row.productName || '—' }}
+                <span v-if="row.itemType === 'YARN_SPEC'" class="text-gray-400">—</span>
+                <span v-else class="cell-code">{{ row.productCode || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="物品名称" prop="productName" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span v-if="row.itemType === 'YARN_SPEC'">{{ row.yarnSpecName || '—' }}</span>
+                <span v-else>{{ row.productName || '—' }}</span>
               </template>
             </el-table-column>
             <el-table-column label="仓库" prop="warehouseName" min-width="150" show-overflow-tooltip>
@@ -114,13 +133,24 @@
             :inline="true"
             label-width="80px"
           >
-            <el-form-item label="产品" prop="productKeyword">
+            <el-form-item label="物品类型" prop="itemType">
+              <el-select
+                v-model="ledgerQueryParams.itemType"
+                placeholder="全部类型"
+                clearable
+                class="!w-140px"
+              >
+                <el-option label="产品" value="PRODUCT" />
+                <el-option label="纱线规格" value="YARN_SPEC" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="物品" prop="keyword">
               <el-input
-                v-model="ledgerQueryParams.productKeyword"
-                placeholder="产品编码 / 产品名称"
+                v-model="ledgerQueryParams.keyword"
+                placeholder="产品编码 / 产品名称 / 纱线规格"
                 clearable
                 @keyup.enter="handleLedgerQuery"
-                class="!w-200px"
+                class="!w-240px"
               />
             </el-form-item>
             <el-form-item label="仓库" prop="warehouseId">
@@ -197,14 +227,22 @@
 
         <ContentWrap>
           <el-table v-loading="ledgerLoading" :data="ledgerList" border stripe>
-            <el-table-column label="产品编码" prop="productCode" min-width="140" show-overflow-tooltip>
+            <el-table-column label="物品类型" prop="itemType" width="110" align="center">
               <template #default="{ row }">
-                <span class="cell-code">{{ row.productCode || '—' }}</span>
+                <el-tag v-if="row.itemType === 'YARN_SPEC'" type="warning" size="small">纱线规格</el-tag>
+                <el-tag v-else type="primary" size="small">产品</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="产品名称" prop="productName" min-width="180" show-overflow-tooltip>
+            <el-table-column label="物品编码" prop="productCode" min-width="140" show-overflow-tooltip>
               <template #default="{ row }">
-                {{ row.productName || '—' }}
+                <span v-if="row.itemType === 'YARN_SPEC'" class="text-gray-400">—</span>
+                <span v-else class="cell-code">{{ row.productCode || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="物品名称" prop="productName" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span v-if="row.itemType === 'YARN_SPEC'">{{ row.yarnSpecName || '—' }}</span>
+                <span v-else>{{ row.productName || '—' }}</span>
               </template>
             </el-table-column>
             <el-table-column label="仓库" prop="warehouseName" min-width="140" show-overflow-tooltip>
@@ -347,21 +385,30 @@ const balanceQueryFormRef = ref()
 interface BalanceQueryParams extends InventoryBalancePageParam {
   pageNo: number
   pageSize: number
-  productKeyword: string
+  itemType?: string
+  keyword: string
   warehouseId: number | undefined
 }
 
 const balanceQueryParams = reactive<BalanceQueryParams>({
   pageNo: 1,
   pageSize: 20,
-  productKeyword: '',
+  itemType: undefined,
+  keyword: '',
   warehouseId: undefined
 })
 
 const getBalanceList = async () => {
   balanceLoading.value = true
   try {
-    const data = await InventoryBalanceApi.getInventoryBalancePage(balanceQueryParams)
+    const params: InventoryBalancePageParam = {
+      pageNo: balanceQueryParams.pageNo,
+      pageSize: balanceQueryParams.pageSize,
+      itemType: balanceQueryParams.itemType || undefined,
+      keyword: balanceQueryParams.keyword || undefined,
+      warehouseId: balanceQueryParams.warehouseId
+    }
+    const data = await InventoryBalanceApi.getInventoryBalancePage(params)
     balanceList.value = data.list || []
     balanceTotal.value = data.total || 0
   } finally {
@@ -376,15 +423,17 @@ const handleBalanceQuery = () => {
 
 const resetBalanceQuery = () => {
   balanceQueryFormRef.value?.resetFields()
-  balanceQueryParams.productKeyword = ''
+  balanceQueryParams.itemType = undefined
+  balanceQueryParams.keyword = ''
   balanceQueryParams.warehouseId = undefined
   handleBalanceQuery()
 }
 
-// 点击余额行"查看流水"：联动切换 Tab 2 并带产品+仓库条件（透明填入表单输入框，对齐 Spec 42）
+// 点击余额行"查看流水"：联动切换 Tab 2 并带物品类型+物品条件+仓库条件（透明填入表单输入框，对齐 Spec 42）
 const handleViewLedger = async (row: InventoryBalanceVO) => {
-  // 设置 Tab 2 筛选参数（以产品编码或产品名称填入 productKeyword 输入框）
-  ledgerQueryParams.productKeyword = row.productCode || row.productName || ''
+  // 设置 Tab 2 筛选参数（以产品编码或产品名称或纱线规格填入 keyword 输入框）
+  ledgerQueryParams.itemType = row.itemType
+  ledgerQueryParams.keyword = (row.itemType === 'YARN_SPEC' ? row.yarnSpecName : (row.productCode || row.productName)) || ''
   ledgerQueryParams.warehouseId = row.warehouseId
   ledgerQueryParams.locationId = undefined
   ledgerQueryParams.txnType = ''
@@ -411,7 +460,8 @@ const ledgerQueryFormRef = ref()
 interface LedgerQueryParams extends StockLedgerPageParam {
   pageNo: number
   pageSize: number
-  productKeyword: string
+  itemType?: string
+  keyword: string
   warehouseId: number | undefined
   locationId: number | undefined
   txnType: string
@@ -422,7 +472,8 @@ interface LedgerQueryParams extends StockLedgerPageParam {
 const ledgerQueryParams = reactive<LedgerQueryParams>({
   pageNo: 1,
   pageSize: 20,
-  productKeyword: '',
+  itemType: undefined,
+  keyword: '',
   warehouseId: undefined,
   locationId: undefined,
   txnType: '',
@@ -441,7 +492,8 @@ const getLedgerList = async () => {
     const params: StockLedgerPageParam = {
       pageNo: ledgerQueryParams.pageNo,
       pageSize: ledgerQueryParams.pageSize,
-      productKeyword: ledgerQueryParams.productKeyword || undefined,
+      itemType: ledgerQueryParams.itemType || undefined,
+      keyword: ledgerQueryParams.keyword || undefined,
       warehouseId: ledgerQueryParams.warehouseId || undefined,
       locationId: ledgerQueryParams.locationId || undefined,
       txnType: ledgerQueryParams.txnType || undefined,
@@ -463,7 +515,8 @@ const handleLedgerQuery = () => {
 
 const resetLedgerQuery = () => {
   ledgerQueryFormRef.value?.resetFields()
-  ledgerQueryParams.productKeyword = ''
+  ledgerQueryParams.itemType = undefined
+  ledgerQueryParams.keyword = ''
   ledgerQueryParams.warehouseId = undefined
   ledgerQueryParams.locationId = undefined
   ledgerQueryParams.txnType = ''

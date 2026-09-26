@@ -2,9 +2,12 @@ import request from '@/config/axios'
 
 // 库存余额 VO
 export interface InventoryBalanceVO {
-  productId: number
+  itemType?: string
+  productId?: number
   productCode?: string
   productName?: string
+  yarnSpecId?: number
+  yarnSpecName?: string
   warehouseId: number
   warehouseName?: string
   unit: string
@@ -15,6 +18,8 @@ export interface InventoryBalanceVO {
 export interface InventoryBalancePageParam {
   pageNo?: number
   pageSize?: number
+  itemType?: string
+  keyword?: string
   productKeyword?: string
   warehouseId?: number
 }

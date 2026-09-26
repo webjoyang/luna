@@ -5,7 +5,7 @@
       <el-form-item label="关键词" prop="keyword">
         <el-input
           v-model="queryParams.keyword"
-          placeholder="入库单号 / 供应商 / 合同号 / 产品编码 / 产品名称"
+          placeholder="入库单号 / 供应商 / 合同号 / 产品 / 纱线规格"
           clearable
           @keyup.enter="handleQuery"
           class="!w-260px"
