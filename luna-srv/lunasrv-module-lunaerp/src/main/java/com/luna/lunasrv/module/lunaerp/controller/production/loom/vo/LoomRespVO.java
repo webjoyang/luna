@@ -15,7 +15,7 @@ public class LoomRespVO {
     @Schema(description = "机台号", requiredMode = Schema.RequiredMode.REQUIRED, example = "LM20260001")
     private String loomNo;
 
-    @Schema(description = "型号", example = "大圆机 34″·28G")
+    @Schema(description = "型号", example = "34″·28G")
     private String model;
 
     @Schema(description = "状态（ACTIVE 启用 / INACTIVE 停用）", example = "ACTIVE")

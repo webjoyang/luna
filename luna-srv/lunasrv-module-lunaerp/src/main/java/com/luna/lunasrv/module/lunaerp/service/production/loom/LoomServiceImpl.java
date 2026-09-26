@@ -145,8 +145,23 @@ public class LoomServiceImpl implements LoomService {
     }
 
     @Override
+    public LoomDO validateLoomActive(Long loomId) {
+        if (loomId == null) {
+            throw exception(LOOM_NOT_EXISTS);
+        }
+        LoomDO loom = loomMapper.selectById(loomId);
+        if (loom == null) {
+            throw exception(LOOM_NOT_EXISTS);
+        }
+        if (!DEFAULT_STATUS.equals(loom.getStatus())) {
+            throw exception(LOOM_NOT_EXISTS);
+        }
+        return loom;
+    }
+
+    @Override
     public String getNextLoomNo() {
-        return generateLoomNo();
+        return generateLoomNo(0);
     }
 
     // ==================== 私有方法 ====================
@@ -170,7 +185,7 @@ public class LoomServiceImpl implements LoomService {
     private String generateLoomNoWithRetry() {
         String candidate = null;
         for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
-            candidate = generateLoomNo();
+            candidate = generateLoomNo(i);
             if (loomMapper.selectByLoomNoIncludingDeleted(candidate) == null) {
                 return candidate;
             }
@@ -178,7 +193,7 @@ public class LoomServiceImpl implements LoomService {
         throw exception(LOOM_NO_DUPLICATE, candidate);
     }
 
-    private String generateLoomNo() {
+    private String generateLoomNo(long offset) {
         String prefix = LOOM_NO_PREFIX + LocalDate.now().getYear();
         List<LoomDO> candidates = loomMapper.selectListByLoomNoPrefixIncludingDeleted(prefix);
         long maxNum = 0L;
@@ -206,9 +221,9 @@ public class LoomServiceImpl implements LoomService {
             }
         }
         if (maxNum == 0L) {
-            return prefix + "0001";
+            return prefix + String.format("%0" + maxDigits + "d", 1 + offset);
         }
-        return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+        return prefix + String.format("%0" + maxDigits + "d", maxNum + 1 + offset);
     }
 
 }

@@ -71,7 +71,7 @@
                 <span class="font-bold text-primary">{{ row.loomNo }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="机型/型号" prop="model" min-width="180" :show-overflow-tooltip="true">
+            <el-table-column label="型号" prop="model" min-width="180" :show-overflow-tooltip="true">
               <template #default="{ row }">
                 {{ row.model || '—' }}
               </template>
@@ -195,10 +195,10 @@
             </el-button>
           </div>
         </el-form-item>
-        <el-form-item label="机型/型号" prop="model">
+        <el-form-item label="型号" prop="model">
           <el-input
             v-model="formData.model"
-            placeholder="例如：大圆机 34″·28G / 喷水织机"
+            placeholder="例如：34″·28G / 喷水织机"
             maxlength="64"
           />
         </el-form-item>

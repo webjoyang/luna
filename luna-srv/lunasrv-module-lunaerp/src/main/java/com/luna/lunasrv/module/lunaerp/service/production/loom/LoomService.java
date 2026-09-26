@@ -4,6 +4,7 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.production.loom.vo.LoomPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.loom.vo.LoomRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.loom.vo.LoomSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.loom.LoomDO;
 import jakarta.validation.Valid;
 
 import java.util.List;
@@ -60,6 +61,14 @@ public interface LoomService {
      * @return 织机列表
      */
     List<LoomRespVO> getLoomListAll(String status);
+
+    /**
+     * 校验织机存在且处于启用状态（供机台任务排产等调用，停用织机不可选）
+     *
+     * @param loomId 织机ID
+     * @return 织机
+     */
+    LoomDO validateLoomActive(Long loomId);
 
     /**
      * 预览下一个织机机台号（只读、不占号）

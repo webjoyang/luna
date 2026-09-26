@@ -69,7 +69,7 @@ class LoomServiceImplTest {
 
     private LoomSaveReqVO buildCreateReqVO() {
         LoomSaveReqVO req = new LoomSaveReqVO();
-        req.setModel("大圆机 34″·28G");
+        req.setModel("34″·28G");
         req.setRemark("1号车间");
         return req;
     }
@@ -92,7 +92,7 @@ class LoomServiceImplTest {
         LoomDO inserted = captor.getValue();
         assertEquals(YEAR_PREFIX + "0001", inserted.getLoomNo());
         assertEquals("ACTIVE", inserted.getStatus());
-        assertEquals("大圆机 34″·28G", inserted.getModel());
+        assertEquals("34″·28G", inserted.getModel());
     }
 
     @Test
@@ -295,6 +295,63 @@ class LoomServiceImplTest {
         String nextNo = loomService.getNextLoomNo();
 
         assertEquals(YEAR_PREFIX + "0001", nextNo);
+    }
+
+    // ==================== 机台激活校验（排产契约） ====================
+
+    @Test
+    void validateLoomActive_success_whenActive() {
+        LoomDO loom = new LoomDO();
+        loom.setId(100L);
+        loom.setLoomNo("A01");
+        loom.setStatus("ACTIVE");
+        when(loomMapper.selectById(100L)).thenReturn(loom);
+
+        LoomDO result = loomService.validateLoomActive(100L);
+
+        assertNotNull(result);
+        assertEquals("A01", result.getLoomNo());
+    }
+
+    @Test
+    void validateLoomActive_notExists_throwsException() {
+        when(loomMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> loomService.validateLoomActive(999L));
+        assertEquals(LOOM_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void validateLoomActive_inactive_throwsException() {
+        LoomDO loom = new LoomDO();
+        loom.setId(100L);
+        loom.setLoomNo("A01");
+        loom.setStatus("INACTIVE");
+        when(loomMapper.selectById(100L)).thenReturn(loom);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> loomService.validateLoomActive(100L));
+        assertEquals(LOOM_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createLoom_autoGenClash_retriesAndSucceedsOnNextCandidate() {
+        LoomSaveReqVO req = buildCreateReqVO();
+        req.setLoomNo(null);
+        when(loomMapper.selectListByLoomNoPrefixIncludingDeleted(anyString()))
+                .thenReturn(Collections.emptyList());
+
+        LoomDO clash = new LoomDO();
+        clash.setId(88L);
+        clash.setLoomNo(YEAR_PREFIX + "0001");
+        when(loomMapper.selectByLoomNoIncludingDeleted(YEAR_PREFIX + "0001")).thenReturn(clash);
+        when(loomMapper.selectByLoomNoIncludingDeleted(YEAR_PREFIX + "0002")).thenReturn(null);
+
+        Long id = loomService.createLoom(req);
+
+        assertEquals(200L, id);
+        ArgumentCaptor<LoomDO> captor = ArgumentCaptor.forClass(LoomDO.class);
+        verify(loomMapper).insert(captor.capture());
+        assertEquals(YEAR_PREFIX + "0002", captor.getValue().getLoomNo());
     }
 
 }
