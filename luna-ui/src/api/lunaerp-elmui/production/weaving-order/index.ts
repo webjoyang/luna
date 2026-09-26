@@ -91,3 +91,39 @@ export const deleteWeavingOrder = (id: number) => {
 export const cancelWeavingOrder = (id: number) => {
   return request.put<boolean>({ url: `/lunaerp/production/weaving-order/cancel?id=${id}` })
 }
+
+// 织造单统计数据 VO
+export interface MachineTaskProgressVO {
+  taskId: number
+  taskCode: string
+  loomId: number
+  loomNo: string
+  workerName?: string
+  plannedQty: number
+  actualQty: number
+  status: string
+  taskCompletionRate: number
+}
+
+export interface WeavingOrderStatsVO {
+  weavingOrderId: number
+  orderCode: string
+  plannedQty: number
+  plannedWeight?: number
+  completedQty: number
+  totalTickets: number
+  validTickets: number
+  voidTickets: number
+  completedTickets: number
+  inProgressTickets: number
+  generatedTickets: number
+  completionRate: number
+  statusCounts: Record<string, number>
+  taskStats: MachineTaskProgressVO[]
+}
+
+// 获得织造单统计数据（计划匹数、有效票数、作废数、完工数、完成率、各状态计数）
+export const getWeavingOrderStats = (id: number) => {
+  return request.get<WeavingOrderStatsVO>({ url: `/lunaerp/production/weaving-order/get-statistics?id=${id}` })
+}
+

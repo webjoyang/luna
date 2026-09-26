@@ -568,6 +568,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/production/inspection-order'
         }
+      },
+      {
+        path: 'weaving-order/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/production/weaving-order/workspace/index.vue'),
+        name: 'LunaerpElmuiProductionWeavingOrderWorkspace',
+        meta: {
+          title: '织造单工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/production/weaving-order'
+        }
       }
     ]
   },

@@ -80,4 +80,13 @@ public interface WeavingOrderService {
      */
     String getNextWeavingOrderCode(Long greigeOrderId);
 
+    /**
+     * 获得织造单统计数据（计划匹数、有效票数、作废数、完工数、完成率、各状态计数）
+     *
+     * @param id 织造单ID
+     * @return 统计数据
+     */
+    com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO getWeavingOrderStats(Long id);
+
 }
+

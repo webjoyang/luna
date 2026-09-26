@@ -23,6 +23,9 @@ import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.ArrayList;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
@@ -54,6 +57,12 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
 
     @Resource
     private ProductMapper productMapper;
+
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper weavingTicketMapper;
+
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper machineTaskMapper;
 
     @Autowired(required = false)
     private List<WeavingOrderCascadeDeleteListener> cascadeDeleteListeners;
@@ -222,6 +231,91 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
     public String getNextWeavingOrderCode(Long greigeOrderId) {
         GreigeOrderDO greigeOrder = validateGreigeOrderSelf(greigeOrderId);
         return generateCode(greigeOrder.getOrderNo());
+    }
+
+    @Override
+    public com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO getWeavingOrderStats(Long id) {
+        WeavingOrderDO order = validateWeavingOrderExists(id);
+        List<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO> tickets =
+                weavingTicketMapper.selectListByWeavingOrderId(id);
+        List<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.task.MachineTaskDO> tasks =
+                machineTaskMapper.selectListByWeavingOrderId(id);
+
+        com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO respVO =
+                new com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO();
+        respVO.setWeavingOrderId(order.getId());
+        respVO.setOrderCode(order.getCode());
+        respVO.setPlannedQty(order.getPlannedQty());
+        respVO.setPlannedWeight(order.getPlannedWeight());
+
+        int total = tickets != null ? tickets.size() : 0;
+        int voidCount = 0;
+        int completedCount = 0;
+        int inProgressCount = 0;
+        int generatedCount = 0;
+        Map<String, Integer> statusCounts = new HashMap<>();
+
+        if (tickets != null) {
+            for (com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO ticket : tickets) {
+                String status = ticket.getStatus();
+                statusCounts.put(status, statusCounts.getOrDefault(status, 0) + 1);
+                if ("VOID".equals(status)) {
+                    voidCount++;
+                } else if ("COMPLETED".equals(status) || "INSPECTED".equals(status) || "STOCKED".equals(status)) {
+                    completedCount++;
+                } else if ("STARTED".equals(status) || "EXCEPTION".equals(status)) {
+                    inProgressCount++;
+                } else if ("GENERATED".equals(status)) {
+                    generatedCount++;
+                }
+            }
+        }
+
+        int validCount = total - voidCount;
+        respVO.setTotalTickets(total);
+        respVO.setValidTickets(validCount);
+        respVO.setVoidTickets(voidCount);
+        respVO.setCompletedTickets(completedCount);
+        respVO.setInProgressTickets(inProgressCount);
+        respVO.setGeneratedTickets(generatedCount);
+        respVO.setStatusCounts(statusCounts);
+        respVO.setCompletedQty(completedCount);
+
+        if (order.getPlannedQty() != null && order.getPlannedQty() > 0) {
+            double rate = (double) completedCount * 100.0 / order.getPlannedQty();
+            respVO.setCompletionRate(Math.round(rate * 100.0) / 100.0);
+        } else if (validCount > 0) {
+            double rate = (double) completedCount * 100.0 / validCount;
+            respVO.setCompletionRate(Math.round(rate * 100.0) / 100.0);
+        } else {
+            respVO.setCompletionRate(0.0);
+        }
+
+        List<com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO.MachineTaskProgressVO> taskStats = new ArrayList<>();
+        if (tasks != null) {
+            for (com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.task.MachineTaskDO task : tasks) {
+                com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO.MachineTaskProgressVO p =
+                        new com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO.MachineTaskProgressVO();
+                p.setTaskId(task.getId());
+                p.setTaskCode(task.getCode());
+                p.setLoomId(task.getLoomId());
+                p.setLoomNo(task.getLoomNo());
+                p.setWorkerName(task.getWorkerName());
+                p.setPlannedQty(task.getPlannedQty());
+                p.setActualQty(task.getActualQty() != null ? task.getActualQty() : 0);
+                p.setStatus(task.getStatus());
+                if (task.getPlannedQty() != null && task.getPlannedQty() > 0) {
+                    double taskRate = (double) p.getActualQty() * 100.0 / task.getPlannedQty();
+                    p.setTaskCompletionRate(Math.round(taskRate * 100.0) / 100.0);
+                } else {
+                    p.setTaskCompletionRate(0.0);
+                }
+                taskStats.add(p);
+            }
+        }
+        respVO.setTaskStats(taskStats);
+
+        return respVO;
     }
 
     // ==================== 私有辅助方法 ====================

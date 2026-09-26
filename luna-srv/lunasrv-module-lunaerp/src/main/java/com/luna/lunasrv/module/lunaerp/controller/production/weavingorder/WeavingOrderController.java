@@ -82,4 +82,14 @@ public class WeavingOrderController {
         return success(weavingOrderService.getNextWeavingOrderCode(greigeOrderId));
     }
 
+    @GetMapping("/get-statistics")
+    @Operation(summary = "获得织造单统计数据（计划匹数、有效票数、作废数、完工数、完成率、各状态计数）")
+    @Parameter(name = "id", description = "织造单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:weaving-order:query')")
+    public CommonResult<com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO> getWeavingOrderStats(
+            @RequestParam("id") Long id) {
+        return success(weavingOrderService.getWeavingOrderStats(id));
+    }
+
 }
+

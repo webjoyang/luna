@@ -63,6 +63,12 @@ class WeavingOrderServiceImplTest {
     @Mock
     private WeavingOrderCascadeDeleteListener cascadeDeleteListener;
 
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper weavingTicketMapper;
+
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper machineTaskMapper;
+
     @InjectMocks
     private WeavingOrderServiceImpl weavingOrderService;
 
@@ -392,6 +398,65 @@ class WeavingOrderServiceImplTest {
         assertNotNull(progress);
         assertEquals(70, progress.getPlannedPieces());
         assertEquals(30, progress.getCompletedPieces());
+    }
+
+    @Test
+    void testGetWeavingOrderStats() {
+        Long orderId = 1024L;
+        WeavingOrderDO order = new WeavingOrderDO();
+        order.setId(orderId);
+        order.setCode("ZZ-PB0919001-01");
+        order.setPlannedQty(100);
+        order.setPlannedWeight(new BigDecimal("2500.00"));
+        order.setStatus("ACTIVE");
+
+        when(weavingOrderMapper.selectById(orderId)).thenReturn(order);
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO t1 =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO();
+        t1.setId(1L);
+        t1.setStatus("COMPLETED");
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO t2 =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO();
+        t2.setId(2L);
+        t2.setStatus("STARTED");
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO t3 =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO();
+        t3.setId(3L);
+        t3.setStatus("VOID");
+
+        when(weavingTicketMapper.selectListByWeavingOrderId(orderId)).thenReturn(List.of(t1, t2, t3));
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.task.MachineTaskDO task =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.task.MachineTaskDO();
+        task.setId(10L);
+        task.setCode("MT-ZZPB091900101-01");
+        task.setLoomId(1L);
+        task.setLoomNo("L001");
+        task.setWorkerName("张三");
+        task.setPlannedQty(50);
+        task.setActualQty(25);
+        task.setStatus("IN_PROGRESS");
+
+        when(machineTaskMapper.selectListByWeavingOrderId(orderId)).thenReturn(List.of(task));
+
+        com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO stats =
+                weavingOrderService.getWeavingOrderStats(orderId);
+
+        assertNotNull(stats);
+        assertEquals(orderId, stats.getWeavingOrderId());
+        assertEquals(100, stats.getPlannedQty());
+        assertEquals(3, stats.getTotalTickets());
+        assertEquals(2, stats.getValidTickets());
+        assertEquals(1, stats.getVoidTickets());
+        assertEquals(1, stats.getCompletedTickets());
+        assertEquals(1, stats.getInProgressTickets());
+        assertEquals(1.0, stats.getCompletionRate()); // 1 / 100 * 100 = 1.0%
+        assertNotNull(stats.getTaskStats());
+        assertEquals(1, stats.getTaskStats().size());
+        assertEquals(50.0, stats.getTaskStats().get(0).getTaskCompletionRate());
     }
 
     // ==================== 私有辅助方法 ====================
