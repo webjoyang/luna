@@ -608,11 +608,15 @@ const handleBarcodeScan = async () => {
     }
 
     ElMessage.success(`成功识别布票【${code}】，当前状态：${ticket.status}`)
-    // 打开单票操作弹窗
-    if (ticket.status === 'GENERATED' || ticket.status === 'STARTED' || ticket.status === 'EXCEPTION') {
+    // 根据票态合理引导操作：已生成→开工，已开工→完工，异常中→重新开工/恢复，已终态→定位展示
+    if (ticket.status === 'GENERATED') {
+      handleSingleAction('start', ticket)
+    } else if (ticket.status === 'STARTED') {
+      handleSingleAction('complete', ticket)
+    } else if (ticket.status === 'EXCEPTION') {
       handleSingleAction('start', ticket)
     } else {
-      // 定位到表格中
+      ElMessage.info(`布票【${code}】当前处于【${ticket.status}】终态`)
       queryParams.value.code = code
       handleQuery()
     }
@@ -663,6 +667,14 @@ const handleBatchWorkerChange = (val?: number) => {
 const submitCreateBatch = async () => {
   if (!createBatchFormRef.value) return
   await createBatchFormRef.value.validate()
+
+  const selectedTask = taskOptions.value.find(t => t.id === createBatchForm.value.machineTaskId)
+  if (selectedTask?.plannedQty) {
+    const remain = Math.max(0, selectedTask.plannedQty - (selectedTask.actualQty || 0))
+    if (createBatchForm.value.count > remain) {
+      ElMessage.warning(`提示：生成匹数 (${createBatchForm.value.count}) 超出机台任务剩余量 (${remain} 匹)`)
+    }
+  }
 
   actionSubmitting.value = true
   try {
@@ -759,25 +771,14 @@ const handleStartWorkerChange = (val?: number) => {
 const submitStartAction = async () => {
   actionSubmitting.value = true
   try {
-    if (isBatchMode.value) {
-      await startWeavingTicket({
-        ids: operatingIds.value,
-        actualMachine: startForm.value.actualMachine || undefined,
-        workerUserId: startForm.value.workerUserId,
-        workerName: startForm.value.workerName,
-        startedAt: startForm.value.startedAt || undefined
-      })
-      ElMessage.success(`批量开工成功（${operatingIds.value.length} 匹）`)
-    } else {
-      await startWeavingTicket({
-        id: operatingIds.value[0],
-        actualMachine: startForm.value.actualMachine || undefined,
-        workerUserId: startForm.value.workerUserId,
-        workerName: startForm.value.workerName,
-        startedAt: startForm.value.startedAt || undefined
-      })
-      ElMessage.success('布票开工成功')
-    }
+    await startWeavingTicket({
+      ids: operatingIds.value,
+      actualMachine: startForm.value.actualMachine || undefined,
+      workerUserId: startForm.value.workerUserId,
+      workerName: startForm.value.workerName,
+      startedAt: startForm.value.startedAt || undefined
+    })
+    ElMessage.success(`开工成功（${operatingIds.value.length} 匹）`)
     startDialogVisible.value = false
     await loadTickets()
     await loadTasks()
@@ -798,11 +799,7 @@ const handleCompleteConfirm = async (ids: number[]) => {
       cancelButtonText: '取消'
     })
     actionSubmitting.value = true
-    if (ids.length === 1) {
-      await completeWeavingTicket({ id: ids[0], completedAt: dayjs().format('YYYY-MM-DD HH:mm:ss') })
-    } else {
-      await completeWeavingTicket({ ids, completedAt: dayjs().format('YYYY-MM-DD HH:mm:ss') })
-    }
+    await completeWeavingTicket({ ids, completedAt: dayjs().format('YYYY-MM-DD HH:mm:ss') })
     ElMessage.success('完工记录已更新')
     await loadTickets()
     await loadTasks()
@@ -821,21 +818,12 @@ const submitExceptionAction = async () => {
 
   actionSubmitting.value = true
   try {
-    if (isBatchMode.value) {
-      await exceptionWeavingTicket({
-        ids: operatingIds.value,
-        exceptionType: exceptionForm.value.exceptionType,
-        exceptionNote: exceptionForm.value.exceptionNote || undefined
-      })
-      ElMessage.success(`批量登记异常成功（${operatingIds.value.length} 匹）`)
-    } else {
-      await exceptionWeavingTicket({
-        id: operatingIds.value[0],
-        exceptionType: exceptionForm.value.exceptionType,
-        exceptionNote: exceptionForm.value.exceptionNote || undefined
-      })
-      ElMessage.success('异常登记成功')
-    }
+    await exceptionWeavingTicket({
+      ids: operatingIds.value,
+      exceptionType: exceptionForm.value.exceptionType,
+      exceptionNote: exceptionForm.value.exceptionNote || undefined
+    })
+    ElMessage.success(`登记异常成功（${operatingIds.value.length} 匹）`)
     exceptionDialogVisible.value = false
     await loadTickets()
     await loadTasks()
@@ -854,19 +842,11 @@ const submitVoidAction = async () => {
 
   actionSubmitting.value = true
   try {
-    if (isBatchMode.value) {
-      await voidWeavingTicket({
-        ids: operatingIds.value,
-        voidReason: voidForm.value.voidReason
-      })
-      ElMessage.success(`批量作废成功（${operatingIds.value.length} 匹）`)
-    } else {
-      await voidWeavingTicket({
-        id: operatingIds.value[0],
-        voidReason: voidForm.value.voidReason
-      })
-      ElMessage.success('布票作废成功')
-    }
+    await voidWeavingTicket({
+      ids: operatingIds.value,
+      voidReason: voidForm.value.voidReason
+    })
+    ElMessage.success(`布票作废成功（${operatingIds.value.length} 匹）`)
     voidDialogVisible.value = false
     await loadTickets()
     await loadTasks()
@@ -877,6 +857,7 @@ const submitVoidAction = async () => {
     actionSubmitting.value = false
   }
 }
+
 
 watch(
   () => props.weavingOrderId,
