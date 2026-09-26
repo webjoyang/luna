@@ -93,6 +93,9 @@
           </template>
         </template>
       </el-table-column>
+      <template #empty>
+        <el-empty description="暂无机台任务" :image-size="80" />
+      </template>
     </el-table>
 
     <!-- 任务编辑弹窗 -->
@@ -110,15 +113,36 @@
         label-width="110px"
       >
         <el-form-item label="任务编号" prop="code">
-          <el-input v-model="taskForm.code" :disabled="!!taskForm.id" placeholder="为空系统自动派生 MT-..." />
+          <el-input
+            v-model="taskForm.code"
+            :disabled="!!taskForm.id"
+            :placeholder="taskForm.id ? '' : (previewTaskCode || '为空系统自动派生 MT-...') "
+          />
         </el-form-item>
         <el-form-item label="选择织机" prop="loomId">
-          <el-select v-model="taskForm.loomId" placeholder="请选择织机" class="w-full">
+          <el-select v-model="taskForm.loomId" placeholder="请选择织机 (仅活跃)" class="w-full">
             <el-option
               v-for="loom in loomOptions"
-              :key="loom.id"
+              :key="loom.id!"
               :label="loom.loomNo + (loom.model ? ' (' + loom.model + ')' : '')"
               :value="loom.id!"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="挡车工" prop="workerUserId">
+          <el-select
+            v-model="taskForm.workerUserId"
+            placeholder="请选择挡车工（可空）"
+            clearable
+            filterable
+            class="w-full"
+            @change="handleWorkerChange"
+          >
+            <el-option
+              v-for="worker in workerOptions"
+              :key="worker.id"
+              :label="worker.nickname || worker.username"
+              :value="worker.id"
             />
           </el-select>
         </el-form-item>
@@ -172,18 +196,27 @@ import {
   updateMachineTask,
   deleteMachineTask,
   haltMachineTask,
-  resumeMachineTask
+  resumeMachineTask,
+  getNextMachineTaskCode
 } from '@/api/lunaerp-elmui/production/machine-task'
 import { getLoomPage, LoomVO } from '@/api/lunaerp-elmui/production/loom'
+import { getSimpleUserList, UserVO } from '@/api/system/user'
+import { getSimplePostList, PostVO } from '@/api/system/post'
 
 const props = defineProps<{
   weavingOrderId?: number
+}>()
+
+const emit = defineEmits<{
+  (e: 'refresh-order'): void
 }>()
 
 const loading = ref(false)
 const saveLoading = ref(false)
 const taskList = ref<MachineTaskVO[]>([])
 const loomOptions = ref<LoomVO[]>([])
+const workerOptions = ref<UserVO[]>([])
+const previewTaskCode = ref('')
 const dialogVisible = ref(false)
 const formRef = ref<FormInstance>()
 const dateRange = ref<string[]>([])
@@ -224,7 +257,38 @@ const loadLooms = async () => {
   }
 }
 
-const handleOpenTaskDialog = (row?: MachineTaskVO) => {
+// 加载挡车工人员选项（复用 system User + system_post 过滤，ADR-0021）
+const loadWorkers = async () => {
+  try {
+    const [users, posts] = await Promise.all([
+      getSimpleUserList(),
+      getSimplePostList().catch(() => [] as PostVO[])
+    ])
+
+    // 寻找挡车工岗位 ID
+    const workerPost = posts.find(p => p.name?.includes('挡车') || p.code?.toLowerCase().includes('worker'))
+    if (workerPost && workerPost.id) {
+      const postIdStr = String(workerPost.id)
+      const filtered = users.filter(u => u.postIds && u.postIds.map(String).includes(postIdStr))
+      workerOptions.value = filtered.length > 0 ? filtered : users
+    } else {
+      workerOptions.value = users || []
+    }
+  } catch (e) {
+    console.error('加载挡车工列表失败', e)
+  }
+}
+
+const handleWorkerChange = (val?: number) => {
+  if (val) {
+    const user = workerOptions.value.find(u => u.id === val)
+    taskForm.value.workerName = user ? (user.nickname || user.username) : undefined
+  } else {
+    taskForm.value.workerName = undefined
+  }
+}
+
+const handleOpenTaskDialog = async (row?: MachineTaskVO) => {
   if (row) {
     taskForm.value = {
       id: row.id,
@@ -239,12 +303,20 @@ const handleOpenTaskDialog = (row?: MachineTaskVO) => {
       remark: row.remark
     }
     dateRange.value = row.plannedStart && row.plannedEnd ? [row.plannedStart, row.plannedEnd] : []
+    previewTaskCode.value = ''
   } else {
     taskForm.value = {
       weavingOrderId: props.weavingOrderId,
       plannedQty: 1
     }
     dateRange.value = []
+    if (props.weavingOrderId) {
+      try {
+        previewTaskCode.value = await getNextMachineTaskCode(props.weavingOrderId)
+      } catch (err) {
+        previewTaskCode.value = ''
+      }
+    }
   }
   dialogVisible.value = true
 }
@@ -277,6 +349,7 @@ const handleSaveTask = async () => {
     }
     dialogVisible.value = false
     await loadTasks()
+    emit('refresh-order')
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败')
   } finally {
@@ -295,6 +368,7 @@ const handleDeleteTask = async (row: MachineTaskVO) => {
     await deleteMachineTask(row.id)
     ElMessage.success('删除成功')
     await loadTasks()
+    emit('refresh-order')
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e?.message || '删除失败')
   }
@@ -311,6 +385,7 @@ const handleHaltTask = async (row: MachineTaskVO) => {
     await haltMachineTask({ id: row.id, haltReason: reason.trim() })
     ElMessage.success('已标记停机')
     await loadTasks()
+    emit('refresh-order')
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e?.message || '停机操作失败')
   }
@@ -319,10 +394,13 @@ const handleHaltTask = async (row: MachineTaskVO) => {
 const handleResumeTask = async (row: MachineTaskVO) => {
   if (!row.id) return
   try {
-    await ElMessageBox.confirm('确认恢复该机台任务？', '提示')
+    await ElMessageBox.confirm('确认恢复该机台任务？', '提示', {
+      type: 'info'
+    })
     await resumeMachineTask(row.id)
     ElMessage.success('已恢复')
     await loadTasks()
+    emit('refresh-order')
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e?.message || '恢复操作失败')
   }
@@ -338,6 +416,11 @@ watch(
 
 onMounted(() => {
   loadLooms()
+  loadWorkers()
+})
+
+defineExpose({
+  loadTasks
 })
 </script>
 
