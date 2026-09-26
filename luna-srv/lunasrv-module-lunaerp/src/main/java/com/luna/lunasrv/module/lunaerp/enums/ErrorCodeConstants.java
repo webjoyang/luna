@@ -121,5 +121,22 @@ public interface ErrorCodeConstants {
     ErrorCode LOOM_NO_DUPLICATE = new ErrorCode(1_030_015_201, "机台号【{}】已存在");
     ErrorCode LOOM_REFERENCED_BY_MACHINE_TASK = new ErrorCode(1_030_015_202, "织机已被机台任务引用，不能删除，请停用");
 
+    // ========== 织造执行 - 布票模块 1-030-015-110 ==========
+    ErrorCode WEAVING_TICKET_NOT_EXISTS = new ErrorCode(1_030_015_110, "布票不存在");
+    ErrorCode WEAVING_TICKET_STATUS_NOT_ALLOW = new ErrorCode(1_030_015_111, "布票当前状态不允许该操作");
+    ErrorCode WEAVING_TICKET_ALREADY_VOIDED = new ErrorCode(1_030_015_112, "布票已作废");
+    ErrorCode WEAVING_TICKET_EXCEPTION_TYPE_INVALID = new ErrorCode(1_030_015_113, "异常类型非法");
+    ErrorCode WEAVING_TICKET_EXCEED_PLANNED_QTY = new ErrorCode(1_030_015_114, "生成布票数量超过机台任务计划余量");
+    ErrorCode WEAVING_TICKET_VOID_REASON_EMPTY = new ErrorCode(1_030_015_115, "作废原因不能为空");
+    ErrorCode WEAVING_TICKET_CODE_DUPLICATE = new ErrorCode(1_030_015_116, "布票编号【{}】已存在");
+
+    // ========== 织造执行 - 领纱单与明细模块 1-030-015-300 ==========
+    ErrorCode YARN_REQUISITION_NOT_EXISTS = new ErrorCode(1_030_015_300, "领纱单不存在");
+    ErrorCode YARN_REQUISITION_CODE_DUPLICATE = new ErrorCode(1_030_015_301, "领纱单号【{}】已存在");
+    ErrorCode YARN_REQUISITION_ITEM_NOT_EXISTS = new ErrorCode(1_030_015_310, "领纱明细不存在");
+    ErrorCode YARN_REQUISITION_STOCK_NOT_ENOUGH = new ErrorCode(1_030_015_311, "纱线库存不足：需求【{}】，可用【{}】");
+    ErrorCode YARN_REQUISITION_STATUS_NOT_ALLOW = new ErrorCode(1_030_015_312, "领纱单状态不允许该操作");
+    ErrorCode YARN_REQUISITION_ITEM_QTY_INVALID = new ErrorCode(1_030_015_313, "领纱明细需求数量必须大于0");
+
 }
 

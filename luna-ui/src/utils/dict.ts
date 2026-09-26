@@ -484,5 +484,8 @@ export enum DICT_TYPE {
 
   // ========== LunaERP - 生产管理-织造执行模块 ==========
   LUNAERP_WEAVING_ORDER_STATUS = 'lunaerp_weaving_order_status', // 织造单状态（待排产/生产中/已完工/已取消）
-  LUNAERP_WEAVING_TASK_STATUS = 'lunaerp_weaving_task_status' // 机台任务状态（待开始/生产中/暂停异常/已完工）
+  LUNAERP_WEAVING_TASK_STATUS = 'lunaerp_weaving_task_status', // 机台任务状态（待开始/生产中/暂停异常/已完工）
+  LUNAERP_WEAVING_TICKET_STATUS = 'lunaerp_weaving_ticket_status', // 布票状态（已生成/已开工/已完工/已检验/已入库/异常/作废）
+  LUNAERP_WEAVING_EXCEPTION_TYPE = 'lunaerp_weaving_exception_type', // 织造异常类型（断纱/坏布/缺纱停机/换机/换人）
+  LUNAERP_YARN_REQUISITION_STATUS = 'lunaerp_yarn_requisition_status' // 领纱单状态（草稿/待发纱/部分发纱/已发纱/已关闭）
 }

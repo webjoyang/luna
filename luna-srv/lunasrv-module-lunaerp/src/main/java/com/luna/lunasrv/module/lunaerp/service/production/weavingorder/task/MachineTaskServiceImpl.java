@@ -76,6 +76,10 @@ public class MachineTaskServiceImpl implements MachineTaskService {
     @Resource
     private LoomService loomService;
 
+    @org.springframework.context.annotation.Lazy
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService weavingTicketService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public MachineTaskSaveRespVO createMachineTask(MachineTaskSaveReqVO createReqVO) {
@@ -181,6 +185,9 @@ public class MachineTaskServiceImpl implements MachineTaskService {
         }
 
         machineTaskMapper.deleteById(id);
+        if (weavingTicketService != null) {
+            weavingTicketService.deleteByMachineTaskId(id);
+        }
     }
 
     @Override
@@ -220,6 +227,10 @@ public class MachineTaskServiceImpl implements MachineTaskService {
                 .set(MachineTaskDO::getStatus, DEFAULT_STATUS)
                 .set(MachineTaskDO::getHaltReason, null)
                 .set(MachineTaskDO::getHaltAt, null));
+
+        if (weavingTicketService != null) {
+            weavingTicketService.deriveState(id, exist.getWeavingOrderId());
+        }
     }
 
     @Override
