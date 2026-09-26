@@ -138,5 +138,13 @@ public interface ErrorCodeConstants {
     ErrorCode YARN_REQUISITION_STATUS_NOT_ALLOW = new ErrorCode(1_030_015_312, "领纱单状态不允许该操作");
     ErrorCode YARN_REQUISITION_ITEM_QTY_INVALID = new ErrorCode(1_030_015_313, "领纱明细需求数量必须大于0");
 
+    // ========== 织造执行 - IoT 接入模块 1-030-015-400 ==========
+    ErrorCode IOT_VENDOR_CREDENTIAL_NOT_EXISTS = new ErrorCode(1_030_015_400, "厂商凭证不存在");
+    ErrorCode IOT_VENDOR_ACCOUNT_DUPLICATE = new ErrorCode(1_030_015_401, "厂商账号【{}】已存在");
+    ErrorCode IOT_DEVICE_BINDING_NOT_EXISTS = new ErrorCode(1_030_015_410, "设备绑定不存在");
+    ErrorCode IOT_DEVICE_ALREADY_BOUND = new ErrorCode(1_030_015_411, "设备【{}】已绑定，不可重复绑定");
+    ErrorCode IOT_LOOM_ALREADY_BOUND = new ErrorCode(1_030_015_412, "织机已被设备【{}】绑定，不可重复绑定");
+    ErrorCode IOT_MACHINE_REALTIME_NOT_EXISTS = new ErrorCode(1_030_015_420, "设备实时快照不存在");
+
 }
 
