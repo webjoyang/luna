@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS lunaerp_production_inspection_order (
     id                       int8          NOT NULL,
     code                     varchar(32)   NOT NULL,
     type                     varchar(16)   NOT NULL,
+    package_mode             varchar(16)   NOT NULL DEFAULT 'ROLL',
     status                   varchar(16)   NOT NULL DEFAULT 'DRAFT',
     product_id               int8          NOT NULL,
     product_code             varchar(64)   NULL,
@@ -49,6 +50,8 @@ END $$;
 -- 按天取号、软删不释放编号。勿"修正"为部分唯一索引。
 CREATE UNIQUE INDEX IF NOT EXISTS uk_lb_inspection_order_tenant_code
     ON lunaerp_production_inspection_order (tenant_id, code);
+CREATE INDEX IF NOT EXISTS idx_lb_inspection_order_package_mode
+    ON lunaerp_production_inspection_order (package_mode);
 CREATE INDEX IF NOT EXISTS idx_lb_inspection_order_status
     ON lunaerp_production_inspection_order (status);
 CREATE INDEX IF NOT EXISTS idx_lb_inspection_order_order_date
@@ -62,6 +65,7 @@ COMMENT ON TABLE lunaerp_production_inspection_order IS '生产管理-检验单�
 COMMENT ON COLUMN lunaerp_production_inspection_order.id IS '检验单ID';
 COMMENT ON COLUMN lunaerp_production_inspection_order.code IS '检验单号（INS-YYYYMMDD-NNN，按天取号，租户内全量唯一含软删行，ADR-0015）';
 COMMENT ON COLUMN lunaerp_production_inspection_order.type IS '检验类型（GREIGE 胚布检验 / FINISHED 成品检验）';
+COMMENT ON COLUMN lunaerp_production_inspection_order.package_mode IS '包装模式（字典 lunaerp_inspection_package_mode：ROLL 卷装 / PIECE 匹装），缺省 ROLL';
 COMMENT ON COLUMN lunaerp_production_inspection_order.status IS '检验单状态（字典 lunaerp_inspection_order_status：DRAFT/ACTIVE/COMPLETED/CANCELLED），创建缺省 DRAFT';
 COMMENT ON COLUMN lunaerp_production_inspection_order.product_id IS '关联产品ID（lunaerp_baseinfo_product.id，必填）';
 COMMENT ON COLUMN lunaerp_production_inspection_order.product_code IS '产品编码快照';
@@ -91,7 +95,9 @@ COMMENT ON COLUMN lunaerp_production_inspection_order.tenant_id IS '租户编号
 CREATE TABLE IF NOT EXISTS lunaerp_production_inspection_order_item (
     id                       int8          NOT NULL,
     inspection_order_id      int8          NOT NULL,
-    roll_no                  varchar(64)   NOT NULL,
+    roll_no                  varchar(64)   NULL,
+    piece_no                 varchar(64)   NULL,
+    weaving_ticket_id        int8          NULL,
     vat_no                   varchar(64)   NOT NULL,
     measured_weight          numeric(18,2) NULL,
     length_m                 numeric(18,2) NULL,
@@ -123,11 +129,17 @@ CREATE INDEX IF NOT EXISTS idx_lb_inspection_order_item_order_id
     ON lunaerp_production_inspection_order_item (inspection_order_id);
 CREATE INDEX IF NOT EXISTS idx_lb_inspection_order_item_vat_roll
     ON lunaerp_production_inspection_order_item (vat_no, roll_no);
+CREATE INDEX IF NOT EXISTS idx_lb_inspection_order_item_vat_piece
+    ON lunaerp_production_inspection_order_item (vat_no, piece_no);
+CREATE INDEX IF NOT EXISTS idx_lb_inspection_order_item_weaving_ticket_id
+    ON lunaerp_production_inspection_order_item (weaving_ticket_id);
 
 COMMENT ON TABLE lunaerp_production_inspection_order_item IS '生产管理-检验单录检明细表';
 COMMENT ON COLUMN lunaerp_production_inspection_order_item.id IS '明细ID';
 COMMENT ON COLUMN lunaerp_production_inspection_order_item.inspection_order_id IS '检验单ID（lunaerp_production_inspection_order.id，必填）';
-COMMENT ON COLUMN lunaerp_production_inspection_order_item.roll_no IS '卷号（必填）';
+COMMENT ON COLUMN lunaerp_production_inspection_order_item.roll_no IS '卷号（ROLL 模式必填，PIECE 模式可选且允许重复）';
+COMMENT ON COLUMN lunaerp_production_inspection_order_item.piece_no IS '匹号（PIECE 模式必填，ROLL 模式禁填）';
+COMMENT ON COLUMN lunaerp_production_inspection_order_item.weaving_ticket_id IS '关联织造布票ID（lunaerp_production_weaving_ticket.id，可选，血缘关联）';
 COMMENT ON COLUMN lunaerp_production_inspection_order_item.vat_no IS '缸号（必填）';
 COMMENT ON COLUMN lunaerp_production_inspection_order_item.measured_weight IS '实称重量 KG';
 COMMENT ON COLUMN lunaerp_production_inspection_order_item.length_m IS '米数';
@@ -183,13 +195,15 @@ COMMIT;
 
 -- =============================================================================
 -- 4. 字典类型与字典数据（system_dict_type / system_dict_data，可重复执行）
---    dict_type id 2231（状态）、2232（等级），dict_data id 3584-3587（状态）、3588-3591（等级）。
+--    dict_type id 2231（状态）、2232（等级）、2242（包装模式，ADR-0025），
+--    dict_data id 3584-3587（状态）、3588-3591（等级）、3634-3635（包装模式）。
 -- =============================================================================
 -- @formatter:off
 BEGIN;
 
-DELETE FROM system_dict_type WHERE id IN (2231, 2232);
-DELETE FROM system_dict_data WHERE dict_type IN ('lunaerp_inspection_order_status', 'lunaerp_inspection_grade');
+DELETE FROM system_dict_type WHERE id IN (2231, 2232, 2242);
+DELETE FROM system_dict_data WHERE dict_type IN ('lunaerp_inspection_order_status', 'lunaerp_inspection_grade', 'lunaerp_inspection_package_mode')
+    OR id IN (3634, 3635);
 
 -- 字典类型：检验单状态
 INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time) VALUES (2231, '检验单状态', 'lunaerp_inspection_order_status', 0, 'LunaERP 生产管理-检验单状态', 'admin', '2026-09-21 00:00:00', '1', '2026-09-21 00:00:00', '0', NULL);
@@ -206,6 +220,12 @@ INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_t
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3589, 2, '二等品', 'B', 'lunaerp_inspection_grade', 0, 'info', '', NULL, 'admin', '2026-09-21 00:00:00', '1', '2026-09-21 00:00:00', '0');
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3590, 3, '三等品', 'C', 'lunaerp_inspection_grade', 0, 'warning', '', NULL, 'admin', '2026-09-21 00:00:00', '1', '2026-09-21 00:00:00', '0');
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3591, 4, '等外品', 'DEFECTIVE', 'lunaerp_inspection_grade', 0, 'danger', '', NULL, 'admin', '2026-09-21 00:00:00', '1', '2026-09-21 00:00:00', '0');
+
+-- 字典类型：检验包装模式（ADR-0025）
+INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time) VALUES (2242, '检验包装模式', 'lunaerp_inspection_package_mode', 0, 'LunaERP 生产管理-检验包装模式', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0', NULL);
+-- 检验包装模式：卷装/匹装
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3634, 1, '卷装', 'ROLL', 'lunaerp_inspection_package_mode', 0, 'primary', '', '按卷录检（缺省）', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3635, 2, '匹装', 'PIECE', 'lunaerp_inspection_package_mode', 0, 'success', '', '按匹录检', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
 
 COMMIT;
 -- @formatter:on

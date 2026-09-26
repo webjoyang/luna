@@ -11,7 +11,7 @@
       <!-- 第一区：单据信息 -->
       <div class="section-title">单据信息</div>
       <el-row :gutter="24">
-        <el-col :span="8">
+        <el-col :span="6">
           <el-form-item label="检验单号" prop="code">
             <el-input
               v-model="formData.code"
@@ -21,7 +21,7 @@
             />
           </el-form-item>
         </el-col>
-        <el-col :span="8">
+        <el-col :span="6">
           <el-form-item label="单据日期" prop="orderDate">
             <el-date-picker
               v-model="formData.orderDate"
@@ -32,11 +32,23 @@
             />
           </el-form-item>
         </el-col>
-        <el-col :span="8">
+        <el-col :span="6">
           <el-form-item label="检验类型" prop="type">
             <el-radio-group v-model="formData.type" @change="handleTypeChange">
               <el-radio value="GREIGE">胚布检验</el-radio>
               <el-radio value="FINISHED">成品检验</el-radio>
+            </el-radio-group>
+          </el-form-item>
+        </el-col>
+        <el-col :span="6">
+          <el-form-item label="包装模式" prop="packageMode">
+            <el-radio-group
+              v-model="formData.packageMode"
+              :disabled="!isCreateMode && formData.status !== 'DRAFT'"
+              @change="handlePackageModeChange"
+            >
+              <el-radio value="ROLL">卷装</el-radio>
+              <el-radio value="PIECE">匹装</el-radio>
             </el-radio-group>
           </el-form-item>
         </el-col>
@@ -240,6 +252,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'loaded', order: InspectionOrderVO): void
   (e: 'saved', id: number): void
+  (e: 'mode-change', mode: string): void
   (e: 'cancel'): void
 }>()
 
@@ -262,6 +275,7 @@ const formData = reactive<InspectionOrderVO>({
   code: '',
   type: 'GREIGE',
   status: 'DRAFT',
+  packageMode: 'ROLL',
   productId: undefined as unknown as number,
   productCode: '',
   productName: '',
@@ -279,6 +293,7 @@ const formData = reactive<InspectionOrderVO>({
 const rules: FormRules = {
   orderDate: [{ required: true, message: '请选择单据日期', trigger: 'change' }],
   type: [{ required: true, message: '请选择检验类型', trigger: 'change' }],
+  packageMode: [{ required: true, message: '请选择包装模式', trigger: 'change' }],
   productId: [{ required: true, message: '请选择关联产品', trigger: 'change' }]
 }
 
@@ -293,6 +308,30 @@ const dyeingOptions = ref<DyeingOrderVO[]>([])
 const dyeingLoading = ref(false)
 const contractOptions = ref<SalesContractVO[]>([])
 const contractLoading = ref(false)
+
+// 包装模式切换与守卫
+const previousPackageMode = ref<string>('ROLL')
+
+const handlePackageModeChange = async (val: string | number | boolean | undefined) => {
+  const targetMode = String(val)
+  // 如果已有录检明细，需要二次确认
+  if (props.orderId && formData.rollCount && formData.rollCount > 0 && targetMode !== previousPackageMode.value) {
+    try {
+      await message.confirm(
+        '当前检验单已有录检明细，切换包装模式可能导致已有明细数据校验或显示异常，确定要切换吗？',
+        '切换包装模式确认'
+      )
+      previousPackageMode.value = targetMode
+      emit('mode-change', targetMode)
+    } catch {
+      // 用户取消：回退
+      formData.packageMode = previousPackageMode.value
+    }
+  } else {
+    previousPackageMode.value = targetMode
+    emit('mode-change', targetMode)
+  }
+}
 
 // 类型切换处理
 const handleTypeChange = (val: string | number | boolean | undefined) => {
@@ -471,6 +510,10 @@ const init = async () => {
     try {
       const data = await InspectionOrderApi.getInspectionOrder(props.orderId)
       Object.assign(formData, data)
+      if (!formData.packageMode) {
+        formData.packageMode = 'ROLL'
+      }
+      previousPackageMode.value = formData.packageMode
       // 预填下拉选项以供回显
       if (data.productId) {
         productOptions.value = [{

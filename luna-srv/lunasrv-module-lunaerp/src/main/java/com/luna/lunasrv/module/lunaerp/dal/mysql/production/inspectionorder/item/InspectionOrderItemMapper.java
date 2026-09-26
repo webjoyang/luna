@@ -47,6 +47,21 @@ public interface InspectionOrderItemMapper extends BaseMapperX<InspectionOrderIt
     }
 
     /**
+     * 根据检验单ID、缸号、匹号查询明细（PIECE 模式查重，ADR-0025）
+     *
+     * @param inspectionOrderId 检验单ID
+     * @param vatNo 缸号
+     * @param pieceNo 匹号
+     * @return 录检明细
+     */
+    default InspectionOrderItemDO selectByInspectionOrderIdAndVatNoAndPieceNo(Long inspectionOrderId, String vatNo, String pieceNo) {
+        return selectOne(new LambdaQueryWrapperX<InspectionOrderItemDO>()
+                .eq(InspectionOrderItemDO::getInspectionOrderId, inspectionOrderId)
+                .eq(InspectionOrderItemDO::getVatNo, vatNo)
+                .eq(InspectionOrderItemDO::getPieceNo, pieceNo));
+    }
+
+    /**
      * 查询检验单下的明细数量
      *
      * @param inspectionOrderId 检验单ID

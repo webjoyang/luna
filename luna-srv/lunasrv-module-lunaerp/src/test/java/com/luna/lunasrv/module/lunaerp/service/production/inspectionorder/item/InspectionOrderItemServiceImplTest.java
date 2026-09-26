@@ -93,20 +93,32 @@ class InspectionOrderItemServiceImplTest {
         });
     }
 
+    private static final String PIECE_NO = "P-001";
+
     private InspectionOrderRespVO buildOrder(Long id, String status) {
+        return buildOrder(id, status, "ROLL");
+    }
+
+    private InspectionOrderRespVO buildOrder(Long id, String status, String packageMode) {
         InspectionOrderRespVO order = new InspectionOrderRespVO();
         order.setId(id);
         order.setStatus(status);
         order.setCode("INS-20260921-001");
+        order.setPackageMode(packageMode);
         return order;
     }
 
     private InspectionOrderItemDO buildItem(Long id, Long orderId, String vatNo, String rollNo) {
+        return buildItem(id, orderId, vatNo, rollNo, null);
+    }
+
+    private InspectionOrderItemDO buildItem(Long id, Long orderId, String vatNo, String rollNo, String pieceNo) {
         InspectionOrderItemDO item = new InspectionOrderItemDO();
         item.setId(id);
         item.setInspectionOrderId(orderId);
         item.setVatNo(vatNo);
         item.setRollNo(rollNo);
+        item.setPieceNo(pieceNo);
         item.setMeasuredWeight(new BigDecimal("25.50"));
         item.setLengthM(new BigDecimal("100.00"));
         item.setGrade("A");
@@ -115,11 +127,16 @@ class InspectionOrderItemServiceImplTest {
     }
 
     private InspectionOrderItemSaveReqVO buildSaveReqVO(Long id, Long orderId, String vatNo, String rollNo) {
+        return buildSaveReqVO(id, orderId, vatNo, rollNo, null);
+    }
+
+    private InspectionOrderItemSaveReqVO buildSaveReqVO(Long id, Long orderId, String vatNo, String rollNo, String pieceNo) {
         InspectionOrderItemSaveReqVO reqVO = new InspectionOrderItemSaveReqVO();
         reqVO.setId(id);
         reqVO.setInspectionOrderId(orderId);
         reqVO.setVatNo(vatNo);
         reqVO.setRollNo(rollNo);
+        reqVO.setPieceNo(pieceNo);
         reqVO.setMeasuredWeight(new BigDecimal("25.50"));
         reqVO.setLengthM(new BigDecimal("100.00"));
         reqVO.setGrade("A");
@@ -233,6 +250,94 @@ class InspectionOrderItemServiceImplTest {
         assertEquals(1, captor.getValue().getPieceCount(), "匹数缺省应为 1");
     }
 
+    @Test
+    void createInspectionOrderItem_rollMode_missingRollNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, VAT_NO, "");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "ROLL"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.createInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("卷装模式下卷号不能为空"));
+        verify(inspectionOrderItemMapper, never()).insert(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void createInspectionOrderItem_rollMode_hasPieceNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, VAT_NO, ROLL_NO, "P-01");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "ROLL"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.createInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("卷装模式下禁止填写匹号"));
+        verify(inspectionOrderItemMapper, never()).insert(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void createInspectionOrderItem_pieceMode_missingPieceNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, VAT_NO, ROLL_NO, "");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "PIECE"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.createInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("匹装模式下匹号不能为空"));
+        verify(inspectionOrderItemMapper, never()).insert(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void createInspectionOrderItem_pieceMode_duplicateVatAndPieceNo_throws1030010004() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, VAT_NO, ROLL_NO, PIECE_NO);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "PIECE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, VAT_NO, PIECE_NO))
+                .thenReturn(buildItem(999L, ORDER_ID, VAT_NO, ROLL_NO, PIECE_NO));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.createInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_004, ex.getCode());
+        assertTrue(ex.getMessage().contains("单内匹号【" + PIECE_NO + "】缸号【" + VAT_NO + "】已存在"));
+        verify(inspectionOrderItemMapper, never()).insert(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void createInspectionOrderItem_pieceMode_oneRollSplitMultiplePieces_success() {
+        // 一卷拆多匹：相同 rollNo 但不同 pieceNo，允许保存且不报错
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, VAT_NO, ROLL_NO, "P-002");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "PIECE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, VAT_NO, "P-002"))
+                .thenReturn(null);
+        when(inspectionOrderItemMapper.selectCountByInspectionOrderId(ORDER_ID)).thenReturn(1L);
+
+        Long createdId = inspectionOrderItemService.createInspectionOrderItem(reqVO);
+
+        assertEquals(ITEM_ID, createdId);
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).insert(captor.capture());
+        assertEquals(ROLL_NO, captor.getValue().getRollNo());
+        assertEquals("P-002", captor.getValue().getPieceNo());
+        // 验证没有调用卷号查重（允许卷号重复）
+        verify(inspectionOrderItemMapper, never()).selectByInspectionOrderIdAndVatNoAndRollNo(any(), any(), any());
+    }
+
+    @Test
+    void createInspectionOrderItem_pieceMode_pieceCountAlwaysOne() {
+        // PIECE 模式下无论输入 pieceCount 为几，落库恒为 1
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, VAT_NO, null, PIECE_NO);
+        reqVO.setPieceCount(8);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "PIECE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, VAT_NO, PIECE_NO))
+                .thenReturn(null);
+        when(inspectionOrderItemMapper.selectCountByInspectionOrderId(ORDER_ID)).thenReturn(0L);
+
+        inspectionOrderItemService.createInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).insert(captor.capture());
+        assertEquals(1, captor.getValue().getPieceCount(), "PIECE 模式下 pieceCount 恒为 1");
+        assertNull(captor.getValue().getRollNo(), "PIECE 模式下 rollNo 允许为空");
+    }
+
     // ==================== updateInspectionOrderItem ====================
 
     @Test
@@ -289,6 +394,92 @@ class InspectionOrderItemServiceImplTest {
         assertEquals(ITEM_ID, captor.getValue().getId());
         assertEquals(VAT_NO, captor.getValue().getVatNo());
         assertEquals(ROLL_NO, captor.getValue().getRollNo());
+    }
+
+    @Test
+    void updateInspectionOrderItem_rollMode_missingRollNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, "");
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO));
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "ROLL"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.updateInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("卷装模式下卷号不能为空"));
+        verify(inspectionOrderItemMapper, never()).updateById(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void updateInspectionOrderItem_rollMode_hasPieceNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO, "P-01");
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO));
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "ROLL"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.updateInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("卷装模式下禁止填写匹号"));
+        verify(inspectionOrderItemMapper, never()).updateById(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void updateInspectionOrderItem_pieceMode_missingPieceNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO, "");
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO, PIECE_NO));
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "PIECE"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.updateInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("匹装模式下匹号不能为空"));
+        verify(inspectionOrderItemMapper, never()).updateById(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void updateInspectionOrderItem_pieceMode_duplicateVatAndPieceNo_throws1030010004() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO, PIECE_NO);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO, PIECE_NO));
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "PIECE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, VAT_NO, PIECE_NO))
+                .thenReturn(buildItem(888L, ORDER_ID, VAT_NO, ROLL_NO, PIECE_NO));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.updateInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_004, ex.getCode());
+        assertTrue(ex.getMessage().contains("单内匹号【" + PIECE_NO + "】缸号【" + VAT_NO + "】已存在"));
+        verify(inspectionOrderItemMapper, never()).updateById(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void updateInspectionOrderItem_pieceMode_duplicateExcludesSelf_success() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO, PIECE_NO);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO, PIECE_NO));
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "PIECE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, VAT_NO, PIECE_NO))
+                .thenReturn(buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO, PIECE_NO));
+
+        inspectionOrderItemService.updateInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).updateById(captor.capture());
+        assertEquals(ITEM_ID, captor.getValue().getId());
+        assertEquals(1, captor.getValue().getPieceCount(), "PIECE 模式下更新时 pieceCount 恒为 1");
+    }
+
+    @Test
+    void updateInspectionOrderItem_pieceMode_pieceCountAlwaysOne() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, null, PIECE_NO);
+        reqVO.setPieceCount(12);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(buildItem(ITEM_ID, ORDER_ID, VAT_NO, null, PIECE_NO));
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "PIECE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, VAT_NO, PIECE_NO))
+                .thenReturn(null);
+
+        inspectionOrderItemService.updateInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).updateById(captor.capture());
+        assertEquals(1, captor.getValue().getPieceCount(), "PIECE 模式下更新时 pieceCount 恒为 1");
     }
 
     // ==================== deleteInspectionOrderItem ====================
@@ -374,13 +565,6 @@ class InspectionOrderItemServiceImplTest {
             InspectionOrderItemSaveReqVO vo = buildSaveReqVO(null, null, VAT_NO, ROLL_NO);
             Set<ConstraintViolation<InspectionOrderItemSaveReqVO>> violations = validator.validate(vo);
             assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("inspectionOrderId")));
-        }
-
-        @Test
-        void saveReqVO_missingRollNo_failsValidation() {
-            InspectionOrderItemSaveReqVO vo = buildSaveReqVO(null, ORDER_ID, VAT_NO, "");
-            Set<ConstraintViolation<InspectionOrderItemSaveReqVO>> violations = validator.validate(vo);
-            assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("rollNo")));
         }
 
         @Test

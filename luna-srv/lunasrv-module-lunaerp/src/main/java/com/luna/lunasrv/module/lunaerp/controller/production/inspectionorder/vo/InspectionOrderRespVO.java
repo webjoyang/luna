@@ -20,6 +20,9 @@ public class InspectionOrderRespVO {
     @Schema(description = "检验类型（GREIGE 胚布检验 / FINISHED 成品检验）", requiredMode = Schema.RequiredMode.REQUIRED, example = "GREIGE")
     private String type;
 
+    @Schema(description = "包装模式（字典 lunaerp_inspection_package_mode：ROLL 卷装 / PIECE 匹装）", example = "ROLL")
+    private String packageMode;
+
     @Schema(description = "检验单状态（字典 lunaerp_inspection_order_status）", requiredMode = Schema.RequiredMode.REQUIRED, example = "DRAFT")
     private String status;
 

@@ -36,9 +36,19 @@ public class InspectionOrderItemDO extends TenantBaseDO {
     private Long inspectionOrderId;
 
     /**
-     * 卷号
+     * 卷号（ROLL 模式必填，PIECE 模式可选且允许重复）
      */
     private String rollNo;
+
+    /**
+     * 匹号（PIECE 模式必填，ROLL 模式禁填）
+     */
+    private String pieceNo;
+
+    /**
+     * 关联织造布票ID（lunaerp_production_weaving_ticket.id，可选，血缘关联）
+     */
+    private Long weavingTicketId;
 
     /**
      * 缸号

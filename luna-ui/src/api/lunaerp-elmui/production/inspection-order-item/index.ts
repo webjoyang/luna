@@ -4,7 +4,8 @@ import request from '@/config/axios'
 export interface InspectionOrderItemVO {
   id?: number
   inspectionOrderId: number
-  rollNo: string
+  rollNo?: string
+  pieceNo?: string
   vatNo: string
   measuredWeight?: number
   lengthM?: number
@@ -16,6 +17,7 @@ export interface InspectionOrderItemVO {
   productCode?: string
   productName?: string
   pieceCount?: number
+  weavingTicketId?: number
   remark?: string
   createTime?: Date | string
   updateTime?: Date | string
@@ -32,7 +34,8 @@ export interface InspectionOrderItemPageParam {
 export interface InspectionOrderItemSaveReqVO {
   id?: number
   inspectionOrderId: number
-  rollNo: string
+  rollNo?: string
+  pieceNo?: string
   vatNo: string
   measuredWeight?: number
   lengthM?: number
@@ -44,6 +47,7 @@ export interface InspectionOrderItemSaveReqVO {
   productCode?: string
   productName?: string
   pieceCount?: number
+  weavingTicketId?: number
   remark?: string
 }
 

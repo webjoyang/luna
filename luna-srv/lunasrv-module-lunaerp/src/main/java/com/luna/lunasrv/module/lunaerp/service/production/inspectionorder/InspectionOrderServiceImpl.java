@@ -144,6 +144,10 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
         if (!StringUtils.hasText(order.getStatus())) {
             order.setStatus(DEFAULT_STATUS);
         }
+        // 包装模式缺省 ROLL
+        if (!StringUtils.hasText(order.getPackageMode())) {
+            order.setPackageMode("ROLL");
+        }
         // 编号：手填查重；留空自动生成
         if (StringUtils.hasText(order.getCode())) {
             validateOrderCodeUnique(null, order.getCode());
@@ -162,13 +166,16 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
     public void updateInspectionOrder(InspectionOrderSaveReqVO updateReqVO) {
         // 校验存在
         InspectionOrderDO exist = validateInspectionOrderExists(updateReqVO.getId());
-        // 仅 DRAFT 态可编辑主表字段
+        // 仅 DRAFT 态可编辑主表字段（含包装模式切换守卫）
         if (!DEFAULT_STATUS.equals(exist.getStatus())) {
             throw exception(INSPECTION_ORDER_STATUS_NOT_ALLOWED);
         }
         InspectionOrderDO updateObj = BeanUtils.toBean(updateReqVO, InspectionOrderDO.class);
         // 主表更新不直接修改状态（状态变更由专用端点处理）
         updateObj.setStatus(null);
+        if (!StringUtils.hasText(updateObj.getPackageMode())) {
+            updateObj.setPackageMode(exist.getPackageMode() != null ? exist.getPackageMode() : "ROLL");
+        }
         // 编号变更时查重
         if (StringUtils.hasText(updateObj.getCode())) {
             validateOrderCodeUnique(updateObj.getId(), updateObj.getCode());
@@ -350,6 +357,7 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
         LambdaQueryWrapperX<InspectionOrderDO> wrapper = new LambdaQueryWrapperX<>();
         // 等值过滤
         wrapper.eqIfPresent(InspectionOrderDO::getType, reqVO.getType());
+        wrapper.eqIfPresent(InspectionOrderDO::getPackageMode, reqVO.getPackageMode());
         wrapper.eqIfPresent(InspectionOrderDO::getStatus, reqVO.getStatus());
         wrapper.eqIfPresent(InspectionOrderDO::getInspectionFactoryId, reqVO.getInspectionFactoryId());
 

@@ -25,6 +25,10 @@ public class InspectionOrderSaveReqVO {
     @jakarta.validation.constraints.Pattern(regexp = "^(GREIGE|FINISHED)$", message = "检验类型只能为 GREIGE 或 FINISHED")
     private String type;
 
+    @Schema(description = "包装模式（字典 lunaerp_inspection_package_mode：ROLL 卷装 / PIECE 匹装，缺省 ROLL）", example = "ROLL")
+    @jakarta.validation.constraints.Pattern(regexp = "^(ROLL|PIECE)$", message = "包装模式只能为 ROLL 或 PIECE")
+    private String packageMode;
+
     @Schema(description = "检验单状态（字典 lunaerp_inspection_order_status，缺省 DRAFT）", example = "DRAFT")
     private String status;
 

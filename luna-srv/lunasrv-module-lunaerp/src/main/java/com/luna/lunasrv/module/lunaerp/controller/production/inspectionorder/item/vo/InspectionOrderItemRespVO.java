@@ -16,8 +16,14 @@ public class InspectionOrderItemRespVO {
     @Schema(description = "所属检验单ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "2048")
     private Long inspectionOrderId;
 
-    @Schema(description = "卷号", requiredMode = Schema.RequiredMode.REQUIRED, example = "R001")
+    @Schema(description = "卷号", example = "R001")
     private String rollNo;
+
+    @Schema(description = "匹号", example = "P001")
+    private String pieceNo;
+
+    @Schema(description = "关联织造布票ID", example = "3001")
+    private Long weavingTicketId;
 
     @Schema(description = "缸号", requiredMode = Schema.RequiredMode.REQUIRED, example = "V001")
     private String vatNo;

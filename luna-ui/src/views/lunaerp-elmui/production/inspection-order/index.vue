@@ -27,6 +27,16 @@
           />
         </el-select>
       </el-form-item>
+      <el-form-item label="包装模式" prop="packageMode">
+        <el-select v-model="queryParams.packageMode" placeholder="全部" clearable class="!w-160px">
+          <el-option
+            v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_INSPECTION_PACKAGE_MODE)"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
+      </el-form-item>
       <el-form-item label="承检方" prop="inspectionFactoryId">
         <el-select
           v-model="queryParams.inspectionFactoryId"
@@ -74,7 +84,7 @@
   </ContentWrap>
 
   <ContentWrap>
-    <!-- 11 列结构 + 操作列 -->
+    <!-- 12 列结构 + 操作列 -->
     <el-table v-loading="loading" :data="list" border stripe>
       <el-table-column label="检验单号" prop="code" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">
@@ -87,6 +97,11 @@
           <el-tag :type="row.type === 'GREIGE' ? 'warning' : 'primary'">
             {{ row.type === 'GREIGE' ? '胚布检验' : row.type === 'FINISHED' ? '成品检验' : (row.type || '—') }}
           </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="包装模式" prop="packageMode" width="100" align="center">
+        <template #default="{ row }">
+          <DictTag :type="DICT_TYPE.LUNAERP_INSPECTION_PACKAGE_MODE" :value="row.packageMode" />
         </template>
       </el-table-column>
       <el-table-column label="产品编码" prop="productCode" min-width="130" show-overflow-tooltip>
@@ -103,8 +118,8 @@
           {{ row.targetWeight != null ? `${row.targetWeight} KG` : '—' }}
         </template>
       </el-table-column>
-      <el-table-column label="已录卷数" prop="rollCount" width="100" align="right">
-        <template #default="{ row }">{{ row.rollCount ?? 0 }}</template>
+      <el-table-column label="已录数量" prop="rollCount" width="100" align="right">
+        <template #default="{ row }">{{ row.rollCount ?? 0 }} {{ row.packageMode === 'PIECE' ? '匹' : '卷' }}</template>
       </el-table-column>
       <el-table-column label="状态" prop="status" width="100" align="center">
         <template #default="{ row }">
@@ -189,6 +204,7 @@ interface QueryParams {
   keyword: string
   type: string
   status: string
+  packageMode: string
   inspectionFactoryId: number | undefined
   orderDate: string[] | undefined
 }
@@ -199,6 +215,7 @@ const queryParams = reactive<QueryParams>({
   keyword: '',
   type: '',
   status: '',
+  packageMode: '',
   inspectionFactoryId: undefined,
   orderDate: undefined
 })
@@ -231,6 +248,7 @@ const getList = async () => {
       keyword: queryParams.keyword || undefined,
       type: queryParams.type || undefined,
       status: queryParams.status || undefined,
+      packageMode: queryParams.packageMode || undefined,
       inspectionFactoryId: queryParams.inspectionFactoryId || undefined,
       orderDateStart: queryParams.orderDate?.[0],
       orderDateEnd: queryParams.orderDate?.[1]

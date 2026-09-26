@@ -95,6 +95,7 @@ class InspectionOrderServiceImplTest {
         reqVO.setType("GREIGE");
         reqVO.setStatus("ACTIVE");
         reqVO.setInspectionFactoryId(2048L);
+        reqVO.setPackageMode("PIECE");
         reqVO.setOrderDateStart(LocalDate.of(2026, 9, 1));
         reqVO.setOrderDateEnd(LocalDate.of(2026, 9, 21));
 
@@ -120,6 +121,8 @@ class InspectionOrderServiceImplTest {
         assertTrue(sqlSegment.contains("status ="), "status 应透传等值过滤");
         // inspection_factory_id 等值透传
         assertTrue(sqlSegment.contains("inspection_factory_id ="), "inspectionFactoryId 应透传等值过滤");
+        // package_mode 等值透传
+        assertTrue(sqlSegment.contains("package_mode ="), "packageMode 应透传等值过滤");
         // 日期区间透传
         assertTrue(sqlSegment.contains("order_date BETWEEN") || (sqlSegment.contains("order_date >=") && sqlSegment.contains("order_date <=")),
                 "orderDate 区间应透传");
@@ -196,6 +199,31 @@ class InspectionOrderServiceImplTest {
         assertEquals("P001", saved.getProductCode());
         assertEquals("全棉汗布", saved.getProductName());
         assertEquals("GREIGE", saved.getType());
+        assertEquals("ROLL", saved.getPackageMode(), "未传 packageMode 时应默认 ROLL");
+    }
+
+    @Test
+    void createInspectionOrder_explicitPackageMode_piece() {
+        InspectionOrderSaveReqVO reqVO = new InspectionOrderSaveReqVO();
+        reqVO.setType("GREIGE");
+        reqVO.setProductId(101L);
+        reqVO.setPackageMode("PIECE");
+
+        ProductDO product = new ProductDO();
+        product.setId(101L);
+        product.setCode("P001");
+        product.setName("全棉汗布");
+        when(productMapper.selectById(101L)).thenReturn(product);
+
+        String prefix = "INS-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "-";
+        when(inspectionOrderMapper.selectListByCodePrefixIncludingDeleted(prefix)).thenReturn(Collections.emptyList());
+        when(inspectionOrderMapper.selectByCodeIncludingDeleted(prefix + "001")).thenReturn(null);
+
+        inspectionOrderService.createInspectionOrder(reqVO);
+
+        ArgumentCaptor<InspectionOrderDO> captor = ArgumentCaptor.forClass(InspectionOrderDO.class);
+        verify(inspectionOrderMapper).insert(captor.capture());
+        assertEquals("PIECE", captor.getValue().getPackageMode());
     }
 
     @Test
@@ -465,6 +493,7 @@ class InspectionOrderServiceImplTest {
         reqVO.setInspectionFactoryId(201L);
         reqVO.setSalesContractId(501L);
         reqVO.setTargetWeight(new BigDecimal("800.00"));
+        reqVO.setPackageMode("PIECE");
         reqVO.setRemark("修改后的备注");
         reqVO.setOrderDate(LocalDate.of(2026, 9, 22));
 
@@ -510,6 +539,7 @@ class InspectionOrderServiceImplTest {
         assertEquals(401L, updated.getDyeingOrderId());
         assertNull(updated.getGreigeOrderId());
         assertEquals(new BigDecimal("800.00"), updated.getTargetWeight());
+        assertEquals("PIECE", updated.getPackageMode());
         assertEquals("修改后的备注", updated.getRemark());
         assertEquals(LocalDate.of(2026, 9, 22), updated.getOrderDate());
     }

@@ -96,15 +96,16 @@
           :is-view-mode="isAllReadOnly"
           @loaded="handleOrderLoaded"
           @saved="handleOrderSaved"
+          @mode-change="handleModeChange"
           @cancel="handleBack"
         />
       </el-tab-pane>
 
       <el-tab-pane label="录检明细" name="items">
         <ItemsTab
-          ref="itemsTabRef"
           :order-id="numericOrderId"
           :order-status="currentOrder?.status"
+          :package-mode="currentOrder?.packageMode || 'ROLL'"
           :is-view-mode="isAllReadOnly"
           :default-product-code="currentOrder?.productCode"
           :default-product-name="currentOrder?.productName"
@@ -136,7 +137,6 @@ const message = useMessage()
 
 const activeTab = ref('basic')
 const basicInfoTabRef = ref<InstanceType<typeof BasicInfoTab>>()
-const itemsTabRef = ref<InstanceType<typeof ItemsTab>>()
 const actionLoading = ref(false)
 
 const orderId = computed(() => (route.params.id as string) || null)
@@ -169,6 +169,14 @@ const handleBack = () => {
 
 const handleOrderLoaded = (order: InspectionOrderVO) => {
   currentOrder.value = order
+}
+
+const handleModeChange = (mode: string) => {
+  if (currentOrder.value) {
+    currentOrder.value.packageMode = mode
+  } else {
+    currentOrder.value = { packageMode: mode } as InspectionOrderVO
+  }
 }
 
 const handleOrderSaved = async (id: number) => {

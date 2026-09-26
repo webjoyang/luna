@@ -43,6 +43,12 @@ public class InspectionOrderDO extends TenantBaseDO {
     private String type;
 
     /**
+     * 包装模式（字典 lunaerp_inspection_package_mode：ROLL 卷装 / PIECE 匹装），创建缺省 ROLL
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String packageMode;
+
+    /**
      * 检验单状态（字典 lunaerp_inspection_order_status：DRAFT/ACTIVE/COMPLETED/CANCELLED），创建缺省 DRAFT
      */
     private String status;

@@ -6,6 +6,7 @@ export interface InspectionOrderVO {
   code?: string
   type: string // GREIGE 胚布检验 / FINISHED 成品检验
   status?: string // DRAFT / ACTIVE / COMPLETED / CANCELLED
+  packageMode?: string // ROLL 卷装 / PIECE 匹装
   productId: number
   productCode?: string
   productName?: string
@@ -32,6 +33,7 @@ export interface InspectionOrderPageParam {
   keyword?: string
   type?: string
   status?: string
+  packageMode?: string
   inspectionFactoryId?: number
   orderDateStart?: string
   orderDateEnd?: string
