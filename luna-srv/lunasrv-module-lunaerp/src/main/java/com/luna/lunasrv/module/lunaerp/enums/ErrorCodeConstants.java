@@ -93,4 +93,17 @@ public interface ErrorCodeConstants {
     ErrorCode WAREHOUSE_LOCATION_CODE_DUPLICATE = new ErrorCode(1_030_013_101, "库位编码【{}】在同一仓库下已存在");
     ErrorCode WAREHOUSE_LOCATION_IN_USE = new ErrorCode(1_030_013_102, "库位已被入库放置记录引用，不能删除，请停用");
 
+    // ========== 织造执行 - 织造单模块 1-030-015-000 ==========
+    ErrorCode WEAVING_ORDER_NOT_EXISTS = new ErrorCode(1_030_015_000, "织造单不存在");
+    ErrorCode WEAVING_ORDER_CODE_DUPLICATE = new ErrorCode(1_030_015_001, "织造单号【{}】已存在");
+    ErrorCode WEAVING_ORDER_STATUS_NOT_ALLOW = new ErrorCode(1_030_015_002, "织造单状态不允许该操作");
+    ErrorCode WEAVING_ORDER_GREIGE_ORDER_INVALID = new ErrorCode(1_030_015_003, "关联胚布单不存在或非自织状态");
+    ErrorCode WEAVING_ORDER_PLANNED_QTY_INVALID = new ErrorCode(1_030_015_004, "计划匹数必须为正整数");
+
+    // ========== 织造执行 - 织机模块 1-030-015-200 ==========
+    ErrorCode LOOM_NOT_EXISTS = new ErrorCode(1_030_015_200, "织机不存在");
+    ErrorCode LOOM_NO_DUPLICATE = new ErrorCode(1_030_015_201, "机台号【{}】已存在");
+    ErrorCode LOOM_REFERENCED_BY_MACHINE_TASK = new ErrorCode(1_030_015_202, "织机已被机台任务引用，不能删除，请停用");
+
 }
+

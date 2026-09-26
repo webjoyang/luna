@@ -479,5 +479,8 @@ export enum DICT_TYPE {
   // ========== LunaERP - 库存管理-入库模块 ==========
   LUNAERP_STOCK_IN_STATUS = 'lunaerp_stock_in_status', // 入库单状态
   LUNAERP_STOCK_IN_TYPE = 'lunaerp_stock_in_type', // 入库类型
-  LUNAERP_STOCK_IN_UNIT = 'lunaerp_stock_in_unit' // 入库单位
+  LUNAERP_STOCK_IN_UNIT = 'lunaerp_stock_in_unit', // 入库单位
+
+  // ========== LunaERP - 生产管理-织造执行模块 ==========
+  LUNAERP_WEAVING_ORDER_STATUS = 'lunaerp_weaving_order_status' // 织造单状态（待排产/生产中/已完工/已取消）
 }
