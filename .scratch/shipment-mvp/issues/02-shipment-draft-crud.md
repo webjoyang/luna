@@ -4,13 +4,36 @@
 
 **Blocked by:** 01 (发货域 SQL 基建)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 发货单主表 + 发货明细 DO/Mapper/VO/Service/Controller 就位（主表 + 明细 + 后续卷清单三个 DO 同包，仅主表有 Controller）
-- [ ] 端点：page/get/get-next-no/create/update/delete 就位，返回 CommonResult/PageResult，VO 带 Swagger 与校验注解
-- [ ] SH-YYYYMMDD-NNN 按天取号 + 手填撞号报 ...016_001 + get-next-no 预览（复用入库单取号机制）
-- [ ] 关联校验与快照：客户必填、仓库必填且 ACTIVE；合同/业务员可空但存在性校验；每行产品必填存在；来源入库明细可空存在性校验；回填全部名称快照，违规报 ...016_003
-- [ ] 聚合保存：明细整表逻辑删除后重插；金额 = quantity×unit_price 与整单 total_amount/total_pieces 服务端权威重算；允许零明细草稿
-- [ ] 状态守卫：仅 DRAFT 可改可删，非草稿报 ...016_002；删除主表级联逻辑删除明细与卷清单
-- [ ] 前端列表页（检索/分页/状态与签收标签/操作列按权限显示）+ 工作台基本信息 Tab + 发货明细 Tab + 操作日志占位 Tab + 隐藏路由
-- [ ] Service 层 Mockito 单测：创建/更新/删除/取号/关联校验/快照回填用例
+- [x] 发货单主表 + 发货明细 DO/Mapper/VO/Service/Controller 就位（主表 + 明细 + 后续卷清单三个 DO 同包，仅主表有 Controller）
+- [x] 端点：page/get/get-next-no/create/update/delete 就位，返回 CommonResult/PageResult，VO 带 Swagger 与校验注解
+- [x] SH-YYYYMMDD-NNN 按天取号 + 手填撞号报 ...016_001 + get-next-no 预览（复用入库单取号机制）
+- [x] 关联校验与快照：客户必填、仓库必填且 ACTIVE；合同/业务员可空但存在性校验；每行产品必填存在；来源入库明细可空存在性校验；回填全部名称快照，违规报 ...016_003
+- [x] 聚合保存：明细整表逻辑删除后重插；金额 = quantity×unit_price 与整单 total_amount/total_pieces 服务端权威重算；允许零明细草稿
+- [x] 状态守卫：仅 DRAFT 可改可删，非草稿报 ...016_002；删除主表级联逻辑删除明细与卷清单
+- [x] 前端列表页（检索/分页/状态与签收标签/操作列按权限显示）+ 工作台基本信息 Tab + 发货明细 Tab + 操作日志占位 Tab + 隐藏路由
+- [x] Service 层 Mockito 单测：创建/更新/删除/取号/关联校验/快照回填用例
+
+## Comments
+
+- 后端实体与数据访问层：
+  - 数据模型：`ShipmentDO`、`ShipmentItemDO`、`ShipmentRollDO` 落于 `com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment`
+  - 数据访问：`ShipmentMapper`、`ShipmentItemMapper`、`ShipmentRollMapper` 落于 `com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment`
+- 控制器与 VO：
+  - 端点控制器：`ShipmentController`，提供 `/create`、`/update`、`/delete`、`/get`、`/page`、`/get-next-no`
+  - VO 套装：`ShipmentSaveReqVO`、`ShipmentRespVO`、`ShipmentPageReqVO`、`ShipmentItemSaveReqVO`、`ShipmentItemRespVO`、`ShipmentRollSaveReqVO`、`ShipmentRollRespVO`
+- 业务服务与逻辑：
+  - `ShipmentService` 与 `ShipmentServiceImpl`
+  - SH-YYYYMMDD-NNN 按天自动取号（超 999 自然扩位、含已删除行防撞与重试机制）+ get-next-no 预览
+  - 严格关联校验与快照回填：客户与仓库必须为 ACTIVE；合同、业务员、产品、来源入库明细存在性校验
+  - 聚合保存与服务端权威重算：金额 = quantity × unitPrice，整单 totalAmount 与 totalPieces 权威重算；明细与卷整表替换
+  - 状态守卫：仅草稿态可编辑/删除，非草稿报 1_030_016_002；删除级联逻辑删除 items 与 rolls
+- 单元测试：
+  - `ShipmentServiceImplTest` 纯 Mockito 16 个测试用例全部通过，覆盖创建、更新、删除、取号、关联校验、快照回填与异常状态守卫
+- 前端页面与路由：
+  - API 客户端：`luna-ui/src/api/lunaerp-elmui/business/shipment/index.ts`
+  - 隐藏路由：`luna-ui/src/router/modules/remaining.ts` 注册 `/business/shipment/workspace/:id?`
+  - 列表页：`luna-ui/src/views/lunaerp-elmui/business/shipment/index.vue`（多条件组合检索、分页、标签渲染、操作按钮权限控制）
+  - 工作台：`luna-ui/src/views/lunaerp-elmui/business/shipment/workspace/index.vue`、`BasicInfoTab.vue`、`ItemsTab.vue`、`LogsTab.vue`
+

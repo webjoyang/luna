@@ -500,6 +500,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/business/sales-contract'
         }
+      },
+      {
+        path: 'shipment/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/business/shipment/workspace/index.vue'),
+        name: 'LunaerpElmuiBusinessShipmentWorkspace',
+        meta: {
+          title: '发货工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/business/shipment'
+        }
       }
     ]
   },
