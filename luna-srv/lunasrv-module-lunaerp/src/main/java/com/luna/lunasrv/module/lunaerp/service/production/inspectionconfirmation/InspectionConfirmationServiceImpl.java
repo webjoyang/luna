@@ -1,15 +1,22 @@
 package com.luna.lunasrv.module.lunaerp.service.production.inspectionconfirmation;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.IdUtil;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionconfirmation.InspectionConfirmationDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionconfirmation.InspectionConfirmationMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
 import com.luna.lunasrv.module.lunaerp.enums.production.inspectionconfirmation.InspectionConfirmationConstants;
+import com.luna.lunasrv.module.lunaerp.enums.production.inspectionconfirmation.InspectionConfirmationResponsibilityEnum;
+import com.luna.lunasrv.module.lunaerp.enums.production.inspectionconfirmation.InspectionConfirmationSourceEnum;
 import com.luna.lunasrv.module.lunaerp.enums.production.inspectionconfirmation.InspectionConfirmationStatusEnum;
 import com.luna.lunasrv.module.system.api.dept.PostApi;
 import com.luna.lunasrv.module.system.api.dept.dto.PostRespDTO;
@@ -17,11 +24,17 @@ import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 
 /**
  * 生产管理-质检确认 Service 实现类
@@ -36,6 +49,9 @@ public class InspectionConfirmationServiceImpl implements InspectionConfirmation
     private InspectionConfirmationMapper inspectionConfirmationMapper;
 
     @Resource
+    private InspectionOrderMapper inspectionOrderMapper;
+
+    @Resource
     private PostApi postApi;
 
     @Resource
@@ -47,6 +63,8 @@ public class InspectionConfirmationServiceImpl implements InspectionConfirmation
         PageResult<InspectionConfirmationDO> pageResult = inspectionConfirmationMapper.selectPage(reqVO, wrapper);
         return BeanUtils.toBean(pageResult, InspectionConfirmationRespVO.class);
     }
+
+    private static final Set<String> ALLOWED_GRADES = Set.of("A", "B", "C", "DEFECTIVE");
 
     @Override
     public List<WorkerOptionRespVO> getWorkerOptions() {
@@ -62,6 +80,103 @@ public class InspectionConfirmationServiceImpl implements InspectionConfirmation
                 .filter(u -> u.getId() != null)
                 .map(u -> new WorkerOptionRespVO(u.getId(), u.getNickname()))
                 .toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long manualCreateInspectionConfirmation(InspectionConfirmationManualCreateReqVO reqVO) {
+        // 1. 必填校验：rollNo、grade、responsibility
+        if (reqVO == null) {
+            throw exception(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS, "登记信息");
+        }
+        if (!StringUtils.hasText(reqVO.getRollNo())) {
+            throw exception(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS, "卷号");
+        }
+        if (!StringUtils.hasText(reqVO.getGrade())) {
+            throw exception(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS, "等级");
+        }
+        String grade = reqVO.getGrade().trim().toUpperCase();
+        if (!ALLOWED_GRADES.contains(grade)) {
+            throw exception(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS, "合法等级（A/B/C/DEFECTIVE）");
+        }
+        if (!StringUtils.hasText(reqVO.getResponsibility())) {
+            throw exception(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS, "责任类型");
+        }
+
+        // 2. 校验责任类型合法性（三值）
+        String responsibility = reqVO.getResponsibility().trim();
+        if (!InspectionConfirmationResponsibilityEnum.isValid(responsibility)) {
+            throw exception(INSPECTION_CONFIRMATION_RESPONSIBILITY_INVALID);
+        }
+
+        // 3. 责任类型为 OPERATOR 时 workerUserId 必填；非 OPERATOR 时置空挡车工信息
+        Long workerUserId = null;
+        String workerName = null;
+        if (InspectionConfirmationResponsibilityEnum.OPERATOR.getValue().equals(responsibility)) {
+            workerUserId = reqVO.getWorkerUserId();
+            if (workerUserId == null) {
+                throw exception(INSPECTION_CONFIRMATION_WORKER_REQUIRED);
+            }
+            adminUserApi.validateUser(workerUserId);
+            AdminUserRespDTO worker = adminUserApi.getUser(workerUserId);
+            workerName = worker != null ? worker.getNickname() : null;
+        }
+
+        // 4. inspectionOrderId 可选：传则校验检验单存在并快照 code（不存在报 1_030_014_002）
+        String inspectionOrderCode = null;
+        if (reqVO.getInspectionOrderId() != null) {
+            InspectionOrderDO inspectionOrder = inspectionOrderMapper.selectById(reqVO.getInspectionOrderId());
+            if (inspectionOrder == null) {
+                throw exception(INSPECTION_CONFIRMATION_ORDER_NOT_EXISTS);
+            }
+            inspectionOrderCode = inspectionOrder.getCode();
+        }
+
+        // 5. 获取当前登录用户（id + 姓名快照）
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        String confirmedByName = null;
+        if (loginUserId != null) {
+            AdminUserRespDTO loginUser = adminUserApi.getUser(loginUserId);
+            confirmedByName = loginUser != null ? loginUser.getNickname() : SecurityFrameworkUtils.getLoginUserNickname();
+        }
+
+        // 6. 认定时间：缺省服务端当前时间、允许传过去时间补录（不允许未来时间）
+        LocalDateTime confirmedAt = reqVO.getConfirmedAt() != null ? reqVO.getConfirmedAt() : LocalDateTime.now();
+        if (confirmedAt.isAfter(LocalDateTime.now().plusMinutes(1))) {
+            throw exception(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS, "认定时间不能为未来时间");
+        }
+
+        // 7. 新 chain_key 与落库（source=MANUAL、status=CONFIRMED）
+        String chainKey = IdUtil.fastSimpleUUID();
+
+        InspectionConfirmationDO confirmation = new InspectionConfirmationDO();
+        confirmation.setChainKey(chainKey);
+        confirmation.setSource(InspectionConfirmationSourceEnum.MANUAL.getValue());
+        confirmation.setStatus(InspectionConfirmationStatusEnum.CONFIRMED.getValue());
+        confirmation.setInspectionOrderId(reqVO.getInspectionOrderId());
+        confirmation.setInspectionOrderCode(inspectionOrderCode);
+        confirmation.setInspectionOrderItemId(null);
+        confirmation.setRollNo(reqVO.getRollNo().trim());
+        confirmation.setVatNo(reqVO.getVatNo() != null ? reqVO.getVatNo().trim() : null);
+        confirmation.setGrade(reqVO.getGrade().trim());
+        confirmation.setMachineNo(reqVO.getMachineNo() != null ? reqVO.getMachineNo().trim() : null);
+        confirmation.setProductCode(reqVO.getProductCode() != null ? reqVO.getProductCode().trim() : null);
+        confirmation.setProductName(reqVO.getProductName() != null ? reqVO.getProductName().trim() : null);
+        confirmation.setColorName(reqVO.getColorName() != null ? reqVO.getColorName().trim() : null);
+        confirmation.setColorNo(reqVO.getColorNo() != null ? reqVO.getColorNo().trim() : null);
+        confirmation.setStyleNo(reqVO.getStyleNo() != null ? reqVO.getStyleNo().trim() : null);
+        confirmation.setMeasuredWeight(reqVO.getMeasuredWeight());
+        confirmation.setLengthM(reqVO.getLengthM());
+        confirmation.setResponsibility(responsibility);
+        confirmation.setWorkerUserId(workerUserId);
+        confirmation.setWorkerName(workerName);
+        confirmation.setConfirmedByUserId(loginUserId);
+        confirmation.setConfirmedByName(confirmedByName);
+        confirmation.setConfirmedAt(confirmedAt);
+        confirmation.setNote(reqVO.getNote() != null ? reqVO.getNote().trim() : null);
+
+        inspectionConfirmationMapper.insert(confirmation);
+        return confirmation.getId();
     }
 
     /**

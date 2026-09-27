@@ -31,4 +31,16 @@ public enum InspectionConfirmationResponsibilityEnum {
     private final String value;
     private final String label;
 
+    public static boolean isValid(String value) {
+        if (value == null) {
+            return false;
+        }
+        for (InspectionConfirmationResponsibilityEnum item : values()) {
+            if (item.getValue().equals(value.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
 }

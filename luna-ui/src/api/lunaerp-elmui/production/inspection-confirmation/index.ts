@@ -62,5 +62,35 @@ export const getInspectionConfirmationPage = (params: InspectionConfirmationPage
 
 /** 查询挡车工候选列表 */
 export const getWorkerOptions = () => {
-  return request.get<WorkerOptionVO[]>({ url: '/lunaerp/production/inspection-confirmation/worker-options' })
+  return request.get<WorkerOptionVO[]>({
+    url: '/lunaerp/production/inspection-confirmation/worker-options'
+  })
+}
+
+/** 手工登记 Request VO */
+export interface InspectionConfirmationManualCreateVO {
+  rollNo: string
+  grade: string
+  responsibility: string
+  workerUserId?: number
+  vatNo?: string
+  machineNo?: string
+  productCode?: string
+  productName?: string
+  colorName?: string
+  colorNo?: string
+  styleNo?: string
+  measuredWeight?: number
+  lengthM?: number
+  inspectionOrderId?: number
+  confirmedAt?: string
+  note?: string
+}
+
+/** 手工登记质检确认 */
+export const manualCreateInspectionConfirmation = (data: InspectionConfirmationManualCreateVO) => {
+  return request.post<number>({
+    url: '/lunaerp/production/inspection-confirmation/manual-create',
+    data
+  })
 }

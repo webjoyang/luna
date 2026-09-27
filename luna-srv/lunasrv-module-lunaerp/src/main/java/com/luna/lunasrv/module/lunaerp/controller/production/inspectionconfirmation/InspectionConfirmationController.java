@@ -2,6 +2,7 @@ package com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirma
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
@@ -9,11 +10,10 @@ import com.luna.lunasrv.module.lunaerp.service.production.inspectionconfirmation
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -41,6 +41,14 @@ public class InspectionConfirmationController {
     @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-confirmation:query')")
     public CommonResult<List<WorkerOptionRespVO>> getWorkerOptions() {
         return success(inspectionConfirmationService.getWorkerOptions());
+    }
+
+    @PostMapping("/manual-create")
+    @Operation(summary = "手工登记质检确认")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-confirmation:create')")
+    public CommonResult<Long> manualCreateInspectionConfirmation(
+            @Valid @RequestBody InspectionConfirmationManualCreateReqVO reqVO) {
+        return success(inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
     }
 
 }

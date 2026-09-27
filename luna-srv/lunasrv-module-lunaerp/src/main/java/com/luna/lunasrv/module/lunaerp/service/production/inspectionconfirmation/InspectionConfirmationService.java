@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.production.inspectionconfirmation;
 
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
@@ -28,5 +29,13 @@ public interface InspectionConfirmationService {
      * @return 挡车工用户候选列表
      */
     List<WorkerOptionRespVO> getWorkerOptions();
+
+    /**
+     * 手工登记质检确认（直接落库已认定记录）
+     *
+     * @param reqVO 手工登记参数
+     * @return 质检确认记录ID
+     */
+    Long manualCreateInspectionConfirmation(InspectionConfirmationManualCreateReqVO reqVO);
 
 }

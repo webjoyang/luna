@@ -1,7 +1,13 @@
 <template>
   <ContentWrap>
     <!-- 搜索区（7 个条件） -->
-    <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
+    <el-form
+      class="-mb-15px"
+      :model="queryParams"
+      ref="queryFormRef"
+      :inline="true"
+      label-width="80px"
+    >
       <el-form-item label="关键词" prop="keyword">
         <el-input
           v-model="queryParams.keyword"
@@ -12,7 +18,12 @@
         />
       </el-form-item>
       <el-form-item label="状态" prop="status">
-        <el-select v-model="queryParams.status" placeholder="待确认 + 已认定" clearable class="!w-180px">
+        <el-select
+          v-model="queryParams.status"
+          placeholder="待确认 + 已认定"
+          clearable
+          class="!w-180px"
+        >
           <el-option label="待确认 + 已认定（有效行）" value="" />
           <el-option
             v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_INSPECTION_CONFIRMATION_STATUS)"
@@ -23,7 +34,12 @@
         </el-select>
       </el-form-item>
       <el-form-item label="责任类型" prop="responsibility">
-        <el-select v-model="queryParams.responsibility" placeholder="全部" clearable class="!w-180px">
+        <el-select
+          v-model="queryParams.responsibility"
+          placeholder="全部"
+          clearable
+          class="!w-180px"
+        >
           <el-option
             v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_INSPECTION_RESPONSIBILITY)"
             :key="dict.value"
@@ -46,12 +62,7 @@
           filterable
           class="!w-160px"
         >
-          <el-option
-            v-for="w in workerOptions"
-            :key="w.id"
-            :label="w.nickname"
-            :value="w.id"
-          />
+          <el-option v-for="w in workerOptions" :key="w.id" :label="w.nickname" :value="w.id" />
         </el-select>
       </el-form-item>
       <el-form-item label="检验单" prop="inspectionOrderId">
@@ -90,17 +101,34 @@
         <el-button type="primary" @click="handleQuery">
           <Icon icon="ep:search" class="mr-1" /> 搜索
         </el-button>
-        <el-button @click="resetQuery">
-          <Icon icon="ep:refresh" class="mr-1" /> 重置
-        </el-button>
+        <el-button @click="resetQuery"> <Icon icon="ep:refresh" class="mr-1" /> 重置 </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <ContentWrap>
+    <!-- 顶部操作栏 -->
+    <div class="mb-14px flex justify-between items-center">
+      <div class="flex gap-2">
+        <el-button
+          type="primary"
+          plain
+          v-hasPermi="['lunaerp:production:inspection-confirmation:create']"
+          @click="openManualCreateDialog"
+        >
+          <Icon icon="ep:plus" class="mr-1" /> 手工登记
+        </el-button>
+      </div>
+    </div>
+
     <!-- 质检确认记录表格（13 列 + 操作列占位） -->
     <el-table v-loading="loading" :data="list" border stripe>
-      <el-table-column label="检验单号" prop="inspectionOrderCode" min-width="160" show-overflow-tooltip>
+      <el-table-column
+        label="检验单号"
+        prop="inspectionOrderCode"
+        min-width="160"
+        show-overflow-tooltip
+      >
         <template #default="{ row }">
           <span class="cell-code">{{ row.inspectionOrderCode || '—' }}</span>
         </template>
@@ -127,7 +155,13 @@
       <el-table-column label="来源" prop="source" width="110" align="center">
         <template #default="{ row }">
           <el-tag :type="row.source === 'INSPECTION' ? 'primary' : 'info'">
-            {{ row.source === 'INSPECTION' ? '检验单引入' : row.source === 'MANUAL' ? '手工登记' : (row.source || '—') }}
+            {{
+              row.source === 'INSPECTION'
+                ? '检验单引入'
+                : row.source === 'MANUAL'
+                  ? '手工登记'
+                  : row.source || '—'
+            }}
           </el-tag>
         </template>
       </el-table-column>
@@ -182,6 +216,13 @@
       v-model:limit="queryParams.pageSize"
       @pagination="getList"
     />
+
+    <!-- 手工登记弹窗 -->
+    <ManualCreateDialog
+      ref="manualCreateDialogRef"
+      :worker-options="workerOptions"
+      @success="handleManualCreateSuccess"
+    />
   </ContentWrap>
 </template>
 
@@ -196,6 +237,7 @@ import type {
 } from '@/api/lunaerp-elmui/production/inspection-confirmation'
 import * as InspectionOrderApi from '@/api/lunaerp-elmui/production/inspection-order'
 import type { InspectionOrderVO } from '@/api/lunaerp-elmui/production/inspection-order'
+import ManualCreateDialog from './ManualCreateDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiProductionInspectionConfirmation' })
 
@@ -203,6 +245,17 @@ const loading = ref(true)
 const total = ref(0)
 const list = ref<InspectionConfirmationVO[]>([])
 const queryFormRef = ref()
+const manualCreateDialogRef = ref()
+
+/** 打开手工登记弹窗 */
+const openManualCreateDialog = () => {
+  manualCreateDialogRef.value?.open()
+}
+
+/** 手工登记成功回调 */
+const handleManualCreateSuccess = () => {
+  getList()
+}
 
 interface QueryParams {
   pageNo: number

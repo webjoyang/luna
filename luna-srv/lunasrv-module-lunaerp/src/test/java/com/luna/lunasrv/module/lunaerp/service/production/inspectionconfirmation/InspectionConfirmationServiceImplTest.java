@@ -3,19 +3,25 @@ package com.luna.lunasrv.module.lunaerp.service.production.inspectionconfirmatio
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.framework.security.core.LoginUser;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionconfirmation.InspectionConfirmationDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionconfirmation.InspectionConfirmationMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
 import com.luna.lunasrv.module.lunaerp.enums.production.inspectionconfirmation.InspectionConfirmationConstants;
 import com.luna.lunasrv.module.system.api.dept.PostApi;
 import com.luna.lunasrv.module.system.api.dept.dto.PostRespDTO;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,12 +30,16 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -47,6 +57,13 @@ import static org.mockito.Mockito.*;
  * 6. worker-options 岗位存在并返回用户列表
  * 7. worker-options 岗位不存在返回空列表不报错
  * 8. worker-options 岗位无用户返回空列表不报错
+ * 9. 手工登记：缺必填三分支（rollNo/grade/responsibility 缺失）报错 1_030_014_006
+ * 10. 手工登记：非法 responsibility 报错 1_030_014_004
+ * 11. 手工登记：OPERATOR 缺 workerUserId 报错 1_030_014_005
+ * 12. 手工登记：关联检验单不存在报错 1_030_014_002
+ * 13. 手工登记：成功落库 CONFIRMED/MANUAL/新 chain_key/认定人/挡车工快照
+ * 14. 手工登记：补录认定时间采用
+ * 15. 手工登记：EQUIPMENT/WAIVED 挡车工可空
  *
  * @author luna
  */
@@ -55,6 +72,9 @@ class InspectionConfirmationServiceImplTest {
 
     @Mock
     private InspectionConfirmationMapper inspectionConfirmationMapper;
+
+    @Mock
+    private InspectionOrderMapper inspectionOrderMapper;
 
     @Mock
     private PostApi postApi;
@@ -69,6 +89,11 @@ class InspectionConfirmationServiceImplTest {
     void setUp() {
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), InspectionConfirmationDO.class);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     // ==================== getInspectionConfirmationPage ====================
@@ -301,6 +326,237 @@ class InspectionConfirmationServiceImplTest {
 
         assertNotNull(result);
         assertTrue(result.isEmpty());
+    }
+
+    // ==================== manualCreateInspectionConfirmation ====================
+
+    @Test
+    @DisplayName("手工登记：缺必填项 rollNo，报错 1_030_014_006")
+    void manualCreate_rollNoEmpty_throwsException() {
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("   ");
+        reqVO.setGrade("B");
+        reqVO.setResponsibility("EQUIPMENT");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("手工登记：缺必填项 grade，报错 1_030_014_006")
+    void manualCreate_gradeEmpty_throwsException() {
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R001");
+        reqVO.setGrade(null);
+        reqVO.setResponsibility("EQUIPMENT");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("手工登记：非法 grade 值，报错 1_030_014_006")
+    void manualCreate_invalidGrade_throwsException() {
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R001");
+        reqVO.setGrade("INVALID_GRADE");
+        reqVO.setResponsibility("EQUIPMENT");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("手工登记：认定时间为未来时间，报错 1_030_014_006")
+    void manualCreate_futureConfirmedAt_throwsException() {
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R001");
+        reqVO.setGrade("B");
+        reqVO.setResponsibility("EQUIPMENT");
+        reqVO.setConfirmedAt(LocalDateTime.now().plusHours(2));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("手工登记：缺必填项 responsibility，报错 1_030_014_006")
+    void manualCreate_responsibilityEmpty_throwsException() {
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R001");
+        reqVO.setGrade("B");
+        reqVO.setResponsibility("");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("手工登记：非法 responsibility 报错 1_030_014_004")
+    void manualCreate_invalidResponsibility_throwsException() {
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R001");
+        reqVO.setGrade("B");
+        reqVO.setResponsibility("UNKNOWN_TYPE");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_RESPONSIBILITY_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("手工登记：责任为 OPERATOR 时未指定挡车工，报错 1_030_014_005")
+    void manualCreate_operatorMissingWorker_throwsException() {
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R001");
+        reqVO.setGrade("B");
+        reqVO.setResponsibility("OPERATOR");
+        reqVO.setWorkerUserId(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_WORKER_REQUIRED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("手工登记：关联检验单不存在，报错 1_030_014_002")
+    void manualCreate_inspectionOrderNotExists_throwsException() {
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R001");
+        reqVO.setGrade("B");
+        reqVO.setResponsibility("EQUIPMENT");
+        reqVO.setInspectionOrderId(999L);
+
+        when(inspectionOrderMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_ORDER_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("手工登记：成功落库 CONFIRMED/MANUAL/新 chain_key/认定人/挡车工快照")
+    void manualCreate_success_recordsConfirmedManualNewChainKeyAndConfirmedBy() {
+        // 模拟登录用户
+        LoginUser loginUser = new LoginUser().setId(10L);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(loginUser, null, Collections.emptyList()));
+        AdminUserRespDTO loginUserDTO = new AdminUserRespDTO();
+        loginUserDTO.setId(10L);
+        loginUserDTO.setNickname("张领班");
+        when(adminUserApi.getUser(10L)).thenReturn(loginUserDTO);
+
+        // 模拟挡车工有效
+        AdminUserRespDTO workerDTO = new AdminUserRespDTO();
+        workerDTO.setId(101L);
+        workerDTO.setNickname("李桂香");
+        when(adminUserApi.getUser(101L)).thenReturn(workerDTO);
+
+        // 模拟检验单
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(2048L);
+        order.setCode("INS-20260927-001");
+        when(inspectionOrderMapper.selectById(2048L)).thenReturn(order);
+
+        // 构造手工登记请求
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R001");
+        reqVO.setGrade("B");
+        reqVO.setResponsibility("OPERATOR");
+        reqVO.setWorkerUserId(101L);
+        reqVO.setVatNo("V001");
+        reqVO.setMachineNo("M-01");
+        reqVO.setProductCode("P001");
+        reqVO.setProductName("全棉汗布");
+        reqVO.setColorName("藏青");
+        reqVO.setColorNo("C-01");
+        reqVO.setStyleNo("S-2026");
+        reqVO.setMeasuredWeight(new BigDecimal("25.50"));
+        reqVO.setLengthM(new BigDecimal("100.00"));
+        reqVO.setInspectionOrderId(2048L);
+        reqVO.setNote("织疵破洞超标");
+
+        Long newId = inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO);
+
+        // 校验入库对象
+        ArgumentCaptor<InspectionConfirmationDO> captor = ArgumentCaptor.forClass(InspectionConfirmationDO.class);
+        verify(inspectionConfirmationMapper).insert(captor.capture());
+        InspectionConfirmationDO saved = captor.getValue();
+
+        assertNotNull(saved.getChainKey(), "chainKey 必须生成");
+        assertFalse(saved.getChainKey().isEmpty(), "chainKey 不能为空");
+        assertEquals("MANUAL", saved.getSource(), "来源应为 MANUAL");
+        assertEquals("CONFIRMED", saved.getStatus(), "状态应为 CONFIRMED");
+        assertEquals("R001", saved.getRollNo());
+        assertEquals("V001", saved.getVatNo());
+        assertEquals("B", saved.getGrade());
+        assertEquals("M-01", saved.getMachineNo());
+        assertEquals("P001", saved.getProductCode());
+        assertEquals("全棉汗布", saved.getProductName());
+        assertEquals("藏青", saved.getColorName());
+        assertEquals("C-01", saved.getColorNo());
+        assertEquals("S-2026", saved.getStyleNo());
+        assertEquals(new BigDecimal("25.50"), saved.getMeasuredWeight());
+        assertEquals(new BigDecimal("100.00"), saved.getLengthM());
+        assertEquals("OPERATOR", saved.getResponsibility());
+        assertEquals(101L, saved.getWorkerUserId());
+        assertEquals("李桂香", saved.getWorkerName());
+        assertEquals(2048L, saved.getInspectionOrderId());
+        assertEquals("INS-20260927-001", saved.getInspectionOrderCode());
+        assertEquals(10L, saved.getConfirmedByUserId(), "认定人应记录当前登录用户ID");
+        assertEquals("张领班", saved.getConfirmedByName(), "认定人应记录当前登录用户姓名快照");
+        assertNotNull(saved.getConfirmedAt(), "缺省应写入认定时间");
+        assertEquals("织疵破洞超标", saved.getNote());
+
+        verify(adminUserApi).validateUser(101L);
+    }
+
+    @Test
+    @DisplayName("手工登记：传过去时间补录时，采用传入的 confirmedAt")
+    void manualCreate_withCustomConfirmedAt_usesProvidedTime() {
+        LocalDateTime pastTime = LocalDateTime.of(2026, 9, 20, 10, 0, 0);
+
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R002");
+        reqVO.setGrade("C");
+        reqVO.setResponsibility("EQUIPMENT");
+        reqVO.setConfirmedAt(pastTime);
+
+        inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO);
+
+        ArgumentCaptor<InspectionConfirmationDO> captor = ArgumentCaptor.forClass(InspectionConfirmationDO.class);
+        verify(inspectionConfirmationMapper).insert(captor.capture());
+        InspectionConfirmationDO saved = captor.getValue();
+
+        assertEquals(pastTime, saved.getConfirmedAt(), "应采用传入的补录时间");
+        assertEquals("CONFIRMED", saved.getStatus());
+        assertEquals("MANUAL", saved.getSource());
+    }
+
+    @Test
+    @DisplayName("手工登记：责任类型为 EQUIPMENT/WAIVED 时，挡车工可为空且不校验用户")
+    void manualCreate_equipmentOrWaivedWithoutWorker_success() {
+        InspectionConfirmationManualCreateReqVO reqVO = new InspectionConfirmationManualCreateReqVO();
+        reqVO.setRollNo("R003");
+        reqVO.setGrade("DEFECTIVE");
+        reqVO.setResponsibility("WAIVED");
+        reqVO.setWorkerUserId(null);
+
+        inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO);
+
+        ArgumentCaptor<InspectionConfirmationDO> captor = ArgumentCaptor.forClass(InspectionConfirmationDO.class);
+        verify(inspectionConfirmationMapper).insert(captor.capture());
+        InspectionConfirmationDO saved = captor.getValue();
+
+        assertEquals("WAIVED", saved.getResponsibility());
+        assertNull(saved.getWorkerUserId());
+        assertNull(saved.getWorkerName());
+        verify(adminUserApi, never()).validateUser(any());
     }
 
 }
