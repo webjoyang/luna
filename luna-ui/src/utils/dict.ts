@@ -487,5 +487,9 @@ export enum DICT_TYPE {
   LUNAERP_WEAVING_TASK_STATUS = 'lunaerp_weaving_task_status', // 机台任务状态（待开始/生产中/暂停异常/已完工）
   LUNAERP_WEAVING_TICKET_STATUS = 'lunaerp_weaving_ticket_status', // 布票状态（已生成/已开工/已完工/已检验/已入库/异常/作废）
   LUNAERP_WEAVING_EXCEPTION_TYPE = 'lunaerp_weaving_exception_type', // 织造异常类型（断纱/坏布/缺纱停机/换机/换人）
-  LUNAERP_YARN_REQUISITION_STATUS = 'lunaerp_yarn_requisition_status' // 领纱单状态（草稿/待发纱/部分发纱/已发纱/已关闭）
+  LUNAERP_YARN_REQUISITION_STATUS = 'lunaerp_yarn_requisition_status', // 领纱单状态（草稿/待发纱/部分发纱/已发纱/已关闭）
+
+  // ========== LunaERP - 生产管理-质检确认模块 ==========
+  LUNAERP_INSPECTION_CONFIRMATION_STATUS = 'lunaerp_inspection_confirmation_status', // 质检确认状态（待确认/已认定/已撤销）
+  LUNAERP_INSPECTION_RESPONSIBILITY = 'lunaerp_inspection_responsibility' // 质检责任类型（设备故障（免扣）/操作失误（扣款）/免扣）
 }
