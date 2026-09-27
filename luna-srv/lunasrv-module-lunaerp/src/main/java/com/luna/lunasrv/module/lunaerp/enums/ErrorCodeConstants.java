@@ -149,5 +149,14 @@ public interface ErrorCodeConstants {
     ErrorCode IOT_LOOM_ALREADY_BOUND = new ErrorCode(1_030_015_412, "织机已被设备【{}】绑定，不可重复绑定");
     ErrorCode IOT_MACHINE_REALTIME_NOT_EXISTS = new ErrorCode(1_030_015_420, "设备实时快照不存在");
 
+    // ========== 生产管理 - 质检确认 1-030-014-000 ==========
+    ErrorCode INSPECTION_CONFIRMATION_NOT_EXISTS = new ErrorCode(1_030_014_000, "质检确认记录不存在");
+    ErrorCode INSPECTION_CONFIRMATION_STATUS_NOT_ALLOWED = new ErrorCode(1_030_014_001, "当前状态不允许该操作");
+    ErrorCode INSPECTION_CONFIRMATION_ORDER_NOT_EXISTS = new ErrorCode(1_030_014_002, "检验单不存在");
+    ErrorCode INSPECTION_CONFIRMATION_ORDER_STATUS_NOT_ALLOWED = new ErrorCode(1_030_014_003, "当前检验单状态不允许生成质检确认");
+    ErrorCode INSPECTION_CONFIRMATION_RESPONSIBILITY_INVALID = new ErrorCode(1_030_014_004, "责任类型不合法");
+    ErrorCode INSPECTION_CONFIRMATION_WORKER_REQUIRED = new ErrorCode(1_030_014_005, "操作失误必须指定挡车工");
+    ErrorCode INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS = new ErrorCode(1_030_014_006, "手工登记必填项缺失：{}");
+
 }
 
