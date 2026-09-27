@@ -32,4 +32,10 @@ public class PostApiImpl implements PostApi {
         return BeanUtils.toBean(list, PostRespDTO.class);
     }
 
+    @Override
+    public PostRespDTO getPostByCode(String code) {
+        PostDO post = postService.getPostByCode(code);
+        return BeanUtils.toBean(post, PostRespDTO.class);
+    }
+
 }

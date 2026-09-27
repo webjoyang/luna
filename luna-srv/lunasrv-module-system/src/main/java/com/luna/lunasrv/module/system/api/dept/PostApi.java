@@ -27,6 +27,14 @@ public interface PostApi {
 
     List<PostRespDTO> getPostList(Collection<Long> ids);
 
+    /**
+     * 根据岗位编码获得岗位信息
+     *
+     * @param code 岗位编码
+     * @return 岗位信息（不存在返回 null）
+     */
+    PostRespDTO getPostByCode(String code);
+
     default Map<Long, PostRespDTO> getPostMap(Collection<Long> ids) {
         if (CollUtil.isEmpty(ids)) {
             return MapUtil.empty();

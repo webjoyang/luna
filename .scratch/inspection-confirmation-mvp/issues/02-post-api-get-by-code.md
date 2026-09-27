@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately，可与 01 并行)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] `PostApi` 新增 `PostRespDTO getPostByCode(String code)`，不改既有 getPostList/validPostList 等任何方法签名
-- [ ] `PostApiImpl` 经 `PostService` 新增同名透传方法实现；PostService 底层直接调用已存在的 `PostMapper.selectByCode`，不新增 SQL/Mapper 方法
-- [ ] 岗位不存在时返回 null，不抛异常
-- [ ] 单元测试覆盖：命中返回岗位、编码不存在返回 null
-- [ ] lunaerp 模块对 system API 层的 maven 依赖可直接注入 PostApi（若 lunaerp 尚未依赖该 API 包，本票补齐依赖；不允许直接访问 system 的 Service/Mapper）
+- [x] `PostApi` 新增 `PostRespDTO getPostByCode(String code)`，不改既有 getPostList/validPostList 等任何方法签名
+- [x] `PostApiImpl` 经 `PostService` 新增同名透传方法实现；PostService 底层直接调用已存在的 `PostMapper.selectByCode`，不新增 SQL/Mapper 方法
+- [x] 岗位不存在时返回 null，不抛异常
+- [x] 单元测试覆盖：命中返回岗位、编码不存在返回 null
+- [x] lunaerp 模块对 system API 层的 maven 依赖可直接注入 PostApi（若 lunaerp 尚未依赖该 API 包，本票补齐依赖；不允许直接访问 system 的 Service/Mapper）

@@ -80,6 +80,14 @@ public interface PostService {
     PostDO getPost(Long id);
 
     /**
+     * 根据岗位编码获得岗位信息
+     *
+     * @param code 岗位编码
+     * @return 岗位信息
+     */
+    PostDO getPostByCode(String code);
+
+    /**
      * 校验岗位们是否有效。如下情况，视为无效：
      * 1. 岗位编号不存在
      * 2. 岗位被禁用

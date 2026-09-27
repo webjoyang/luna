@@ -18,6 +18,12 @@
     </description>
 
     <dependencies>
+        <!-- 业务 API 相关 -->
+        <dependency>
+            <groupId>com.luna.lunasrv</groupId>
+            <artifactId>lunasrv-module-system</artifactId>
+        </dependency>
+
         <!-- 业务组件 -->
         <dependency>
             <groupId>com.luna.lunasrv</groupId>

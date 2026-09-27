@@ -137,6 +137,11 @@ public class PostServiceImpl implements PostService {
     }
 
     @Override
+    public PostDO getPostByCode(String code) {
+        return postMapper.selectByCode(code);
+    }
+
+    @Override
     public void validatePostList(Collection<Long> ids) {
         if (CollUtil.isEmpty(ids)) {
             return;
