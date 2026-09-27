@@ -94,3 +94,23 @@ export const manualCreateInspectionConfirmation = (data: InspectionConfirmationM
     data
   })
 }
+
+/** 从检验单生成质检确认 Request VO */
+export interface InspectionConfirmationGenerateReqVO {
+  inspectionOrderId: number
+}
+
+/** 从检验单生成质检确认 Response VO */
+export interface InspectionConfirmationGenerateRespVO {
+  generatedCount: number
+  skippedCount: number
+}
+
+/** 从检验单生成质检确认 */
+export const generateFromOrder = (data: InspectionConfirmationGenerateReqVO) => {
+  return request.post<InspectionConfirmationGenerateRespVO>({
+    url: '/lunaerp/production/inspection-confirmation/generate-from-order',
+    data
+  })
+}
+

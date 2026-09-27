@@ -25,6 +25,16 @@
           >
             <Icon icon="ep:plus" class="mr-2px" />添加明细
           </el-button>
+          <el-button
+            type="warning"
+            plain
+            :disabled="!canGenerateConfirmation"
+            :loading="generatingConfirmation"
+            @click="handleGenerateConfirmation"
+            v-hasPermi="['lunaerp:production:inspection-confirmation:generate']"
+          >
+            <Icon icon="ep:circle-check" class="mr-2px" />生成质检确认
+          </el-button>
         </div>
 
         <div class="text-gray-500 text-13px">
@@ -296,13 +306,16 @@
 </template>
 
 <script lang="ts" setup>
+import { ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { useRouter } from 'vue-router'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as InspectionOrderItemApi from '@/api/lunaerp-elmui/production/inspection-order-item'
 import type {
   InspectionOrderItemVO,
   InspectionOrderItemSaveReqVO
 } from '@/api/lunaerp-elmui/production/inspection-order-item'
+import * as InspectionConfirmationApi from '@/api/lunaerp-elmui/production/inspection-confirmation'
 import { getWeavingTicketByCode } from '@/api/lunaerp-elmui/production/weaving-ticket'
 
 defineOptions({ name: 'InspectionOrderItemsTab' })
@@ -330,9 +343,11 @@ const emit = defineEmits<{
 }>()
 
 const message = useMessage()
+const { push } = useRouter()
 
 const loading = ref(false)
 const submitting = ref(false)
+const generatingConfirmation = ref(false)
 const list = ref<InspectionOrderItemVO[]>([])
 const total = ref(0)
 
@@ -345,6 +360,10 @@ const isCreateMode = computed(() => !props.orderId)
 const canEdit = computed(() => {
   if (props.isViewMode) return false
   return props.orderStatus === 'DRAFT' || props.orderStatus === 'ACTIVE'
+})
+const canGenerateConfirmation = computed(() => {
+  if (!props.orderId) return false
+  return props.orderStatus === 'ACTIVE' || props.orderStatus === 'COMPLETED'
 })
 
 // 弹窗状态与表单
@@ -509,6 +528,35 @@ const handleDelete = async (id?: number) => {
     emit('item-changed')
     await getList()
   } catch {}
+}
+
+/** 从当前检验单生成质检确认 */
+const handleGenerateConfirmation = async () => {
+  if (!props.orderId) return
+  generatingConfirmation.value = true
+  try {
+    const res = await InspectionConfirmationApi.generateFromOrder({
+      inspectionOrderId: props.orderId
+    })
+    ElMessageBox.confirm(
+      `生成成功！新增 ${res.generatedCount} 卷，跳过 ${res.skippedCount} 卷。是否前往质检确认列表查看？`,
+      '质检确认生成结果',
+      {
+        confirmButtonText: '前往质检确认列表',
+        cancelButtonText: '留在此页',
+        type: 'success'
+      }
+    )
+      .then(() => {
+        push({
+          path: '/production/inspection-confirmation',
+          query: { inspectionOrderId: String(props.orderId) }
+        })
+      })
+      .catch(() => {})
+  } finally {
+    generatingConfirmation.value = false
+  }
 }
 
 // 监听 orderId 变动

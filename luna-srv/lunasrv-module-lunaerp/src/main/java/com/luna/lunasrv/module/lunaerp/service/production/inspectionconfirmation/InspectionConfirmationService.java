@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.service.production.inspectionconfirmation;
 
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
@@ -37,5 +39,13 @@ public interface InspectionConfirmationService {
      * @return 质检确认记录ID
      */
     Long manualCreateInspectionConfirmation(InspectionConfirmationManualCreateReqVO reqVO);
+
+    /**
+     * 从检验单幂等生成质检确认
+     *
+     * @param reqVO 检验单生成参数
+     * @return 生成与跳过计数
+     */
+    InspectionConfirmationGenerateRespVO generateFromOrder(InspectionConfirmationGenerateReqVO reqVO);
 
 }

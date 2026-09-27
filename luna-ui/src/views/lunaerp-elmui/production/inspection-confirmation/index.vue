@@ -227,6 +227,7 @@
 </template>
 
 <script lang="ts" setup>
+import { useRoute } from 'vue-router'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as InspectionConfirmationApi from '@/api/lunaerp-elmui/production/inspection-confirmation'
@@ -240,6 +241,8 @@ import type { InspectionOrderVO } from '@/api/lunaerp-elmui/production/inspectio
 import ManualCreateDialog from './ManualCreateDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiProductionInspectionConfirmation' })
+
+const route = useRoute()
 
 const loading = ref(true)
 const total = ref(0)
@@ -350,7 +353,17 @@ const resetQuery = () => {
 }
 
 /** 初始化 */
-onMounted(() => {
+onMounted(async () => {
+  if (route.query.inspectionOrderId) {
+    const orderId = Number(route.query.inspectionOrderId)
+    queryParams.inspectionOrderId = orderId
+    try {
+      const order = await InspectionOrderApi.getInspectionOrder(orderId)
+      if (order && !orderOptions.value.some((o) => o.id === order.id)) {
+        orderOptions.value = [order, ...orderOptions.value]
+      }
+    } catch {}
+  }
   getList()
   loadWorkerOptions()
   searchInspectionOrders('')

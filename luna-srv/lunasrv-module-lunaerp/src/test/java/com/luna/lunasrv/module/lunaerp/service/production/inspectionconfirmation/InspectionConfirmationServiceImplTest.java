@@ -7,14 +7,18 @@ import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.framework.security.core.LoginUser;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionconfirmation.InspectionConfirmationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionconfirmation.InspectionConfirmationMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.item.InspectionOrderItemMapper;
 import com.luna.lunasrv.module.lunaerp.enums.production.inspectionconfirmation.InspectionConfirmationConstants;
 import com.luna.lunasrv.module.system.api.dept.PostApi;
 import com.luna.lunasrv.module.system.api.dept.dto.PostRespDTO;
@@ -75,6 +79,9 @@ class InspectionConfirmationServiceImplTest {
 
     @Mock
     private InspectionOrderMapper inspectionOrderMapper;
+
+    @Mock
+    private InspectionOrderItemMapper inspectionOrderItemMapper;
 
     @Mock
     private PostApi postApi;
@@ -557,6 +564,304 @@ class InspectionConfirmationServiceImplTest {
         assertNull(saved.getWorkerUserId());
         assertNull(saved.getWorkerName());
         verify(adminUserApi, never()).validateUser(any());
+    }
+
+    // ==================== generateFromOrder ====================
+
+    @Test
+    @DisplayName("从检验单生成：B/C/DEFECTIVE 各生成且快照完整（明细有优先用明细，明细无回退检验单主表）")
+    void generateFromOrder_defectGrades_generatesRecordsWithFullSnapshot() {
+        // 准备主表
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(200L);
+        order.setCode("INS-20260927-001");
+        order.setStatus("ACTIVE");
+        order.setProductCode("P001");
+        order.setProductName("全棉汗布主表");
+        when(inspectionOrderMapper.selectById(200L)).thenReturn(order);
+
+        // 准备明细：B、C、DEFECTIVE
+        InspectionOrderItemDO item1 = new InspectionOrderItemDO();
+        item1.setId(101L);
+        item1.setInspectionOrderId(200L);
+        item1.setRollNo("R01");
+        item1.setVatNo("V01");
+        item1.setGrade("B");
+        item1.setMachineNo("M01");
+        item1.setProductCode("P001-Custom");
+        item1.setProductName("自定义面料名称");
+        item1.setColorName("藏青");
+        item1.setColorNo("C01");
+        item1.setStyleNo("S01");
+        item1.setMeasuredWeight(new BigDecimal("20.50"));
+        item1.setLengthM(new BigDecimal("100.00"));
+
+        InspectionOrderItemDO item2 = new InspectionOrderItemDO();
+        item2.setId(102L);
+        item2.setInspectionOrderId(200L);
+        item2.setRollNo("R02");
+        item2.setVatNo("V02");
+        item2.setGrade("C");
+        item2.setMachineNo("M02");
+        item2.setProductCode(null); // 无明细产品编码，回退主表
+        item2.setProductName(null);
+        item2.setColorName("黑色");
+        item2.setColorNo("C02");
+        item2.setStyleNo("S02");
+        item2.setMeasuredWeight(new BigDecimal("22.00"));
+        item2.setLengthM(new BigDecimal("105.00"));
+
+        InspectionOrderItemDO item3 = new InspectionOrderItemDO();
+        item3.setId(103L);
+        item3.setInspectionOrderId(200L);
+        item3.setRollNo("R03");
+        item3.setVatNo("V03");
+        item3.setGrade("defective"); // 小写测试
+        item3.setMachineNo("M03");
+        item3.setProductCode("");
+        item3.setProductName("");
+        item3.setColorName("白色");
+        item3.setColorNo("C03");
+        item3.setStyleNo("S03");
+        item3.setMeasuredWeight(new BigDecimal("19.80"));
+        item3.setLengthM(new BigDecimal("95.00"));
+
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(200L))
+                .thenReturn(Arrays.asList(item1, item2, item3));
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Collections.emptyList());
+
+        InspectionConfirmationGenerateReqVO reqVO = new InspectionConfirmationGenerateReqVO(200L);
+        InspectionConfirmationGenerateRespVO resp = inspectionConfirmationService.generateFromOrder(reqVO);
+
+        assertNotNull(resp);
+        assertEquals(3, resp.getGeneratedCount());
+        assertEquals(0, resp.getSkippedCount());
+
+        ArgumentCaptor<InspectionConfirmationDO> captor = ArgumentCaptor.forClass(InspectionConfirmationDO.class);
+        verify(inspectionConfirmationMapper, times(3)).insert(captor.capture());
+        List<InspectionConfirmationDO> captured = captor.getAllValues();
+
+        // 校验第 1 卷（B 级）
+        InspectionConfirmationDO c1 = captured.get(0);
+        assertNotNull(c1.getChainKey());
+        assertFalse(c1.getChainKey().isEmpty());
+        assertEquals("INSPECTION", c1.getSource());
+        assertEquals("PENDING", c1.getStatus());
+        assertEquals(200L, c1.getInspectionOrderId());
+        assertEquals("INS-20260927-001", c1.getInspectionOrderCode());
+        assertEquals(101L, c1.getInspectionOrderItemId());
+        assertEquals("R01", c1.getRollNo());
+        assertEquals("V01", c1.getVatNo());
+        assertEquals("B", c1.getGrade());
+        assertEquals("M01", c1.getMachineNo());
+        assertEquals("P001-Custom", c1.getProductCode());
+        assertEquals("自定义面料名称", c1.getProductName());
+        assertEquals("藏青", c1.getColorName());
+        assertEquals("C01", c1.getColorNo());
+        assertEquals("S01", c1.getStyleNo());
+        assertEquals(new BigDecimal("20.50"), c1.getMeasuredWeight());
+        assertEquals(new BigDecimal("100.00"), c1.getLengthM());
+        assertNull(c1.getResponsibility());
+        assertNull(c1.getWorkerUserId());
+
+        // 校验第 2 卷（C 级，回退主表产品信息）
+        InspectionConfirmationDO c2 = captured.get(1);
+        assertEquals("PENDING", c2.getStatus());
+        assertEquals("C", c2.getGrade());
+        assertEquals(102L, c2.getInspectionOrderItemId());
+        assertEquals("P001", c2.getProductCode());
+        assertEquals("全棉汗布主表", c2.getProductName());
+        assertEquals("黑色", c2.getColorName());
+
+        // 校验第 3 卷（DEFECTIVE，回退主表产品信息）
+        InspectionConfirmationDO c3 = captured.get(2);
+        assertEquals("PENDING", c3.getStatus());
+        assertEquals("DEFECTIVE", c3.getGrade());
+        assertEquals(103L, c3.getInspectionOrderItemId());
+        assertEquals("P001", c3.getProductCode());
+        assertEquals("全棉汗布主表", c3.getProductName());
+    }
+
+    @Test
+    @DisplayName("从检验单生成：A 级与无等级明细跳过不生成，仅缺陷卷生成")
+    void generateFromOrder_gradeAOrEmpty_skipped() {
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(200L);
+        order.setCode("INS-20260927-001");
+        order.setStatus("ACTIVE");
+        when(inspectionOrderMapper.selectById(200L)).thenReturn(order);
+
+        InspectionOrderItemDO itemA = new InspectionOrderItemDO();
+        itemA.setId(101L);
+        itemA.setGrade("A");
+
+        InspectionOrderItemDO itemNull = new InspectionOrderItemDO();
+        itemNull.setId(102L);
+        itemNull.setGrade(null);
+
+        InspectionOrderItemDO itemBlank = new InspectionOrderItemDO();
+        itemBlank.setId(103L);
+        itemBlank.setGrade("   ");
+
+        InspectionOrderItemDO itemB = new InspectionOrderItemDO();
+        itemB.setId(104L);
+        itemB.setGrade("B");
+
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(200L))
+                .thenReturn(Arrays.asList(itemA, itemNull, itemBlank, itemB));
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Collections.emptyList());
+
+        InspectionConfirmationGenerateReqVO reqVO = new InspectionConfirmationGenerateReqVO(200L);
+        InspectionConfirmationGenerateRespVO resp = inspectionConfirmationService.generateFromOrder(reqVO);
+
+        assertNotNull(resp);
+        assertEquals(1, resp.getGeneratedCount());
+        assertEquals(3, resp.getSkippedCount());
+        verify(inspectionConfirmationMapper, times(1)).insert(any(InspectionConfirmationDO.class));
+    }
+
+    @Test
+    @DisplayName("从检验单生成：重复调用幂等计数正确（已存在有效确认行跳过，新增 0 跳过 2）")
+    void generateFromOrder_repeatCall_idempotentCountsCorrect() {
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(200L);
+        order.setCode("INS-20260927-001");
+        order.setStatus("ACTIVE");
+        when(inspectionOrderMapper.selectById(200L)).thenReturn(order);
+
+        InspectionOrderItemDO item1 = new InspectionOrderItemDO();
+        item1.setId(101L);
+        item1.setGrade("B");
+
+        InspectionOrderItemDO item2 = new InspectionOrderItemDO();
+        item2.setId(102L);
+        item2.setGrade("C");
+
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(200L))
+                .thenReturn(Arrays.asList(item1, item2));
+
+        // 模拟已有有效行（101L 为 CONFIRMED，102L 为 PENDING）
+        InspectionConfirmationDO conf1 = new InspectionConfirmationDO();
+        conf1.setInspectionOrderItemId(101L);
+        conf1.setStatus("CONFIRMED");
+
+        InspectionConfirmationDO conf2 = new InspectionConfirmationDO();
+        conf2.setInspectionOrderItemId(102L);
+        conf2.setStatus("PENDING");
+
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Arrays.asList(conf1, conf2));
+
+        InspectionConfirmationGenerateReqVO reqVO = new InspectionConfirmationGenerateReqVO(200L);
+        InspectionConfirmationGenerateRespVO resp = inspectionConfirmationService.generateFromOrder(reqVO);
+
+        assertNotNull(resp);
+        assertEquals(0, resp.getGeneratedCount());
+        assertEquals(2, resp.getSkippedCount());
+        verify(inspectionConfirmationMapper, never()).insert(any(InspectionConfirmationDO.class));
+    }
+
+    @Test
+    @DisplayName("从检验单生成：REVOKED 链场景（含克隆出的 PENDING 行）仍正确识别为已有确认行并跳过")
+    void generateFromOrder_revokedChainScenario_stillSkipped() {
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(200L);
+        order.setCode("INS-20260927-001");
+        order.setStatus("ACTIVE");
+        when(inspectionOrderMapper.selectById(200L)).thenReturn(order);
+
+        InspectionOrderItemDO item1 = new InspectionOrderItemDO();
+        item1.setId(101L);
+        item1.setGrade("B");
+
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(200L))
+                .thenReturn(Collections.singletonList(item1));
+
+        // REVOKED 链中包含克隆出的 PENDING 行（status ∈ {PENDING, CONFIRMED} 查出该行）
+        InspectionConfirmationDO clonePending = new InspectionConfirmationDO();
+        clonePending.setInspectionOrderItemId(101L);
+        clonePending.setChainKey("chain-001");
+        clonePending.setStatus("PENDING");
+
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Collections.singletonList(clonePending));
+
+        InspectionConfirmationGenerateReqVO reqVO = new InspectionConfirmationGenerateReqVO(200L);
+        InspectionConfirmationGenerateRespVO resp = inspectionConfirmationService.generateFromOrder(reqVO);
+
+        assertNotNull(resp);
+        assertEquals(0, resp.getGeneratedCount());
+        assertEquals(1, resp.getSkippedCount());
+        verify(inspectionConfirmationMapper, never()).insert(any(InspectionConfirmationDO.class));
+    }
+
+    @Test
+    @DisplayName("从检验单生成：检验单不存在时报 1_030_014_002")
+    void generateFromOrder_orderNotExists_throws002() {
+        when(inspectionOrderMapper.selectById(999L)).thenReturn(null);
+
+        InspectionConfirmationGenerateReqVO reqVO = new InspectionConfirmationGenerateReqVO(999L);
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.generateFromOrder(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_ORDER_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("从检验单生成：检验单状态为 DRAFT 或 CANCELLED 时报 1_030_014_003")
+    void generateFromOrder_orderStatusDraftOrCancelled_throws003() {
+        // DRAFT
+        InspectionOrderDO draftOrder = new InspectionOrderDO();
+        draftOrder.setId(201L);
+        draftOrder.setStatus("DRAFT");
+        when(inspectionOrderMapper.selectById(201L)).thenReturn(draftOrder);
+
+        InspectionConfirmationGenerateReqVO reqDraft = new InspectionConfirmationGenerateReqVO(201L);
+        ServiceException exDraft = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.generateFromOrder(reqDraft));
+        assertEquals(INSPECTION_CONFIRMATION_ORDER_STATUS_NOT_ALLOWED.getCode(), exDraft.getCode());
+
+        // CANCELLED
+        InspectionOrderDO cancelledOrder = new InspectionOrderDO();
+        cancelledOrder.setId(202L);
+        cancelledOrder.setStatus("CANCELLED");
+        when(inspectionOrderMapper.selectById(202L)).thenReturn(cancelledOrder);
+
+        InspectionConfirmationGenerateReqVO reqCancelled = new InspectionConfirmationGenerateReqVO(202L);
+        ServiceException exCancelled = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.generateFromOrder(reqCancelled));
+        assertEquals(INSPECTION_CONFIRMATION_ORDER_STATUS_NOT_ALLOWED.getCode(), exCancelled.getCode());
+    }
+
+    @Test
+    @DisplayName("从检验单生成：检验单状态为 ACTIVE 或 COMPLETED 均放行")
+    void generateFromOrder_orderStatusActiveOrCompleted_allowed() {
+        // ACTIVE
+        InspectionOrderDO activeOrder = new InspectionOrderDO();
+        activeOrder.setId(203L);
+        activeOrder.setStatus("ACTIVE");
+        when(inspectionOrderMapper.selectById(203L)).thenReturn(activeOrder);
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(203L)).thenReturn(Collections.emptyList());
+
+        InspectionConfirmationGenerateRespVO respActive =
+                inspectionConfirmationService.generateFromOrder(new InspectionConfirmationGenerateReqVO(203L));
+        assertNotNull(respActive);
+        assertEquals(0, respActive.getGeneratedCount());
+        assertEquals(0, respActive.getSkippedCount());
+
+        // COMPLETED
+        InspectionOrderDO completedOrder = new InspectionOrderDO();
+        completedOrder.setId(204L);
+        completedOrder.setStatus("COMPLETED");
+        when(inspectionOrderMapper.selectById(204L)).thenReturn(completedOrder);
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(204L)).thenReturn(Collections.emptyList());
+
+        InspectionConfirmationGenerateRespVO respCompleted =
+                inspectionConfirmationService.generateFromOrder(new InspectionConfirmationGenerateReqVO(204L));
+        assertNotNull(respCompleted);
+        assertEquals(0, respCompleted.getGeneratedCount());
+        assertEquals(0, respCompleted.getSkippedCount());
     }
 
 }

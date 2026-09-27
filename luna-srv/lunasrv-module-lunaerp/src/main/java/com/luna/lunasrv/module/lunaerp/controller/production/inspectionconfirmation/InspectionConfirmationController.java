@@ -2,6 +2,8 @@ package com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirma
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
@@ -49,6 +51,14 @@ public class InspectionConfirmationController {
     public CommonResult<Long> manualCreateInspectionConfirmation(
             @Valid @RequestBody InspectionConfirmationManualCreateReqVO reqVO) {
         return success(inspectionConfirmationService.manualCreateInspectionConfirmation(reqVO));
+    }
+
+    @PostMapping("/generate-from-order")
+    @Operation(summary = "从检验单生成质检确认")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-confirmation:generate')")
+    public CommonResult<InspectionConfirmationGenerateRespVO> generateFromOrder(
+            @Valid @RequestBody InspectionConfirmationGenerateReqVO reqVO) {
+        return success(inspectionConfirmationService.generateFromOrder(reqVO));
     }
 
 }
