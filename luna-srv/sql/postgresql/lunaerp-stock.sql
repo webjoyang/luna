@@ -479,10 +479,10 @@ INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_ti
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3599, 1, '千克', 'KG', 'lunaerp_stock_in_unit', 0, '', '', NULL, 'admin', '2026-09-24 00:00:00', '1', '2026-09-24 00:00:00', '0');
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3600, 2, '米', 'M', 'lunaerp_stock_in_unit', 0, '', '', NULL, 'admin', '2026-09-24 00:00:00', '1', '2026-09-24 00:00:00', '0');
 
--- 字典类型：库存物品类型（ADR-0026，使用 2245 避让质检确认 2236/2237）
-DELETE FROM system_dict_type WHERE id = 2245 OR type = 'lunaerp_stock_item_type';
+-- 字典类型：库存物品类型（ADR-0026，使用 2247 避让发货域 2245/2246 与质检确认 2236/2237）
+DELETE FROM system_dict_type WHERE id = 2247 OR type = 'lunaerp_stock_item_type';
 DELETE FROM system_dict_data WHERE dict_type = 'lunaerp_stock_item_type' OR id IN (3601, 3602);
-INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time) VALUES (2245, '库存物品类型', 'lunaerp_stock_item_type', 0, 'LunaERP 库存管理-物品类型（产品/纱线规格）', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0', NULL);
+INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time) VALUES (2247, '库存物品类型', 'lunaerp_stock_item_type', 0, 'LunaERP 库存管理-物品类型（产品/纱线规格）', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0', NULL);
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3601, 1, '产品', 'PRODUCT', 'lunaerp_stock_item_type', 0, 'primary', '', NULL, 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3602, 2, '纱线规格', 'YARN_SPEC', 'lunaerp_stock_item_type', 0, 'warning', '', NULL, 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
 

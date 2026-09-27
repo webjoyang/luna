@@ -491,5 +491,9 @@ export enum DICT_TYPE {
 
   // ========== LunaERP - 生产管理-质检确认模块 ==========
   LUNAERP_INSPECTION_CONFIRMATION_STATUS = 'lunaerp_inspection_confirmation_status', // 质检确认状态（待确认/已认定/已撤销）
-  LUNAERP_INSPECTION_RESPONSIBILITY = 'lunaerp_inspection_responsibility' // 质检责任类型（设备故障（免扣）/操作失误（扣款）/免扣）
+  LUNAERP_INSPECTION_RESPONSIBILITY = 'lunaerp_inspection_responsibility', // 质检责任类型（设备故障（免扣）/操作失误（扣款）/免扣）
+
+  // ========== LunaERP - 业务管理-发货模块 ==========
+  LUNAERP_SHIPMENT_STATUS = 'lunaerp_shipment_status', // 发货单状态（草稿/已发货/已取消）
+  LUNAERP_SHIPMENT_SIGN_STATUS = 'lunaerp_shipment_sign_status' // 发货单签收状态（待签收/已签收/拒签）
 }

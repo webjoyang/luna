@@ -158,5 +158,14 @@ public interface ErrorCodeConstants {
     ErrorCode INSPECTION_CONFIRMATION_WORKER_REQUIRED = new ErrorCode(1_030_014_005, "操作失误必须指定挡车工");
     ErrorCode INSPECTION_CONFIRMATION_MANUAL_REQUIRED_FIELDS = new ErrorCode(1_030_014_006, "手工登记必填项缺失：{}");
 
+    // ========== 业务管理 - 发货单模块 1-030-016-000 ==========
+    ErrorCode SHIPMENT_NOT_EXISTS = new ErrorCode(1_030_016_000, "发货单不存在");
+    ErrorCode SHIPMENT_NO_DUPLICATE = new ErrorCode(1_030_016_001, "发货单号【{}】已存在");
+    ErrorCode SHIPMENT_STATUS_NOT_ALLOW = new ErrorCode(1_030_016_002, "当前状态不允许该操作");
+    ErrorCode SHIPMENT_RELATED_REF_NOT_EXISTS = new ErrorCode(1_030_016_003, "关联的{}不存在或不可用");
+    ErrorCode SHIPMENT_AUDIT_NO_ITEMS = new ErrorCode(1_030_016_004, "审核失败：发货单没有明细");
+    ErrorCode SHIPMENT_STOCK_NOT_ENOUGH = new ErrorCode(1_030_016_005, "库存不足：{} 需要 {} {}，当前可用 {} {}");
+    ErrorCode SHIPMENT_SIGN_STATUS_INVALID = new ErrorCode(1_030_016_006, "签收状态非法");
+
 }
 
