@@ -195,11 +195,11 @@
         <template #default="{ row, $index }">
           <el-button
             link
-            type="primary"
+            :type="isReadOnly ? 'info' : 'primary'"
             size="small"
             @click="handleOpenRolls(row)"
           >
-            卷清单<span v-if="row.rolls && row.rolls.length">({{ row.rolls.length }})</span>
+            {{ isReadOnly ? '查看卷清单' : '卷清单' }}<span v-if="row.rolls && row.rolls.length">({{ row.rolls.length }})</span>
           </el-button>
           <el-button
             v-if="!isReadOnly"
@@ -229,16 +229,25 @@
         <span class="font-bold text-blue-600 text-16px">¥ {{ summaryAmount.toFixed(2) }}</span>
       </div>
     </div>
+
+    <!-- 卷清单弹窗 -->
+    <RollsDialog
+      v-model="rollsDialogVisible"
+      :item-label="currentRollItemLabel"
+      :rolls="currentRollItemRolls"
+      :is-read-only="isReadOnly"
+      @confirm="handleRollsConfirm"
+    />
   </div>
 </template>
 
 <script lang="ts" setup>
 import { ref, computed, onMounted } from 'vue'
-import { useMessage } from '@/hooks/web/useMessage'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
-import type { ShipmentItemVO } from '@/api/lunaerp-elmui/business/shipment'
+import type { ShipmentItemVO, ShipmentRollVO } from '@/api/lunaerp-elmui/business/shipment'
 import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
+import RollsDialog from './RollsDialog.vue'
 
 const props = defineProps<{
   items?: ShipmentItemVO[]
@@ -249,8 +258,6 @@ const emit = defineEmits<{
   (e: 'update:items', val: ShipmentItemVO[]): void
   (e: 'recalculate'): void
 }>()
-
-const message = useMessage()
 
 const itemsList = computed<ShipmentItemVO[]>({
   get: () => props.items || [],
@@ -341,10 +348,45 @@ const handleDeleteRow = (index: number) => {
   emit('recalculate')
 }
 
+// ---- 卷清单弹窗逻辑 ----
+const rollsDialogVisible = ref(false)
+/** 当前打开的明细行索引（-1 表示未打开） */
+const currentRollItemIndex = ref(-1)
+/** 弹窗标题用的产品标签 */
+const currentRollItemLabel = computed(() => {
+  const idx = currentRollItemIndex.value
+  if (idx < 0 || idx >= itemsList.value.length) return ''
+  const item = itemsList.value[idx]
+  return item.productName
+    ? `${item.productName}${item.vatNo ? ' / 缸 ' + item.vatNo : ''}`
+    : ''
+})
+/** 传入弹窗的卷数据（只读时为 ref 快照，可写时为空数组后由弹窗 watch 填充） */
+const currentRollItemRolls = computed<ShipmentRollVO[]>(() => {
+  const idx = currentRollItemIndex.value
+  if (idx < 0 || idx >= itemsList.value.length) return []
+  return itemsList.value[idx].rolls ?? []
+})
+
 const handleOpenRolls = (row: ShipmentItemVO) => {
-  message.alert(`明细行【${row.productName || '未选产品'}】暂无卷清单配置，将在 03 卷清单需求中接入逐卷录入弹窗。`)
+  const idx = itemsList.value.indexOf(row)
+  if (idx < 0) return
+  if (!row.rolls) {
+    row.rolls = []
+  }
+  currentRollItemIndex.value = idx
+  rollsDialogVisible.value = true
 }
 
+const handleRollsConfirm = (rolls: ShipmentRollVO[]) => {
+  const idx = currentRollItemIndex.value
+  if (idx < 0 || idx >= itemsList.value.length) return
+  const next = [...itemsList.value]
+  next[idx] = { ...next[idx], rolls }
+  emit('update:items', next)
+}
+
+// ---- 汇总计算 ----
 const summaryPieces = computed(() => {
   return itemsList.value.reduce((acc, cur) => acc + (cur.pieces || 0), 0)
 })

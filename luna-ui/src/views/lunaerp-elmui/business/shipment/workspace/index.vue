@@ -67,7 +67,6 @@
           :is-read-only="isAllReadOnly"
           :is-create="isCreateMode"
           :preview-no="previewNo"
-          @warehouse-change="handleWarehouseChange"
         />
       </el-tab-pane>
 
@@ -77,6 +76,10 @@
           :is-read-only="isAllReadOnly"
           @recalculate="handleRecalculateTotals"
         />
+      </el-tab-pane>
+
+      <el-tab-pane label="卷清单总览" name="rolls">
+        <RollsOverviewTab :items="formData.items" />
       </el-tab-pane>
 
       <el-tab-pane label="操作日志" name="logs">
@@ -96,6 +99,7 @@ import type { ShipmentVO } from '@/api/lunaerp-elmui/business/shipment'
 import BasicInfoTab from './BasicInfoTab.vue'
 import ItemsTab from './ItemsTab.vue'
 import LogsTab from './LogsTab.vue'
+import RollsOverviewTab from './RollsOverviewTab.vue'
 
 defineOptions({ name: 'LunaerpElmuiBusinessShipmentWorkspace' })
 
@@ -152,10 +156,6 @@ const pageTitle = computed(() => {
 
 const handleBack = () => {
   router.push('/business/shipment')
-}
-
-const handleWarehouseChange = (_warehouseId: number) => {
-  // If warehouse changes, clear warehouse-specific fields if any
 }
 
 const handleRecalculateTotals = () => {

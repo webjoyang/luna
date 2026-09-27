@@ -4,12 +4,12 @@
 
 **Blocked by:** 02 (发货单草稿 CRUD)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `lunaerp_business_shipment_roll` 卷清单 DO/Mapper 随发货单聚合保存（整表替换，无独立 Controller）
-- [ ] 明细行"卷清单"弹窗：卷号/重量/米数/备注多行编辑，随整单一起保存
-- [ ] 软提示"已录卷重 X / 行数量 Y"，不做齐套强制、不做卷号 DB 唯一约束
-- [ ] "卷清单总览"Tab：跨明细行平铺全部卷（含所属产品/缸号归属列）
-- [ ] 非草稿（COMPLETED/CANCELLED）弹窗与总览只读
-- [ ] 卷清单不展开成库存流水、不锁卷、不校验卷归属
-- [ ] Service 层 Mockito 单测覆盖卷清单聚合保存与级联删除行为
+- [x] `lunaerp_business_shipment_roll` 卷清单 DO/Mapper 随发货单聚合保存（整表替换，无独立 Controller）
+- [x] 明细行"卷清单"弹窗：卷号/重量/米数/备注多行编辑，随整单一起保存
+- [x] 软提示"已录卷重 X / 行数量 Y"，不做齐套强制、不做卷号 DB 唯一约束
+- [x] "卷清单总览"Tab：跨明细行平铺全部卷（含所属产品/缸号归属列）
+- [x] 非草稿（COMPLETED/CANCELLED）弹窗与总览只读
+- [x] 卷清单不展开成库存流水、不锁卷、不校验卷归属
+- [x] Service 层 Mockito 单测覆盖卷清单聚合保存与级联删除行为
