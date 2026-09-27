@@ -16,6 +16,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -52,6 +53,18 @@ public interface StockLedgerMapper extends BaseMapperX<StockLedgerDO> {
                 .eqIfPresent(StockLedgerDO::getTxnType, txnType)
                 .orderByAsc(StockLedgerDO::getId));
     }
+
+    /**
+     * 统计指定仓库下某纱线规格的当前库存可用余额（SUM(quantity)）
+     *
+     * @param warehouseId 仓库ID
+     * @param yarnSpecId 纱线规格ID
+     * @return 当前可用余额（null 时由 COALESCE 兜底返回 0）
+     */
+    @Select("SELECT COALESCE(SUM(quantity), 0) FROM lunaerp_stock_ledger " +
+            "WHERE warehouse_id = #{warehouseId} AND yarn_spec_id = #{yarnSpecId} AND deleted = 0")
+    BigDecimal sumQuantityByWarehouseAndYarnSpec(@Param("warehouseId") Long warehouseId,
+                                                 @Param("yarnSpecId") Long yarnSpecId);
 
     /**
      * 实时聚合库存余额分页查询

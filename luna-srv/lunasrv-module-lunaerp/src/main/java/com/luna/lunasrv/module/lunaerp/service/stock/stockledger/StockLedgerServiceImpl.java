@@ -11,6 +11,8 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMa
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+
 /**
  * 库存管理 - 库存台账与余额 Service 实现类（ADR-0017）
  *
@@ -31,6 +33,15 @@ public class StockLedgerServiceImpl implements StockLedgerService {
     public PageResult<StockLedgerRespVO> getStockLedgerPage(StockLedgerPageReqVO pageReqVO) {
         PageResult<StockLedgerDO> pageResult = stockLedgerMapper.selectLedgerPage(pageReqVO);
         return BeanUtils.toBean(pageResult, StockLedgerRespVO.class);
+    }
+
+    @Override
+    public BigDecimal getYarnSpecBalance(Long warehouseId, Long yarnSpecId) {
+        if (warehouseId == null || yarnSpecId == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal balance = stockLedgerMapper.sumQuantityByWarehouseAndYarnSpec(warehouseId, yarnSpecId);
+        return balance != null ? balance : BigDecimal.ZERO;
     }
 
 }

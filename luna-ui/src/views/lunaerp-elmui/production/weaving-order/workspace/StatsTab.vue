@@ -142,6 +142,64 @@
         </template>
       </el-table>
     </el-card>
+
+    <!-- 纱线领用与发纱统计汇总表（Issue 10） -->
+    <el-card shadow="never" class="mt-20px !border-gray-200">
+      <template #header>
+        <div class="flex justify-between items-center">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-14px">用纱统计与发纱汇总</span>
+            <span class="text-gray-400 text-12px">（数据实时源自领纱单与仓库发纱流水）</span>
+          </div>
+          <div class="text-13px">
+            <span class="text-gray-500">累计已发纱总量：</span>
+            <span class="font-bold text-15px text-blue-600">
+              {{ statsData?.totalYarnDispatchedWeight ?? 0 }} KG
+            </span>
+          </div>
+        </div>
+      </template>
+
+      <el-table :data="statsData?.yarnStats || []" border stripe style="width: 100%">
+        <el-table-column type="index" label="序号" width="60" align="center" />
+        <el-table-column prop="yarnSpecName" label="纱线规格" min-width="160">
+          <template #default="{ row }">
+            <span class="font-bold text-gray-800">{{ row.yarnSpecName || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="requiredQty" label="需求总量 (KG)" min-width="120" align="right">
+          <template #default="{ row }">
+            <span class="font-mono text-gray-700">{{ row.requiredQty ?? 0 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="dispatchedQty" label="已发数量 (KG)" min-width="120" align="right">
+          <template #default="{ row }">
+            <span class="font-mono font-bold" :class="row.dispatchedQty > 0 ? 'text-green-600' : 'text-gray-400'">
+              {{ row.dispatchedQty ?? 0 }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="发纱进度" min-width="180">
+          <template #default="{ row }">
+            <div class="flex items-center gap-2">
+              <el-progress
+                :percentage="Math.min(100, Math.max(0, row.dispatchRate ?? 0))"
+                :color="customColorMethod"
+                :stroke-width="6"
+                class="flex-1"
+              />
+              <span class="text-12px text-gray-500">{{ row.dispatchRate ?? 0 }}%</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="unit" label="单位" width="70" align="center">
+          <template #default>KG</template>
+        </el-table-column>
+        <template #empty>
+          <el-empty description="暂无领纱用纱数据" :image-size="70" />
+        </template>
+      </el-table>
+    </el-card>
   </div>
 </template>
 

@@ -53,6 +53,12 @@ public class WeavingOrderStatsRespVO {
     @Schema(description = "机台任务明细统计")
     private List<MachineTaskProgressVO> taskStats;
 
+    @Schema(description = "总用纱发纱量(KG)")
+    private BigDecimal totalYarnDispatchedWeight;
+
+    @Schema(description = "领纱单用纱汇总列表")
+    private List<YarnUsageStatVO> yarnStats;
+
     @Schema(description = "机台任务明细统计 VO")
     @Data
     public static class MachineTaskProgressVO {
@@ -82,5 +88,27 @@ public class WeavingOrderStatsRespVO {
 
         @Schema(description = "任务完成率（百分比）", example = "80.0")
         private Double taskCompletionRate;
+    }
+
+    @Schema(description = "纱线规格用纱统计 VO")
+    @Data
+    public static class YarnUsageStatVO {
+        @Schema(description = "纱线规格ID", example = "10")
+        private Long yarnSpecId;
+
+        @Schema(description = "纱线规格名称", example = "32S 棉")
+        private String yarnSpecName;
+
+        @Schema(description = "需求数量(KG)", example = "100.00")
+        private BigDecimal requiredQty;
+
+        @Schema(description = "已发数量(KG)", example = "80.00")
+        private BigDecimal dispatchedQty;
+
+        @Schema(description = "单位", example = "KG")
+        private String unit;
+
+        @Schema(description = "发纱率（百分比）", example = "80.0")
+        private Double dispatchRate;
     }
 }

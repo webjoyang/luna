@@ -6,6 +6,8 @@ import com.luna.lunasrv.module.lunaerp.controller.stock.stockledger.vo.Inventory
 import com.luna.lunasrv.module.lunaerp.controller.stock.stockledger.vo.StockLedgerPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.stock.stockledger.vo.StockLedgerRespVO;
 
+import java.math.BigDecimal;
+
 /**
  * 库存管理 - 库存台账与余额 Service 接口（ADR-0017）
  *
@@ -28,5 +30,14 @@ public interface StockLedgerService {
      * @return 库存流水分页结果
      */
     PageResult<StockLedgerRespVO> getStockLedgerPage(StockLedgerPageReqVO pageReqVO);
+
+    /**
+     * 获得某仓库下某纱线规格的当前可用余额（SUM(quantity)）
+     *
+     * @param warehouseId 仓库ID
+     * @param yarnSpecId 纱线规格ID
+     * @return 当前可用余额
+     */
+    BigDecimal getYarnSpecBalance(Long warehouseId, Long yarnSpecId);
 
 }

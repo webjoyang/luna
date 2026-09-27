@@ -1,11 +1,10 @@
 package com.luna.lunasrv.module.lunaerp.service.production.weavingorder.requisition.item;
 
 import com.luna.lunasrv.framework.common.pojo.PageResult;
-import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.requisition.item.vo.YarnRequisitionItemPageReqVO;
-import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.requisition.item.vo.YarnRequisitionItemRespVO;
-import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.requisition.item.vo.YarnRequisitionItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.requisition.item.vo.*;
 import jakarta.validation.Valid;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -60,5 +59,36 @@ public interface YarnRequisitionItemService {
      * @return 明细列表
      */
     List<YarnRequisitionItemRespVO> getItemListByRequisitionId(Long requisitionId);
+
+    /**
+     * 领纱明细发纱（同事务 YARN_OUT + dispatchedQty + 状态推导）
+     *
+     * @param dispatchReqVO 发纱请求信息
+     */
+    void dispatchYarn(@Valid YarnRequisitionDispatchReqVO dispatchReqVO);
+
+    /**
+     * 撤销发纱（按发纱记录红冲 YARN_OUT_REVERSAL + 回减 dispatchedQty + 状态回退）
+     *
+     * @param reversalReqVO 撤销红冲请求
+     */
+    void reverseDispatch(@Valid YarnRequisitionDispatchReversalReqVO reversalReqVO);
+
+    /**
+     * 获取指定领纱明细的发纱记录列表
+     *
+     * @param itemId 领纱明细ID
+     * @return 发纱记录列表
+     */
+    List<YarnDispatchRecordRespVO> getDispatchRecordList(Long itemId);
+
+    /**
+     * 查询某仓库下某纱线规格的可用库存余额
+     *
+     * @param warehouseId 仓库ID
+     * @param yarnSpecId 纱线规格ID
+     * @return 可用库存数量
+     */
+    BigDecimal getYarnBalance(Long warehouseId, Long yarnSpecId);
 
 }

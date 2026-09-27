@@ -69,6 +69,12 @@ class WeavingOrderServiceImplTest {
     @Mock
     private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper machineTaskMapper;
 
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.requisition.YarnRequisitionMapper yarnRequisitionMapper;
+
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.requisition.item.YarnRequisitionItemMapper yarnRequisitionItemMapper;
+
     @InjectMocks
     private WeavingOrderServiceImpl weavingOrderService;
 
@@ -442,6 +448,21 @@ class WeavingOrderServiceImplTest {
 
         when(machineTaskMapper.selectListByWeavingOrderId(orderId)).thenReturn(List.of(task));
 
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.YarnRequisitionDO req =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.YarnRequisitionDO();
+        req.setId(100L);
+        when(yarnRequisitionMapper.selectListByWeavingOrderId(orderId)).thenReturn(List.of(req));
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.item.YarnRequisitionItemDO item =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.item.YarnRequisitionItemDO();
+        item.setId(200L);
+        item.setYarnSpecId(1L);
+        item.setYarnSpecName("32S 棉");
+        item.setRequiredQty(new BigDecimal("100.00"));
+        item.setDispatchedQty(new BigDecimal("80.00"));
+        item.setUnit("KG");
+        when(yarnRequisitionItemMapper.selectListByRequisitionIds(any())).thenReturn(List.of(item));
+
         com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO stats =
                 weavingOrderService.getWeavingOrderStats(orderId);
 
@@ -457,6 +478,10 @@ class WeavingOrderServiceImplTest {
         assertNotNull(stats.getTaskStats());
         assertEquals(1, stats.getTaskStats().size());
         assertEquals(50.0, stats.getTaskStats().get(0).getTaskCompletionRate());
+        assertEquals(new BigDecimal("80.00"), stats.getTotalYarnDispatchedWeight());
+        assertNotNull(stats.getYarnStats());
+        assertEquals(1, stats.getYarnStats().size());
+        assertEquals(80.0, stats.getYarnStats().get(0).getDispatchRate());
     }
 
     // ==================== 私有辅助方法 ====================

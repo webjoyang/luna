@@ -105,6 +105,15 @@ export interface MachineTaskProgressVO {
   taskCompletionRate: number
 }
 
+export interface YarnUsageStatVO {
+  yarnSpecId: number
+  yarnSpecName: string
+  requiredQty: number
+  dispatchedQty: number
+  unit: string
+  dispatchRate: number
+}
+
 export interface WeavingOrderStatsVO {
   weavingOrderId: number
   orderCode: string
@@ -120,6 +129,8 @@ export interface WeavingOrderStatsVO {
   completionRate: number
   statusCounts: Record<string, number>
   taskStats: MachineTaskProgressVO[]
+  totalYarnDispatchedWeight?: number
+  yarnStats?: YarnUsageStatVO[]
 }
 
 // 获得织造单统计数据（计划匹数、有效票数、作废数、完工数、完成率、各状态计数）

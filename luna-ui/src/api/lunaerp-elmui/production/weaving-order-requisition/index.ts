@@ -1,4 +1,4 @@
-﻿import request from '@/config/axios'
+import request from '@/config/axios'
 
 // 领纱单 VO
 export interface YarnRequisitionVO {
@@ -189,3 +189,72 @@ export const updateYarnRequisitionItem = (data: YarnRequisitionItemSaveReqVO) =>
 export const deleteYarnRequisitionItem = (id: number) => {
   return request.delete<boolean>({ url: `/lunaerp/production/weaving-order-requisition-item/delete?id=${id}` })
 }
+
+// ==================== 发纱与撤销红冲（Issue 10）API ====================
+
+// 发纱请求 VO
+export interface YarnRequisitionDispatchReqVO {
+  itemId: number
+  warehouseId: number
+  locationId?: number
+  dispatchQty: number
+  remark?: string
+}
+
+// 撤销发纱（红冲）请求 VO
+export interface YarnRequisitionDispatchReversalReqVO {
+  stockLedgerId: number
+  remark?: string
+}
+
+// 发纱记录 VO
+export interface YarnDispatchRecordRespVO {
+  id: number
+  itemId?: number
+  yarnSpecId?: number
+  yarnSpecName?: string
+  warehouseId?: number
+  warehouseName?: string
+  locationId?: number
+  locationCode?: string
+  quantity?: number
+  unit?: string
+  txnType?: string
+  reversed?: boolean
+  reversalTime?: string
+  createTime?: string
+  creator?: string
+  remark?: string
+  relatedDocNo?: string
+}
+
+// 领纱明细发纱（同事务 YARN_OUT + dispatchedQty + 状态推导）
+export const dispatchYarn = (data: YarnRequisitionDispatchReqVO) => {
+  return request.post<boolean>({
+    url: '/lunaerp/production/weaving-order-requisition-item/dispatch',
+    data
+  })
+}
+
+// 撤销发纱（按发纱记录红冲 YARN_OUT_REVERSAL + 回减 dispatchedQty + 状态回退）
+export const reverseDispatch = (data: YarnRequisitionDispatchReversalReqVO) => {
+  return request.post<boolean>({
+    url: '/lunaerp/production/weaving-order-requisition-item/reverse-dispatch',
+    data
+  })
+}
+
+// 获取领纱明细发纱记录列表
+export const getDispatchRecordList = (itemId: number) => {
+  return request.get<YarnDispatchRecordRespVO[]>({
+    url: `/lunaerp/production/weaving-order-requisition-item/list-dispatch-records?itemId=${itemId}`
+  })
+}
+
+// 获取某仓库下某纱线规格的可用库存余额
+export const getYarnBalance = (warehouseId: number, yarnSpecId: number) => {
+  return request.get<number>({
+    url: `/lunaerp/production/weaving-order-requisition-item/get-yarn-balance?warehouseId=${warehouseId}&yarnSpecId=${yarnSpecId}`
+  })
+}
+

@@ -22,10 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.ArrayList;
+import java.math.BigDecimal;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
@@ -63,6 +62,12 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
 
     @Resource
     private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper machineTaskMapper;
+
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.requisition.YarnRequisitionMapper yarnRequisitionMapper;
+
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.requisition.item.YarnRequisitionItemMapper yarnRequisitionItemMapper;
 
     @Autowired(required = false)
     private List<WeavingOrderCascadeDeleteListener> cascadeDeleteListeners;
@@ -314,6 +319,53 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
             }
         }
         respVO.setTaskStats(taskStats);
+
+        // 4. 统计用纱发纱汇总数据
+        List<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.YarnRequisitionDO> requisitions =
+                yarnRequisitionMapper.selectListByWeavingOrderId(id);
+        BigDecimal totalDispatchedWeight = BigDecimal.ZERO;
+        List<com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO.YarnUsageStatVO> yarnStats = new ArrayList<>();
+        if (CollUtil.isNotEmpty(requisitions)) {
+            Set<Long> reqIds = requisitions.stream()
+                    .map(com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.YarnRequisitionDO::getId)
+                    .collect(Collectors.toSet());
+            List<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.item.YarnRequisitionItemDO> items =
+                    yarnRequisitionItemMapper.selectListByRequisitionIds(reqIds);
+            if (CollUtil.isNotEmpty(items)) {
+                Map<Long, com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO.YarnUsageStatVO> specMap = new LinkedHashMap<>();
+                for (com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.item.YarnRequisitionItemDO item : items) {
+                    BigDecimal reqQty = item.getRequiredQty() != null ? item.getRequiredQty() : BigDecimal.ZERO;
+                    BigDecimal dispQty = item.getDispatchedQty() != null ? item.getDispatchedQty() : BigDecimal.ZERO;
+                    totalDispatchedWeight = totalDispatchedWeight.add(dispQty);
+
+                    Long specId = item.getYarnSpecId();
+                    com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO.YarnUsageStatVO stat = specMap.get(specId);
+                    if (stat == null) {
+                        stat = new com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO.YarnUsageStatVO();
+                        stat.setYarnSpecId(specId);
+                        stat.setYarnSpecName(item.getYarnSpecName());
+                        stat.setRequiredQty(BigDecimal.ZERO);
+                        stat.setDispatchedQty(BigDecimal.ZERO);
+                        stat.setUnit(item.getUnit());
+                        specMap.put(specId, stat);
+                    }
+                    stat.setRequiredQty(stat.getRequiredQty().add(reqQty));
+                    stat.setDispatchedQty(stat.getDispatchedQty().add(dispQty));
+                }
+
+                for (com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO.YarnUsageStatVO stat : specMap.values()) {
+                    if (stat.getRequiredQty().compareTo(BigDecimal.ZERO) > 0) {
+                        double rate = stat.getDispatchedQty().doubleValue() * 100.0 / stat.getRequiredQty().doubleValue();
+                        stat.setDispatchRate(Math.round(rate * 100.0) / 100.0);
+                    } else {
+                        stat.setDispatchRate(0.0);
+                    }
+                    yarnStats.add(stat);
+                }
+            }
+        }
+        respVO.setTotalYarnDispatchedWeight(totalDispatchedWeight);
+        respVO.setYarnStats(yarnStats);
 
         return respVO;
     }
