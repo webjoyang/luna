@@ -200,9 +200,45 @@
         align="center"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" width="100" align="center" fixed="right">
-        <template #default>
-          <span class="text-gray-400 text-xs">只读浏览</span>
+      <el-table-column label="操作" width="160" align="center" fixed="right">
+        <template #default="{ row }">
+          <div class="flex items-center justify-center gap-1">
+            <!-- 待确认行：[认定] -->
+            <el-button
+              v-if="row.status === 'PENDING'"
+              type="primary"
+              link
+              size="small"
+              v-hasPermi="['lunaerp:production:inspection-confirmation:confirm']"
+              @click="handleConfirm(row)"
+            >
+              认定
+            </el-button>
+
+            <!-- 已认定行 / 已撤销行：[查看链] -->
+            <el-button
+              v-if="row.status === 'CONFIRMED' || row.status === 'REVOKED'"
+              type="primary"
+              link
+              size="small"
+              v-hasPermi="['lunaerp:production:inspection-confirmation:query']"
+              @click="handleViewChain(row)"
+            >
+              查看链
+            </el-button>
+
+            <!-- 已认定行：[撤销重录] -->
+            <el-button
+              v-if="row.status === 'CONFIRMED'"
+              type="danger"
+              link
+              size="small"
+              v-hasPermi="['lunaerp:production:inspection-confirmation:confirm']"
+              @click="handleRevoke(row)"
+            >
+              撤销重录
+            </el-button>
+          </div>
         </template>
       </el-table-column>
       <template #empty>
@@ -223,11 +259,22 @@
       :worker-options="workerOptions"
       @success="handleManualCreateSuccess"
     />
+
+    <!-- 责任认定弹窗 -->
+    <ConfirmDialog
+      ref="confirmDialogRef"
+      :worker-options="workerOptions"
+      @success="handleConfirmSuccess"
+    />
+
+    <!-- 认定链详情抽屉 -->
+    <ChainDrawer ref="chainDrawerRef" />
   </ContentWrap>
 </template>
 
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as InspectionConfirmationApi from '@/api/lunaerp-elmui/production/inspection-confirmation'
@@ -239,6 +286,8 @@ import type {
 import * as InspectionOrderApi from '@/api/lunaerp-elmui/production/inspection-order'
 import type { InspectionOrderVO } from '@/api/lunaerp-elmui/production/inspection-order'
 import ManualCreateDialog from './ManualCreateDialog.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
+import ChainDrawer from './ChainDrawer.vue'
 
 defineOptions({ name: 'LunaerpElmuiProductionInspectionConfirmation' })
 
@@ -249,6 +298,8 @@ const total = ref(0)
 const list = ref<InspectionConfirmationVO[]>([])
 const queryFormRef = ref()
 const manualCreateDialogRef = ref()
+const confirmDialogRef = ref()
+const chainDrawerRef = ref()
 
 /** 打开手工登记弹窗 */
 const openManualCreateDialog = () => {
@@ -258,6 +309,43 @@ const openManualCreateDialog = () => {
 /** 手工登记成功回调 */
 const handleManualCreateSuccess = () => {
   getList()
+}
+
+/** 打开责任认定弹窗 */
+const handleConfirm = (row: InspectionConfirmationVO) => {
+  confirmDialogRef.value?.open(row)
+}
+
+/** 责任认定成功回调 */
+const handleConfirmSuccess = () => {
+  getList()
+}
+
+/** 撤销重录操作 */
+const handleRevoke = async (row: InspectionConfirmationVO) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定撤销卷号【${row.rollNo}】的责任认定吗？原记录将冻结留痕，并生成一条新的待确认记录。`,
+      '撤销重录确认',
+      {
+        confirmButtonText: '确定撤销',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    await InspectionConfirmationApi.revokeInspectionConfirmation({ id: row.id })
+    ElMessage.success('撤销重录成功，已生成新待确认记录')
+    getList()
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      // 非用户点击取消的异常由请求拦截或兜底处理
+    }
+  }
+}
+
+/** 查看认定链抽屉 */
+const handleViewChain = (row: InspectionConfirmationVO) => {
+  chainDrawerRef.value?.open(row.id)
 }
 
 interface QueryParams {

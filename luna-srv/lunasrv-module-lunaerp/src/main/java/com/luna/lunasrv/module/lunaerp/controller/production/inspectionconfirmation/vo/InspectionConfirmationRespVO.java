@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "管理后台 - 生产管理-质检确认 Response VO")
 @Data
@@ -105,5 +106,8 @@ public class InspectionConfirmationRespVO {
 
     @Schema(description = "更新时间")
     private LocalDateTime updateTime;
+
+    @Schema(description = "同认定链所有历史记录（按创建时间正序）")
+    private List<InspectionConfirmationRespVO> chainRecords;
 
 }

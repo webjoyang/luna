@@ -6,11 +6,14 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationConfirmReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionconfirmation.InspectionConfirmationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
@@ -143,11 +146,7 @@ public class InspectionConfirmationServiceImpl implements InspectionConfirmation
 
         // 5. 获取当前登录用户（id + 姓名快照）
         Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
-        String confirmedByName = null;
-        if (loginUserId != null) {
-            AdminUserRespDTO loginUser = adminUserApi.getUser(loginUserId);
-            confirmedByName = loginUser != null ? loginUser.getNickname() : SecurityFrameworkUtils.getLoginUserNickname();
-        }
+        String confirmedByName = getUserNickname(loginUserId);
 
         // 6. 认定时间：缺省服务端当前时间、允许传过去时间补录（不允许未来时间）
         LocalDateTime confirmedAt = reqVO.getConfirmedAt() != null ? reqVO.getConfirmedAt() : LocalDateTime.now();
@@ -321,6 +320,148 @@ public class InspectionConfirmationServiceImpl implements InspectionConfirmation
         // 默认创建时间倒序
         wrapper.orderByDesc(InspectionConfirmationDO::getCreateTime);
         return wrapper;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long confirmInspectionConfirmation(InspectionConfirmationConfirmReqVO reqVO) {
+        // 1. 记录存在性校验
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(INSPECTION_CONFIRMATION_NOT_EXISTS);
+        }
+        InspectionConfirmationDO confirmation = inspectionConfirmationMapper.selectById(reqVO.getId());
+        if (confirmation == null) {
+            throw exception(INSPECTION_CONFIRMATION_NOT_EXISTS);
+        }
+
+        // 2. 状态校验：仅 PENDING 态允许认定，非 PENDING（已认定/已撤销）报 1_030_014_001
+        if (!InspectionConfirmationStatusEnum.PENDING.getValue().equals(confirmation.getStatus())) {
+            throw exception(INSPECTION_CONFIRMATION_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 责任类型校验（EQUIPMENT/OPERATOR/WAIVED 三值合法性）
+        if (!StringUtils.hasText(reqVO.getResponsibility())
+                || !InspectionConfirmationResponsibilityEnum.isValid(reqVO.getResponsibility().trim())) {
+            throw exception(INSPECTION_CONFIRMATION_RESPONSIBILITY_INVALID);
+        }
+        String responsibility = reqVO.getResponsibility().trim();
+
+        // 4. OPERATOR 时 workerUserId 必填；EQUIPMENT/WAIVED 挡车工清空
+        if (InspectionConfirmationResponsibilityEnum.OPERATOR.getValue().equals(responsibility)) {
+            if (reqVO.getWorkerUserId() == null) {
+                throw exception(INSPECTION_CONFIRMATION_WORKER_REQUIRED);
+            }
+            adminUserApi.validateUser(reqVO.getWorkerUserId());
+            AdminUserRespDTO worker = adminUserApi.getUser(reqVO.getWorkerUserId());
+            confirmation.setWorkerUserId(reqVO.getWorkerUserId());
+            confirmation.setWorkerName(worker != null ? worker.getNickname() : null);
+        } else {
+            confirmation.setWorkerUserId(null);
+            confirmation.setWorkerName(null);
+        }
+
+        // 5. 认定人与当前时间快照（不接受请求传入认定时间）
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        String confirmedByName = getUserNickname(loginUserId);
+
+        confirmation.setResponsibility(responsibility);
+        confirmation.setConfirmedByUserId(loginUserId);
+        confirmation.setConfirmedByName(confirmedByName);
+        confirmation.setConfirmedAt(LocalDateTime.now());
+        confirmation.setNote(reqVO.getNote() != null ? reqVO.getNote().trim() : null);
+        confirmation.setStatus(InspectionConfirmationStatusEnum.CONFIRMED.getValue());
+
+        inspectionConfirmationMapper.updateById(confirmation);
+        return confirmation.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public InspectionConfirmationRevokeRespVO revokeInspectionConfirmation(InspectionConfirmationRevokeReqVO reqVO) {
+        // 1. 记录存在性校验
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(INSPECTION_CONFIRMATION_NOT_EXISTS);
+        }
+        InspectionConfirmationDO oldConfirmation = inspectionConfirmationMapper.selectById(reqVO.getId());
+        if (oldConfirmation == null) {
+            throw exception(INSPECTION_CONFIRMATION_NOT_EXISTS);
+        }
+
+        // 2. 状态校验：仅 CONFIRMED 态允许撤销重录（PENDING 无需撤销、REVOKED 不可重复撤销）
+        if (!InspectionConfirmationStatusEnum.CONFIRMED.getValue().equals(oldConfirmation.getStatus())) {
+            throw exception(INSPECTION_CONFIRMATION_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 当前登录用户快照（撤销人）
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        String revokedByName = getUserNickname(loginUserId);
+
+        // 4. 第一步：旧行置 REVOKED 冻结，写撤销人与时间，原责任/挡车工/认定/备注等字段原样不清空
+        oldConfirmation.setStatus(InspectionConfirmationStatusEnum.REVOKED.getValue());
+        oldConfirmation.setRevokedByUserId(loginUserId);
+        oldConfirmation.setRevokedByName(revokedByName);
+        oldConfirmation.setRevokedAt(LocalDateTime.now());
+        inspectionConfirmationMapper.updateById(oldConfirmation);
+
+        // 5. 第二步：插入克隆新 PENDING 行（同 chain_key、source/来源关联/卷快照/挡车工沿用，责任与认定/撤销字段清空）
+        InspectionConfirmationDO freshConfirmation = clonePendingForRevoke(oldConfirmation);
+        inspectionConfirmationMapper.insert(freshConfirmation);
+
+        return new InspectionConfirmationRevokeRespVO(oldConfirmation.getId(), freshConfirmation.getId());
+    }
+
+    private InspectionConfirmationDO clonePendingForRevoke(InspectionConfirmationDO oldConfirmation) {
+        InspectionConfirmationDO fresh = new InspectionConfirmationDO();
+        fresh.setChainKey(oldConfirmation.getChainKey());
+        fresh.setSource(oldConfirmation.getSource());
+        fresh.setStatus(InspectionConfirmationStatusEnum.PENDING.getValue());
+        fresh.setInspectionOrderId(oldConfirmation.getInspectionOrderId());
+        fresh.setInspectionOrderCode(oldConfirmation.getInspectionOrderCode());
+        fresh.setInspectionOrderItemId(oldConfirmation.getInspectionOrderItemId());
+        fresh.setRollNo(oldConfirmation.getRollNo());
+        fresh.setVatNo(oldConfirmation.getVatNo());
+        fresh.setGrade(oldConfirmation.getGrade());
+        fresh.setMachineNo(oldConfirmation.getMachineNo());
+        fresh.setProductCode(oldConfirmation.getProductCode());
+        fresh.setProductName(oldConfirmation.getProductName());
+        fresh.setColorName(oldConfirmation.getColorName());
+        fresh.setColorNo(oldConfirmation.getColorNo());
+        fresh.setStyleNo(oldConfirmation.getStyleNo());
+        fresh.setMeasuredWeight(oldConfirmation.getMeasuredWeight());
+        fresh.setLengthM(oldConfirmation.getLengthM());
+        fresh.setWorkerUserId(oldConfirmation.getWorkerUserId());
+        fresh.setWorkerName(oldConfirmation.getWorkerName());
+        return fresh;
+    }
+
+    private String getUserNickname(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        AdminUserRespDTO user = adminUserApi.getUser(userId);
+        return user != null ? user.getNickname() : SecurityFrameworkUtils.getLoginUserNickname();
+    }
+
+    @Override
+    public InspectionConfirmationRespVO getInspectionConfirmation(Long id) {
+        if (id == null) {
+            throw exception(INSPECTION_CONFIRMATION_NOT_EXISTS);
+        }
+        InspectionConfirmationDO confirmation = inspectionConfirmationMapper.selectById(id);
+        if (confirmation == null) {
+            throw exception(INSPECTION_CONFIRMATION_NOT_EXISTS);
+        }
+
+        InspectionConfirmationRespVO respVO = BeanUtils.toBean(confirmation, InspectionConfirmationRespVO.class);
+
+        // 查同 chain_key 全部行，按创建时间正序排序（含已撤销冻结行）
+        List<InspectionConfirmationDO> chainList = inspectionConfirmationMapper.selectList(
+                new LambdaQueryWrapperX<InspectionConfirmationDO>()
+                        .eq(InspectionConfirmationDO::getChainKey, confirmation.getChainKey())
+                        .orderByAsc(InspectionConfirmationDO::getCreateTime)
+                        .orderByAsc(InspectionConfirmationDO::getId));
+        respVO.setChainRecords(BeanUtils.toBean(chainList, InspectionConfirmationRespVO.class));
+        return respVO;
     }
 
 }

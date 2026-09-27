@@ -1,11 +1,14 @@
 package com.luna.lunasrv.module.lunaerp.service.production.inspectionconfirmation;
 
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationConfirmReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 
 import java.util.List;
@@ -47,5 +50,29 @@ public interface InspectionConfirmationService {
      * @return 生成与跳过计数
      */
     InspectionConfirmationGenerateRespVO generateFromOrder(InspectionConfirmationGenerateReqVO reqVO);
+
+    /**
+     * 责任认定（状态由 PENDING 变为 CONFIRMED）
+     *
+     * @param reqVO 责任认定参数
+     * @return 质检确认记录ID
+     */
+    Long confirmInspectionConfirmation(InspectionConfirmationConfirmReqVO reqVO);
+
+    /**
+     * 撤销重录（旧记录冻结为 REVOKED，克隆新 PENDING 记录挂同链）
+     *
+     * @param reqVO 撤销参数
+     * @return 撤销结果（含已撤销ID与新克隆ID）
+     */
+    InspectionConfirmationRevokeRespVO revokeInspectionConfirmation(InspectionConfirmationRevokeReqVO reqVO);
+
+    /**
+     * 获得质检确认记录详情（附带同认定链全部历史记录）
+     *
+     * @param id 记录ID
+     * @return 质检确认详情（含 chainRecords）
+     */
+    InspectionConfirmationRespVO getInspectionConfirmation(Long id);
 
 }

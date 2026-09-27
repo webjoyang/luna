@@ -7,11 +7,14 @@ import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.framework.security.core.LoginUser;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationConfirmReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationGenerateRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationManualCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionconfirmation.InspectionConfirmationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
@@ -862,6 +865,405 @@ class InspectionConfirmationServiceImplTest {
         assertNotNull(respCompleted);
         assertEquals(0, respCompleted.getGeneratedCount());
         assertEquals(0, respCompleted.getSkippedCount());
+    }
+
+    // ==================== confirmInspectionConfirmation ====================
+
+    @Test
+    @DisplayName("责任认定：记录不存在报 1_030_014_000")
+    void confirmInspectionConfirmation_notExists_throws000() {
+        when(inspectionConfirmationMapper.selectById(999L)).thenReturn(null);
+
+        InspectionConfirmationConfirmReqVO reqVO = new InspectionConfirmationConfirmReqVO();
+        reqVO.setId(999L);
+        reqVO.setResponsibility("EQUIPMENT");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.confirmInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("责任认定：状态非 PENDING（已认定或已撤销）报 1_030_014_001")
+    void confirmInspectionConfirmation_statusNotPending_throws001() {
+        // 已认定 CONFIRMED
+        InspectionConfirmationDO confirmedDO = new InspectionConfirmationDO();
+        confirmedDO.setId(101L);
+        confirmedDO.setStatus("CONFIRMED");
+        when(inspectionConfirmationMapper.selectById(101L)).thenReturn(confirmedDO);
+
+        InspectionConfirmationConfirmReqVO reqConfirmed = new InspectionConfirmationConfirmReqVO();
+        reqConfirmed.setId(101L);
+        reqConfirmed.setResponsibility("EQUIPMENT");
+        ServiceException ex1 = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.confirmInspectionConfirmation(reqConfirmed));
+        assertEquals(INSPECTION_CONFIRMATION_STATUS_NOT_ALLOWED.getCode(), ex1.getCode());
+
+        // 已撤销 REVOKED
+        InspectionConfirmationDO revokedDO = new InspectionConfirmationDO();
+        revokedDO.setId(102L);
+        revokedDO.setStatus("REVOKED");
+        when(inspectionConfirmationMapper.selectById(102L)).thenReturn(revokedDO);
+
+        InspectionConfirmationConfirmReqVO reqRevoked = new InspectionConfirmationConfirmReqVO();
+        reqRevoked.setId(102L);
+        reqRevoked.setResponsibility("EQUIPMENT");
+        ServiceException ex2 = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.confirmInspectionConfirmation(reqRevoked));
+        assertEquals(INSPECTION_CONFIRMATION_STATUS_NOT_ALLOWED.getCode(), ex2.getCode());
+    }
+
+    @Test
+    @DisplayName("责任认定：责任类型非法报 1_030_014_004")
+    void confirmInspectionConfirmation_responsibilityInvalid_throws004() {
+        InspectionConfirmationDO pendingDO = new InspectionConfirmationDO();
+        pendingDO.setId(103L);
+        pendingDO.setStatus("PENDING");
+        when(inspectionConfirmationMapper.selectById(103L)).thenReturn(pendingDO);
+
+        InspectionConfirmationConfirmReqVO reqVO = new InspectionConfirmationConfirmReqVO();
+        reqVO.setId(103L);
+        reqVO.setResponsibility("UNKNOWN_RESPONSIBILITY");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.confirmInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_RESPONSIBILITY_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("责任认定：OPERATOR 缺挡车工报 1_030_014_005")
+    void confirmInspectionConfirmation_operatorWithoutWorker_throws005() {
+        InspectionConfirmationDO pendingDO = new InspectionConfirmationDO();
+        pendingDO.setId(104L);
+        pendingDO.setStatus("PENDING");
+        when(inspectionConfirmationMapper.selectById(104L)).thenReturn(pendingDO);
+
+        InspectionConfirmationConfirmReqVO reqVO = new InspectionConfirmationConfirmReqVO();
+        reqVO.setId(104L);
+        reqVO.setResponsibility("OPERATOR");
+        reqVO.setWorkerUserId(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.confirmInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_WORKER_REQUIRED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("责任认定：OPERATOR 认定成功，校验挡车工并保存快照，写认定人与当前时间，status=CONFIRMED")
+    void confirmInspectionConfirmation_operator_success() {
+        InspectionConfirmationDO pendingDO = new InspectionConfirmationDO();
+        pendingDO.setId(105L);
+        pendingDO.setStatus("PENDING");
+        pendingDO.setChainKey("chain-105");
+        when(inspectionConfirmationMapper.selectById(105L)).thenReturn(pendingDO);
+
+        LoginUser loginUser = new LoginUser().setId(10L);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(loginUser, null, Collections.emptyList()));
+        AdminUserRespDTO loginUserDTO = new AdminUserRespDTO();
+        loginUserDTO.setId(10L);
+        loginUserDTO.setNickname("张领班");
+        when(adminUserApi.getUser(10L)).thenReturn(loginUserDTO);
+
+        AdminUserRespDTO workerDTO = new AdminUserRespDTO();
+        workerDTO.setId(200L);
+        workerDTO.setNickname("王挡车");
+        when(adminUserApi.getUser(200L)).thenReturn(workerDTO);
+
+        InspectionConfirmationConfirmReqVO reqVO = new InspectionConfirmationConfirmReqVO();
+        reqVO.setId(105L);
+        reqVO.setResponsibility("OPERATOR");
+        reqVO.setWorkerUserId(200L);
+        reqVO.setNote("断氨纶");
+
+        Long resultId = inspectionConfirmationService.confirmInspectionConfirmation(reqVO);
+        assertEquals(105L, resultId);
+
+        verify(adminUserApi).validateUser(200L);
+
+        ArgumentCaptor<InspectionConfirmationDO> captor = ArgumentCaptor.forClass(InspectionConfirmationDO.class);
+        verify(inspectionConfirmationMapper).updateById(captor.capture());
+        InspectionConfirmationDO updated = captor.getValue();
+
+        assertEquals("CONFIRMED", updated.getStatus());
+        assertEquals("OPERATOR", updated.getResponsibility());
+        assertEquals(200L, updated.getWorkerUserId());
+        assertEquals("王挡车", updated.getWorkerName());
+        assertEquals(10L, updated.getConfirmedByUserId());
+        assertEquals("张领班", updated.getConfirmedByName());
+        assertNotNull(updated.getConfirmedAt());
+        assertEquals("断氨纶", updated.getNote());
+    }
+
+    @Test
+    @DisplayName("责任认定：EQUIPMENT 与 WAIVED 成功，挡车工可空且清空，写认定人/时间/状态")
+    void confirmInspectionConfirmation_equipmentAndWaived_success() {
+        LoginUser loginUser = new LoginUser().setId(10L);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(loginUser, null, Collections.emptyList()));
+        AdminUserRespDTO loginUserDTO = new AdminUserRespDTO();
+        loginUserDTO.setId(10L);
+        loginUserDTO.setNickname("张领班");
+        when(adminUserApi.getUser(10L)).thenReturn(loginUserDTO);
+
+        // EQUIPMENT
+        InspectionConfirmationDO pending1 = new InspectionConfirmationDO();
+        pending1.setId(106L);
+        pending1.setStatus("PENDING");
+        pending1.setWorkerUserId(999L);
+        pending1.setWorkerName("原挡车工");
+        when(inspectionConfirmationMapper.selectById(106L)).thenReturn(pending1);
+
+        InspectionConfirmationConfirmReqVO req1 = new InspectionConfirmationConfirmReqVO();
+        req1.setId(106L);
+        req1.setResponsibility("EQUIPMENT");
+        req1.setNote("机器坏了");
+
+        Long id1 = inspectionConfirmationService.confirmInspectionConfirmation(req1);
+        assertEquals(106L, id1);
+
+        ArgumentCaptor<InspectionConfirmationDO> captor1 = ArgumentCaptor.forClass(InspectionConfirmationDO.class);
+        verify(inspectionConfirmationMapper).updateById(captor1.capture());
+        InspectionConfirmationDO updated1 = captor1.getValue();
+        assertEquals("CONFIRMED", updated1.getStatus());
+        assertEquals("EQUIPMENT", updated1.getResponsibility());
+        assertNull(updated1.getWorkerUserId());
+        assertNull(updated1.getWorkerName());
+        assertEquals(10L, updated1.getConfirmedByUserId());
+        assertEquals("张领班", updated1.getConfirmedByName());
+        assertNotNull(updated1.getConfirmedAt());
+        assertEquals("机器坏了", updated1.getNote());
+
+        // WAIVED
+        InspectionConfirmationDO pending2 = new InspectionConfirmationDO();
+        pending2.setId(107L);
+        pending2.setStatus("PENDING");
+        when(inspectionConfirmationMapper.selectById(107L)).thenReturn(pending2);
+
+        InspectionConfirmationConfirmReqVO req2 = new InspectionConfirmationConfirmReqVO();
+        req2.setId(107L);
+        req2.setResponsibility("WAIVED");
+
+        Long id2 = inspectionConfirmationService.confirmInspectionConfirmation(req2);
+        assertEquals(107L, id2);
+
+        ArgumentCaptor<InspectionConfirmationDO> captor2 = ArgumentCaptor.forClass(InspectionConfirmationDO.class);
+        verify(inspectionConfirmationMapper, times(2)).updateById(captor2.capture());
+        InspectionConfirmationDO updated2 = captor2.getAllValues().get(1);
+        assertEquals("CONFIRMED", updated2.getStatus());
+        assertEquals("WAIVED", updated2.getResponsibility());
+        assertNull(updated2.getWorkerUserId());
+        assertNull(updated2.getWorkerName());
+        assertEquals("张领班", updated2.getConfirmedByName());
+        assertNotNull(updated2.getConfirmedAt());
+    }
+
+    // ==================== revokeInspectionConfirmation ====================
+
+    @Test
+    @DisplayName("撤销重录：记录不存在报 1_030_014_000")
+    void revokeInspectionConfirmation_notExists_throws000() {
+        when(inspectionConfirmationMapper.selectById(999L)).thenReturn(null);
+
+        InspectionConfirmationRevokeReqVO reqVO = new InspectionConfirmationRevokeReqVO(999L);
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.revokeInspectionConfirmation(reqVO));
+        assertEquals(INSPECTION_CONFIRMATION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("撤销重录：状态非 CONFIRMED（PENDING 或 REVOKED）报 1_030_014_001")
+    void revokeInspectionConfirmation_statusNotConfirmed_throws001() {
+        // PENDING
+        InspectionConfirmationDO pendingDO = new InspectionConfirmationDO();
+        pendingDO.setId(111L);
+        pendingDO.setStatus("PENDING");
+        when(inspectionConfirmationMapper.selectById(111L)).thenReturn(pendingDO);
+
+        ServiceException ex1 = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.revokeInspectionConfirmation(new InspectionConfirmationRevokeReqVO(111L)));
+        assertEquals(INSPECTION_CONFIRMATION_STATUS_NOT_ALLOWED.getCode(), ex1.getCode());
+
+        // REVOKED
+        InspectionConfirmationDO revokedDO = new InspectionConfirmationDO();
+        revokedDO.setId(112L);
+        revokedDO.setStatus("REVOKED");
+        when(inspectionConfirmationMapper.selectById(112L)).thenReturn(revokedDO);
+
+        ServiceException ex2 = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.revokeInspectionConfirmation(new InspectionConfirmationRevokeReqVO(112L)));
+        assertEquals(INSPECTION_CONFIRMATION_STATUS_NOT_ALLOWED.getCode(), ex2.getCode());
+    }
+
+    @Test
+    @DisplayName("撤销重录：旧记录冻结为 REVOKED 保留原字段并记录撤销人时间，克隆新 PENDING 沿用快照与挡车工同 chain_key")
+    void revokeInspectionConfirmation_confirmed_success_freezesOldAndClonesNewWithSameChainKey() {
+        // 准备旧 CONFIRMED 记录
+        InspectionConfirmationDO oldDO = new InspectionConfirmationDO();
+        oldDO.setId(88L);
+        oldDO.setChainKey("chain-888");
+        oldDO.setSource("INSPECTION");
+        oldDO.setStatus("CONFIRMED");
+        oldDO.setInspectionOrderId(101L);
+        oldDO.setInspectionOrderCode("INS-001");
+        oldDO.setInspectionOrderItemId(501L);
+        oldDO.setRollNo("R01");
+        oldDO.setVatNo("V01");
+        oldDO.setGrade("B");
+        oldDO.setMachineNo("M01");
+        oldDO.setProductCode("P01");
+        oldDO.setProductName("全棉汗布");
+        oldDO.setColorName("黑色");
+        oldDO.setColorNo("BK01");
+        oldDO.setStyleNo("ST01");
+        oldDO.setMeasuredWeight(new BigDecimal("25.50"));
+        oldDO.setLengthM(new BigDecimal("100.00"));
+        oldDO.setResponsibility("OPERATOR");
+        oldDO.setWorkerUserId(300L);
+        oldDO.setWorkerName("赵挡车");
+        oldDO.setConfirmedByUserId(10L);
+        oldDO.setConfirmedByName("张领班");
+        oldDO.setConfirmedAt(LocalDateTime.of(2026, 9, 27, 10, 0, 0));
+        oldDO.setNote("断纱停台");
+
+        when(inspectionConfirmationMapper.selectById(88L)).thenReturn(oldDO);
+
+        // 模拟登录用户（撤销人）
+        LoginUser loginUser = new LoginUser().setId(20L);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(loginUser, null, Collections.emptyList()));
+        AdminUserRespDTO loginUserDTO = new AdminUserRespDTO();
+        loginUserDTO.setId(20L);
+        loginUserDTO.setNickname("李主管");
+        when(adminUserApi.getUser(20L)).thenReturn(loginUserDTO);
+
+        // 模拟 insert 生成新 ID 99L
+        doAnswer(invocation -> {
+            InspectionConfirmationDO inserted = invocation.getArgument(0);
+            inserted.setId(99L);
+            return 1;
+        }).when(inspectionConfirmationMapper).insert(any(InspectionConfirmationDO.class));
+
+        // 执行撤销
+        InspectionConfirmationRevokeRespVO resp =
+                inspectionConfirmationService.revokeInspectionConfirmation(new InspectionConfirmationRevokeReqVO(88L));
+
+        assertNotNull(resp);
+        assertEquals(88L, resp.getRevokedId());
+        assertEquals(99L, resp.getFreshId());
+
+        // 验证 1：旧记录 updateById 冻结为 REVOKED，撤销人/时间写入，其他字段原样保留
+        ArgumentCaptor<InspectionConfirmationDO> updateCaptor =
+                ArgumentCaptor.forClass(InspectionConfirmationDO.class);
+        verify(inspectionConfirmationMapper).updateById(updateCaptor.capture());
+        InspectionConfirmationDO updatedOld = updateCaptor.getValue();
+        assertEquals("REVOKED", updatedOld.getStatus());
+        assertEquals(20L, updatedOld.getRevokedByUserId());
+        assertEquals("李主管", updatedOld.getRevokedByName());
+        assertNotNull(updatedOld.getRevokedAt());
+        // 原责任与认定字段原样保留
+        assertEquals("OPERATOR", updatedOld.getResponsibility());
+        assertEquals(300L, updatedOld.getWorkerUserId());
+        assertEquals("赵挡车", updatedOld.getWorkerName());
+        assertEquals(10L, updatedOld.getConfirmedByUserId());
+        assertEquals("张领班", updatedOld.getConfirmedByName());
+        assertEquals(LocalDateTime.of(2026, 9, 27, 10, 0, 0), updatedOld.getConfirmedAt());
+        assertEquals("断纱停台", updatedOld.getNote());
+
+        // 验证 2：新克隆记录 insert，同 chain_key、快照与挡车工沿用、责任与认定字段清空、状态为 PENDING
+        ArgumentCaptor<InspectionConfirmationDO> insertCaptor =
+                ArgumentCaptor.forClass(InspectionConfirmationDO.class);
+        verify(inspectionConfirmationMapper).insert(insertCaptor.capture());
+        InspectionConfirmationDO insertedNew = insertCaptor.getValue();
+
+        assertEquals("chain-888", insertedNew.getChainKey(), "新记录必须同挂一条认定链（chain_key一致）");
+        assertEquals("INSPECTION", insertedNew.getSource());
+        assertEquals("PENDING", insertedNew.getStatus());
+        assertEquals(101L, insertedNew.getInspectionOrderId());
+        assertEquals("INS-001", insertedNew.getInspectionOrderCode());
+        assertEquals(501L, insertedNew.getInspectionOrderItemId());
+        assertEquals("R01", insertedNew.getRollNo());
+        assertEquals("V01", insertedNew.getVatNo());
+        assertEquals("B", insertedNew.getGrade());
+        assertEquals("M01", insertedNew.getMachineNo());
+        assertEquals("P01", insertedNew.getProductCode());
+        assertEquals("全棉汗布", insertedNew.getProductName());
+        assertEquals("黑色", insertedNew.getColorName());
+        assertEquals("BK01", insertedNew.getColorNo());
+        assertEquals("ST01", insertedNew.getStyleNo());
+        assertEquals(new BigDecimal("25.50"), insertedNew.getMeasuredWeight());
+        assertEquals(new BigDecimal("100.00"), insertedNew.getLengthM());
+        // 挡车工沿用
+        assertEquals(300L, insertedNew.getWorkerUserId());
+        assertEquals("赵挡车", insertedNew.getWorkerName());
+        // 责任与认定字段清空
+        assertNull(insertedNew.getResponsibility());
+        assertNull(insertedNew.getConfirmedByUserId());
+        assertNull(insertedNew.getConfirmedByName());
+        assertNull(insertedNew.getConfirmedAt());
+        assertNull(insertedNew.getNote());
+        assertNull(insertedNew.getRevokedByUserId());
+        assertNull(insertedNew.getRevokedByName());
+        assertNull(insertedNew.getRevokedAt());
+    }
+
+    // ==================== getInspectionConfirmation ====================
+
+    @Test
+    @DisplayName("详情查询：记录不存在报 1_030_014_000")
+    void getInspectionConfirmation_notExists_throws000() {
+        when(inspectionConfirmationMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionConfirmationService.getInspectionConfirmation(999L));
+        assertEquals(INSPECTION_CONFIRMATION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("详情查询：成功返回记录详情，附带同 chain_key 全部行（含 REVOKED）按创建时间正序")
+    void getInspectionConfirmation_success_returnsDetailWithOrderedChainRecords() {
+        InspectionConfirmationDO currentDO = new InspectionConfirmationDO();
+        currentDO.setId(10L);
+        currentDO.setChainKey("chain-001");
+        currentDO.setRollNo("R01");
+        currentDO.setStatus("CONFIRMED");
+        currentDO.setCreateTime(LocalDateTime.of(2026, 9, 27, 12, 0, 0));
+        when(inspectionConfirmationMapper.selectById(10L)).thenReturn(currentDO);
+
+        InspectionConfirmationDO historyRevokedDO = new InspectionConfirmationDO();
+        historyRevokedDO.setId(1L);
+        historyRevokedDO.setChainKey("chain-001");
+        historyRevokedDO.setRollNo("R01");
+        historyRevokedDO.setStatus("REVOKED");
+        historyRevokedDO.setCreateTime(LocalDateTime.of(2026, 9, 27, 10, 0, 0));
+
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Arrays.asList(historyRevokedDO, currentDO));
+
+        InspectionConfirmationRespVO resp = inspectionConfirmationService.getInspectionConfirmation(10L);
+
+        assertNotNull(resp);
+        assertEquals(10L, resp.getId());
+        assertEquals("chain-001", resp.getChainKey());
+        assertEquals("CONFIRMED", resp.getStatus());
+
+        // 验证 chainRecords
+        assertNotNull(resp.getChainRecords());
+        assertEquals(2, resp.getChainRecords().size());
+        assertEquals(1L, resp.getChainRecords().get(0).getId());
+        assertEquals("REVOKED", resp.getChainRecords().get(0).getStatus());
+        assertEquals(10L, resp.getChainRecords().get(1).getId());
+        assertEquals("CONFIRMED", resp.getChainRecords().get(1).getStatus());
+
+        // 验证查询条件与排序
+        ArgumentCaptor<LambdaQueryWrapperX<InspectionConfirmationDO>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapperX.class);
+        verify(inspectionConfirmationMapper).selectList(captor.capture());
+        LambdaQueryWrapperX<InspectionConfirmationDO> wrapper = captor.getValue();
+        String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("chain_key ="), "应按 chainKey 过滤");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("chain-001"), "应包含 chainKey 参数值");
+        assertTrue(sqlSegment.contains("ORDER BY create_time ASC"), "应按创建时间正序排序");
     }
 
 }

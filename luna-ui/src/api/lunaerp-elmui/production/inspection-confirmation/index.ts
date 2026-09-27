@@ -34,6 +34,7 @@ export interface InspectionConfirmationVO {
   createTime?: Date | string
   updater?: string
   updateTime?: Date | string
+  chainRecords?: InspectionConfirmationVO[]
 }
 
 /** 质检确认分页查询参数 */
@@ -111,6 +112,49 @@ export const generateFromOrder = (data: InspectionConfirmationGenerateReqVO) => 
   return request.post<InspectionConfirmationGenerateRespVO>({
     url: '/lunaerp/production/inspection-confirmation/generate-from-order',
     data
+  })
+}
+
+/** 责任认定 Request VO */
+export interface InspectionConfirmationConfirmReqVO {
+  id: number
+  responsibility: string // EQUIPMENT / OPERATOR / WAIVED
+  workerUserId?: number
+  note?: string
+}
+
+/** 责任认定 */
+export const confirmInspectionConfirmation = (data: InspectionConfirmationConfirmReqVO) => {
+  return request.post<number>({
+    url: '/lunaerp/production/inspection-confirmation/confirm',
+    data
+  })
+}
+
+/** 撤销重录 Request VO */
+export interface InspectionConfirmationRevokeReqVO {
+  id: number
+}
+
+/** 撤销重录 Response VO */
+export interface InspectionConfirmationRevokeRespVO {
+  revokedId: number
+  freshId: number
+}
+
+/** 撤销重录 */
+export const revokeInspectionConfirmation = (data: InspectionConfirmationRevokeReqVO) => {
+  return request.post<InspectionConfirmationRevokeRespVO>({
+    url: '/lunaerp/production/inspection-confirmation/revoke',
+    data
+  })
+}
+
+/** 获得质检确认详情（含认定链） */
+export const getInspectionConfirmation = (id: number) => {
+  return request.get<InspectionConfirmationVO>({
+    url: '/lunaerp/production/inspection-confirmation/get',
+    params: { id }
   })
 }
 
