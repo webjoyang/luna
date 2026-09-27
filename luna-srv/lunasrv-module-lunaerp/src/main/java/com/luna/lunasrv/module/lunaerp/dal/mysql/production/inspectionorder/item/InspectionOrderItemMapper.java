@@ -102,5 +102,14 @@ public interface InspectionOrderItemMapper extends BaseMapperX<InspectionOrderIt
                 .eq(InspectionOrderItemDO::getInspectionOrderId, inspectionOrderId));
     }
 
+    /**
+     * 根据检验单ID查询明细列表
+     *
+     * @param inspectionOrderId 检验单ID
+     * @return 明细列表
+     */
+    default java.util.List<InspectionOrderItemDO> selectListByInspectionOrderId(Long inspectionOrderId) {
+        return selectList(InspectionOrderItemDO::getInspectionOrderId, inspectionOrderId);
+    }
 
 }

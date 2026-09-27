@@ -45,6 +45,12 @@ public class StockInSaveReqVO {
     @Schema(description = "关联胚布品种ID（可选）", example = "600")
     private Long greigeTypeId;
 
+    @Schema(description = "关联检验单ID（可选，由检验单生成时带入）", example = "700")
+    private Long inspectionOrderId;
+
+    @Schema(description = "关联检验单号快照（可选）", example = "INS-20260927-001")
+    private String inspectionOrderNo;
+
     @Schema(description = "单据日期", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-09-24")
     @NotNull(message = "单据日期不能为空")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY)

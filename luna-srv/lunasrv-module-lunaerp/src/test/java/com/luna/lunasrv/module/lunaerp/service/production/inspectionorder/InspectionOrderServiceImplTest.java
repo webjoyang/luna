@@ -72,6 +72,8 @@ class InspectionOrderServiceImplTest {
     private SalesContractMapper salesContractMapper;
     @Mock
     private InspectionOrderItemMapper inspectionOrderItemMapper;
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService weavingTicketService;
 
     @InjectMocks
 
@@ -733,8 +735,16 @@ class InspectionOrderServiceImplTest {
         existing.setStatus("DRAFT");
         when(inspectionOrderMapper.selectById(1001L)).thenReturn(existing);
 
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO item1 =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO();
+        item1.setId(201L);
+        item1.setWeavingTicketId(301L);
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(1001L))
+                .thenReturn(Collections.singletonList(item1));
+
         inspectionOrderService.deleteInspectionOrder(1001L);
 
+        verify(weavingTicketService).rollbackInspected(301L);
         verify(inspectionOrderMapper).deleteById(1001L);
         verify(inspectionOrderItemMapper).deleteByInspectionOrderId(1001L);
     }

@@ -91,5 +91,14 @@ public class WeavingOrderController {
         return success(weavingOrderService.getWeavingOrderStats(id));
     }
 
+    @PostMapping("/handoff-inspection")
+    @Operation(summary = "织造完工交接检验（find-or-create PIECE 模式检验单表头，幂等，ADR-0025）")
+    @Parameter(name = "id", description = "织造单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:weaving-order:handoff-inspection') or @ss.hasPermission('lunaerp:production:weaving-order:update')")
+    public CommonResult<com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO> handoffInspection(
+            @RequestParam("id") Long id) {
+        return success(weavingOrderService.handoffInspection(id));
+    }
+
 }
 

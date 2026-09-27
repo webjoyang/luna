@@ -35,6 +35,15 @@ public class StockInItemSaveReqVO {
     @Schema(description = "卷号", example = "R001")
     private String rollNo;
 
+    @Schema(description = "匹号", example = "BT-TASK01-0001")
+    private String pieceNo;
+
+    @Schema(description = "关联织造布票ID", example = "5001")
+    private Long weavingTicketId;
+
+    @Schema(description = "关联检验明细ID", example = "6001")
+    private Long inspectionOrderItemId;
+
     @Schema(description = "匹数（缺省 1）", example = "1")
     private Integer pieceCount;
 

@@ -75,4 +75,13 @@ public interface StockInService {
      */
     void cancelStockIn(Long id);
 
+    /**
+     * 检验单生成胚布入库单草稿（COMPLETED 状态下显式生成，选仓，过滤 DEFECTIVE，幂等跳过已生成明细）
+     *
+     * @param reqVO 生成入库单请求
+     * @return 生成结果（入库单ID、单号、生成行数、跳过行数）
+     */
+    com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderGenerateStockInRespVO createStockInFromInspection(
+            @Valid com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderGenerateStockInReqVO reqVO);
+
 }

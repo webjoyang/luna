@@ -18,6 +18,15 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeM
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderGenerateStockInReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderGenerateStockInRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.item.InspectionOrderItemMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
@@ -116,6 +125,18 @@ class StockInServiceImplTest {
     @Mock
     private SecurityFrameworkService securityFrameworkService;
 
+    @Mock
+    private InspectionOrderMapper inspectionOrderMapper;
+
+    @Mock
+    private InspectionOrderItemMapper inspectionOrderItemMapper;
+
+    @Mock
+    private WeavingTicketService weavingTicketService;
+
+    @Mock
+    private WeavingTicketMapper weavingTicketMapper;
+
     @InjectMocks
     private StockInServiceImpl stockInService;
 
@@ -132,6 +153,10 @@ class StockInServiceImplTest {
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockInItemPlacementDO.class);
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockLedgerDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), InspectionOrderDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), InspectionOrderItemDO.class);
 
         when(securityFrameworkService.hasPermission(anyString())).thenReturn(true);
         when(stockInMapper.updateById(any(StockInDO.class))).thenReturn(1);
@@ -1419,6 +1444,308 @@ class StockInServiceImplTest {
         assertEquals(new BigDecimal("-100.00"), rev1.getQuantity());
         assertEquals("YARN_SPEC", rev2.getItemType());
         assertEquals(new BigDecimal("-200.00"), rev2.getQuantity());
+    }
+
+    // ==================== Issue 11: 审核过账回写布票 与 检验单生成入库单 ====================
+
+    @Test
+    void auditStockIn_withWeavingTickets_marksStocked() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setInNo("IN-20260927-001");
+        existing.setStatus("DRAFT");
+        existing.setWarehouseId(10L);
+        existing.setWarehouseName("成品仓");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+
+        StockInItemDO item1 = new StockInItemDO();
+        item1.setId(201L);
+        item1.setStockInId(100L);
+        item1.setProductId(1001L);
+        item1.setWeavingTicketId(501L);
+        item1.setQuantity(new BigDecimal("25.00"));
+        item1.setUnit("KG");
+
+        StockInItemDO item2 = new StockInItemDO();
+        item2.setId(202L);
+        item2.setStockInId(100L);
+        item2.setProductId(1001L);
+        item2.setPieceNo("TICK-002");
+        item2.setQuantity(new BigDecimal("26.00"));
+        item2.setUnit("KG");
+
+        WeavingTicketDO ticket2 = new WeavingTicketDO();
+        ticket2.setId(502L);
+        ticket2.setCode("TICK-002");
+        when(weavingTicketMapper.selectByCode("TICK-002")).thenReturn(ticket2);
+
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(List.of(item1, item2));
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        stockInService.auditStockIn(100L);
+
+        verify(weavingTicketService).markStocked(argThat(ids -> ids.contains(501L) && ids.contains(502L) && ids.size() == 2));
+    }
+
+    @Test
+    void createStockInFromInspection_inspectionOrderNotFound_throwsException() {
+        InspectionOrderGenerateStockInReqVO reqVO = new InspectionOrderGenerateStockInReqVO();
+        reqVO.setInspectionOrderId(999L);
+        reqVO.setWarehouseId(1L);
+
+        when(inspectionOrderMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockInFromInspection(reqVO));
+        assertEquals(INSPECTION_ORDER_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createStockInFromInspection_notCompleted_throwsException() {
+        InspectionOrderGenerateStockInReqVO reqVO = new InspectionOrderGenerateStockInReqVO();
+        reqVO.setInspectionOrderId(101L);
+        reqVO.setWarehouseId(1L);
+
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(101L);
+        order.setStatus("ACTIVE");
+        when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockInFromInspection(reqVO));
+        assertEquals(INSPECTION_ORDER_STATUS_NOT_COMPLETED.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createStockInFromInspection_warehouseNotFoundOrNotActive_throwsException() {
+        InspectionOrderGenerateStockInReqVO reqVO = new InspectionOrderGenerateStockInReqVO();
+        reqVO.setInspectionOrderId(101L);
+        reqVO.setWarehouseId(1L);
+
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(101L);
+        order.setStatus("COMPLETED");
+        when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+        when(warehouseMapper.selectById(1L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockInFromInspection(reqVO));
+        assertEquals(STOCK_IN_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+
+        WarehouseDO disabledWh = new WarehouseDO();
+        disabledWh.setId(1L);
+        disabledWh.setStatus("DISABLED");
+        when(warehouseMapper.selectById(1L)).thenReturn(disabledWh);
+
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> stockInService.createStockInFromInspection(reqVO));
+        assertEquals(STOCK_IN_REFERENCE_NOT_FOUND.getCode(), ex2.getCode());
+    }
+
+    @Test
+    void createStockInFromInspection_noItemsOrAllDefective_throwsException() {
+        InspectionOrderGenerateStockInReqVO reqVO = new InspectionOrderGenerateStockInReqVO();
+        reqVO.setInspectionOrderId(101L);
+        reqVO.setWarehouseId(1L);
+
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(101L);
+        order.setStatus("COMPLETED");
+        when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+        WarehouseDO wh = new WarehouseDO();
+        wh.setId(1L);
+        wh.setName("原料仓");
+        wh.setStatus("ACTIVE");
+        when(warehouseMapper.selectById(1L)).thenReturn(wh);
+
+        // 1. 无明细
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(101L)).thenReturn(Collections.emptyList());
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> stockInService.createStockInFromInspection(reqVO));
+        assertEquals(INSPECTION_ORDER_NO_QUALIFIED_ITEMS.getCode(), ex1.getCode());
+
+        // 2. 全部是 DEFECTIVE
+        InspectionOrderItemDO defectiveItem = new InspectionOrderItemDO();
+        defectiveItem.setId(201L);
+        defectiveItem.setGrade("DEFECTIVE");
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(101L)).thenReturn(List.of(defectiveItem));
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> stockInService.createStockInFromInspection(reqVO));
+        assertEquals(INSPECTION_ORDER_NO_QUALIFIED_ITEMS.getCode(), ex2.getCode());
+    }
+
+    @Test
+    void createStockInFromInspection_allAlreadyGenerated_throwsException() {
+        InspectionOrderGenerateStockInReqVO reqVO = new InspectionOrderGenerateStockInReqVO();
+        reqVO.setInspectionOrderId(101L);
+        reqVO.setWarehouseId(1L);
+
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(101L);
+        order.setStatus("COMPLETED");
+        when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+        WarehouseDO wh = new WarehouseDO();
+        wh.setId(1L);
+        wh.setName("原料仓");
+        wh.setStatus("ACTIVE");
+        when(warehouseMapper.selectById(1L)).thenReturn(wh);
+
+        InspectionOrderItemDO item = new InspectionOrderItemDO();
+        item.setId(201L);
+        item.setGrade("A");
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(101L)).thenReturn(List.of(item));
+
+        StockInItemDO existingStockInItem = new StockInItemDO();
+        existingStockInItem.setId(301L);
+        existingStockInItem.setStockInId(888L);
+        existingStockInItem.setInspectionOrderItemId(201L);
+        when(stockInItemMapper.selectListByInspectionOrderItemIds(anyCollection())).thenReturn(List.of(existingStockInItem));
+
+        StockInDO parentStockIn = new StockInDO();
+        parentStockIn.setId(888L);
+        parentStockIn.setStatus("DRAFT");
+        when(stockInMapper.selectById(888L)).thenReturn(parentStockIn);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockInFromInspection(reqVO));
+        assertEquals(INSPECTION_ORDER_NO_QUALIFIED_ITEMS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createStockInFromInspection_success_filtersDefectiveAndSkipsGenerated() {
+        InspectionOrderGenerateStockInReqVO reqVO = new InspectionOrderGenerateStockInReqVO();
+        reqVO.setInspectionOrderId(101L);
+        reqVO.setWarehouseId(1L);
+        reqVO.setRemark("胚布入库");
+
+        InspectionOrderDO order = new InspectionOrderDO();
+        order.setId(101L);
+        order.setCode("INS-20260927-001");
+        order.setStatus("COMPLETED");
+        order.setProductId(1001L);
+        order.setProductCode("P001");
+        order.setProductName("全棉汗布");
+        order.setGreigeOrderId(501L);
+        order.setSalesContractId(601L);
+        order.setContractNo("SC-001");
+        order.setInspectionFactoryId(701L);
+        order.setInspectionFactoryName("盛泽染整一厂");
+        when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+        GreigeOrderDO greigeOrder = new GreigeOrderDO();
+        greigeOrder.setId(501L);
+        greigeOrder.setOrderNo("GO-2026-001");
+        when(greigeOrderMapper.selectById(501L)).thenReturn(greigeOrder);
+
+        WarehouseDO wh = new WarehouseDO();
+        wh.setId(1L);
+        wh.setName("胚布仓");
+        wh.setStatus("ACTIVE");
+        when(warehouseMapper.selectById(1L)).thenReturn(wh);
+
+        // 4 items:
+        // Item 1: Grade A (qualified)
+        InspectionOrderItemDO item1 = new InspectionOrderItemDO();
+        item1.setId(201L);
+        item1.setGrade("A");
+        item1.setPieceNo("TICK-001");
+        item1.setWeavingTicketId(901L);
+        item1.setMeasuredWeight(new BigDecimal("25.50"));
+        item1.setVatNo("VAT-01");
+        item1.setRollNo("R-01");
+
+        // Item 2: Grade DEFECTIVE (should be skipped)
+        InspectionOrderItemDO item2 = new InspectionOrderItemDO();
+        item2.setId(202L);
+        item2.setGrade("DEFECTIVE");
+        item2.setPieceNo("TICK-002");
+
+        // Item 3: Grade B, but already generated in an ACTIVE (DRAFT/COMPLETED) stock-in (should be skipped)
+        InspectionOrderItemDO item3 = new InspectionOrderItemDO();
+        item3.setId(203L);
+        item3.setGrade("B");
+        item3.setPieceNo("TICK-003");
+
+        // Item 4: Grade B, already in a CANCELLED stock-in (should NOT be skipped)
+        InspectionOrderItemDO item4 = new InspectionOrderItemDO();
+        item4.setId(204L);
+        item4.setGrade("B");
+        item4.setPieceNo("TICK-004");
+        item4.setWeavingTicketId(904L);
+        item4.setLengthM(new BigDecimal("100.00"));
+        item4.setVatNo("VAT-02");
+
+        when(inspectionOrderItemMapper.selectListByInspectionOrderId(101L))
+                .thenReturn(List.of(item1, item2, item3, item4));
+
+        StockInItemDO generatedFor3 = new StockInItemDO();
+        generatedFor3.setId(303L);
+        generatedFor3.setStockInId(801L);
+        generatedFor3.setInspectionOrderItemId(203L);
+
+        StockInItemDO generatedFor4 = new StockInItemDO();
+        generatedFor4.setId(304L);
+        generatedFor4.setStockInId(802L);
+        generatedFor4.setInspectionOrderItemId(204L);
+
+        when(stockInItemMapper.selectListByInspectionOrderItemIds(anyCollection()))
+                .thenReturn(List.of(generatedFor3, generatedFor4));
+
+        StockInDO parent3 = new StockInDO();
+        parent3.setId(801L);
+        parent3.setStatus("COMPLETED");
+        when(stockInMapper.selectById(801L)).thenReturn(parent3);
+
+        StockInDO parent4 = new StockInDO();
+        parent4.setId(802L);
+        parent4.setStatus("CANCELLED"); // cancelled, so item 4 is re-eligible
+        when(stockInMapper.selectById(802L)).thenReturn(parent4);
+
+        InspectionOrderGenerateStockInRespVO respVO = stockInService.createStockInFromInspection(reqVO);
+
+        assertNotNull(respVO);
+        assertEquals(100L, respVO.getStockInId());
+        assertEquals(2, respVO.getGeneratedCount());
+        assertEquals(2, respVO.getSkippedCount()); // item 2 (defective) and item 3 (already in active stock-in)
+
+        // Verify StockInDO
+        ArgumentCaptor<StockInDO> stockInCaptor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).insert(stockInCaptor.capture());
+        StockInDO savedStockIn = stockInCaptor.getValue();
+        assertEquals("PRODUCTION", savedStockIn.getInType());
+        assertEquals("DRAFT", savedStockIn.getStatus());
+        assertEquals(1L, savedStockIn.getWarehouseId());
+        assertEquals("胚布仓", savedStockIn.getWarehouseName());
+        assertEquals(101L, savedStockIn.getInspectionOrderId());
+        assertEquals("INS-20260927-001", savedStockIn.getInspectionOrderNo());
+        assertEquals(501L, savedStockIn.getGreigeOrderId());
+        assertEquals("GO-2026-001", savedStockIn.getGreigeOrderNo());
+        assertEquals(601L, savedStockIn.getSalesContractId());
+        assertEquals("SC-001", savedStockIn.getContractNo());
+        assertEquals(701L, savedStockIn.getSupplierId());
+        assertEquals("盛泽染整一厂", savedStockIn.getSupplierName());
+        assertEquals("胚布入库", savedStockIn.getRemark());
+
+        // Verify StockInItemDO (2 items inserted: item 1 and item 4)
+        ArgumentCaptor<StockInItemDO> itemCaptor = ArgumentCaptor.forClass(StockInItemDO.class);
+        verify(stockInItemMapper, times(2)).insert(itemCaptor.capture());
+        List<StockInItemDO> savedItems = itemCaptor.getAllValues();
+
+        StockInItemDO si1 = savedItems.get(0);
+        assertEquals("PRODUCT", si1.getItemType());
+        assertEquals(1001L, si1.getProductId());
+        assertEquals("P001", si1.getProductCode());
+        assertEquals("全棉汗布", si1.getProductName());
+        assertEquals("VAT-01", si1.getBatchNo());
+        assertEquals("R-01", si1.getRollNo());
+        assertEquals("TICK-001", si1.getPieceNo());
+        assertEquals(901L, si1.getWeavingTicketId());
+        assertEquals(201L, si1.getInspectionOrderItemId());
+        assertEquals(new BigDecimal("25.50"), si1.getQuantity());
+        assertEquals("KG", si1.getUnit());
+
+        StockInItemDO si2 = savedItems.get(1);
+        assertEquals("TICK-004", si2.getPieceNo());
+        assertEquals(904L, si2.getWeavingTicketId());
+        assertEquals(204L, si2.getInspectionOrderItemId());
+        assertEquals(new BigDecimal("100.00"), si2.getQuantity());
+        assertEquals("M", si2.getUnit());
     }
 
 }

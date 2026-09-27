@@ -72,6 +72,12 @@ class InspectionOrderItemServiceImplTest {
     @Mock
     private InspectionOrderService inspectionOrderService;
 
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService weavingTicketService;
+
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper weavingTicketMapper;
+
     @InjectMocks
     private InspectionOrderItemServiceImpl inspectionOrderItemService;
 
@@ -546,6 +552,65 @@ class InspectionOrderItemServiceImplTest {
         assertEquals(1, result.getList().size());
         assertEquals(ROLL_NO, result.getList().get(0).getRollNo());
         verify(inspectionOrderItemMapper).selectPage(pageReqVO);
+    }
+
+    // ==================== 布票血缘与回写（ADR-0024、ADR-0025） ====================
+
+    @Test
+    void createInspectionOrderItem_pieceMode_autoMatchesTicket_andMarksInspected() {
+        InspectionOrderRespVO order = buildOrder(ORDER_ID, "ACTIVE", "PIECE");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(order);
+        when(inspectionOrderItemMapper.selectCountByInspectionOrderId(ORDER_ID)).thenReturn(1L);
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO ticket =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO();
+        ticket.setId(77L);
+        ticket.setCode("BT-001");
+        ticket.setActualMachine("LM-101");
+        when(weavingTicketMapper.selectByCode("BT-001")).thenReturn(ticket);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, VAT_NO, null, "BT-001");
+        reqVO.setGrade("A");
+
+        Long id = inspectionOrderItemService.createInspectionOrderItem(reqVO);
+        assertNotNull(id);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).insert(captor.capture());
+        InspectionOrderItemDO inserted = captor.getValue();
+        assertEquals(77L, inserted.getWeavingTicketId());
+        assertEquals("LM-101", inserted.getMachineNo());
+
+        verify(weavingTicketService).markInspected(77L);
+    }
+
+    @Test
+    void updateInspectionOrderItem_withGrade_marksInspected() {
+        InspectionOrderRespVO order = buildOrder(ORDER_ID, "ACTIVE", "PIECE");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(order);
+
+        InspectionOrderItemDO existing = buildItem(ITEM_ID, ORDER_ID, VAT_NO, null, "BT-001");
+        existing.setWeavingTicketId(77L);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(existing);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, null, "BT-001");
+        reqVO.setGrade("B");
+
+        inspectionOrderItemService.updateInspectionOrderItem(reqVO);
+
+        verify(weavingTicketService).markInspected(77L);
+    }
+
+    @Test
+    void deleteInspectionOrderItem_withTicket_rollsBackInspected() {
+        InspectionOrderItemDO existing = buildItem(ITEM_ID, ORDER_ID, VAT_NO, null, "BT-001");
+        existing.setWeavingTicketId(77L);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(existing);
+
+        inspectionOrderItemService.deleteInspectionOrderItem(ITEM_ID);
+
+        verify(inspectionOrderItemMapper).deleteById(ITEM_ID);
+        verify(weavingTicketService).rollbackInspected(77L);
     }
 
     // ==================== VO 校验 ====================

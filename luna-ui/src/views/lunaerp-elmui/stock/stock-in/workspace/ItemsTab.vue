@@ -114,6 +114,19 @@
         </template>
       </el-table-column>
 
+      <!-- 匹号 -->
+      <el-table-column label="匹号" min-width="120">
+        <template #default="{ row }">
+          <el-input
+            v-if="!isReadOnly"
+            v-model="row.pieceNo"
+            placeholder="匹号"
+            clearable
+          />
+          <span v-else>{{ row.pieceNo || '—' }}</span>
+        </template>
+      </el-table-column>
+
       <!-- 匹数 -->
       <el-table-column label="匹数" width="90">
         <template #default="{ row }">

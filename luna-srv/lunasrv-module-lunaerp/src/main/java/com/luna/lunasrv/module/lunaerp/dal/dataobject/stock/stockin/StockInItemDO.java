@@ -62,6 +62,18 @@ public class StockInItemDO extends TenantBaseDO {
      */
     private String rollNo;
     /**
+     * 匹号
+     */
+    private String pieceNo;
+    /**
+     * 关联织造布票ID
+     */
+    private Long weavingTicketId;
+    /**
+     * 关联检验明细ID
+     */
+    private Long inspectionOrderItemId;
+    /**
      * 匹数（缺省 1）
      */
     private Integer pieceCount;

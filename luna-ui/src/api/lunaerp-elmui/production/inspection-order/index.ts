@@ -78,3 +78,26 @@ export const completeInspectionOrder = (id: number) => {
 export const cancelInspectionOrder = (id: number) => {
   return request.put<boolean>({ url: `/lunaerp/production/inspection-order/cancel?id=${id}` })
 }
+
+// 检验单生成入库单请求 VO
+export interface InspectionOrderGenerateStockInReqVO {
+  inspectionOrderId: number
+  warehouseId: number
+  remark?: string
+}
+
+// 检验单生成入库单响应 VO
+export interface InspectionOrderGenerateStockInRespVO {
+  stockInId: number
+  stockInNo: string
+  generatedCount: number
+  skippedCount: number
+}
+
+// 检验单生成胚布入库单草稿
+export const generateStockIn = (data: InspectionOrderGenerateStockInReqVO) => {
+  return request.post<InspectionOrderGenerateStockInRespVO>({
+    url: '/lunaerp/production/inspection-order/generate-stock-in',
+    data
+  })
+}

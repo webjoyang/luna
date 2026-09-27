@@ -4,11 +4,11 @@
 
 **Blocked by:** 07, 10
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] 交接检验：find-or-create PIECE 表头（幂等）
-- [ ] 逐匹明细产生与 weavingTicketId 血缘；布票回写 INSPECTED
-- [ ] 生成胚布入库单草稿（等级过滤、幂等、选仓）
-- [ ] 入库过账回写 STOCKED；红冲语义明确
-- [ ] 前端：交接按钮/提示、检验匹装接单、生成入库按钮
-- [ ] 单测：幂等交接、血缘回写、生成与过账联调
+- [x] 交接检验：find-or-create PIECE 表头（幂等）
+- [x] 逐匹明细产生与 weavingTicketId 血缘；布票回写 INSPECTED
+- [x] 生成胚布入库单草稿（等级过滤、幂等、选仓）
+- [x] 入库过账回写 STOCKED；红冲语义明确
+- [x] 前端：交接按钮/提示、检验匹装接单、生成入库按钮
+- [x] 单测：幂等交接、血缘回写、生成与过账联调

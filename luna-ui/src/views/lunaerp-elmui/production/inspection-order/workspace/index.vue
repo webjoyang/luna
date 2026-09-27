@@ -84,6 +84,19 @@
             取消
           </el-button>
         </template>
+
+        <!-- 已完成态操作：[生成胚布入库单] -->
+        <template v-if="currentOrder?.status === 'COMPLETED'">
+          <el-button
+            type="primary"
+            :loading="actionLoading"
+            @click="openGenerateStockInDialog"
+            v-hasPermi="['lunaerp:stock:stock-in:create']"
+          >
+            <Icon icon="ep:document-add" class="mr-1" />
+            生成胚布入库单
+          </el-button>
+        </template>
       </div>
     </div>
 
@@ -118,16 +131,71 @@
         <LogsTab />
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 生成胚布入库单弹窗 -->
+    <el-dialog
+      v-model="generateStockInVisible"
+      title="生成胚布入库单"
+      width="500px"
+      append-to-body
+    >
+      <el-form
+        ref="generateStockInFormRef"
+        :model="generateStockInForm"
+        :rules="generateStockInRules"
+        label-width="100px"
+      >
+        <el-form-item label="检验单号">
+          <el-input :model-value="currentOrder?.code" disabled />
+        </el-form-item>
+        <el-form-item label="入库仓库" prop="warehouseId">
+          <el-select
+            v-model="generateStockInForm.warehouseId"
+            placeholder="请选择入库仓库"
+            class="!w-full"
+            filterable
+          >
+            <el-option
+              v-for="wh in warehouseList"
+              :key="wh.id"
+              :label="wh.name"
+              :value="wh.id!"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注" prop="remark">
+          <el-input
+            v-model="generateStockInForm.remark"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入入库单备注（可选）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="generateStockInVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="generateStockInSubmitting"
+          @click="submitGenerateStockIn"
+        >
+          确定生成
+        </el-button>
+      </template>
+    </el-dialog>
   </ContentWrap>
 </template>
 
 <script lang="ts" setup>
 import { DICT_TYPE } from '@/utils/dict'
+import { ElMessageBox, type FormInstance } from 'element-plus'
 import BasicInfoTab from './BasicInfoTab.vue'
 import ItemsTab from './ItemsTab.vue'
 import LogsTab from './LogsTab.vue'
 import * as InspectionOrderApi from '@/api/lunaerp-elmui/production/inspection-order'
 import type { InspectionOrderVO } from '@/api/lunaerp-elmui/production/inspection-order'
+import * as WarehouseApi from '@/api/lunaerp-elmui/stock/warehouse'
+import type { WarehouseVO } from '@/api/lunaerp-elmui/stock/warehouse'
 
 defineOptions({ name: 'LunaerpElmuiProductionInspectionOrderWorkspace' })
 
@@ -254,6 +322,61 @@ const handleDelete = async () => {
   } catch {
   } finally {
     actionLoading.value = false
+  }
+}
+
+const generateStockInVisible = ref(false)
+const generateStockInSubmitting = ref(false)
+const warehouseList = ref<WarehouseVO[]>([])
+const generateStockInFormRef = ref<FormInstance>()
+const generateStockInForm = reactive({
+  warehouseId: undefined as number | undefined,
+  remark: ''
+})
+const generateStockInRules = {
+  warehouseId: [{ required: true, message: '请选择入库仓库', trigger: 'change' }]
+}
+
+const openGenerateStockInDialog = async () => {
+  generateStockInForm.warehouseId = undefined
+  generateStockInForm.remark = ''
+  try {
+    const list = await WarehouseApi.getWarehouseListAll('ACTIVE')
+    warehouseList.value = list
+  } catch {}
+  generateStockInVisible.value = true
+}
+
+const submitGenerateStockIn = async () => {
+  if (!generateStockInFormRef.value || !numericOrderId.value) return
+  await generateStockInFormRef.value.validate()
+  try {
+    generateStockInSubmitting.value = true
+    const res = await InspectionOrderApi.generateStockIn({
+      inspectionOrderId: numericOrderId.value,
+      warehouseId: generateStockInForm.warehouseId!,
+      remark: generateStockInForm.remark
+    })
+    generateStockInVisible.value = false
+    ElMessageBox.confirm(
+      `生成成功！\n入库单号：${res.stockInNo}\n本次生成入库明细：${res.generatedCount} 条，跳过（已生成/不合格）：${res.skippedCount} 条。\n是否立即前往入库单工作台？`,
+      '生成入库单成功',
+      {
+        confirmButtonText: '前往入库单',
+        cancelButtonText: '留在本页',
+        type: 'success'
+      }
+    )
+      .then(() => {
+        router.push(`/stock/stock-in/workspace/${res.stockInId}`)
+      })
+      .catch(() => {
+        reloadOrder()
+      })
+  } catch (e: any) {
+    message.error(e?.message || '生成入库单失败')
+  } finally {
+    generateStockInSubmitting.value = false
   }
 }
 

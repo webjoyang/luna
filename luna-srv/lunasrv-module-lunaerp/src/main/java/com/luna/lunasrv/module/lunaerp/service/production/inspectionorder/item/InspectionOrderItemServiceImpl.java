@@ -43,6 +43,12 @@ public class InspectionOrderItemServiceImpl implements InspectionOrderItemServic
     @Resource
     private InspectionOrderService inspectionOrderService;
 
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService weavingTicketService;
+
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper weavingTicketMapper;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createInspectionOrderItem(InspectionOrderItemSaveReqVO createReqVO) {
@@ -81,12 +87,29 @@ public class InspectionOrderItemServiceImpl implements InspectionOrderItemServic
         if ("PIECE".equals(packageMode)) {
             // PIECE 下 pieceCount 恒 1
             item.setPieceCount(1);
+            // 布票血缘自动关联（若未显式传 weavingTicketId，按 pieceNo 匹配布票码）
+            if (item.getWeavingTicketId() == null && StringUtils.hasText(item.getPieceNo()) && weavingTicketMapper != null) {
+                com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO ticket =
+                        weavingTicketMapper.selectByCode(item.getPieceNo().trim());
+                if (ticket != null) {
+                    item.setWeavingTicketId(ticket.getId());
+                    if (!StringUtils.hasText(item.getMachineNo())) {
+                        item.setMachineNo(StringUtils.hasText(ticket.getActualMachine()) ? ticket.getActualMachine() : ticket.getPlannedMachine());
+                    }
+                }
+            }
         } else {
             if (item.getPieceCount() == null) {
                 item.setPieceCount(1);
             }
         }
         inspectionOrderItemMapper.insert(item);
+
+        // 5. 检验明细保存（有等级结果）后，后端按 weavingTicketId 将布票回写为 INSPECTED（ADR-0024、ADR-0025）
+        if (item.getWeavingTicketId() != null && StringUtils.hasText(item.getGrade()) && weavingTicketService != null) {
+            weavingTicketService.markInspected(item.getWeavingTicketId());
+        }
+
         return item.getId();
     }
 
@@ -123,17 +146,34 @@ public class InspectionOrderItemServiceImpl implements InspectionOrderItemServic
         updateObj.setInspectionOrderId(exist.getInspectionOrderId());
         if ("PIECE".equals(packageMode)) {
             updateObj.setPieceCount(1);
+            if (updateObj.getWeavingTicketId() == null && StringUtils.hasText(updateObj.getPieceNo()) && weavingTicketMapper != null) {
+                com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO ticket =
+                        weavingTicketMapper.selectByCode(updateObj.getPieceNo().trim());
+                if (ticket != null) {
+                    updateObj.setWeavingTicketId(ticket.getId());
+                }
+            }
         }
         inspectionOrderItemMapper.updateById(updateObj);
+
+        // 5. 检验明细更新有等级结果时，回写布票为 INSPECTED（ADR-0024）
+        Long ticketId = updateObj.getWeavingTicketId() != null ? updateObj.getWeavingTicketId() : exist.getWeavingTicketId();
+        if (ticketId != null && StringUtils.hasText(updateObj.getGrade()) && weavingTicketService != null) {
+            weavingTicketService.markInspected(ticketId);
+        }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteInspectionOrderItem(Long id) {
         // 校验存在
-        validateInspectionOrderItemExists(id);
+        InspectionOrderItemDO item = validateInspectionOrderItemExists(id);
         // 逻辑删除
         inspectionOrderItemMapper.deleteById(id);
+        // 删除录检明细时回退布票状态为 COMPLETED 并同事务重算（ADR-0024）
+        if (item.getWeavingTicketId() != null && weavingTicketService != null) {
+            weavingTicketService.rollbackInspected(item.getWeavingTicketId());
+        }
     }
 
     @Override

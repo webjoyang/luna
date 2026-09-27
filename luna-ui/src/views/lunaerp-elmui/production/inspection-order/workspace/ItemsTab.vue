@@ -25,19 +25,6 @@
           >
             <Icon icon="ep:plus" class="mr-2px" />添加明细
           </el-button>
-
-          <el-tooltip content="功能开发中（ADR-0013）" placement="top">
-            <span>
-              <el-button
-                type="warning"
-                plain
-                disabled
-                v-hasPermi="['lunaerp:production:inspection-order:sync']"
-              >
-                <Icon icon="ep:upload" class="mr-2px" />同步入库
-              </el-button>
-            </span>
-          </el-tooltip>
         </div>
 
         <div class="text-gray-500 text-13px">
@@ -48,9 +35,10 @@
       <!-- 表格列：卷号/匹号/缸号/实称重量/米数/机台号/等级(字典下拉)/颜色/色号/款号/匹数/备注/操作 -->
       <el-table :data="list" border stripe class="w-full">
         <!-- PIECE 模式：匹号 + 卷号（可选） -->
-        <el-table-column v-if="isPieceMode" label="匹号" prop="pieceNo" min-width="110" show-overflow-tooltip>
+        <el-table-column v-if="isPieceMode" label="匹号" prop="pieceNo" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="cell-bold">{{ row.pieceNo }}</span>
+            <el-tag v-if="row.weavingTicketId" size="small" type="success" class="ml-1">已联布票</el-tag>
           </template>
         </el-table-column>
         <!-- ROLL 模式：卷号 -->
@@ -174,7 +162,13 @@
           </el-col>
           <el-col v-if="isPieceMode" :span="12">
             <el-form-item label="匹号" prop="pieceNo">
-              <el-input v-model="formData.pieceNo" placeholder="请输入匹号" maxlength="64" />
+              <el-input
+                v-model="formData.pieceNo"
+                placeholder="输入匹号或扫描布票号"
+                maxlength="64"
+                clearable
+                @blur="handlePieceNoBlur"
+              />
             </el-form-item>
           </el-col>
           <el-col v-else :span="12">
@@ -309,6 +303,7 @@ import type {
   InspectionOrderItemVO,
   InspectionOrderItemSaveReqVO
 } from '@/api/lunaerp-elmui/production/inspection-order-item'
+import { getWeavingTicketByCode } from '@/api/lunaerp-elmui/production/weaving-ticket'
 
 defineOptions({ name: 'InspectionOrderItemsTab' })
 
@@ -459,6 +454,21 @@ const openFormDialog = (row?: InspectionOrderItemVO) => {
     })
   }
   dialogVisible.value = true
+}
+
+/** 匹号失焦自动查布票 */
+const handlePieceNoBlur = async () => {
+  if (!isPieceMode.value || !formData.pieceNo?.trim()) return
+  try {
+    const ticket = await getWeavingTicketByCode(formData.pieceNo.trim())
+    if (ticket) {
+      formData.weavingTicketId = ticket.id
+      if (ticket.actualMachine && !formData.machineNo) {
+        formData.machineNo = ticket.actualMachine
+      }
+      message.success(`已自动识别布票【${ticket.code}】`)
+    }
+  } catch {}
 }
 
 /** 提交表单 */

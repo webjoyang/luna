@@ -2,10 +2,13 @@ package com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderGenerateStockInReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderGenerateStockInRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.InspectionOrderService;
+import com.luna.lunasrv.module.lunaerp.service.stock.stockin.StockInService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -25,6 +28,9 @@ public class InspectionOrderController {
 
     @Resource
     private InspectionOrderService inspectionOrderService;
+
+    @Resource
+    private StockInService stockInService;
 
     @GetMapping("/page")
     @Operation(summary = "获得检验单分页")
@@ -88,6 +94,14 @@ public class InspectionOrderController {
     public CommonResult<Boolean> deleteInspectionOrder(@RequestParam("id") Long id) {
         inspectionOrderService.deleteInspectionOrder(id);
         return success(true);
+    }
+
+    @PostMapping("/generate-stock-in")
+    @Operation(summary = "检验单生成胚布入库单草稿")
+    @PreAuthorize("@ss.hasPermission('lunaerp:stock:stock-in:create')")
+    public CommonResult<InspectionOrderGenerateStockInRespVO> generateStockIn(
+            @Valid @RequestBody InspectionOrderGenerateStockInReqVO reqVO) {
+        return success(stockInService.createStockInFromInspection(reqVO));
     }
 
 }

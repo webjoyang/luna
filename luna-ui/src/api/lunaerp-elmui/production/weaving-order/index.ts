@@ -138,3 +138,24 @@ export const getWeavingOrderStats = (id: number) => {
   return request.get<WeavingOrderStatsVO>({ url: `/lunaerp/production/weaving-order/get-statistics?id=${id}` })
 }
 
+// 织造单交接检验响应 VO
+export interface WeavingOrderHandoffInspectionRespVO {
+  inspectionOrderId: number
+  inspectionOrderNo: string
+  inspectionOrderCode?: string
+  created?: boolean
+  reused?: boolean
+  completedTicketCount: number
+  minTicketCode?: string
+  maxTicketCode?: string
+  ticketCodeRange?: string
+  ticketCodes?: string[]
+}
+
+// 交接检验（ADR-0025）
+export const handoffInspection = (id: number) => {
+  return request.post<WeavingOrderHandoffInspectionRespVO>({
+    url: `/lunaerp/production/weaving-order/handoff-inspection?id=${id}`
+  })
+}
+

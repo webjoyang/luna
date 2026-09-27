@@ -515,3 +515,25 @@ COMMENT ON COLUMN lunaerp_stock_in_item.yarn_spec_name IS '纱线规格名称快
 COMMENT ON COLUMN lunaerp_stock_ledger.item_type IS '物品类型（PRODUCT 产品 / YARN_SPEC 纱线规格），缺省 PRODUCT';
 COMMENT ON COLUMN lunaerp_stock_ledger.yarn_spec_id IS '关联纱线规格ID（lunaerp_production_yarn_spec.id，物品为 YARN_SPEC 时必填，与 product_id 互斥）';
 COMMENT ON COLUMN lunaerp_stock_ledger.yarn_spec_name IS '纱线规格名称快照';
+
+-- =============================================================================
+-- 11. 增量脚本：支持检验单生成胚布入库单与布票血缘（ADR-0024, ADR-0025）
+--     入库单主表扩展 inspection_order_id, inspection_order_no；
+--     入库明细表扩展 piece_no, weaving_ticket_id, inspection_order_item_id。
+-- =============================================================================
+ALTER TABLE lunaerp_stock_in ADD COLUMN IF NOT EXISTS inspection_order_id int8 NULL;
+ALTER TABLE lunaerp_stock_in ADD COLUMN IF NOT EXISTS inspection_order_no varchar(64) NULL;
+CREATE INDEX IF NOT EXISTS idx_lb_stock_in_inspection_order_id ON lunaerp_stock_in (inspection_order_id);
+
+ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS piece_no varchar(64) NULL;
+ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS weaving_ticket_id int8 NULL;
+ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS inspection_order_item_id int8 NULL;
+CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_weaving_ticket_id ON lunaerp_stock_in_item (weaving_ticket_id);
+CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_inspection_order_item_id ON lunaerp_stock_in_item (inspection_order_item_id);
+
+COMMENT ON COLUMN lunaerp_stock_in.inspection_order_id IS '关联检验单ID（lunaerp_production_inspection_order.id）';
+COMMENT ON COLUMN lunaerp_stock_in.inspection_order_no IS '关联检验单号快照';
+COMMENT ON COLUMN lunaerp_stock_in_item.piece_no IS '匹号';
+COMMENT ON COLUMN lunaerp_stock_in_item.weaving_ticket_id IS '关联织造布票ID（lunaerp_production_weaving_ticket.id）';
+COMMENT ON COLUMN lunaerp_stock_in_item.inspection_order_item_id IS '关联检验明细ID（lunaerp_production_inspection_order_item.id）';
+

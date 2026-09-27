@@ -75,6 +75,12 @@ class WeavingOrderServiceImplTest {
     @Mock
     private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.requisition.item.YarnRequisitionItemMapper yarnRequisitionItemMapper;
 
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.InspectionOrderService inspectionOrderService;
+
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper inspectionOrderMapper;
+
     @InjectMocks
     private WeavingOrderServiceImpl weavingOrderService;
 
@@ -482,6 +488,121 @@ class WeavingOrderServiceImplTest {
         assertNotNull(stats.getYarnStats());
         assertEquals(1, stats.getYarnStats().size());
         assertEquals(80.0, stats.getYarnStats().get(0).getDispatchRate());
+    }
+
+    // ==================== 7. 完工交接检验（ADR-0025） ====================
+
+    @Test
+    void handoffInspection_fails_whenNoCompletedTickets() {
+        WeavingOrderDO order = new WeavingOrderDO();
+        order.setId(10L);
+        order.setCode("ZZ-PB0927-01");
+        order.setGreigeOrderId(100L);
+        when(weavingOrderMapper.selectById(10L)).thenReturn(order);
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO ticket1 =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO();
+        ticket1.setId(1L);
+        ticket1.setCode("BT-01");
+        ticket1.setStatus("STARTED");
+
+        when(weavingTicketMapper.selectListByWeavingOrderId(10L)).thenReturn(Collections.singletonList(ticket1));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> weavingOrderService.handoffInspection(10L));
+        assertEquals(WEAVING_ORDER_NO_COMPLETED_TICKETS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void handoffInspection_createsNewInspectionOrder_whenNoneExists() {
+        WeavingOrderDO order = new WeavingOrderDO();
+        order.setId(10L);
+        order.setCode("ZZ-PB0927-01");
+        order.setGreigeOrderId(100L);
+        order.setProductId(50L);
+        order.setPlannedWeight(new BigDecimal("500.00"));
+        when(weavingOrderMapper.selectById(10L)).thenReturn(order);
+
+        GreigeOrderDO greigeOrder = new GreigeOrderDO();
+        greigeOrder.setId(100L);
+        greigeOrder.setSalesContractId(60L);
+        when(greigeOrderMapper.selectById(100L)).thenReturn(greigeOrder);
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO ticket1 =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO();
+        ticket1.setId(1L);
+        ticket1.setCode("BT-02");
+        ticket1.setStatus("COMPLETED");
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO ticket2 =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO();
+        ticket2.setId(2L);
+        ticket2.setCode("BT-01");
+        ticket2.setStatus("INSPECTED");
+
+        when(weavingTicketMapper.selectListByWeavingOrderId(10L)).thenReturn(List.of(ticket1, ticket2));
+        when(inspectionOrderMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(inspectionOrderService.createInspectionOrder(any())).thenReturn(999L);
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO newOrder =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO();
+        newOrder.setId(999L);
+        newOrder.setCode("INS-20260927-001");
+        when(inspectionOrderMapper.selectById(999L)).thenReturn(newOrder);
+
+        com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO resp =
+                weavingOrderService.handoffInspection(10L);
+
+        assertNotNull(resp);
+        assertEquals(999L, resp.getInspectionOrderId());
+        assertEquals("INS-20260927-001", resp.getInspectionOrderCode());
+        assertTrue(resp.getCreated());
+        assertEquals(2, resp.getCompletedTicketCount());
+        assertEquals("BT-01", resp.getMinTicketCode());
+        assertEquals("BT-02", resp.getMaxTicketCode());
+
+        ArgumentCaptor<com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO> captor =
+                ArgumentCaptor.forClass(com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO.class);
+        verify(inspectionOrderService).createInspectionOrder(captor.capture());
+        assertEquals("GREIGE", captor.getValue().getType());
+        assertEquals("PIECE", captor.getValue().getPackageMode());
+        assertEquals(100L, captor.getValue().getGreigeOrderId());
+        assertEquals(50L, captor.getValue().getProductId());
+    }
+
+    @Test
+    void handoffInspection_reusesExistingInspectionOrder_idempotent() {
+        WeavingOrderDO order = new WeavingOrderDO();
+        order.setId(10L);
+        order.setCode("ZZ-PB0927-01");
+        order.setGreigeOrderId(100L);
+        when(weavingOrderMapper.selectById(10L)).thenReturn(order);
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO ticket1 =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO();
+        ticket1.setId(1L);
+        ticket1.setCode("BT-01");
+        ticket1.setStatus("COMPLETED");
+
+        when(weavingTicketMapper.selectListByWeavingOrderId(10L)).thenReturn(Collections.singletonList(ticket1));
+
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO existing =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO();
+        existing.setId(888L);
+        existing.setCode("INS-20260927-888");
+        when(inspectionOrderMapper.selectList(any())).thenReturn(Collections.singletonList(existing));
+
+        com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO resp =
+                weavingOrderService.handoffInspection(10L);
+
+        assertNotNull(resp);
+        assertEquals(888L, resp.getInspectionOrderId());
+        assertEquals("INS-20260927-888", resp.getInspectionOrderCode());
+        assertEquals("INS-20260927-888", resp.getInspectionOrderNo());
+        assertFalse(resp.getCreated()); // 幂等复用
+        assertTrue(resp.getReused());
+        assertEquals(1, resp.getCompletedTicketCount());
+        assertEquals("BT-01", resp.getTicketCodeRange());
+        verify(inspectionOrderService, never()).createInspectionOrder(any());
     }
 
     // ==================== 私有辅助方法 ====================

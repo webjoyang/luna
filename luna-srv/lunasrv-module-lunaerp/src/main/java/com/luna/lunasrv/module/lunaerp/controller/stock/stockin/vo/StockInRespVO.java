@@ -57,6 +57,12 @@ public class StockInRespVO {
     @Schema(description = "胚布品种名称快照", example = "40S 纯棉单面")
     private String greigeTypeName;
 
+    @Schema(description = "关联检验单ID", example = "700")
+    private Long inspectionOrderId;
+
+    @Schema(description = "关联检验单号快照", example = "INS-20260927-001")
+    private String inspectionOrderNo;
+
     @Schema(description = "金额合计（明细金额之和，服务端重算）", example = "50000.00")
     private BigDecimal totalAmount;
 

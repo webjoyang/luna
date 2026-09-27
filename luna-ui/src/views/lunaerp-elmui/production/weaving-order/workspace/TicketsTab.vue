@@ -23,14 +23,25 @@
         </el-button>
       </div>
 
-      <!-- 批量生成布票入口 -->
-      <el-button
-        type="primary"
-        @click="handleOpenCreateBatchDialog"
-        v-hasPermi="['lunaerp:production:weaving-order-ticket:create', 'lunaerp:production:weaving-order:update']"
-      >
-        <Icon icon="ep:tickets" class="mr-1" /> 批量生成布票
-      </el-button>
+      <!-- 批量生成布票 & 交接检验入口 -->
+      <div class="flex items-center gap-2">
+        <el-button
+          type="success"
+          plain
+          :loading="actionSubmitting"
+          @click="handleHandoffInspection"
+          v-hasPermi="['lunaerp:production:weaving-order:handoff-inspection', 'lunaerp:production:weaving-order:update']"
+        >
+          <Icon icon="ep:check" class="mr-1" /> 交接检验
+        </el-button>
+        <el-button
+          type="primary"
+          @click="handleOpenCreateBatchDialog"
+          v-hasPermi="['lunaerp:production:weaving-order-ticket:create', 'lunaerp:production:weaving-order:update']"
+        >
+          <Icon icon="ep:tickets" class="mr-1" /> 批量生成布票
+        </el-button>
+      </div>
     </div>
 
     <!-- 筛选表单与批量操作工具栏 -->
@@ -435,9 +446,11 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
 import dayjs from 'dayjs'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
+import { handoffInspection } from '@/api/lunaerp-elmui/production/weaving-order'
 import {
   WeavingTicketVO,
   WeavingTicketPageParam,
@@ -855,6 +868,36 @@ const submitVoidAction = async () => {
     ElMessage.error(e?.message || '作废操作失败')
   } finally {
     actionSubmitting.value = false
+  }
+}
+
+const router = useRouter()
+const handleHandoffInspection = async () => {
+  if (!props.weavingOrderId) return
+  try {
+    actionSubmitting.value = true
+    const res = await handoffInspection(props.weavingOrderId)
+    const orderNo = res.inspectionOrderNo || res.inspectionOrderCode || ''
+    const range = res.ticketCodeRange || (res.minTicketCode && res.maxTicketCode ? (res.minTicketCode === res.maxTicketCode ? res.minTicketCode : `${res.minTicketCode} ~ ${res.maxTicketCode}`) : '-')
+    ElMessageBox.confirm(
+      `交接成功！\n检验单号：${orderNo}\n完工布票范围：${range}（共 ${res.completedTicketCount} 匹）。\n是否立即前往检验单工作台？`,
+      '交接检验成功',
+      {
+        confirmButtonText: '前往检验单',
+        cancelButtonText: '留在本页',
+        type: 'success'
+      }
+    )
+      .then(() => {
+        router.push(`/production/inspection-order/workspace/${res.inspectionOrderId}`)
+      })
+      .catch(() => {
+        loadTickets()
+        emit('refresh-order')
+      })
+  } catch (e: any) {
+    actionSubmitting.value = false
+    ElMessage.error(e?.message || '交接检验失败')
   }
 }
 

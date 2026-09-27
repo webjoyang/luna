@@ -69,6 +69,12 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
     @Resource
     private com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.requisition.item.YarnRequisitionItemMapper yarnRequisitionItemMapper;
 
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.InspectionOrderService inspectionOrderService;
+
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper inspectionOrderMapper;
+
     @Autowired(required = false)
     private List<WeavingOrderCascadeDeleteListener> cascadeDeleteListeners;
 
@@ -527,6 +533,108 @@ public class WeavingOrderServiceImpl implements WeavingOrderService {
             return String.format("织造单计划匹数合计(%d匹)超出胚布单总匹数(%d匹)", totalPlanned, greigeOrder.getPieceCount());
         }
         return null;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO handoffInspection(Long id) {
+        // 1. 校验织造单存在
+        WeavingOrderDO weavingOrder = validateWeavingOrderExists(id);
+
+        // 2. 收集本单有效布票
+        List<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO> tickets =
+                weavingTicketMapper.selectListByWeavingOrderId(id);
+        List<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO> validTickets =
+                tickets == null ? Collections.emptyList() :
+                        tickets.stream().filter(t -> !"VOID".equals(t.getStatus())).toList();
+
+        // 3. 筛选已完工及后续状态的票（COMPLETED / INSPECTED / STOCKED）
+        List<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO> completedTickets =
+                validTickets.stream()
+                        .filter(t -> "COMPLETED".equals(t.getStatus()) || "INSPECTED".equals(t.getStatus()) || "STOCKED".equals(t.getStatus()))
+                        .toList();
+
+        // 无完工票拒绝（1-030-015-005）
+        if (completedTickets.isEmpty()) {
+            throw exception(WEAVING_ORDER_NO_COMPLETED_TICKETS);
+        }
+
+        List<String> ticketCodes = completedTickets.stream()
+                .map(com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO::getCode)
+                .filter(StringUtils::hasText)
+                .sorted()
+                .toList();
+        String minTicketCode = ticketCodes.isEmpty() ? null : ticketCodes.get(0);
+        String maxTicketCode = ticketCodes.isEmpty() ? null : ticketCodes.get(ticketCodes.size() - 1);
+
+        // 4. 按胚布单ID归一 find-or-create 检验单（type=GREIGE, packageMode=PIECE）
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO existing = null;
+        if (weavingOrder.getGreigeOrderId() != null) {
+            List<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO> existingList =
+                    inspectionOrderMapper.selectList(new LambdaQueryWrapperX<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO>()
+                            .eq(com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO::getGreigeOrderId, weavingOrder.getGreigeOrderId())
+                            .eq(com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO::getType, "GREIGE")
+                            .ne(com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO::getStatus, "CANCELLED")
+                            .orderByDesc(com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO::getId));
+            if (CollUtil.isNotEmpty(existingList)) {
+                existing = existingList.get(0);
+            }
+        }
+
+        String ticketCodeRange = minTicketCode != null ?
+                (minTicketCode.equals(maxTicketCode) ? minTicketCode : minTicketCode + " ~ " + maxTicketCode) : "";
+
+        if (existing != null) {
+            // 重复交接幂等复用、返回完工票范围
+            return com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO.builder()
+                    .inspectionOrderId(existing.getId())
+                    .inspectionOrderCode(existing.getCode())
+                    .inspectionOrderNo(existing.getCode())
+                    .created(false)
+                    .reused(true)
+                    .completedTicketCount(completedTickets.size())
+                    .minTicketCode(minTicketCode)
+                    .maxTicketCode(maxTicketCode)
+                    .ticketCodeRange(ticketCodeRange)
+                    .ticketCodes(ticketCodes)
+                    .build();
+        }
+
+        // 新建检验单表头
+        GreigeOrderDO greigeOrder = weavingOrder.getGreigeOrderId() != null ?
+                greigeOrderMapper.selectById(weavingOrder.getGreigeOrderId()) : null;
+
+        com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO saveReqVO =
+                new com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO();
+        saveReqVO.setType("GREIGE");
+        saveReqVO.setPackageMode("PIECE");
+        saveReqVO.setStatus("DRAFT");
+        saveReqVO.setOrderDate(java.time.LocalDate.now());
+        saveReqVO.setProductId(weavingOrder.getProductId());
+        saveReqVO.setGreigeOrderId(weavingOrder.getGreigeOrderId());
+        if (greigeOrder != null) {
+            saveReqVO.setSalesContractId(greigeOrder.getSalesContractId());
+        }
+        saveReqVO.setTargetWeight(weavingOrder.getPlannedWeight());
+        saveReqVO.setRemark("由织造单【" + weavingOrder.getCode() + "】完工交接生成");
+
+        Long newId = inspectionOrderService.createInspectionOrder(saveReqVO);
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO createdOrder =
+                inspectionOrderMapper.selectById(newId);
+
+        String createdCode = createdOrder != null ? createdOrder.getCode() : null;
+        return com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO.builder()
+                .inspectionOrderId(newId)
+                .inspectionOrderCode(createdCode)
+                .inspectionOrderNo(createdCode)
+                .created(true)
+                .reused(false)
+                .completedTicketCount(completedTickets.size())
+                .minTicketCode(minTicketCode)
+                .maxTicketCode(maxTicketCode)
+                .ticketCodeRange(ticketCodeRange)
+                .ticketCodes(ticketCodes)
+                .build();
     }
 
 }

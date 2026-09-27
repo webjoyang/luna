@@ -5,6 +5,8 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderGenerateStockInReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderGenerateStockInRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.greigetype.GreigeTypeDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
@@ -12,6 +14,9 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.Supplier
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemPlacementDO;
@@ -25,6 +30,10 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.item.InspectionOrderItemMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnspec.YarnSpecDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
@@ -46,8 +55,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -163,6 +174,18 @@ public class StockInServiceImpl implements StockInService {
 
     @Resource
     private SecurityFrameworkService securityFrameworkService;
+
+    @Resource
+    private InspectionOrderMapper inspectionOrderMapper;
+
+    @Resource
+    private InspectionOrderItemMapper inspectionOrderItemMapper;
+
+    @Resource
+    private WeavingTicketService weavingTicketService;
+
+    @Resource
+    private WeavingTicketMapper weavingTicketMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -355,6 +378,23 @@ public class StockInServiceImpl implements StockInService {
                 ledger.setRemark(item.getRemark());
                 stockLedgerMapper.insert(ledger);
             }
+        }
+
+        // 6. 布票状态回写（ADR-0024：入库过账同事务把布票状态推进至 STOCKED）
+        List<Long> ticketIds = new ArrayList<>();
+        for (StockInItemDO item : items) {
+            if (item.getWeavingTicketId() != null) {
+                ticketIds.add(item.getWeavingTicketId());
+            } else if (StringUtils.hasText(item.getPieceNo())) {
+                WeavingTicketDO ticket = weavingTicketMapper.selectByCode(item.getPieceNo().trim());
+                if (ticket != null) {
+                    ticketIds.add(ticket.getId());
+                }
+            }
+        }
+        if (CollUtil.isNotEmpty(ticketIds)) {
+            List<Long> distinctTicketIds = ticketIds.stream().distinct().collect(Collectors.toList());
+            weavingTicketService.markStocked(distinctTicketIds);
         }
     }
 
@@ -780,6 +820,119 @@ public class StockInServiceImpl implements StockInService {
         ledger.setRelatedDocId(stockIn.getId());
         ledger.setRelatedDocNo(stockIn.getInNo());
         return ledger;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public InspectionOrderGenerateStockInRespVO createStockInFromInspection(InspectionOrderGenerateStockInReqVO reqVO) {
+        // 1. 校验检验单存在且状态为 COMPLETED
+        InspectionOrderDO inspectionOrder = inspectionOrderMapper.selectById(reqVO.getInspectionOrderId());
+        if (inspectionOrder == null) {
+            throw exception(INSPECTION_ORDER_NOT_EXISTS);
+        }
+        if (!"COMPLETED".equals(inspectionOrder.getStatus())) {
+            throw exception(INSPECTION_ORDER_STATUS_NOT_COMPLETED);
+        }
+
+        // 2. 校验仓库存在且有效
+        WarehouseDO warehouse = warehouseMapper.selectById(reqVO.getWarehouseId());
+        if (warehouse == null || !"ACTIVE".equals(warehouse.getStatus())) {
+            throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "仓库");
+        }
+
+        // 3. 查询检验单全部明细
+        List<InspectionOrderItemDO> allItems = inspectionOrderItemMapper.selectListByInspectionOrderId(inspectionOrder.getId());
+        if (CollUtil.isEmpty(allItems)) {
+            throw exception(INSPECTION_ORDER_NO_QUALIFIED_ITEMS);
+        }
+
+        // 4. 过滤合格品（grade != null 且 !grade.equalsIgnoreCase("DEFECTIVE")）
+        List<InspectionOrderItemDO> candidateItems = allItems.stream()
+                .filter(item -> StringUtils.hasText(item.getGrade()) && !"DEFECTIVE".equalsIgnoreCase(item.getGrade().trim()))
+                .collect(Collectors.toList());
+        if (CollUtil.isEmpty(candidateItems)) {
+            throw exception(INSPECTION_ORDER_NO_QUALIFIED_ITEMS);
+        }
+
+        // 5. 幂等查重：检查是否已有非 CANCELLED 的入库单明细引用了该 inspection_order_item_id
+        List<Long> candidateItemIds = candidateItems.stream().map(InspectionOrderItemDO::getId).collect(Collectors.toList());
+        List<StockInItemDO> existingStockInItems = stockInItemMapper.selectListByInspectionOrderItemIds(candidateItemIds);
+        Set<Long> alreadyGeneratedItemIds = new HashSet<>();
+        if (CollUtil.isNotEmpty(existingStockInItems)) {
+            Map<Long, StockInDO> stockInCache = new HashMap<>();
+            for (StockInItemDO existingItem : existingStockInItems) {
+                StockInDO parent = stockInCache.computeIfAbsent(existingItem.getStockInId(), id -> stockInMapper.selectById(id));
+                if (parent != null && !STATUS_CANCELLED.equals(parent.getStatus())) {
+                    alreadyGeneratedItemIds.add(existingItem.getInspectionOrderItemId());
+                }
+            }
+        }
+
+        // 6. 得到本次需要生成的明细
+        List<InspectionOrderItemDO> itemsToGenerate = candidateItems.stream()
+                .filter(item -> !alreadyGeneratedItemIds.contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isEmpty(itemsToGenerate)) {
+            throw exception(INSPECTION_ORDER_NO_QUALIFIED_ITEMS);
+        }
+
+        // 7. 创建 StockInDO
+        StockInDO stockIn = new StockInDO();
+        stockIn.setStatus(DEFAULT_STATUS);
+        stockIn.setInDate(LocalDate.now());
+        stockIn.setInNo(generateInNoWithRetry(stockIn.getInDate()));
+        stockIn.setInType("PRODUCTION");
+        stockIn.setWarehouseId(warehouse.getId());
+        stockIn.setWarehouseName(warehouse.getName());
+        stockIn.setInspectionOrderId(inspectionOrder.getId());
+        stockIn.setInspectionOrderNo(inspectionOrder.getCode());
+        stockIn.setSalesContractId(inspectionOrder.getSalesContractId());
+        stockIn.setContractNo(inspectionOrder.getContractNo());
+        stockIn.setGreigeOrderId(inspectionOrder.getGreigeOrderId());
+        if (inspectionOrder.getGreigeOrderId() != null) {
+            GreigeOrderDO greigeOrder = greigeOrderMapper.selectById(inspectionOrder.getGreigeOrderId());
+            if (greigeOrder != null) {
+                stockIn.setGreigeOrderNo(greigeOrder.getOrderNo());
+            }
+        }
+        stockIn.setDyeingOrderId(inspectionOrder.getDyeingOrderId());
+        if (inspectionOrder.getInspectionFactoryId() != null) {
+            stockIn.setSupplierId(inspectionOrder.getInspectionFactoryId());
+            stockIn.setSupplierName(inspectionOrder.getInspectionFactoryName());
+        }
+        stockIn.setRemark(StringUtils.hasText(reqVO.getRemark()) ? reqVO.getRemark().trim() : ("由检验单 " + inspectionOrder.getCode() + " 生成"));
+        stockInMapper.insert(stockIn);
+
+        // 8. 创建 StockInItemDO 列表
+        for (InspectionOrderItemDO item : itemsToGenerate) {
+            StockInItemDO itemDO = new StockInItemDO();
+            itemDO.setStockInId(stockIn.getId());
+            itemDO.setItemType("PRODUCT");
+            itemDO.setProductId(inspectionOrder.getProductId());
+            itemDO.setProductCode(StringUtils.hasText(item.getProductCode()) ? item.getProductCode() : inspectionOrder.getProductCode());
+            itemDO.setProductName(StringUtils.hasText(item.getProductName()) ? item.getProductName() : inspectionOrder.getProductName());
+            itemDO.setBatchNo(item.getVatNo());
+            itemDO.setRollNo(item.getRollNo());
+            itemDO.setPieceNo(item.getPieceNo());
+            itemDO.setWeavingTicketId(item.getWeavingTicketId());
+            itemDO.setInspectionOrderItemId(item.getId());
+            itemDO.setPieceCount(item.getPieceCount() != null ? item.getPieceCount() : 1);
+
+            BigDecimal qty = item.getMeasuredWeight() != null ? item.getMeasuredWeight()
+                    : (item.getLengthM() != null ? item.getLengthM() : BigDecimal.ONE);
+            itemDO.setQuantity(qty);
+            itemDO.setUnit(item.getMeasuredWeight() != null ? "KG" : "M");
+            itemDO.setRemark(item.getRemark());
+            stockInItemMapper.insert(itemDO);
+        }
+
+        int skipped = allItems.size() - itemsToGenerate.size();
+        return InspectionOrderGenerateStockInRespVO.builder()
+                .stockInId(stockIn.getId())
+                .stockInNo(stockIn.getInNo())
+                .generatedCount(itemsToGenerate.size())
+                .skippedCount(skipped)
+                .build();
     }
 
 }

@@ -96,6 +96,8 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
     private SalesContractMapper salesContractMapper;
     @Resource
     private InspectionOrderItemMapper inspectionOrderItemMapper;
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService weavingTicketService;
 
     @Override
     public PageResult<InspectionOrderRespVO> getInspectionOrderPage(InspectionOrderPageReqVO reqVO) {
@@ -216,6 +218,15 @@ public class InspectionOrderServiceImpl implements InspectionOrderService {
         InspectionOrderDO order = validateInspectionOrderExists(id);
         if (!STATUS_DRAFT.equals(order.getStatus())) {
             throw exception(INSPECTION_ORDER_STATUS_NOT_ALLOWED);
+        }
+        List<com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO> items =
+                inspectionOrderItemMapper.selectListByInspectionOrderId(id);
+        if (CollUtil.isNotEmpty(items) && weavingTicketService != null) {
+            for (com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO item : items) {
+                if (item.getWeavingTicketId() != null) {
+                    weavingTicketService.rollbackInspected(item.getWeavingTicketId());
+                }
+            }
         }
         inspectionOrderMapper.deleteById(id);
         inspectionOrderItemMapper.deleteByInspectionOrderId(id);

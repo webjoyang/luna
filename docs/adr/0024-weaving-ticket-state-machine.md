@@ -28,10 +28,14 @@
 | 完工 | STARTED |
 | 异常 | GENERATED、STARTED |
 | 作废（人工） | GENERATED、STARTED、EXCEPTION |
+| 检验（录检合格/判定，ADR-0025） | COMPLETED（重复录检保持幂等） |
+| 检验明细删除（补偿回退） | INSPECTED（回退为 COMPLETED） |
+| 胚布入库审核过账（ADR-0016） | INSPECTED |
 
 - **开工允许从 STARTED / EXCEPTION 进入**：异常票接好断纱、换机、换人后重新开工，
   以及转机时重扫以更新 `actualMachine`（该字段真相来自开工），都是设计内恢复路径；挡死会让异常票无路可走。
-- `INSPECTED`、`STOCKED` 非死状态：本期联动在范围内——检验明细保存按 `weaving_ticket_id` 回写 INSPECTED（ADR-0025）；胚布入库审核过账回写 STOCKED。
+- **检验与入库联动（INSPECTED / STOCKED）**：检验明细录入判定等级后，同事务把布票回写为 `INSPECTED`；若检验明细因误录被删除，触发补偿回退机制将布票状态恢复为 `COMPLETED`。胚布入库单（`type=PRODUCTION`）审核过账时同事务把布票回写为 `STOCKED`。
+- **入库单红冲/取消不自动回退票态**：胚布入库单（`StockInDO`）红冲或取消时，**不自动回退布票状态**（布票保持 `STOCKED` 态）。原因在于入库过账涉及实物仓储、库存账本与成本凭证的正式结转，自动级联逆向回退容易引起跨仓储-生产多环节状态紊乱；若出现入库作废或误入库，现场应先核实物理实物去向，由人工按需进行补偿处置或运维干预。
 - 作废为人工终态，作废时间与原因必填，作废票不参与任何产量推导。
 
 ### 2. 机台任务四态（字典 `lunaerp_weaving_task_status`）

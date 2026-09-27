@@ -26,6 +26,9 @@ export interface StockInItemVO {
   yarnSpecName?: string
   batchNo?: string
   rollNo?: string
+  pieceNo?: string
+  weavingTicketId?: number
+  inspectionOrderItemId?: number
   pieceCount?: number
   quantity: number
   unit: string
@@ -54,6 +57,8 @@ export interface StockInVO {
   dyeingOrderId?: number
   greigeTypeId?: number
   greigeTypeName?: string
+  inspectionOrderId?: number
+  inspectionOrderNo?: string
   totalAmount?: number
   inDate: string
   remark?: string

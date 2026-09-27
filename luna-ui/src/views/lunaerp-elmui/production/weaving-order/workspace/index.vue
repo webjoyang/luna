@@ -33,6 +33,18 @@
           </el-button>
         </template>
 
+        <template v-if="numericOrderId && currentOrder && currentOrder.status !== 'CANCELLED' && currentOrder.status !== 'DRAFT'">
+          <el-button
+            type="success"
+            :loading="actionLoading"
+            @click="handleHandoffInspection"
+            v-hasPermi="['lunaerp:production:weaving-order:handoff-inspection', 'lunaerp:production:weaving-order:update']"
+          >
+            <Icon icon="ep:check" class="mr-1" />
+            交接检验
+          </el-button>
+        </template>
+
         <template v-if="numericOrderId && currentOrder && currentOrder.status !== 'CANCELLED' && currentOrder.status !== 'COMPLETED'">
           <el-button
             type="warning"
@@ -99,7 +111,8 @@ import StatsTab from './StatsTab.vue'
 import {
   WeavingOrderVO,
   deleteWeavingOrder,
-  cancelWeavingOrder
+  cancelWeavingOrder,
+  handoffInspection
 } from '@/api/lunaerp-elmui/production/weaving-order'
 
 const route = useRoute()
@@ -171,6 +184,35 @@ const handleCancelOrder = async () => {
     if (e !== 'cancel') ElMessage.error(e?.message || '取消失败')
   } finally {
     actionLoading.value = false
+  }
+}
+
+const handleHandoffInspection = async () => {
+  if (!numericOrderId.value) return
+  try {
+    actionLoading.value = true
+    const res = await handoffInspection(numericOrderId.value)
+    actionLoading.value = false
+    const orderNo = res.inspectionOrderNo || res.inspectionOrderCode || ''
+    const range = res.ticketCodeRange || (res.minTicketCode && res.maxTicketCode ? (res.minTicketCode === res.maxTicketCode ? res.minTicketCode : `${res.minTicketCode} ~ ${res.maxTicketCode}`) : '-')
+    ElMessageBox.confirm(
+      `交接成功！\n检验单号：${orderNo}\n完工布票范围：${range}（共 ${res.completedTicketCount} 匹）。\n是否立即前往检验单工作台？`,
+      '交接检验成功',
+      {
+        confirmButtonText: '前往检验单',
+        cancelButtonText: '留在本页',
+        type: 'success'
+      }
+    )
+      .then(() => {
+        router.push(`/production/inspection-order/workspace/${res.inspectionOrderId}`)
+      })
+      .catch(() => {
+        handleRefreshOrder()
+      })
+  } catch (e: any) {
+    actionLoading.value = false
+    ElMessage.error(e?.message || '交接检验失败')
   }
 }
 </script>

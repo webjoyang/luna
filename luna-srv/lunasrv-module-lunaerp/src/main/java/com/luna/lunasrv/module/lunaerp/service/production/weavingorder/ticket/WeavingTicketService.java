@@ -104,4 +104,25 @@ public interface WeavingTicketService {
      */
     void deriveState(Long machineTaskId, Long weavingOrderId);
 
+    /**
+     * 回写布票状态为已检验（INSPECTED）并同事务推导状态（供检验明细保存调用，ADR-0024、ADR-0025）
+     *
+     * @param ticketId 布票ID
+     */
+    void markInspected(Long ticketId);
+
+    /**
+     * 检验明细删除时回退布票状态（若当前为 INSPECTED 则回退为 COMPLETED）并同事务推导状态
+     *
+     * @param ticketId 布票ID
+     */
+    void rollbackInspected(Long ticketId);
+
+    /**
+     * 回写布票状态为已入库（STOCKED）并同事务推导状态（供入库审核过账调用，ADR-0024、ADR-0025）
+     *
+     * @param ticketIds 布票ID集合
+     */
+    void markStocked(java.util.Collection<Long> ticketIds);
+
 }

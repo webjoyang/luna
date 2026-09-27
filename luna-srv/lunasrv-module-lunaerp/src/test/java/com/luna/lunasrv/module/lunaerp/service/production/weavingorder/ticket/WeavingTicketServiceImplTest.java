@@ -760,6 +760,85 @@ class WeavingTicketServiceImplTest {
         assertEquals(1L, page.getTotal());
     }
 
+    // ==================== 6. 检验与入库回写 ====================
+
+    @Test
+    void testMarkInspected_success() {
+        WeavingTicketDO ticket = buildTicket(1L, "COMPLETED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+        when(weavingTicketMapper.selectListByMachineTaskId(200L)).thenReturn(Collections.singletonList(ticket));
+        when(weavingTicketMapper.selectListByWeavingOrderId(100L)).thenReturn(Collections.singletonList(ticket));
+        when(machineTaskMapper.selectListByWeavingOrderId(100L)).thenReturn(Collections.singletonList(defaultTask));
+
+        weavingTicketService.markInspected(1L);
+
+        ArgumentCaptor<WeavingTicketDO> captor = ArgumentCaptor.forClass(WeavingTicketDO.class);
+        verify(weavingTicketMapper).updateById(captor.capture());
+        assertEquals("INSPECTED", captor.getValue().getStatus());
+        assertEquals(1L, captor.getValue().getId());
+    }
+
+    @Test
+    void testMarkInspected_alreadyInspectedOrStocked_idempotent() {
+        WeavingTicketDO ticket = buildTicket(1L, "INSPECTED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        weavingTicketService.markInspected(1L);
+
+        verify(weavingTicketMapper, never()).updateById(any(WeavingTicketDO.class));
+    }
+
+    @Test
+    void testMarkInspected_notCompleted_noOp() {
+        WeavingTicketDO ticket = buildTicket(1L, "STARTED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        weavingTicketService.markInspected(1L);
+
+        verify(weavingTicketMapper, never()).updateById(any(WeavingTicketDO.class));
+    }
+
+    @Test
+    void testRollbackInspected_success() {
+        WeavingTicketDO ticket = buildTicket(1L, "INSPECTED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+        when(weavingTicketMapper.selectListByMachineTaskId(200L)).thenReturn(Collections.singletonList(ticket));
+        when(weavingTicketMapper.selectListByWeavingOrderId(100L)).thenReturn(Collections.singletonList(ticket));
+        when(machineTaskMapper.selectListByWeavingOrderId(100L)).thenReturn(Collections.singletonList(defaultTask));
+
+        weavingTicketService.rollbackInspected(1L);
+
+        ArgumentCaptor<WeavingTicketDO> captor = ArgumentCaptor.forClass(WeavingTicketDO.class);
+        verify(weavingTicketMapper).updateById(captor.capture());
+        assertEquals("COMPLETED", captor.getValue().getStatus());
+    }
+
+    @Test
+    void testRollbackInspected_notInspected_noOp() {
+        WeavingTicketDO ticket = buildTicket(1L, "STOCKED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        weavingTicketService.rollbackInspected(1L);
+
+        verify(weavingTicketMapper, never()).updateById(any(WeavingTicketDO.class));
+    }
+
+    @Test
+    void testMarkStocked_success() {
+        WeavingTicketDO ticket1 = buildTicket(1L, "INSPECTED");
+        WeavingTicketDO ticket2 = buildTicket(2L, "COMPLETED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket1);
+        when(weavingTicketMapper.selectById(2L)).thenReturn(ticket2);
+
+        weavingTicketService.markStocked(Arrays.asList(1L, 2L));
+
+        ArgumentCaptor<WeavingTicketDO> captor = ArgumentCaptor.forClass(WeavingTicketDO.class);
+        verify(weavingTicketMapper, times(2)).updateById(captor.capture());
+        List<WeavingTicketDO> updatedList = captor.getAllValues();
+        assertEquals("STOCKED", updatedList.get(0).getStatus());
+        assertEquals("STOCKED", updatedList.get(1).getStatus());
+    }
+
     // ==================== 辅助方法 ====================
 
     private WeavingTicketDO buildTicket(Long id, String status) {

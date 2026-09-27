@@ -503,6 +503,80 @@ public class WeavingTicketServiceImpl implements WeavingTicketService {
         return result;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void markInspected(Long ticketId) {
+        if (ticketId == null) {
+            return;
+        }
+        WeavingTicketDO ticket = weavingTicketMapper.selectById(ticketId);
+        if (ticket == null || STATUS_VOID.equals(ticket.getStatus())) {
+            return;
+        }
+        // 若已经是 INSPECTED 或 STOCKED，保持幂等
+        if (STATUS_INSPECTED.equals(ticket.getStatus()) || STATUS_STOCKED.equals(ticket.getStatus())) {
+            return;
+        }
+        // ADR-0024 白名单约束：只有完工票（COMPLETED）允许跃迁至 INSPECTED
+        if (!STATUS_COMPLETED.equals(ticket.getStatus())) {
+            return;
+        }
+        WeavingTicketDO update = new WeavingTicketDO();
+        update.setId(ticket.getId());
+        update.setStatus(STATUS_INSPECTED);
+        weavingTicketMapper.updateById(update);
+
+        deriveState(ticket.getMachineTaskId(), ticket.getWeavingOrderId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackInspected(Long ticketId) {
+        if (ticketId == null) {
+            return;
+        }
+        WeavingTicketDO ticket = weavingTicketMapper.selectById(ticketId);
+        if (ticket == null || !STATUS_INSPECTED.equals(ticket.getStatus())) {
+            return;
+        }
+        // 回退为 COMPLETED
+        WeavingTicketDO update = new WeavingTicketDO();
+        update.setId(ticket.getId());
+        update.setStatus(STATUS_COMPLETED);
+        weavingTicketMapper.updateById(update);
+
+        deriveState(ticket.getMachineTaskId(), ticket.getWeavingOrderId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void markStocked(java.util.Collection<Long> ticketIds) {
+        if (CollUtil.isEmpty(ticketIds)) {
+            return;
+        }
+        Set<Long> affectedTaskIds = new HashSet<>();
+        Set<Long> affectedOrderIds = new HashSet<>();
+
+        for (Long id : ticketIds) {
+            if (id == null) {
+                continue;
+            }
+            WeavingTicketDO ticket = weavingTicketMapper.selectById(id);
+            if (ticket == null || STATUS_VOID.equals(ticket.getStatus()) || STATUS_STOCKED.equals(ticket.getStatus())) {
+                continue;
+            }
+            WeavingTicketDO update = new WeavingTicketDO();
+            update.setId(ticket.getId());
+            update.setStatus(STATUS_STOCKED);
+            weavingTicketMapper.updateById(update);
+
+            affectedTaskIds.add(ticket.getMachineTaskId());
+            affectedOrderIds.add(ticket.getWeavingOrderId());
+        }
+
+        triggerBatchDerive(affectedTaskIds, affectedOrderIds);
+    }
+
     private void triggerBatchDerive(Set<Long> affectedTaskIds, Set<Long> affectedOrderIds) {
         for (Long taskId : affectedTaskIds) {
             deriveState(taskId, null);

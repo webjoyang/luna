@@ -89,10 +89,20 @@ public class StockInDO extends TenantBaseDO {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long greigeTypeId;
     /**
-     * 胚布品种名称快照
+     * 关联胚布品种名称快照
      */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String greigeTypeName;
+    /**
+     * 关联检验单ID
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long inspectionOrderId;
+    /**
+     * 关联检验单号快照
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String inspectionOrderNo;
     /**
      * 金额合计（服务端重算，明细金额之和）
      */

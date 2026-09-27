@@ -78,6 +78,8 @@ public interface ErrorCodeConstants {
     ErrorCode INSPECTION_ORDER_PIECE_NO_FORBIDDEN = new ErrorCode(1_030_010_002, "卷装模式下禁止填写匹号");
     ErrorCode INSPECTION_ORDER_PIECE_NO_REQUIRED = new ErrorCode(1_030_010_002, "匹装模式下匹号不能为空");
     ErrorCode INSPECTION_ORDER_PIECE_DUPLICATE = new ErrorCode(1_030_010_004, "单内匹号【{}】缸号【{}】已存在");
+    ErrorCode INSPECTION_ORDER_STATUS_NOT_COMPLETED = new ErrorCode(1_030_010_005, "仅录检完成（COMPLETED）状态允许生成入库单");
+    ErrorCode INSPECTION_ORDER_NO_QUALIFIED_ITEMS = new ErrorCode(1_030_010_006, "检验单无未入库的合格明细，无法生成入库单");
     ErrorCode INSPECTION_ORDER_ITEM_NOT_EXISTS = new ErrorCode(1_030_010_100, "录检明细不存在");
 
     // ========== 入库单模块 1-030-011-000（主表/明细/放置共用） ==========
@@ -106,6 +108,7 @@ public interface ErrorCodeConstants {
     ErrorCode WEAVING_ORDER_STATUS_NOT_ALLOW = new ErrorCode(1_030_015_002, "织造单状态不允许该操作");
     ErrorCode WEAVING_ORDER_GREIGE_ORDER_INVALID = new ErrorCode(1_030_015_003, "关联胚布单不存在或非自织状态");
     ErrorCode WEAVING_ORDER_PLANNED_QTY_INVALID = new ErrorCode(1_030_015_004, "计划匹数必须为正整数");
+    ErrorCode WEAVING_ORDER_NO_COMPLETED_TICKETS = new ErrorCode(1_030_015_005, "织造单暂无完工布票，无法交接检验");
 
     // ========== 织造执行 - 机台任务模块 1-030-015-100 ==========
     ErrorCode MACHINE_TASK_NOT_EXISTS = new ErrorCode(1_030_015_100, "机台任务不存在");

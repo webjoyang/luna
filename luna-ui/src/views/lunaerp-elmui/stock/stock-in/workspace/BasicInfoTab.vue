@@ -198,6 +198,21 @@
       </el-col>
     </el-row>
 
+    <el-row v-if="formData.inspectionOrderNo || formData.inspectionOrderId" :gutter="20">
+      <el-col :span="12">
+        <el-form-item label="关联检验单">
+          <el-input
+            :model-value="formData.inspectionOrderNo ? `${formData.inspectionOrderNo}` : `检验单 #${formData.inspectionOrderId}`"
+            disabled
+          >
+            <template #append v-if="formData.inspectionOrderId">
+              <el-button @click="handleNavigateToInspection">查看检验单</el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+      </el-col>
+    </el-row>
+
     <el-form-item label="备注" prop="remark">
       <el-input
         v-model="formData.remark"
@@ -213,6 +228,7 @@
 </template>
 
 <script lang="ts" setup>
+import { useRouter } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import type { StockInVO } from '@/api/lunaerp-elmui/stock/stock-in'
@@ -393,6 +409,13 @@ const validate = async () => {
 }
 
 defineExpose({ validate })
+
+const router = useRouter()
+const handleNavigateToInspection = () => {
+  if (formData.value.inspectionOrderId) {
+    router.push(`/production/inspection-order/workspace/${formData.value.inspectionOrderId}?mode=view`)
+  }
+}
 
 onMounted(() => {
   loadWarehouses()

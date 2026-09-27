@@ -88,5 +88,13 @@ public interface WeavingOrderService {
      */
     com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderStatsRespVO getWeavingOrderStats(Long id);
 
+    /**
+     * 织造完工交接检验（find-or-create PIECE 模式胚布检验单，幂等，ADR-0025）
+     *
+     * @param id 织造单ID
+     * @return 交接结果（检验单信息、完工布票范围）
+     */
+    com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO handoffInspection(Long id);
+
 }
 
