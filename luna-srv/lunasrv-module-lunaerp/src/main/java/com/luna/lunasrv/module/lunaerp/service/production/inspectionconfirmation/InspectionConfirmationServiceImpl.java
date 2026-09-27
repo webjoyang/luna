@@ -14,6 +14,8 @@ import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmat
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPayrollSummaryRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPrintViewRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionconfirmation.InspectionConfirmationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
@@ -36,9 +38,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -464,4 +469,81 @@ public class InspectionConfirmationServiceImpl implements InspectionConfirmation
         return respVO;
     }
 
+    @Override
+    public List<InspectionConfirmationPrintViewRespVO> getPrintView(LocalDate date) {
+        LocalDate targetDate = resolveDate(date);
+        LocalDateTime[] dayRange = buildDayRange(targetDate);
+
+        List<InspectionConfirmationDO> list = inspectionConfirmationMapper.selectList(
+                new LambdaQueryWrapperX<InspectionConfirmationDO>()
+                        .ge(InspectionConfirmationDO::getCreateTime, dayRange[0])
+                        .lt(InspectionConfirmationDO::getCreateTime, dayRange[1])
+                        .orderByAsc(InspectionConfirmationDO::getCreateTime)
+                        .orderByAsc(InspectionConfirmationDO::getId));
+        return BeanUtils.toBean(list, InspectionConfirmationPrintViewRespVO.class);
+    }
+
+    @Override
+    public InspectionConfirmationPayrollSummaryRespVO getPayrollSummary(LocalDate date) {
+        LocalDate targetDate = resolveDate(date);
+        LocalDateTime[] dayRange = buildDayRange(targetDate);
+
+        List<InspectionConfirmationDO> list = inspectionConfirmationMapper.selectList(
+                new LambdaQueryWrapperX<InspectionConfirmationDO>()
+                        .eq(InspectionConfirmationDO::getStatus, InspectionConfirmationStatusEnum.CONFIRMED.getValue())
+                        .eq(InspectionConfirmationDO::getResponsibility, InspectionConfirmationResponsibilityEnum.OPERATOR.getValue())
+                        .ge(InspectionConfirmationDO::getConfirmedAt, dayRange[0])
+                        .lt(InspectionConfirmationDO::getConfirmedAt, dayRange[1])
+                        .orderByAsc(InspectionConfirmationDO::getWorkerUserId)
+                        .orderByAsc(InspectionConfirmationDO::getConfirmedAt)
+                        .orderByAsc(InspectionConfirmationDO::getId));
+
+        if (CollUtil.isEmpty(list)) {
+            return InspectionConfirmationPayrollSummaryRespVO.builder()
+                    .date(targetDate)
+                    .groups(Collections.emptyList())
+                    .build();
+        }
+
+        Map<Long, List<InspectionConfirmationDO>> grouped = list.stream()
+                .filter(item -> item.getWorkerUserId() != null)
+                .collect(Collectors.groupingBy(InspectionConfirmationDO::getWorkerUserId, LinkedHashMap::new, Collectors.toList()));
+
+        List<InspectionConfirmationPayrollSummaryRespVO.WorkerGroup> groups = grouped.entrySet().stream()
+                .map(entry -> {
+                    Long workerUserId = entry.getKey();
+                    List<InspectionConfirmationDO> workerRecords = entry.getValue();
+                    String workerName = workerRecords.stream()
+                            .map(InspectionConfirmationDO::getWorkerName)
+                            .filter(StringUtils::hasText)
+                            .findFirst()
+                            .orElse("");
+                    List<InspectionConfirmationPayrollSummaryRespVO.PayrollRecord> records =
+                            BeanUtils.toBean(workerRecords, InspectionConfirmationPayrollSummaryRespVO.PayrollRecord.class);
+
+                    return InspectionConfirmationPayrollSummaryRespVO.WorkerGroup.builder()
+                            .workerUserId(workerUserId)
+                            .workerName(workerName)
+                            .count(records.size())
+                            .records(records)
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        return InspectionConfirmationPayrollSummaryRespVO.builder()
+                .date(targetDate)
+                .groups(groups)
+                .build();
+    }
+
+    private LocalDate resolveDate(LocalDate date) {
+        return date != null ? date : LocalDate.now();
+    }
+
+    private LocalDateTime[] buildDayRange(LocalDate targetDate) {
+        return new LocalDateTime[]{targetDate.atStartOfDay(), targetDate.plusDays(1).atStartOfDay()};
+    }
+
 }
+
+

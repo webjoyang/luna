@@ -10,17 +10,23 @@ import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmat
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeRespVO;
+import com.luna.lunasrv.framework.common.util.date.DateUtils;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPayrollSummaryRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPrintViewRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 import com.luna.lunasrv.module.lunaerp.service.production.inspectionconfirmation.InspectionConfirmationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
+
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
@@ -88,4 +94,21 @@ public class InspectionConfirmationController {
         return success(inspectionConfirmationService.getInspectionConfirmation(id));
     }
 
+    @GetMapping("/print-view")
+    @Operation(summary = "获得按日批量打印视图")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-confirmation:print')")
+    public CommonResult<List<InspectionConfirmationPrintViewRespVO>> getPrintView(
+            @RequestParam(value = "date", required = false) @DateTimeFormat(pattern = DateUtils.FORMAT_YEAR_MONTH_DAY) LocalDate date) {
+        return success(inspectionConfirmationService.getPrintView(date));
+    }
+
+    @GetMapping("/payroll-summary")
+    @Operation(summary = "获得工资扣款汇总")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:inspection-confirmation:payroll')")
+    public CommonResult<InspectionConfirmationPayrollSummaryRespVO> getPayrollSummary(
+            @RequestParam(value = "date", required = false) @DateTimeFormat(pattern = DateUtils.FORMAT_YEAR_MONTH_DAY) LocalDate date) {
+        return success(inspectionConfirmationService.getPayrollSummary(date));
+    }
+
 }
+

@@ -15,6 +15,8 @@ import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmat
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPayrollSummaryRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPrintViewRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionconfirmation.InspectionConfirmationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
@@ -41,6 +43,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
@@ -1266,4 +1269,282 @@ class InspectionConfirmationServiceImplTest {
         assertTrue(sqlSegment.contains("ORDER BY create_time ASC"), "应按创建时间正序排序");
     }
 
+    // ==================== getPrintView ====================
+
+    @Test
+    @DisplayName("打印视图：未传 date 缺省今天，查询 [今天00:00, 明天00:00) 边界，并按 create_time 正序")
+    void getPrintView_defaultToday_queriesTodayRangeAscending() {
+        LocalDate today = LocalDate.now();
+        InspectionConfirmationDO item1 = new InspectionConfirmationDO();
+        item1.setId(101L);
+        item1.setRollNo("R01");
+        item1.setStatus("PENDING");
+        item1.setCreateTime(today.atTime(8, 0, 0));
+
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Collections.singletonList(item1));
+
+        List<InspectionConfirmationPrintViewRespVO> result = inspectionConfirmationService.getPrintView(null);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("R01", result.get(0).getRollNo());
+
+        ArgumentCaptor<LambdaQueryWrapperX<InspectionConfirmationDO>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapperX.class);
+        verify(inspectionConfirmationMapper).selectList(captor.capture());
+        LambdaQueryWrapperX<InspectionConfirmationDO> wrapper = captor.getValue();
+        String sql = wrapper.getSqlSegment();
+        assertTrue(sql.contains("create_time >="), "应包含 create_time >= 起始时间");
+        assertTrue(sql.contains("create_time <"), "应包含 create_time < 截止时间");
+        assertTrue(sql.contains("ORDER BY create_time ASC"), "应按创建时间正序排序");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(today.atStartOfDay()), "应以今天 00:00:00 为下界");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(today.plusDays(1).atStartOfDay()), "应以明天 00:00:00 为上界");
+    }
+
+    @Test
+    @DisplayName("打印视图：指定日期查询该日范围全部状态行（含 REVOKED 标记），正序并映射全字段")
+    void getPrintView_specificDate_returnsAllStatusesWithCorrectFields() {
+        LocalDate targetDate = LocalDate.of(2026, 9, 25);
+        InspectionConfirmationDO itemPending = new InspectionConfirmationDO();
+        itemPending.setId(1L);
+        itemPending.setRollNo("R01");
+        itemPending.setVatNo("V01");
+        itemPending.setGrade("A");
+        itemPending.setInspectionOrderCode("INS-001");
+        itemPending.setProductName("全棉汗布");
+        itemPending.setMachineNo("M01");
+        itemPending.setStatus("PENDING");
+        itemPending.setCreateTime(targetDate.atTime(9, 0, 0));
+
+        InspectionConfirmationDO itemConfirmed = new InspectionConfirmationDO();
+        itemConfirmed.setId(2L);
+        itemConfirmed.setRollNo("R02");
+        itemConfirmed.setVatNo("V02");
+        itemConfirmed.setGrade("B");
+        itemConfirmed.setInspectionOrderCode("INS-001");
+        itemConfirmed.setStatus("CONFIRMED");
+        itemConfirmed.setResponsibility("OPERATOR");
+        itemConfirmed.setWorkerUserId(1001L);
+        itemConfirmed.setWorkerName("张工");
+        itemConfirmed.setConfirmedByName("领班A");
+        itemConfirmed.setConfirmedAt(targetDate.atTime(11, 0, 0));
+        itemConfirmed.setNote("断纱");
+        itemConfirmed.setCreateTime(targetDate.atTime(10, 0, 0));
+
+        InspectionConfirmationDO itemRevoked = new InspectionConfirmationDO();
+        itemRevoked.setId(3L);
+        itemRevoked.setRollNo("R03");
+        itemRevoked.setGrade("C");
+        itemRevoked.setStatus("REVOKED");
+        itemRevoked.setCreateTime(targetDate.atTime(14, 0, 0));
+
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Arrays.asList(itemPending, itemConfirmed, itemRevoked));
+
+        List<InspectionConfirmationPrintViewRespVO> result = inspectionConfirmationService.getPrintView(targetDate);
+
+        assertNotNull(result);
+        assertEquals(3, result.size());
+
+        // 验证全部状态均返回
+        assertEquals("PENDING", result.get(0).getStatus());
+        assertEquals("CONFIRMED", result.get(1).getStatus());
+        assertEquals("REVOKED", result.get(2).getStatus());
+
+        // 验证字段映射
+        InspectionConfirmationPrintViewRespVO vo1 = result.get(1);
+        assertEquals("R02", vo1.getRollNo());
+        assertEquals("V02", vo1.getVatNo());
+        assertEquals("B", vo1.getGrade());
+        assertEquals("INS-001", vo1.getInspectionOrderCode());
+        assertEquals("OPERATOR", vo1.getResponsibility());
+        assertEquals(1001L, vo1.getWorkerUserId());
+        assertEquals("张工", vo1.getWorkerName());
+        assertEquals("领班A", vo1.getConfirmedByName());
+        assertEquals(targetDate.atTime(11, 0, 0), vo1.getConfirmedAt());
+        assertEquals("断纱", vo1.getNote());
+
+        ArgumentCaptor<LambdaQueryWrapperX<InspectionConfirmationDO>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapperX.class);
+        verify(inspectionConfirmationMapper).selectList(captor.capture());
+        LambdaQueryWrapperX<InspectionConfirmationDO> wrapper = captor.getValue();
+        String sql = wrapper.getSqlSegment();
+        assertTrue(sql.contains("create_time >="), "应包含 create_time >= 起始时间");
+        assertTrue(sql.contains("create_time <"), "应包含 create_time < 截止时间");
+        assertTrue(sql.contains("ORDER BY create_time ASC"), "应按创建时间正序排序");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(targetDate.atStartOfDay()), "应包含指定日期 00:00:00");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(targetDate.plusDays(1).atStartOfDay()), "应包含次日 00:00:00");
+    }
+
+
+    // ==================== getPayrollSummary ====================
+
+    @Test
+    @DisplayName("工资扣款汇总：未传 date 缺省今天，严格按 confirmed_at [今天00:00, 明天00:00) + status=CONFIRMED + responsibility=OPERATOR 过滤")
+    void getPayrollSummary_defaultToday_queriesStrictConditions() {
+        LocalDate today = LocalDate.now();
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class))).thenReturn(Collections.emptyList());
+
+        InspectionConfirmationPayrollSummaryRespVO summary = inspectionConfirmationService.getPayrollSummary(null);
+
+        assertNotNull(summary);
+        assertEquals(today, summary.getDate());
+        assertTrue(summary.getGroups().isEmpty());
+
+        ArgumentCaptor<LambdaQueryWrapperX<InspectionConfirmationDO>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapperX.class);
+        verify(inspectionConfirmationMapper).selectList(captor.capture());
+        LambdaQueryWrapperX<InspectionConfirmationDO> wrapper = captor.getValue();
+        String sql = wrapper.getSqlSegment();
+        assertTrue(sql.contains("status ="), "必须过滤 status=CONFIRMED");
+        assertTrue(sql.contains("responsibility ="), "必须过滤 responsibility=OPERATOR");
+        assertTrue(sql.contains("confirmed_at >="), "必须过滤 confirmed_at >= 当日起始");
+        assertTrue(sql.contains("confirmed_at <"), "必须过滤 confirmed_at < 次日起始");
+        assertTrue(sql.contains("ORDER BY worker_user_id ASC"), "应按挡车工排序");
+
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("CONFIRMED"));
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("OPERATOR"));
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(today.atStartOfDay()));
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(today.plusDays(1).atStartOfDay()));
+    }
+
+    @Test
+    @DisplayName("工资扣款汇总：按挡车工正确分组聚合并统计 count 与 records 明细")
+    void getPayrollSummary_groupsByWorker_countsAndDetailsMatch() {
+        LocalDate targetDate = LocalDate.of(2026, 9, 25);
+
+        // 李桂香 2 卷
+        InspectionConfirmationDO r1 = new InspectionConfirmationDO();
+        r1.setId(8801L);
+        r1.setWorkerUserId(1024L);
+        r1.setWorkerName("李桂香");
+        r1.setRollNo("P0309");
+        r1.setVatNo("V12");
+        r1.setGrade("C");
+        r1.setInspectionOrderCode("INS-20260925-001");
+        r1.setProductName("全棉汗布");
+        r1.setNote("断纱");
+        r1.setSource("INSPECTION");
+        r1.setStatus("CONFIRMED");
+        r1.setResponsibility("OPERATOR");
+        r1.setConfirmedAt(targetDate.atTime(14, 0, 0));
+
+        InspectionConfirmationDO r2 = new InspectionConfirmationDO();
+        r2.setId(8802L);
+        r2.setWorkerUserId(1024L);
+        r2.setWorkerName("李桂香");
+        r2.setRollNo("P0310");
+        r2.setVatNo("V12");
+        r2.setGrade("DEFECTIVE");
+        r2.setInspectionOrderCode("INS-20260925-001");
+        r2.setProductName("全棉汗布");
+        r2.setNote("破洞");
+        r2.setSource("INSPECTION");
+        r2.setStatus("CONFIRMED");
+        r2.setResponsibility("OPERATOR");
+        r2.setConfirmedAt(targetDate.atTime(15, 0, 0));
+
+        // 王建国 1 卷
+        InspectionConfirmationDO r3 = new InspectionConfirmationDO();
+        r3.setId(8803L);
+        r3.setWorkerUserId(1025L);
+        r3.setWorkerName("王建国");
+        r3.setRollNo("P0401");
+        r3.setVatNo("V15");
+        r3.setGrade("B");
+        r3.setInspectionOrderCode("INS-20260925-002");
+        r3.setProductName("涤棉斜纹");
+        r3.setNote("油污");
+        r3.setSource("MANUAL");
+        r3.setStatus("CONFIRMED");
+        r3.setResponsibility("OPERATOR");
+        r3.setConfirmedAt(targetDate.atTime(16, 0, 0));
+
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Arrays.asList(r1, r2, r3));
+
+        InspectionConfirmationPayrollSummaryRespVO summary = inspectionConfirmationService.getPayrollSummary(targetDate);
+
+        assertNotNull(summary);
+        assertEquals(targetDate, summary.getDate());
+        assertEquals(2, summary.getGroups().size());
+
+        // 验证第 1 组（李桂香）
+        InspectionConfirmationPayrollSummaryRespVO.WorkerGroup g1 = summary.getGroups().get(0);
+        assertEquals(1024L, g1.getWorkerUserId());
+        assertEquals("李桂香", g1.getWorkerName());
+        assertEquals(2, g1.getCount());
+        assertEquals(2, g1.getRecords().size());
+        assertEquals(8801L, g1.getRecords().get(0).getId());
+        assertEquals("P0309", g1.getRecords().get(0).getRollNo());
+        assertEquals("V12", g1.getRecords().get(0).getVatNo());
+        assertEquals("C", g1.getRecords().get(0).getGrade());
+        assertEquals("INS-20260925-001", g1.getRecords().get(0).getInspectionOrderCode());
+        assertEquals("断纱", g1.getRecords().get(0).getNote());
+        assertEquals("INSPECTION", g1.getRecords().get(0).getSource());
+        assertEquals(targetDate.atTime(14, 0, 0), g1.getRecords().get(0).getConfirmedAt());
+
+        assertEquals(8802L, g1.getRecords().get(1).getId());
+        assertEquals("P0310", g1.getRecords().get(1).getRollNo());
+        assertEquals("DEFECTIVE", g1.getRecords().get(1).getGrade());
+
+        // 验证第 2 组（王建国）
+        InspectionConfirmationPayrollSummaryRespVO.WorkerGroup g2 = summary.getGroups().get(1);
+        assertEquals(1025L, g2.getWorkerUserId());
+        assertEquals("王建国", g2.getWorkerName());
+        assertEquals(1, g2.getCount());
+        assertEquals(1, g2.getRecords().size());
+        assertEquals(8803L, g2.getRecords().get(0).getId());
+        assertEquals("P0401", g2.getRecords().get(0).getRollNo());
+        assertEquals("MANUAL", g2.getRecords().get(0).getSource());
+    }
+
+    @Test
+    @DisplayName("工资扣款汇总：严格验证 SQL Wrapper 条件排他性（EQUIPMENT/WAIVED/REVOKED/跨日确认均不入组）")
+    void getPayrollSummary_wrapperStrictExclusions_equipmentWaivedRevokedAndCrossDayExcluded() {
+        LocalDate targetDate = LocalDate.of(2026, 9, 25);
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class))).thenReturn(Collections.emptyList());
+
+        inspectionConfirmationService.getPayrollSummary(targetDate);
+
+        ArgumentCaptor<LambdaQueryWrapperX<InspectionConfirmationDO>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapperX.class);
+        verify(inspectionConfirmationMapper).selectList(captor.capture());
+        LambdaQueryWrapperX<InspectionConfirmationDO> wrapper = captor.getValue();
+        String sql = wrapper.getSqlSegment();
+
+        // 验证只查 CONFIRMED，排除 PENDING / REVOKED
+        assertTrue(sql.contains("status ="), "Wrapper 必须限制 status");
+        assertEquals("CONFIRMED", wrapper.getParamNameValuePairs().values().stream()
+                .filter("CONFIRMED"::equals).findFirst().orElse(null));
+
+        // 验证只查 OPERATOR，排除 EQUIPMENT / WAIVED
+        assertTrue(sql.contains("responsibility ="), "Wrapper 必须限制 responsibility");
+        assertEquals("OPERATOR", wrapper.getParamNameValuePairs().values().stream()
+                .filter("OPERATOR"::equals).findFirst().orElse(null));
+
+        // 验证跨日边界排他：必须是 targetDate 当日 00:00:00 至次日 00:00:00 闭开区间
+        assertTrue(sql.contains("confirmed_at >="), "Wrapper 必须限制 confirmed_at 下界");
+        assertTrue(sql.contains("confirmed_at <"), "Wrapper 必须限制 confirmed_at 上界");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(targetDate.atStartOfDay()), "下界为当日零点");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(targetDate.plusDays(1).atStartOfDay()), "上界为次日零点");
+    }
+
+    @Test
+    @DisplayName("工资扣款汇总：空结果返回 date 与空 groups 列表")
+    void getPayrollSummary_empty_returnsEmptyGroups() {
+        LocalDate targetDate = LocalDate.of(2026, 9, 25);
+        when(inspectionConfirmationMapper.selectList(any(Wrapper.class))).thenReturn(Collections.emptyList());
+
+        InspectionConfirmationPayrollSummaryRespVO summary = inspectionConfirmationService.getPayrollSummary(targetDate);
+
+        assertNotNull(summary);
+        assertEquals(targetDate, summary.getDate());
+        assertNotNull(summary.getGroups());
+        assertTrue(summary.getGroups().isEmpty());
+    }
+
 }
+
+

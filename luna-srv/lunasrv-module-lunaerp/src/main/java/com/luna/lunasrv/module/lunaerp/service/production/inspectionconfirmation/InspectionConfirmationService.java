@@ -9,9 +9,13 @@ import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmat
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationRevokeRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPayrollSummaryRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.InspectionConfirmationPrintViewRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionconfirmation.vo.WorkerOptionRespVO;
 
+import java.time.LocalDate;
 import java.util.List;
+
 
 /**
  * 生产管理-质检确认 Service 接口
@@ -75,4 +79,21 @@ public interface InspectionConfirmationService {
      */
     InspectionConfirmationRespVO getInspectionConfirmation(Long id);
 
+    /**
+     * 获得按日批量打印视图（按发现日 create_time 当日全部状态记录，正序）
+     *
+     * @param date 发现日期（缺省今天）
+     * @return 质检确认记录列表
+     */
+    List<InspectionConfirmationPrintViewRespVO> getPrintView(LocalDate date);
+
+    /**
+     * 获得工资扣款汇总（按确认日 confirmed_at 当日已认定操作失误记录，按挡车工聚合）
+     *
+     * @param date 确认日期（缺省今天）
+     * @return 工资扣款汇总结果
+     */
+    InspectionConfirmationPayrollSummaryRespVO getPayrollSummary(LocalDate date);
+
 }
+

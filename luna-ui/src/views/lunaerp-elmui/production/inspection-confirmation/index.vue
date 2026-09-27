@@ -118,8 +118,25 @@
         >
           <Icon icon="ep:plus" class="mr-1" /> 手工登记
         </el-button>
+        <el-button
+          type="info"
+          plain
+          v-hasPermi="['lunaerp:production:inspection-confirmation:print']"
+          @click="openPrintDialog"
+        >
+          <Icon icon="ep:printer" class="mr-1" /> 批量打印
+        </el-button>
+        <el-button
+          type="warning"
+          plain
+          v-hasPermi="['lunaerp:production:inspection-confirmation:payroll']"
+          @click="openPayrollSummaryDialog"
+        >
+          <Icon icon="ep:money" class="mr-1" /> 工资扣款汇总
+        </el-button>
       </div>
     </div>
+
 
     <!-- 质检确认记录表格（13 列 + 操作列占位） -->
     <el-table v-loading="loading" :data="list" border stripe>
@@ -267,10 +284,17 @@
       @success="handleConfirmSuccess"
     />
 
+    <!-- 批量打印弹窗 -->
+    <PrintDialog ref="printDialogRef" />
+
+    <!-- 工资扣款汇总弹窗 -->
+    <PayrollSummaryDialog ref="payrollSummaryDialogRef" />
+
     <!-- 认定链详情抽屉 -->
     <ChainDrawer ref="chainDrawerRef" />
   </ContentWrap>
 </template>
+
 
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'
@@ -288,6 +312,8 @@ import type { InspectionOrderVO } from '@/api/lunaerp-elmui/production/inspectio
 import ManualCreateDialog from './ManualCreateDialog.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import ChainDrawer from './ChainDrawer.vue'
+import PrintDialog from './PrintDialog.vue'
+import PayrollSummaryDialog from './PayrollSummaryDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiProductionInspectionConfirmation' })
 
@@ -300,14 +326,27 @@ const queryFormRef = ref()
 const manualCreateDialogRef = ref()
 const confirmDialogRef = ref()
 const chainDrawerRef = ref()
+const printDialogRef = ref()
+const payrollSummaryDialogRef = ref()
 
 /** 打开手工登记弹窗 */
 const openManualCreateDialog = () => {
   manualCreateDialogRef.value?.open()
 }
 
+/** 打开批量打印弹窗 */
+const openPrintDialog = () => {
+  printDialogRef.value?.open()
+}
+
+/** 打开工资扣款汇总弹窗 */
+const openPayrollSummaryDialog = () => {
+  payrollSummaryDialogRef.value?.open()
+}
+
 /** 手工登记成功回调 */
 const handleManualCreateSuccess = () => {
+
   getList()
 }
 

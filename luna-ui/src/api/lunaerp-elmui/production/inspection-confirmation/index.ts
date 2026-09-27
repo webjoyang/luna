@@ -158,3 +158,72 @@ export const getInspectionConfirmation = (id: number) => {
   })
 }
 
+/** 批量打印视图 VO */
+export interface InspectionConfirmationPrintViewVO {
+  id: number
+  chainKey: string
+  source: string
+  status: string
+  inspectionOrderCode?: string
+  rollNo: string
+  vatNo?: string
+  grade: string
+  machineNo?: string
+  productCode?: string
+  productName?: string
+  colorName?: string
+  measuredWeight?: number
+  lengthM?: number
+  responsibility?: string
+  workerUserId?: number
+  workerName?: string
+  confirmedByName?: string
+  confirmedAt?: string
+  note?: string
+  createTime?: string
+}
+
+/** 工资扣款汇总记录 VO */
+export interface PayrollRecordVO {
+  id: number
+  rollNo: string
+  vatNo?: string
+  grade: string
+  inspectionOrderCode?: string
+  note?: string
+  source: string
+  confirmedAt?: string
+}
+
+
+/** 挡车工工资扣款分组 VO */
+export interface PayrollWorkerGroupVO {
+  workerUserId: number
+  workerName: string
+  count: number
+  records: PayrollRecordVO[]
+}
+
+/** 工资扣款汇总 Response VO */
+export interface InspectionConfirmationPayrollSummaryVO {
+  date: string
+  groups: PayrollWorkerGroupVO[]
+}
+
+/** 获得按日批量打印视图 */
+export const getPrintView = (params: { date?: string }) => {
+  return request.get<InspectionConfirmationPrintViewVO[]>({
+    url: '/lunaerp/production/inspection-confirmation/print-view',
+    params
+  })
+}
+
+/** 获得工资扣款汇总 */
+export const getPayrollSummary = (params: { date?: string }) => {
+  return request.get<InspectionConfirmationPayrollSummaryVO>({
+    url: '/lunaerp/production/inspection-confirmation/payroll-summary',
+    params
+  })
+}
+
+
