@@ -48,6 +48,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -171,6 +172,33 @@ class ShipmentServiceImplTest {
         p.setCode(code);
         p.setName(name);
         return p;
+    }
+
+    private ShipmentItemDO createShipmentItem(Long id, Long shipmentId, Long productId,
+                                              BigDecimal quantity, BigDecimal unitPrice, Integer pieces) {
+        ShipmentItemDO item = new ShipmentItemDO();
+        item.setId(id);
+        item.setShipmentId(shipmentId);
+        item.setProductId(productId);
+        item.setProductCode("PRD-" + productId);
+        item.setProductName("产品-" + productId);
+        item.setQuantity(quantity);
+        item.setUnitPrice(unitPrice);
+        item.setAmount(quantity != null && unitPrice != null ? quantity.multiply(unitPrice) : BigDecimal.ZERO);
+        item.setPieces(pieces != null ? pieces : 1);
+        item.setUnit("KG");
+        return item;
+    }
+
+    private ShipmentRollDO createShipmentRoll(Long id, Long shipmentId, Long itemId, String rollNo, BigDecimal weight) {
+        ShipmentRollDO roll = new ShipmentRollDO();
+        roll.setId(id);
+        roll.setShipmentId(shipmentId);
+        roll.setShipmentItemId(itemId);
+        roll.setRollNo(rollNo);
+        roll.setWeight(weight);
+        roll.setLengthM(new BigDecimal("50.00"));
+        return roll;
     }
 
     // ==================== 1. 创建发货单测试 ====================
@@ -435,8 +463,8 @@ class ShipmentServiceImplTest {
     // ==================== 2. 更新发货单测试 ====================
 
     @Test
-    @DisplayName("更新发货单：草稿态允许更新，替换明细与卷清单，重算金额与匹数")
-    void testUpdateShipment_success() {
+    @DisplayName("更新发货单路径1：全部明细与卷原样提交，只有 updateById，无 insert/delete，ID不变")
+    void testUpdateShipment_path1_allItemsUnchanged() {
         ShipmentDO existing = new ShipmentDO();
         existing.setId(10L);
         existing.setStatus("DRAFT");
@@ -450,12 +478,18 @@ class ShipmentServiceImplTest {
         when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
         when(productMapper.selectById(5L)).thenReturn(product);
 
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("50.00"), new BigDecimal("30.00"), 3);
+        ShipmentRollDO roll1001 = createShipmentRoll(1001L, 10L, 101L, "R001", new BigDecimal("50.00"));
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(roll1001));
+
         ShipmentSaveReqVO req = new ShipmentSaveReqVO();
         req.setId(10L);
         req.setCustomerId(1L);
         req.setWarehouseId(2L);
 
         ShipmentItemSaveReqVO itemReq = new ShipmentItemSaveReqVO();
+        itemReq.setId(101L);
         itemReq.setProductId(5L);
         itemReq.setQuantity(new BigDecimal("50.00"));
         itemReq.setUnitPrice(new BigDecimal("30.00"));
@@ -463,7 +497,8 @@ class ShipmentServiceImplTest {
         itemReq.setUnit("KG");
 
         ShipmentRollSaveReqVO rollReq = new ShipmentRollSaveReqVO();
-        rollReq.setRollNo("R002");
+        rollReq.setId(1001L);
+        rollReq.setRollNo("R001");
         rollReq.setWeight(new BigDecimal("50.00"));
         itemReq.setRolls(List.of(rollReq));
 
@@ -472,12 +507,575 @@ class ShipmentServiceImplTest {
         // Act
         shipmentService.updateShipment(req);
 
-        // Assert
-        verify(shipmentMapper).updateById(any(ShipmentDO.class));
-        verify(shipmentRollMapper).deleteByShipmentId(10L);
-        verify(shipmentItemMapper).deleteByShipmentId(10L);
-        verify(shipmentItemMapper).insert(any(ShipmentItemDO.class));
-        verify(shipmentRollMapper).insert(any(ShipmentRollDO.class));
+        // Assert: 只有 update，零 insert，零 delete
+        verify(shipmentItemMapper).updateById(argThat((ShipmentItemDO i) -> Long.valueOf(101L).equals(i.getId())));
+        verify(shipmentRollMapper).updateById(argThat((ShipmentRollDO r) -> Long.valueOf(1001L).equals(r.getId()) && Long.valueOf(101L).equals(r.getShipmentItemId())));
+        verify(shipmentItemMapper, never()).insert(any(ShipmentItemDO.class));
+        verify(shipmentRollMapper, never()).insert(any(ShipmentRollDO.class));
+        verify(shipmentItemMapper, never()).deleteByIds(any());
+        verify(shipmentRollMapper, never()).deleteByIds(any());
+        verify(shipmentItemMapper, never()).deleteByShipmentId(any());
+        verify(shipmentRollMapper, never()).deleteByShipmentId(any());
+    }
+
+    @Test
+    @DisplayName("更新发货单路径2：修改明细字段（数量/单价/匹数），该行 update 且重算金额匹数，未改行与其卷原样保留")
+    void testUpdateShipment_path2_modifyItemField_recomputesTotals() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setShipmentNo("SH-20260927-001");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        ProductDO product = createProduct(5L, "P1", "纯棉");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+        when(productMapper.selectById(5L)).thenReturn(product);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("20.00"), new BigDecimal("10.00"), 2);
+        ShipmentRollDO roll1001 = createShipmentRoll(1001L, 10L, 101L, "R001", new BigDecimal("20.00"));
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(roll1001));
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        // 修改数量为 30.00，单价为 15.00，匹数为 4 -> 重算行金额 450.00
+        ShipmentItemSaveReqVO itemReq = new ShipmentItemSaveReqVO();
+        itemReq.setId(101L);
+        itemReq.setProductId(5L);
+        itemReq.setQuantity(new BigDecimal("30.00"));
+        itemReq.setUnitPrice(new BigDecimal("15.00"));
+        itemReq.setPieces(4);
+        itemReq.setUnit("KG");
+
+        ShipmentRollSaveReqVO rollReq = new ShipmentRollSaveReqVO();
+        rollReq.setId(1001L);
+        rollReq.setRollNo("R001");
+        rollReq.setWeight(new BigDecimal("20.00"));
+        itemReq.setRolls(List.of(rollReq));
+
+        req.setItems(List.of(itemReq));
+
+        // Act
+        shipmentService.updateShipment(req);
+
+        // Assert: 明细行被 update 且携带重算金额 450.00，主表汇总同步更新为 450.00 与 4 匹
+        verify(shipmentItemMapper).updateById(argThat((ShipmentItemDO i) -> Long.valueOf(101L).equals(i.getId())
+                && new BigDecimal("30.00").compareTo(i.getQuantity()) == 0
+                && new BigDecimal("450.00").compareTo(i.getAmount()) == 0));
+        verify(shipmentMapper).updateById(argThat((ShipmentDO s) -> new BigDecimal("450.00").compareTo(s.getTotalAmount()) == 0
+                && Integer.valueOf(4).equals(s.getTotalPieces())));
+        verify(shipmentRollMapper).updateById(argThat((ShipmentRollDO r) -> Long.valueOf(1001L).equals(r.getId())));
+        verify(shipmentItemMapper, never()).insert(any(ShipmentItemDO.class));
+        verify(shipmentItemMapper, never()).deleteByIds(any());
+    }
+
+    @Test
+    @DisplayName("更新发货单路径3：删除明细行时其下卷清单随之级联逻辑删除，其余明细与其卷清单不受影响")
+    void testUpdateShipment_path3_deleteItem_cascadesRolls() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setShipmentNo("SH-20260927-001");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        ProductDO product = createProduct(5L, "P1", "纯棉");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+        when(productMapper.selectById(5L)).thenReturn(product);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("20.00"), new BigDecimal("10.00"), 2);
+        ShipmentItemDO item102 = createShipmentItem(102L, 10L, 5L, new BigDecimal("30.00"), new BigDecimal("10.00"), 3);
+        ShipmentRollDO roll1001 = createShipmentRoll(1001L, 10L, 101L, "R001", new BigDecimal("20.00"));
+        ShipmentRollDO roll1002 = createShipmentRoll(1002L, 10L, 102L, "R002", new BigDecimal("30.00"));
+
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101, item102));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(roll1001, roll1002));
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        // 仅提交 item101，item102 被删除
+        ShipmentItemSaveReqVO itemReq1 = new ShipmentItemSaveReqVO();
+        itemReq1.setId(101L);
+        itemReq1.setProductId(5L);
+        itemReq1.setQuantity(new BigDecimal("20.00"));
+        itemReq1.setUnitPrice(new BigDecimal("10.00"));
+        itemReq1.setPieces(2);
+        itemReq1.setUnit("KG");
+
+        ShipmentRollSaveReqVO rollReq1 = new ShipmentRollSaveReqVO();
+        rollReq1.setId(1001L);
+        rollReq1.setRollNo("R001");
+        rollReq1.setWeight(new BigDecimal("20.00"));
+        itemReq1.setRolls(List.of(rollReq1));
+
+        req.setItems(List.of(itemReq1));
+
+        // Act
+        shipmentService.updateShipment(req);
+
+        // Assert: item102 与 roll1002 被逻辑删除，item101 与 roll1001 走 update
+        verify(shipmentItemMapper).deleteByIds(eq(Set.of(102L)));
+        verify(shipmentRollMapper).deleteByIds(eq(Set.of(1002L)));
+        ArgumentCaptor<ShipmentItemDO> itemUpdateCaptor1 = ArgumentCaptor.forClass(ShipmentItemDO.class);
+        verify(shipmentItemMapper).updateById(itemUpdateCaptor1.capture());
+        assertEquals(101L, itemUpdateCaptor1.getValue().getId());
+        ArgumentCaptor<ShipmentRollDO> rollUpdateCaptor1 = ArgumentCaptor.forClass(ShipmentRollDO.class);
+        verify(shipmentRollMapper).updateById(rollUpdateCaptor1.capture());
+        assertEquals(1001L, rollUpdateCaptor1.getValue().getId());
+        verify(shipmentItemMapper, never()).insert(any(ShipmentItemDO.class));
+        verify(shipmentRollMapper, never()).insert(any(ShipmentRollDO.class));
+    }
+
+    @Test
+    @DisplayName("更新发货单路径4：新增明细行及卷，新增行走 insert 且卷关联回填新行 ID，存量行走 update")
+    void testUpdateShipment_path4_addItem_withNewRoll() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setShipmentNo("SH-20260927-001");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        ProductDO product = createProduct(5L, "P1", "纯棉");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+        when(productMapper.selectById(5L)).thenReturn(product);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("20.00"), new BigDecimal("10.00"), 2);
+        ShipmentRollDO roll1001 = createShipmentRoll(1001L, 10L, 101L, "R001", new BigDecimal("20.00"));
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(roll1001));
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        // 存量行 101
+        ShipmentItemSaveReqVO itemReq1 = new ShipmentItemSaveReqVO();
+        itemReq1.setId(101L);
+        itemReq1.setProductId(5L);
+        itemReq1.setQuantity(new BigDecimal("20.00"));
+        itemReq1.setUnitPrice(new BigDecimal("10.00"));
+        itemReq1.setPieces(2);
+        itemReq1.setUnit("KG");
+        ShipmentRollSaveReqVO rollReq1 = new ShipmentRollSaveReqVO();
+        rollReq1.setId(1001L);
+        rollReq1.setRollNo("R001");
+        rollReq1.setWeight(new BigDecimal("20.00"));
+        itemReq1.setRolls(List.of(rollReq1));
+
+        // 新增行（id 为空）及新卷（id 为空）
+        ShipmentItemSaveReqVO itemReq2 = new ShipmentItemSaveReqVO();
+        itemReq2.setId(null);
+        itemReq2.setProductId(5L);
+        itemReq2.setQuantity(new BigDecimal("15.00"));
+        itemReq2.setUnitPrice(new BigDecimal("20.00"));
+        itemReq2.setPieces(1);
+        itemReq2.setUnit("KG");
+        ShipmentRollSaveReqVO rollReq2 = new ShipmentRollSaveReqVO();
+        rollReq2.setId(null);
+        rollReq2.setRollNo("R002");
+        rollReq2.setWeight(new BigDecimal("15.00"));
+        itemReq2.setRolls(List.of(rollReq2));
+
+        req.setItems(List.of(itemReq1, itemReq2));
+
+        // Act
+        shipmentService.updateShipment(req);
+
+        // Assert: 存量行走 update，新行走 insert，新卷回填新行生成的 ID (100L)
+        ArgumentCaptor<ShipmentItemDO> itemUpdateCaptor2 = ArgumentCaptor.forClass(ShipmentItemDO.class);
+        verify(shipmentItemMapper).updateById(itemUpdateCaptor2.capture());
+        assertEquals(101L, itemUpdateCaptor2.getValue().getId());
+
+        ArgumentCaptor<ShipmentRollDO> rollUpdateCaptor2 = ArgumentCaptor.forClass(ShipmentRollDO.class);
+        verify(shipmentRollMapper).updateById(rollUpdateCaptor2.capture());
+        assertEquals(1001L, rollUpdateCaptor2.getValue().getId());
+
+        ArgumentCaptor<ShipmentItemDO> itemInsertCaptor2 = ArgumentCaptor.forClass(ShipmentItemDO.class);
+        verify(shipmentItemMapper).insert(itemInsertCaptor2.capture());
+        assertEquals(100L, itemInsertCaptor2.getValue().getId());
+        assertEquals(0, new BigDecimal("15.00").compareTo(itemInsertCaptor2.getValue().getQuantity()));
+
+        ArgumentCaptor<ShipmentRollDO> rollInsertCaptor2 = ArgumentCaptor.forClass(ShipmentRollDO.class);
+        verify(shipmentRollMapper).insert(rollInsertCaptor2.capture());
+        assertEquals(100L, rollInsertCaptor2.getValue().getShipmentItemId());
+        assertEquals("R002", rollInsertCaptor2.getValue().getRollNo());
+
+        verify(shipmentItemMapper, never()).deleteByIds(any());
+        verify(shipmentRollMapper, never()).deleteByIds(any());
+    }
+
+    @Test
+    @DisplayName("更新发货单卷清单：父行保留前提下，卷清单独立增删改三分流")
+    void testUpdateShipment_rollsIndependentSave_underRetainedItem() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setShipmentNo("SH-20260927-001");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        ProductDO product = createProduct(5L, "P1", "纯棉");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+        when(productMapper.selectById(5L)).thenReturn(product);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("50.00"), new BigDecimal("30.00"), 3);
+        ShipmentRollDO roll1001 = createShipmentRoll(1001L, 10L, 101L, "R001", new BigDecimal("20.00"));
+        ShipmentRollDO roll1002 = createShipmentRoll(1002L, 10L, 101L, "R002", new BigDecimal("30.00"));
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(roll1001, roll1002));
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        ShipmentItemSaveReqVO itemReq = new ShipmentItemSaveReqVO();
+        itemReq.setId(101L);
+        itemReq.setProductId(5L);
+        itemReq.setQuantity(new BigDecimal("50.00"));
+        itemReq.setUnitPrice(new BigDecimal("30.00"));
+        itemReq.setPieces(3);
+        itemReq.setUnit("KG");
+
+        // 卷1001修改实重为 25.00，新增卷3（id 为空），卷1002未提交（被删除）
+        ShipmentRollSaveReqVO rollReq1 = new ShipmentRollSaveReqVO();
+        rollReq1.setId(1001L);
+        rollReq1.setRollNo("R001");
+        rollReq1.setWeight(new BigDecimal("25.00"));
+
+        ShipmentRollSaveReqVO rollReq3 = new ShipmentRollSaveReqVO();
+        rollReq3.setId(null);
+        rollReq3.setRollNo("R003");
+        rollReq3.setWeight(new BigDecimal("25.00"));
+
+        itemReq.setRolls(List.of(rollReq1, rollReq3));
+        req.setItems(List.of(itemReq));
+
+        // Act
+        shipmentService.updateShipment(req);
+
+        // Assert: 卷1001更新，卷1002逻辑删除，新卷3插入；父行101走 update 且未被删除
+        ArgumentCaptor<ShipmentRollDO> rollUpdateCaptor3 = ArgumentCaptor.forClass(ShipmentRollDO.class);
+        verify(shipmentRollMapper).updateById(rollUpdateCaptor3.capture());
+        assertEquals(1001L, rollUpdateCaptor3.getValue().getId());
+        assertEquals(0, new BigDecimal("25.00").compareTo(rollUpdateCaptor3.getValue().getWeight()));
+
+        verify(shipmentRollMapper).deleteByIds(eq(Set.of(1002L)));
+
+        ArgumentCaptor<ShipmentRollDO> rollInsertCaptor3 = ArgumentCaptor.forClass(ShipmentRollDO.class);
+        verify(shipmentRollMapper).insert(rollInsertCaptor3.capture());
+        assertEquals(101L, rollInsertCaptor3.getValue().getShipmentItemId());
+        assertEquals("R003", rollInsertCaptor3.getValue().getRollNo());
+
+        ArgumentCaptor<ShipmentItemDO> itemUpdateCaptor3 = ArgumentCaptor.forClass(ShipmentItemDO.class);
+        verify(shipmentItemMapper).updateById(itemUpdateCaptor3.capture());
+        assertEquals(101L, itemUpdateCaptor3.getValue().getId());
+
+        verify(shipmentItemMapper, never()).deleteByIds(any());
+        verify(shipmentItemMapper, never()).insert(any(ShipmentItemDO.class));
+    }
+
+    @Test
+    @DisplayName("更新发货单防御性校验：卷 payload 显式引用了本次被删明细行 ID，报错拦截")
+    void testUpdateShipment_rollPayloadReferencesDeletedItem_throwsException() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        ProductDO product = createProduct(5L, "P1", "纯棉");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+        when(productMapper.selectById(5L)).thenReturn(product);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("20.00"), new BigDecimal("10.00"), 2);
+        ShipmentItemDO item102 = createShipmentItem(102L, 10L, 5L, new BigDecimal("30.00"), new BigDecimal("10.00"), 3);
+        ShipmentRollDO roll1001 = createShipmentRoll(1001L, 10L, 101L, "R001", new BigDecimal("20.00"));
+        ShipmentRollDO roll1002 = createShipmentRoll(1002L, 10L, 102L, "R002", new BigDecimal("30.00"));
+
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101, item102));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(roll1001, roll1002));
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        // 仅保留 item101（item102 被删），但在 item101 下提交的卷显式指定 shipmentItemId=102L（指向被删行）
+        ShipmentItemSaveReqVO itemReq1 = new ShipmentItemSaveReqVO();
+        itemReq1.setId(101L);
+        itemReq1.setProductId(5L);
+        itemReq1.setQuantity(new BigDecimal("20.00"));
+        itemReq1.setUnitPrice(new BigDecimal("10.00"));
+        itemReq1.setPieces(2);
+        itemReq1.setUnit("KG");
+
+        ShipmentRollSaveReqVO rollBad = new ShipmentRollSaveReqVO();
+        rollBad.setId(null);
+        rollBad.setShipmentItemId(102L); // 引用了本次被删除的父行 ID
+        rollBad.setRollNo("R-BAD");
+        itemReq1.setRolls(List.of(rollBad));
+
+        req.setItems(List.of(itemReq1));
+
+        // Act & Assert
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipment(req));
+        assertTrue(ex.getMessage().contains("已被删除"));
+    }
+
+    @Test
+    @DisplayName("更新发货单防御性校验：卷原本在库内挂载的明细行被删除，但在提交中被挪动至其他行，报错拦截")
+    void testUpdateShipment_rollInDbBelongedToDeletedItem_throwsException() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        ProductDO product = createProduct(5L, "P1", "纯棉");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+        when(productMapper.selectById(5L)).thenReturn(product);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("20.00"), new BigDecimal("10.00"), 2);
+        ShipmentItemDO item102 = createShipmentItem(102L, 10L, 5L, new BigDecimal("30.00"), new BigDecimal("10.00"), 3);
+        ShipmentRollDO roll1001 = createShipmentRoll(1001L, 10L, 101L, "R001", new BigDecimal("20.00"));
+        ShipmentRollDO roll1002 = createShipmentRoll(1002L, 10L, 102L, "R002", new BigDecimal("30.00")); // 原属 item102
+
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101, item102));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(roll1001, roll1002));
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        // 仅保留 item101（item102 被删），试图将属于被删行 102 的卷 1002 挂在行 101 提交
+        ShipmentItemSaveReqVO itemReq1 = new ShipmentItemSaveReqVO();
+        itemReq1.setId(101L);
+        itemReq1.setProductId(5L);
+        itemReq1.setQuantity(new BigDecimal("20.00"));
+        itemReq1.setUnitPrice(new BigDecimal("10.00"));
+        itemReq1.setPieces(2);
+        itemReq1.setUnit("KG");
+
+        ShipmentRollSaveReqVO roll1002Req = new ShipmentRollSaveReqVO();
+        roll1002Req.setId(1002L); // 库内所属行是已删除的 102
+        roll1002Req.setRollNo("R002");
+        itemReq1.setRolls(List.of(roll1002Req));
+
+        req.setItems(List.of(itemReq1));
+
+        // Act & Assert
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipment(req));
+        assertTrue(ex.getMessage().contains("已被删除"));
+    }
+
+    @Test
+    @DisplayName("更新发货单：提交明细行 ID 不属于当前发货单，报错拦截")
+    void testUpdateShipment_invalidItemId_throwsException() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(Collections.emptyList());
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(Collections.emptyList());
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        ShipmentItemSaveReqVO itemReq = new ShipmentItemSaveReqVO();
+        itemReq.setId(999L); // 非法明细 ID
+        itemReq.setProductId(5L);
+        itemReq.setQuantity(new BigDecimal("10.00"));
+        itemReq.setUnit("KG");
+        req.setItems(List.of(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipment(req));
+        assertTrue(ex.getMessage().contains("不属于当前发货单"));
+    }
+
+    @Test
+    @DisplayName("更新发货单：提交卷清单 ID 不属于当前发货单，报错拦截")
+    void testUpdateShipment_invalidRollId_throwsException() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("20.00"), new BigDecimal("10.00"), 2);
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(Collections.emptyList());
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        ShipmentItemSaveReqVO itemReq = new ShipmentItemSaveReqVO();
+        itemReq.setId(101L);
+        itemReq.setProductId(5L);
+        itemReq.setQuantity(new BigDecimal("10.00"));
+        itemReq.setUnit("KG");
+
+        ShipmentRollSaveReqVO rollReq = new ShipmentRollSaveReqVO();
+        rollReq.setId(9999L); // 非法卷 ID
+        itemReq.setRolls(List.of(rollReq));
+        req.setItems(List.of(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipment(req));
+        assertTrue(ex.getMessage().contains("不属于当前发货单"));
+    }
+
+    @Test
+    @DisplayName("更新发货单：提交重复的明细行 ID，报错拦截")
+    void testUpdateShipment_duplicateItemIds_throwsException() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("20.00"), new BigDecimal("10.00"), 2);
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(Collections.emptyList());
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        ShipmentItemSaveReqVO itemReq1 = new ShipmentItemSaveReqVO();
+        itemReq1.setId(101L);
+        itemReq1.setProductId(5L);
+        itemReq1.setQuantity(new BigDecimal("10.00"));
+        itemReq1.setUnit("KG");
+
+        ShipmentItemSaveReqVO itemReq2 = new ShipmentItemSaveReqVO();
+        itemReq2.setId(101L); // 重复 ID
+        itemReq2.setProductId(5L);
+        itemReq2.setQuantity(new BigDecimal("10.00"));
+        itemReq2.setUnit("KG");
+
+        req.setItems(List.of(itemReq1, itemReq2));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipment(req));
+        assertTrue(ex.getMessage().contains("重复提交"));
+    }
+
+    @Test
+    @DisplayName("更新发货单：提交重复的卷清单 ID，报错拦截")
+    void testUpdateShipment_duplicateRollIds_throwsException() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("20.00"), new BigDecimal("10.00"), 2);
+        ShipmentRollDO roll1001 = createShipmentRoll(1001L, 10L, 101L, "R001", new BigDecimal("20.00"));
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(roll1001));
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+
+        ShipmentItemSaveReqVO itemReq1 = new ShipmentItemSaveReqVO();
+        itemReq1.setId(101L);
+        itemReq1.setProductId(5L);
+        itemReq1.setQuantity(new BigDecimal("10.00"));
+        itemReq1.setUnit("KG");
+
+        ShipmentRollSaveReqVO roll1 = new ShipmentRollSaveReqVO();
+        roll1.setId(1001L);
+        ShipmentRollSaveReqVO roll2 = new ShipmentRollSaveReqVO();
+        roll2.setId(1001L); // 重复卷 ID
+        itemReq1.setRolls(List.of(roll1, roll2));
+
+        req.setItems(List.of(itemReq1));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipment(req));
+        assertTrue(ex.getMessage().contains("重复提交"));
+    }
+
+    @Test
+    @DisplayName("更新发货单：清空明细（零明细保存草稿），全部存量明细与卷批量逻辑删除，汇总重算为0")
+    void testUpdateShipment_zeroItemsDraft_deletesAll() {
+        ShipmentDO existing = new ShipmentDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setShipmentNo("SH-20260927-001");
+        when(shipmentMapper.selectById(10L)).thenReturn(existing);
+
+        CustomerDO customer = createCustomer(1L, "绍兴纺织", "ACTIVE");
+        WarehouseDO warehouse = createWarehouse(2L, "一号仓", "ACTIVE");
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
+
+        ShipmentItemDO item101 = createShipmentItem(101L, 10L, 5L, new BigDecimal("20.00"), new BigDecimal("10.00"), 2);
+        ShipmentRollDO roll1001 = createShipmentRoll(1001L, 10L, 101L, "R001", new BigDecimal("20.00"));
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item101));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(roll1001));
+
+        ShipmentSaveReqVO req = new ShipmentSaveReqVO();
+        req.setId(10L);
+        req.setCustomerId(1L);
+        req.setWarehouseId(2L);
+        req.setItems(Collections.emptyList());
+
+        // Act
+        shipmentService.updateShipment(req);
+
+        // Assert: 批量软删
+        verify(shipmentItemMapper).deleteByIds(eq(Set.of(101L)));
+        verify(shipmentRollMapper).deleteByIds(eq(Set.of(1001L)));
+        verify(shipmentMapper).updateById(argThat((ShipmentDO s) -> BigDecimal.ZERO.compareTo(s.getTotalAmount()) == 0
+                && Integer.valueOf(0).equals(s.getTotalPieces())));
+        verify(shipmentItemMapper, never()).insert(any(ShipmentItemDO.class));
+        verify(shipmentRollMapper, never()).insert(any(ShipmentRollDO.class));
     }
 
     @Test
@@ -715,8 +1313,8 @@ class ShipmentServiceImplTest {
     }
 
     @Test
-    @DisplayName("卷清单整表替换：更新发货单时先 deleteByShipmentId 再重新插入新卷记录")
-    void testRollAggregation_update_deleteAllThenReinsert() {
+    @DisplayName("卷清单差异保存：更新发货单时按差异保存，旧卷逻辑删除、新卷插入，不再整表全量删除")
+    void testRollAggregation_update_differentialSave() {
         ShipmentDO existing = new ShipmentDO();
         existing.setId(10L);
         existing.setStatus("DRAFT");
@@ -729,11 +1327,19 @@ class ShipmentServiceImplTest {
         when(warehouseMapper.selectById(2L)).thenReturn(warehouse);
         when(productMapper.selectById(5L)).thenReturn(product);
 
+        // 模拟数据库已存在旧明细与旧卷
+        ShipmentItemDO oldItem = createShipmentItem(100L, 10L, 5L, new BigDecimal("40.00"), new BigDecimal("10.00"), 1);
+        ShipmentRollDO oldRoll = createShipmentRoll(200L, 10L, 100L, "R-OLD", new BigDecimal("40.00"));
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(oldItem));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(List.of(oldRoll));
+
+        // 提交：保留旧明细，但将旧卷替换为新卷（无 id）
         ShipmentRollSaveReqVO rollReq = new ShipmentRollSaveReqVO();
         rollReq.setRollNo("R-NEW");
         rollReq.setWeight(new BigDecimal("40.00"));
 
         ShipmentItemSaveReqVO itemReq = new ShipmentItemSaveReqVO();
+        itemReq.setId(100L);
         itemReq.setProductId(5L);
         itemReq.setQuantity(new BigDecimal("40.00"));
         itemReq.setUnit("KG");
@@ -748,8 +1354,9 @@ class ShipmentServiceImplTest {
         // Act
         shipmentService.updateShipment(req);
 
-        // Assert：先删除全量卷，再插入新卷
-        verify(shipmentRollMapper).deleteByShipmentId(10L);
+        // Assert：不再全量 deleteByShipmentId，而是 deleteByIds 删除旧卷 200L，并 insert 新卷
+        verify(shipmentRollMapper, never()).deleteByShipmentId(any());
+        verify(shipmentRollMapper).deleteByIds(Collections.singleton(200L));
         verify(shipmentRollMapper).insert(any(ShipmentRollDO.class));
     }
 

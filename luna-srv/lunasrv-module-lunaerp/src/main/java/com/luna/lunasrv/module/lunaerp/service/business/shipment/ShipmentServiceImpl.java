@@ -44,18 +44,20 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 
 /**
  * 业务管理 - 发货单 Service 实现类
  *
  * 编号生成：SH-YYYYMMDD-NNN 按天取号、租户内全量唯一含软删行（ADR-0029）；
- * 聚合保存：明细与卷清单整表替换，服务端权威重算金额与匹数（ADR-0003, ADR-0030）；
+ * 聚合保存：明细与卷清单两级差异保存（ADR-0032），服务端权威重算金额与匹数；
  * 状态机守卫：三态过账状态机，仅草稿态可编辑/删除，非草稿态报 1_030_016_002（ADR-0029）。
  *
  * @author luna
@@ -235,16 +237,9 @@ public class ShipmentServiceImpl implements ShipmentService {
         // 4. 关联存在性校验与快照回填
         fillSnapshotsAndValidateRefs(updateObj, updateReqVO);
 
-        // 5. 明细整表替换与金额/匹数权威重算
-        List<ShipmentItemDO> itemDOList = buildItemDOList(updateReqVO.getItems());
-        updateObj.setTotalAmount(recalculateTotalAmount(itemDOList));
-        updateObj.setTotalPieces(recalculateTotalPieces(itemDOList));
-
-        // 6. 更新主表并替换明细及卷清单
-        shipmentMapper.updateById(updateObj);
-        shipmentRollMapper.deleteByShipmentId(updateReqVO.getId());
-        shipmentItemMapper.deleteByShipmentId(updateReqVO.getId());
-        saveItemsAndRolls(updateReqVO.getId(), updateReqVO.getItems(), itemDOList);
+        // 5. 明细与卷清单两级差异保存（ADR-0032）：
+        //    严格先父行（明细）后子行（卷），三分流保存，金额匹数权威重算
+        diffSaveItemsAndRolls(updateReqVO.getId(), updateReqVO.getItems(), updateObj);
     }
 
     @Override
@@ -687,7 +682,50 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     /**
-     * 校验明细关联并转换为 DO 列表，服务端重算行金额
+     * 将单个明细请求 VO 转换为 DO，完成引用校验与字段重算
+     */
+    private ShipmentItemDO buildItemDO(ShipmentItemSaveReqVO itemReq, Long shipmentId) {
+        ShipmentItemDO itemDO = BeanUtils.toBean(itemReq, ShipmentItemDO.class);
+        itemDO.setShipmentId(shipmentId);
+
+        // 校验产品存在
+        ProductDO product = productMapper.selectById(itemReq.getProductId());
+        if (product == null) {
+            throw exception(SHIPMENT_RELATED_REF_NOT_EXISTS, "产品");
+        }
+        itemDO.setProductCode(product.getCode());
+        itemDO.setProductName(product.getName());
+
+        // 校验来源入库明细（若传）
+        if (itemReq.getSourceStockInItemId() != null) {
+            StockInItemDO stockInItem = stockInItemMapper.selectById(itemReq.getSourceStockInItemId());
+            if (stockInItem == null) {
+                throw exception(SHIPMENT_RELATED_REF_NOT_EXISTS, "来源入库明细");
+            }
+        }
+
+        // 匹数缺省 1
+        if (itemDO.getPieces() == null) {
+            itemDO.setPieces(1);
+        }
+
+        // 单位缺省 KG
+        if (!StringUtils.hasText(itemDO.getUnit())) {
+            itemDO.setUnit("KG");
+        }
+
+        // 金额服务端权威重算：数量 * 单价，保留两位小数
+        if (itemReq.getQuantity() != null && itemReq.getUnitPrice() != null) {
+            itemDO.setAmount(itemReq.getQuantity().multiply(itemReq.getUnitPrice()).setScale(2, RoundingMode.HALF_UP));
+        } else {
+            itemDO.setAmount(BigDecimal.ZERO);
+        }
+
+        return itemDO;
+    }
+
+    /**
+     * 校验明细关联并转换为 DO 列表，服务端重算行金额（供新建单据使用）
      */
     private List<ShipmentItemDO> buildItemDOList(List<ShipmentItemSaveReqVO> items) {
         if (CollUtil.isEmpty(items)) {
@@ -695,44 +733,146 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
         List<ShipmentItemDO> result = new ArrayList<>();
         for (ShipmentItemSaveReqVO itemReq : items) {
-            ShipmentItemDO itemDO = BeanUtils.toBean(itemReq, ShipmentItemDO.class);
-
-            // 校验产品存在
-            ProductDO product = productMapper.selectById(itemReq.getProductId());
-            if (product == null) {
-                throw exception(SHIPMENT_RELATED_REF_NOT_EXISTS, "产品");
-            }
-            itemDO.setProductCode(product.getCode());
-            itemDO.setProductName(product.getName());
-
-            // 校验来源入库明细（若传）
-            if (itemReq.getSourceStockInItemId() != null) {
-                StockInItemDO stockInItem = stockInItemMapper.selectById(itemReq.getSourceStockInItemId());
-                if (stockInItem == null) {
-                    throw exception(SHIPMENT_RELATED_REF_NOT_EXISTS, "来源入库明细");
-                }
-            }
-
-            // 匹数缺省 1
-            if (itemDO.getPieces() == null) {
-                itemDO.setPieces(1);
-            }
-
-            // 单位缺省 KG
-            if (!StringUtils.hasText(itemDO.getUnit())) {
-                itemDO.setUnit("KG");
-            }
-
-            // 金额服务端权威重算：数量 * 单价，保留两位小数
-            if (itemReq.getQuantity() != null && itemReq.getUnitPrice() != null) {
-                itemDO.setAmount(itemReq.getQuantity().multiply(itemReq.getUnitPrice()).setScale(2, RoundingMode.HALF_UP));
-            } else {
-                itemDO.setAmount(BigDecimal.ZERO);
-            }
-
-            result.add(itemDO);
+            result.add(buildItemDO(itemReq, null));
         }
         return result;
+    }
+
+    /**
+     * 发货单明细与卷清单两级差异保存（ADR-0032）：
+     * 严格"先父行（明细）后子行（卷）"，三分流保存，金额匹数权威重算
+     *
+     * @param shipmentId 发货单ID
+     * @param itemsReq   前端提交的明细列表
+     * @param updateObj  待更新的主表 DO
+     */
+    private void diffSaveItemsAndRolls(Long shipmentId, List<ShipmentItemSaveReqVO> itemsReq, ShipmentDO updateObj) {
+        List<ShipmentItemSaveReqVO> itemReqs = itemsReq != null ? itemsReq : Collections.emptyList();
+
+        // 1. 查询存量明细与存量卷清单
+        List<ShipmentItemDO> dbItems = shipmentItemMapper.selectListByShipmentId(shipmentId);
+        Map<Long, ShipmentItemDO> dbItemMap = dbItems.stream()
+                .collect(Collectors.toMap(ShipmentItemDO::getId, Function.identity()));
+        Set<Long> remainingDbItemIds = new HashSet<>(dbItemMap.keySet());
+
+        List<ShipmentRollDO> dbRolls = shipmentRollMapper.selectListByShipmentId(shipmentId);
+        Map<Long, ShipmentRollDO> dbRollMap = dbRolls.stream()
+                .collect(Collectors.toMap(ShipmentRollDO::getId, Function.identity()));
+        Set<Long> remainingDbRollIds = new HashSet<>(dbRollMap.keySet());
+
+        // 2. 校验明细行 ID：防跨单串数据与重复提交
+        Set<Long> seenItemIds = new HashSet<>();
+        for (ShipmentItemSaveReqVO itemReq : itemReqs) {
+            if (itemReq.getId() != null) {
+                Long itemId = itemReq.getId();
+                if (!seenItemIds.add(itemId)) {
+                    throw invalidParamException("发货明细行 ID【{}】重复提交", itemId);
+                }
+                if (!remainingDbItemIds.remove(itemId)) {
+                    throw invalidParamException("发货明细行 ID【{}】不属于当前发货单", itemId);
+                }
+            }
+        }
+        Set<Long> deletedItemIds = remainingDbItemIds; // 库内存量中本次未提交的明细 ID
+
+        // 3. 校验卷清单：防御性校验引用被删明细、防跨单/跨行串数据与重复提交
+        Set<Long> seenRollIds = new HashSet<>();
+        for (ShipmentItemSaveReqVO itemReq : itemReqs) {
+            if (CollUtil.isNotEmpty(itemReq.getRolls())) {
+                for (ShipmentRollSaveReqVO rollReq : itemReq.getRolls()) {
+                    // 防御性：若卷显式传了 shipmentItemId，校验是否指向本次被删明细或与所属明细不符
+                    if (rollReq.getShipmentItemId() != null) {
+                        if (deletedItemIds.contains(rollReq.getShipmentItemId())) {
+                            throw invalidParamException("卷清单引用的发货明细行 ID【{}】已被删除", rollReq.getShipmentItemId());
+                        }
+                        if (itemReq.getId() != null && !itemReq.getId().equals(rollReq.getShipmentItemId())) {
+                            throw invalidParamException("卷清单所属发货明细 ID【{}】与所在行 ID【{}】不一致",
+                                    rollReq.getShipmentItemId(), itemReq.getId());
+                        }
+                    }
+
+                    if (rollReq.getId() != null) {
+                        Long rollId = rollReq.getId();
+                        if (!seenRollIds.add(rollId)) {
+                            throw invalidParamException("卷清单 ID【{}】重复提交", rollId);
+                        }
+                        ShipmentRollDO dbRoll = dbRollMap.get(rollId);
+                        if (dbRoll == null) {
+                            throw invalidParamException("卷清单 ID【{}】不属于当前发货单", rollId);
+                        }
+                        if (deletedItemIds.contains(dbRoll.getShipmentItemId())) {
+                            throw invalidParamException("卷清单引用的发货明细行 ID【{}】已被删除", dbRoll.getShipmentItemId());
+                        }
+                        if (itemReq.getId() == null) {
+                            throw invalidParamException("新增发货明细行不能包含已有卷清单 ID【{}】", rollId);
+                        }
+                        if (!itemReq.getId().equals(dbRoll.getShipmentItemId())) {
+                            throw invalidParamException("卷清单 ID【{}】不属于发货明细行【{}】", rollId, itemReq.getId());
+                        }
+                        remainingDbRollIds.remove(rollId);
+                    }
+                }
+            }
+        }
+        Set<Long> deletedRollIds = remainingDbRollIds; // 包含被删明细下的卷以及保留明细下被删的卷
+
+        // 4. 组装明细 DO 列表并三分流
+        List<ShipmentItemDO> itemDOList = new ArrayList<>();
+        List<ShipmentItemDO> toUpdateItems = new ArrayList<>();
+        List<ShipmentItemDO> toInsertItems = new ArrayList<>();
+
+        for (ShipmentItemSaveReqVO itemReq : itemReqs) {
+            ShipmentItemDO itemDO = buildItemDO(itemReq, shipmentId);
+            if (itemReq.getId() != null) {
+                itemDO.setId(itemReq.getId());
+                toUpdateItems.add(itemDO);
+            } else {
+                itemDO.setId(null);
+                toInsertItems.add(itemDO);
+            }
+            itemDOList.add(itemDO);
+        }
+
+        // 5. 服务端权威重算主表汇总并更新主表
+        updateObj.setTotalAmount(recalculateTotalAmount(itemDOList));
+        updateObj.setTotalPieces(recalculateTotalPieces(itemDOList));
+        shipmentMapper.updateById(updateObj);
+
+        // 6. 差异保存父行（明细表）
+        if (CollUtil.isNotEmpty(deletedItemIds)) {
+            shipmentItemMapper.deleteByIds(deletedItemIds);
+        }
+        for (ShipmentItemDO itemDO : toUpdateItems) {
+            shipmentItemMapper.updateById(itemDO);
+        }
+        for (ShipmentItemDO itemDO : toInsertItems) {
+            shipmentItemMapper.insert(itemDO);
+        }
+
+        // 7. 差异保存子行（卷清单表）
+        if (CollUtil.isNotEmpty(deletedRollIds)) {
+            shipmentRollMapper.deleteByIds(deletedRollIds);
+        }
+        for (int i = 0; i < itemReqs.size(); i++) {
+            ShipmentItemSaveReqVO itemReq = itemReqs.get(i);
+            ShipmentItemDO itemDO = itemDOList.get(i); // 新增行在步骤 6 insert 后已获得 DB 生成的 ID
+
+            if (CollUtil.isNotEmpty(itemReq.getRolls())) {
+                for (ShipmentRollSaveReqVO rollReq : itemReq.getRolls()) {
+                    ShipmentRollDO rollDO = BeanUtils.toBean(rollReq, ShipmentRollDO.class);
+                    rollDO.setShipmentId(shipmentId);
+                    rollDO.setShipmentItemId(itemDO.getId());
+
+                    if (rollReq.getId() != null) {
+                        rollDO.setId(rollReq.getId());
+                        shipmentRollMapper.updateById(rollDO);
+                    } else {
+                        rollDO.setId(null);
+                        shipmentRollMapper.insert(rollDO);
+                    }
+                }
+            }
+        }
     }
 
     /**

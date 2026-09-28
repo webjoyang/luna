@@ -12,6 +12,9 @@ public class ShipmentRollSaveReqVO {
     @Schema(description = "卷记录ID", example = "1001")
     private Long id;
 
+    @Schema(description = "所属发货明细ID", example = "100")
+    private Long shipmentItemId;
+
     @Schema(description = "卷号", example = "ROLL-001")
     private String rollNo;
 

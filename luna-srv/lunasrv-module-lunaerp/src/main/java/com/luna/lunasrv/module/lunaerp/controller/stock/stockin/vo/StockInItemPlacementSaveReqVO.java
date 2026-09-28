@@ -14,6 +14,9 @@ public class StockInItemPlacementSaveReqVO {
     @Schema(description = "放置记录ID（更新时可传）", example = "1024")
     private Long id;
 
+    @Schema(description = "所属入库明细ID（更新时可传，防御性校验）", example = "200")
+    private Long stockInItemId;
+
     @Schema(description = "库位ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "2048")
     @NotNull(message = "库位不能为空")
     private Long locationId;

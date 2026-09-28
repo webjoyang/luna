@@ -54,8 +54,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -416,8 +419,6 @@ class StockInServiceImplTest {
         stockInService.updateStockIn(req);
 
         verify(stockInMapper).updateById(any(StockInDO.class));
-        verify(stockInItemPlacementMapper).deleteByStockInId(100L);
-        verify(stockInItemMapper).deleteByStockInId(100L);
         verify(stockInItemMapper).insert(any(StockInItemDO.class));
     }
 
@@ -689,23 +690,18 @@ class StockInServiceImplTest {
         verify(stockInMapper, never()).insert(any(StockInDO.class));
     }
 
-    @Test
-    void updateStockIn_replacePlacements_success() {
-        StockInSaveReqVO req = buildCreateReqVO();
-        req.setId(100L);
-        req.setInNo("IN-20260924-001");
-        StockInItemSaveReqVO item = req.getItems().get(0);
-        StockInItemPlacementSaveReqVO p = new StockInItemPlacementSaveReqVO();
-        p.setLocationId(301L);
-        p.setQuantity(new BigDecimal("50.00"));
-        item.setPlacements(List.of(p));
+    // ==================== ADR-0032 入库明细与库位放置两级差异保存 ====================
 
+    @Test
+    void updateStockIn_path1_allItemsSubmittedWithId_updatesItemsAndRetainsPlacements() {
+        // Path 1: 存量明细与放置全部原样携带 id 提交 -> updateById，零逻辑删除，零 insert
         StockInDO existing = new StockInDO();
         existing.setId(100L);
         existing.setStatus("DRAFT");
         existing.setInNo("IN-20260924-001");
         when(stockInMapper.selectById(100L)).thenReturn(existing);
         when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
 
         ProductDO product = new ProductDO();
         product.setId(1L);
@@ -713,14 +709,595 @@ class StockInServiceImplTest {
         product.setName("纯棉汗布");
         when(productMapper.selectById(1L)).thenReturn(product);
 
-        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+        // DB 存量：1 行明细 201 + 1 条放置 301
+        StockInItemDO dbItem = new StockInItemDO();
+        dbItem.setId(201L);
+        dbItem.setStockInId(100L);
+        dbItem.setProductId(1L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(dbItem));
+
+        StockInItemPlacementDO dbPlacement = new StockInItemPlacementDO();
+        dbPlacement.setId(301L);
+        dbPlacement.setStockInId(100L);
+        dbPlacement.setStockInItemId(201L);
+        dbPlacement.setLocationId(301L);
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(dbPlacement));
+
+        // 提交载荷
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setInNo("IN-20260924-001");
+        req.setWarehouseId(10L);
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setId(201L);
+        itemReq.setItemType("PRODUCT");
+        itemReq.setProductId(1L);
+        itemReq.setQuantity(new BigDecimal("100.00"));
+        itemReq.setUnit("KG");
+        itemReq.setUnitPrice(new BigDecimal("20.00"));
+
+        StockInItemPlacementSaveReqVO pReq = new StockInItemPlacementSaveReqVO();
+        pReq.setId(301L);
+        pReq.setLocationId(301L);
+        pReq.setQuantity(new BigDecimal("100.00"));
+        itemReq.setPlacements(Collections.singletonList(pReq));
+        req.setItems(Collections.singletonList(itemReq));
 
         stockInService.updateStockIn(req);
 
-        verify(stockInMapper).updateById(any(StockInDO.class));
-        verify(stockInItemPlacementMapper).deleteByStockInId(100L);
-        verify(stockInItemMapper).deleteByStockInId(100L);
-        verify(stockInItemPlacementMapper).insert(any(StockInItemPlacementDO.class));
+        // 验证只调 updateById，不调 delete / insert
+        verify(stockInItemMapper).updateById(any(StockInItemDO.class));
+        verify(stockInItemPlacementMapper).updateById(any(StockInItemPlacementDO.class));
+        verify(stockInItemMapper, never()).deleteByIds(any());
+        verify(stockInItemMapper, never()).deleteByStockInId(anyLong());
+        verify(stockInItemPlacementMapper, never()).deleteByIds(any());
+        verify(stockInItemPlacementMapper, never()).deleteByStockInId(anyLong());
+        verify(stockInItemMapper, never()).insert(any(StockInItemDO.class));
+        verify(stockInItemPlacementMapper, never()).insert(any(StockInItemPlacementDO.class));
+    }
+
+    @Test
+    void updateStockIn_path2_modifyItemFields_updatesItemAndAuthoritativelyRecalculatesAmount_retainsPlacements() {
+        // Path 2: 修改明细字段（数量/单价） -> updateById，金额权威重算覆盖前端传入，其下放置记录原样保留
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        StockInItemDO dbItem = new StockInItemDO();
+        dbItem.setId(201L);
+        dbItem.setStockInId(100L);
+        dbItem.setProductId(1L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(dbItem));
+
+        StockInItemPlacementDO dbPlacement = new StockInItemPlacementDO();
+        dbPlacement.setId(301L);
+        dbPlacement.setStockInId(100L);
+        dbPlacement.setStockInItemId(201L);
+        dbPlacement.setLocationId(301L);
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(dbPlacement));
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setId(201L);
+        itemReq.setItemType("PRODUCT");
+        itemReq.setProductId(1L);
+        itemReq.setQuantity(new BigDecimal("80.00"));
+        itemReq.setUnit("KG");
+        itemReq.setUnitPrice(new BigDecimal("25.00"));
+        itemReq.setAmount(new BigDecimal("9999.00")); // 前端传错金额
+
+        StockInItemPlacementSaveReqVO pReq = new StockInItemPlacementSaveReqVO();
+        pReq.setId(301L);
+        pReq.setLocationId(301L);
+        pReq.setQuantity(new BigDecimal("80.00"));
+        itemReq.setPlacements(Collections.singletonList(pReq));
+        req.setItems(Collections.singletonList(itemReq));
+
+        stockInService.updateStockIn(req);
+
+        ArgumentCaptor<StockInItemDO> itemCaptor = ArgumentCaptor.forClass(StockInItemDO.class);
+        verify(stockInItemMapper).updateById(itemCaptor.capture());
+        assertEquals(new BigDecimal("2000.00"), itemCaptor.getValue().getAmount()); // 80 * 25
+
+        ArgumentCaptor<StockInDO> stockInCaptor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).updateById(stockInCaptor.capture());
+        assertEquals(new BigDecimal("2000.00"), stockInCaptor.getValue().getTotalAmount());
+
+        verify(stockInItemPlacementMapper).updateById((StockInItemPlacementDO) any());
+        verify(stockInItemPlacementMapper, never()).deleteByIds(any());
+        verify(stockInItemPlacementMapper, never()).insert((StockInItemPlacementDO) any());
+    }
+
+    @Test
+    void updateStockIn_path3_removeItem_logicallyDeletesItemAndItsPlacements_otherItemsUntouched() {
+        // Path 3: 原有 2 行(201, 202)，提交时仅保留 201，删除 202；202 下放置 302 一并逻辑删除，201 与 301 正常保留
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        StockInItemDO dbItem1 = new StockInItemDO();
+        dbItem1.setId(201L);
+        dbItem1.setStockInId(100L);
+        StockInItemDO dbItem2 = new StockInItemDO();
+        dbItem2.setId(202L);
+        dbItem2.setStockInId(100L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Arrays.asList(dbItem1, dbItem2));
+
+        StockInItemPlacementDO dbP1 = new StockInItemPlacementDO();
+        dbP1.setId(301L);
+        dbP1.setStockInId(100L);
+        dbP1.setStockInItemId(201L);
+        StockInItemPlacementDO dbP2 = new StockInItemPlacementDO();
+        dbP2.setId(302L);
+        dbP2.setStockInId(100L);
+        dbP2.setStockInItemId(202L);
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Arrays.asList(dbP1, dbP2));
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setId(201L);
+        itemReq.setItemType("PRODUCT");
+        itemReq.setProductId(1L);
+        itemReq.setQuantity(new BigDecimal("50.00"));
+        itemReq.setUnit("KG");
+
+        StockInItemPlacementSaveReqVO pReq = new StockInItemPlacementSaveReqVO();
+        pReq.setId(301L);
+        pReq.setLocationId(301L);
+        pReq.setQuantity(new BigDecimal("50.00"));
+        itemReq.setPlacements(Collections.singletonList(pReq));
+        req.setItems(Collections.singletonList(itemReq));
+
+        stockInService.updateStockIn(req);
+
+        // 验证 202 及其放置 302 被逻辑删除
+        verify(stockInItemMapper).deleteByIds(Collections.singleton(202L));
+        verify(stockInItemPlacementMapper).deleteByIds(Collections.singleton(302L));
+        // 验证 201 与 301 正常更新
+        ArgumentCaptor<StockInItemDO> itemUpdateCaptor = ArgumentCaptor.forClass(StockInItemDO.class);
+        verify(stockInItemMapper).updateById(itemUpdateCaptor.capture());
+        assertEquals(201L, itemUpdateCaptor.getValue().getId());
+
+        ArgumentCaptor<StockInItemPlacementDO> pUpdateCaptor = ArgumentCaptor.forClass(StockInItemPlacementDO.class);
+        verify(stockInItemPlacementMapper).updateById(pUpdateCaptor.capture());
+        assertEquals(301L, pUpdateCaptor.getValue().getId());
+    }
+
+    @Test
+    void updateStockIn_path4_addNewItem_insertsItemAndItsPlacementsWithNewItemId() {
+        // Path 4: 新增明细行（id=null）及其放置记录（id=null） -> 明细 insert 生成 id，放置记录的 stockInItemId 自动关联新明细
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        // DB 初始为空
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        when(stockInItemMapper.insert(any(StockInItemDO.class))).thenAnswer(inv -> {
+            StockInItemDO item = inv.getArgument(0);
+            item.setId(205L);
+            return 1;
+        });
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        StockInItemSaveReqVO newItem = new StockInItemSaveReqVO();
+        newItem.setItemType("PRODUCT");
+        newItem.setProductId(1L);
+        newItem.setQuantity(new BigDecimal("60.00"));
+        newItem.setUnit("KG");
+
+        StockInItemPlacementSaveReqVO newPlacement = new StockInItemPlacementSaveReqVO();
+        newPlacement.setLocationId(301L);
+        newPlacement.setQuantity(new BigDecimal("60.00"));
+        newItem.setPlacements(Collections.singletonList(newPlacement));
+        req.setItems(Collections.singletonList(newItem));
+
+        stockInService.updateStockIn(req);
+
+        // 验证明细 insert，放置 insert 且关联生成的 205L
+        verify(stockInItemMapper).insert(any(StockInItemDO.class));
+        ArgumentCaptor<StockInItemPlacementDO> pCaptor = ArgumentCaptor.forClass(StockInItemPlacementDO.class);
+        verify(stockInItemPlacementMapper).insert(pCaptor.capture());
+        assertEquals(205L, pCaptor.getValue().getStockInItemId());
+        assertEquals(new BigDecimal("60.00"), pCaptor.getValue().getQuantity());
+        verify(stockInItemMapper, never()).deleteByIds(any());
+        verify(stockInItemPlacementMapper, never()).deleteByIds(any());
+    }
+
+    @Test
+    void updateStockIn_placementIndependentCRUD_underRetainedItem() {
+        // 保留明细行 201 时，其下放置记录独立增删改：修改 301、删除 302、新增一处放置
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+        when(warehouseLocationMapper.selectById(302L)).thenReturn(mockLocation(302L, 10L, "A-02", "A区02"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        StockInItemDO dbItem = new StockInItemDO();
+        dbItem.setId(201L);
+        dbItem.setStockInId(100L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(dbItem));
+
+        StockInItemPlacementDO dbP1 = new StockInItemPlacementDO();
+        dbP1.setId(301L);
+        dbP1.setStockInId(100L);
+        dbP1.setStockInItemId(201L);
+        dbP1.setLocationId(301L);
+        StockInItemPlacementDO dbP2 = new StockInItemPlacementDO();
+        dbP2.setId(302L);
+        dbP2.setStockInId(100L);
+        dbP2.setStockInItemId(201L);
+        dbP2.setLocationId(302L);
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Arrays.asList(dbP1, dbP2));
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setId(201L);
+        itemReq.setItemType("PRODUCT");
+        itemReq.setProductId(1L);
+        itemReq.setQuantity(new BigDecimal("100.00"));
+        itemReq.setUnit("KG");
+
+        // 修改 301
+        StockInItemPlacementSaveReqVO updateP1 = new StockInItemPlacementSaveReqVO();
+        updateP1.setId(301L);
+        updateP1.setLocationId(301L);
+        updateP1.setQuantity(new BigDecimal("70.00"));
+
+        // 新增放置（无 id）
+        StockInItemPlacementSaveReqVO newP = new StockInItemPlacementSaveReqVO();
+        newP.setLocationId(302L);
+        newP.setQuantity(new BigDecimal("30.00"));
+
+        // 302 未提交，应被删除
+        itemReq.setPlacements(Arrays.asList(updateP1, newP));
+        req.setItems(Collections.singletonList(itemReq));
+
+        stockInService.updateStockIn(req);
+
+        // 明细 201 正常 update
+        ArgumentCaptor<StockInItemDO> itemUpdateCaptor2 = ArgumentCaptor.forClass(StockInItemDO.class);
+        verify(stockInItemMapper).updateById(itemUpdateCaptor2.capture());
+        assertEquals(201L, itemUpdateCaptor2.getValue().getId());
+        verify(stockInItemMapper, never()).deleteByIds(any());
+
+        // 放置 301 update
+        ArgumentCaptor<StockInItemPlacementDO> pUpdateCaptor2 = ArgumentCaptor.forClass(StockInItemPlacementDO.class);
+        verify(stockInItemPlacementMapper).updateById(pUpdateCaptor2.capture());
+        assertEquals(301L, pUpdateCaptor2.getValue().getId());
+        assertEquals(0, new BigDecimal("70.00").compareTo(pUpdateCaptor2.getValue().getQuantity()));
+
+        // 放置 302 delete
+        verify(stockInItemPlacementMapper).deleteByIds(Collections.singleton(302L));
+
+        // 新增放置 insert
+        ArgumentCaptor<StockInItemPlacementDO> pInsertCaptor2 = ArgumentCaptor.forClass(StockInItemPlacementDO.class);
+        verify(stockInItemPlacementMapper).insert(pInsertCaptor2.capture());
+        assertEquals(201L, pInsertCaptor2.getValue().getStockInItemId());
+        assertEquals(0, new BigDecimal("30.00").compareTo(pInsertCaptor2.getValue().getQuantity()));
+    }
+
+    @Test
+    void updateStockIn_defensive_placementPayloadReferencesDeletedItemId_throwsException() {
+        // 防御性：某明细 202 被删，但提交的放置 payload 显式设置 stockInItemId = 202 -> 报校验错误
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        StockInItemDO dbItem1 = new StockInItemDO();
+        dbItem1.setId(201L);
+        dbItem1.setStockInId(100L);
+        StockInItemDO dbItem2 = new StockInItemDO();
+        dbItem2.setId(202L);
+        dbItem2.setStockInId(100L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Arrays.asList(dbItem1, dbItem2));
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        // 仅保留 201（202 被删），但在 201 下放置挂了 stockInItemId=202
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setId(201L);
+        itemReq.setItemType("PRODUCT");
+        itemReq.setProductId(1L);
+        itemReq.setQuantity(new BigDecimal("50.00"));
+        itemReq.setUnit("KG");
+
+        StockInItemPlacementSaveReqVO badP = new StockInItemPlacementSaveReqVO();
+        badP.setLocationId(301L);
+        badP.setQuantity(new BigDecimal("50.00"));
+        badP.setStockInItemId(202L); // 引用了被删除的明细行 202
+        itemReq.setPlacements(Collections.singletonList(badP));
+        req.setItems(Collections.singletonList(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.updateStockIn(req));
+        assertTrue(ex.getMessage().contains("已删除") || ex.getMessage().contains("202"));
+        verify(stockInMapper, never()).updateById(any(StockInDO.class));
+    }
+
+    @Test
+    void updateStockIn_defensive_existingPlacementBelongingToDeletedItem_passedUnderAnotherItem_throwsException() {
+        // 防御性：已有放置 302 在 DB 中属于 202，202 被删，但提交时把 302 挂在 201 下 -> 报校验错误
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        StockInItemDO dbItem1 = new StockInItemDO();
+        dbItem1.setId(201L);
+        dbItem1.setStockInId(100L);
+        StockInItemDO dbItem2 = new StockInItemDO();
+        dbItem2.setId(202L);
+        dbItem2.setStockInId(100L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Arrays.asList(dbItem1, dbItem2));
+
+        StockInItemPlacementDO dbP2 = new StockInItemPlacementDO();
+        dbP2.setId(302L);
+        dbP2.setStockInId(100L);
+        dbP2.setStockInItemId(202L); // 属于 202
+        dbP2.setLocationId(301L);
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(dbP2));
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setId(201L);
+        itemReq.setItemType("PRODUCT");
+        itemReq.setProductId(1L);
+        itemReq.setQuantity(new BigDecimal("50.00"));
+        itemReq.setUnit("KG");
+
+        StockInItemPlacementSaveReqVO badP = new StockInItemPlacementSaveReqVO();
+        badP.setId(302L); // 属于已被删除的 202
+        badP.setLocationId(301L);
+        badP.setQuantity(new BigDecimal("50.00"));
+        itemReq.setPlacements(Collections.singletonList(badP));
+        req.setItems(Collections.singletonList(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.updateStockIn(req));
+        assertTrue(ex.getMessage().contains("已删除") || ex.getMessage().contains("302"));
+        verify(stockInMapper, never()).updateById(any(StockInDO.class));
+    }
+
+    @Test
+    void updateStockIn_crossParent_itemIdNotBelongingToStockIn_throwsException() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        StockInItemSaveReqVO foreignItem = new StockInItemSaveReqVO();
+        foreignItem.setId(999L); // 不属于本单
+        foreignItem.setItemType("PRODUCT");
+        foreignItem.setProductId(1L);
+        foreignItem.setQuantity(new BigDecimal("10.00"));
+        foreignItem.setUnit("KG");
+        req.setItems(Collections.singletonList(foreignItem));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.updateStockIn(req));
+        assertTrue(ex.getMessage().contains("不属于当前入库单"));
+    }
+
+    @Test
+    void updateStockIn_crossParent_duplicateItemId_throwsException() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        StockInItemDO dbItem = new StockInItemDO();
+        dbItem.setId(201L);
+        dbItem.setStockInId(100L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(dbItem));
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        StockInItemSaveReqVO item1 = new StockInItemSaveReqVO();
+        item1.setId(201L);
+        item1.setItemType("PRODUCT");
+        item1.setProductId(1L);
+        item1.setQuantity(new BigDecimal("10.00"));
+        item1.setUnit("KG");
+
+        StockInItemSaveReqVO item2 = new StockInItemSaveReqVO();
+        item2.setId(201L);
+        item2.setItemType("PRODUCT");
+        item2.setProductId(1L);
+        item2.setQuantity(new BigDecimal("20.00"));
+        item2.setUnit("KG");
+
+        req.setItems(Arrays.asList(item1, item2));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.updateStockIn(req));
+        assertTrue(ex.getMessage().contains("重复提交"));
+    }
+
+    @Test
+    void updateStockIn_crossParent_placementIdNotBelongingToStockIn_throwsException() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        StockInItemDO dbItem = new StockInItemDO();
+        dbItem.setId(201L);
+        dbItem.setStockInId(100L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(dbItem));
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        StockInItemSaveReqVO itemReq = new StockInItemSaveReqVO();
+        itemReq.setId(201L);
+        itemReq.setItemType("PRODUCT");
+        itemReq.setProductId(1L);
+        itemReq.setQuantity(new BigDecimal("10.00"));
+        itemReq.setUnit("KG");
+
+        StockInItemPlacementSaveReqVO foreignP = new StockInItemPlacementSaveReqVO();
+        foreignP.setId(888L); // 库内不存在
+        foreignP.setLocationId(301L);
+        foreignP.setQuantity(new BigDecimal("10.00"));
+        itemReq.setPlacements(Collections.singletonList(foreignP));
+        req.setItems(Collections.singletonList(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.updateStockIn(req));
+        assertTrue(ex.getMessage().contains("不属于当前入库单"));
+    }
+
+    @Test
+    void updateStockIn_crossParent_placementBelongsToDifferentItem_throwsException() {
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(warehouseLocationMapper.selectById(301L)).thenReturn(mockLocation(301L, 10L, "A-01", "A区01"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        StockInItemDO dbItem1 = new StockInItemDO();
+        dbItem1.setId(201L);
+        dbItem1.setStockInId(100L);
+        StockInItemDO dbItem2 = new StockInItemDO();
+        dbItem2.setId(202L);
+        dbItem2.setStockInId(100L);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Arrays.asList(dbItem1, dbItem2));
+
+        StockInItemPlacementDO dbP2 = new StockInItemPlacementDO();
+        dbP2.setId(302L);
+        dbP2.setStockInId(100L);
+        dbP2.setStockInItemId(202L); // 属于 202
+        dbP2.setLocationId(301L);
+        when(stockInItemPlacementMapper.selectListByStockInId(100L)).thenReturn(Collections.singletonList(dbP2));
+
+        StockInSaveReqVO req = new StockInSaveReqVO();
+        req.setId(100L);
+        req.setWarehouseId(10L);
+
+        // 提交时 201 挂了本属于 202 的 302
+        StockInItemSaveReqVO itemReq1 = new StockInItemSaveReqVO();
+        itemReq1.setId(201L);
+        itemReq1.setItemType("PRODUCT");
+        itemReq1.setProductId(1L);
+        itemReq1.setQuantity(new BigDecimal("10.00"));
+        itemReq1.setUnit("KG");
+
+        StockInItemPlacementSaveReqVO p2 = new StockInItemPlacementSaveReqVO();
+        p2.setId(302L);
+        p2.setLocationId(301L);
+        p2.setQuantity(new BigDecimal("10.00"));
+        itemReq1.setPlacements(Collections.singletonList(p2));
+
+        StockInItemSaveReqVO itemReq2 = new StockInItemSaveReqVO();
+        itemReq2.setId(202L);
+        itemReq2.setItemType("PRODUCT");
+        itemReq2.setProductId(1L);
+        itemReq2.setQuantity(new BigDecimal("20.00"));
+        itemReq2.setUnit("KG");
+
+        req.setItems(Arrays.asList(itemReq1, itemReq2));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.updateStockIn(req));
+        assertTrue(ex.getMessage().contains("不属于当前明细行"));
     }
 
     @Test

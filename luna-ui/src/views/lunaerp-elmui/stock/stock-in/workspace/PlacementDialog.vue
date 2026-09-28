@@ -77,7 +77,7 @@
       </div>
 
       <!-- 放置记录子表 -->
-      <el-table :data="placementsList" border stripe size="small" class="w-full">
+      <el-table :data="placementsList" :row-key="getPlacementRowKey" border stripe size="small" class="w-full">
         <el-table-column label="#" type="index" width="50" align="center" />
 
         <!-- 库位选择（限本单仓库启用状态的库位） -->
@@ -256,6 +256,18 @@ const handleLocationChange = (row: StockInItemPlacementVO, locationId: number) =
   }
 }
 
+let tempPlacementKeyCounter = 0
+/** 放置记录表格以行 id 为稳定 key；新增行未落库前以临时 key 保证行唯一性（ADR-0032） */
+const getPlacementRowKey = (row: StockInItemPlacementVO) => {
+  if (row.id != null) {
+    return row.id
+  }
+  if (!row._clientKey) {
+    row._clientKey = `temp_placement_${++tempPlacementKeyCounter}`
+  }
+  return row._clientKey
+}
+
 /** 添加放置行 */
 const handleAddPlacement = () => {
   // 智能建议默认匹数与数量：若剩余未分配匹数/数量大于0，直接带入剩余
@@ -263,6 +275,7 @@ const handleAddPlacement = () => {
   const remainingQty = Math.max(0, Number((targetQuantity.value - totalAssignedQuantity.value).toFixed(2)))
 
   placementsList.value.push({
+    _clientKey: `temp_placement_${++tempPlacementKeyCounter}`,
     locationId: undefined,
     locationCode: '',
     pieceCount: remainingPieces > 0 ? remainingPieces : 1,
@@ -296,6 +309,9 @@ const handleConfirm = () => {
       p.locationCode = loc.code
     }
     p.unit = targetUnit.value
+    if (props.item?.id) {
+      p.stockInItemId = props.item.id
+    }
   }
 
   // 深拷贝返回

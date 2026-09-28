@@ -64,6 +64,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 
 /**
@@ -249,15 +250,12 @@ public class StockInServiceImpl implements StockInService {
         // 5. 库位放置归属校验并收集库位信息
         Map<Long, WarehouseLocationDO> locationMap = validateAndGetPlacementLocations(updateObj.getWarehouseId(), updateObj.getWarehouseName(), updateReqVO.getItems());
 
-        // 6. 明细整表替换与金额权威重算
-        List<StockInItemDO> itemDOList = buildItemDOList(updateReqVO.getItems());
-        updateObj.setTotalAmount(recalculateTotalAmount(itemDOList));
+        // 6. 两级子表差异保存（先父明细后子放置）并权威重算总金额
+        List<StockInItemDO> activeItems = differentialSaveItemsAndPlacements(updateReqVO.getId(), locationMap, updateReqVO.getItems());
+        updateObj.setTotalAmount(recalculateTotalAmount(activeItems));
 
-        // 7. 更新主表并替换明细及放置记录
+        // 7. 更新主表
         stockInMapper.updateById(updateObj);
-        stockInItemPlacementMapper.deleteByStockInId(updateReqVO.getId());
-        stockInItemMapper.deleteByStockInId(updateReqVO.getId());
-        saveItemsAndPlacements(updateReqVO.getId(), locationMap, updateReqVO.getItems(), itemDOList);
     }
 
     @Override
@@ -608,6 +606,70 @@ public class StockInServiceImpl implements StockInService {
     }
 
     /**
+     * 构建单条明细 DO 并回填产品/规格快照与金额
+     */
+    private StockInItemDO buildItemDO(StockInItemSaveReqVO itemReq) {
+        StockInItemDO itemDO = BeanUtils.toBean(itemReq, StockInItemDO.class);
+
+        // 1. 物品类型缺省 PRODUCT 并校验合法性
+        String itemType = StringUtils.hasText(itemReq.getItemType()) ? itemReq.getItemType().trim() : "PRODUCT";
+        if (!"PRODUCT".equals(itemType) && !"YARN_SPEC".equals(itemType)) {
+            throw exception(STOCK_IN_ITEM_TYPE_INVALID, itemType);
+        }
+        itemDO.setItemType(itemType);
+
+        // 2. 根据物品类型进行产品 / 纱线规格互斥校验与快照回填
+        if ("PRODUCT".equals(itemType)) {
+            if (itemReq.getProductId() == null || itemReq.getYarnSpecId() != null) {
+                throw exception(STOCK_IN_ITEM_MUTEX_FAILED);
+            }
+            ProductDO product = productMapper.selectById(itemReq.getProductId());
+            if (product == null) {
+                throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "产品");
+            }
+            itemDO.setProductId(product.getId());
+            itemDO.setProductCode(product.getCode());
+            itemDO.setProductName(product.getName());
+            itemDO.setYarnSpecId(null);
+            itemDO.setYarnSpecName(null);
+        } else {
+            // YARN_SPEC
+            if (itemReq.getYarnSpecId() == null || itemReq.getProductId() != null) {
+                throw exception(STOCK_IN_ITEM_MUTEX_FAILED);
+            }
+            // 纱线规格单位固定为 KG
+            if (StringUtils.hasText(itemReq.getUnit()) && !"KG".equalsIgnoreCase(itemReq.getUnit().trim())) {
+                throw exception(STOCK_IN_ITEM_YARN_UNIT_INVALID);
+            }
+            itemDO.setUnit("KG");
+
+            YarnSpecDO yarnSpec = yarnSpecMapper.selectById(itemReq.getYarnSpecId());
+            if (yarnSpec == null) {
+                throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "纱线规格");
+            }
+            itemDO.setYarnSpecId(yarnSpec.getId());
+            itemDO.setYarnSpecName(yarnSpec.getSpecName());
+            itemDO.setProductId(null);
+            itemDO.setProductCode(null);
+            itemDO.setProductName(null);
+        }
+
+        // 匹数缺省 1
+        if (itemDO.getPieceCount() == null) {
+            itemDO.setPieceCount(1);
+        }
+
+        // 金额服务端权威重算：数量 * 单价，保留两位小数
+        if (itemReq.getQuantity() != null && itemReq.getUnitPrice() != null) {
+            itemDO.setAmount(itemReq.getQuantity().multiply(itemReq.getUnitPrice()).setScale(2, RoundingMode.HALF_UP));
+        } else {
+            itemDO.setAmount(null);
+        }
+
+        return itemDO;
+    }
+
+    /**
      * 构建明细 DO 列表并回填产品快照与金额
      */
     private List<StockInItemDO> buildItemDOList(List<StockInItemSaveReqVO> items) {
@@ -615,68 +677,186 @@ public class StockInServiceImpl implements StockInService {
         if (CollUtil.isEmpty(items)) {
             return result;
         }
-
         for (StockInItemSaveReqVO itemReq : items) {
-            StockInItemDO itemDO = BeanUtils.toBean(itemReq, StockInItemDO.class);
-
-            // 1. 物品类型缺省 PRODUCT 并校验合法性
-            String itemType = StringUtils.hasText(itemReq.getItemType()) ? itemReq.getItemType().trim() : "PRODUCT";
-            if (!"PRODUCT".equals(itemType) && !"YARN_SPEC".equals(itemType)) {
-                throw exception(STOCK_IN_ITEM_TYPE_INVALID, itemType);
-            }
-            itemDO.setItemType(itemType);
-
-            // 2. 根据物品类型进行产品 / 纱线规格互斥校验与快照回填
-            if ("PRODUCT".equals(itemType)) {
-                if (itemReq.getProductId() == null || itemReq.getYarnSpecId() != null) {
-                    throw exception(STOCK_IN_ITEM_MUTEX_FAILED);
-                }
-                ProductDO product = productMapper.selectById(itemReq.getProductId());
-                if (product == null) {
-                    throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "产品");
-                }
-                itemDO.setProductId(product.getId());
-                itemDO.setProductCode(product.getCode());
-                itemDO.setProductName(product.getName());
-                itemDO.setYarnSpecId(null);
-                itemDO.setYarnSpecName(null);
-            } else {
-                // YARN_SPEC
-                if (itemReq.getYarnSpecId() == null || itemReq.getProductId() != null) {
-                    throw exception(STOCK_IN_ITEM_MUTEX_FAILED);
-                }
-                // 纱线规格单位固定为 KG
-                if (StringUtils.hasText(itemReq.getUnit()) && !"KG".equalsIgnoreCase(itemReq.getUnit().trim())) {
-                    throw exception(STOCK_IN_ITEM_YARN_UNIT_INVALID);
-                }
-                itemDO.setUnit("KG");
-
-                YarnSpecDO yarnSpec = yarnSpecMapper.selectById(itemReq.getYarnSpecId());
-                if (yarnSpec == null) {
-                    throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "纱线规格");
-                }
-                itemDO.setYarnSpecId(yarnSpec.getId());
-                itemDO.setYarnSpecName(yarnSpec.getSpecName());
-                itemDO.setProductId(null);
-                itemDO.setProductCode(null);
-                itemDO.setProductName(null);
-            }
-
-            // 匹数缺省 1
-            if (itemDO.getPieceCount() == null) {
-                itemDO.setPieceCount(1);
-            }
-
-            // 金额服务端权威重算：数量 * 单价，保留两位小数
-            if (itemReq.getQuantity() != null && itemReq.getUnitPrice() != null) {
-                itemDO.setAmount(itemReq.getQuantity().multiply(itemReq.getUnitPrice()).setScale(2, RoundingMode.HALF_UP));
-            } else {
-                itemDO.setAmount(null);
-            }
-
-            result.add(itemDO);
+            result.add(buildItemDO(itemReq));
         }
         return result;
+    }
+
+    /**
+     * 入库明细与库位放置两级差异保存（先父明细后子放置，ADR-0032）
+     *
+     * @param stockInId   入库单 ID
+     * @param locationMap 库位映射表
+     * @param itemReqs    提交的明细列表
+     * @return 本次保存后生效的全部明细 DO 列表（用于主表权威重算总金额）
+     */
+    private List<StockInItemDO> differentialSaveItemsAndPlacements(Long stockInId,
+                                                                  Map<Long, WarehouseLocationDO> locationMap,
+                                                                  List<StockInItemSaveReqVO> itemReqs) {
+        // 1. 查询 DB 中存量明细与放置记录
+        List<StockInItemDO> dbItems = stockInItemMapper.selectListByStockInId(stockInId);
+        Map<Long, StockInItemDO> dbItemMap = dbItems.stream()
+                .collect(Collectors.toMap(StockInItemDO::getId, item -> item));
+
+        List<StockInItemPlacementDO> dbPlacements = stockInItemPlacementMapper.selectListByStockInId(stockInId);
+        Map<Long, StockInItemPlacementDO> dbPlacementMap = dbPlacements.stream()
+                .collect(Collectors.toMap(StockInItemPlacementDO::getId, p -> p));
+        Map<Long, List<StockInItemPlacementDO>> dbPlacementsByItemId = dbPlacements.stream()
+                .collect(Collectors.groupingBy(StockInItemPlacementDO::getStockInItemId));
+
+        List<StockInItemSaveReqVO> safeItemReqs = itemReqs != null ? itemReqs : Collections.emptyList();
+
+        // 2. 校验明细行 ID 归属与唯一性
+        Set<Long> submittedItemIds = new HashSet<>();
+        for (StockInItemSaveReqVO itemReq : safeItemReqs) {
+            if (itemReq.getId() != null) {
+                if (!submittedItemIds.add(itemReq.getId())) {
+                    throw invalidParamException("入库明细 ID【{}】重复提交", itemReq.getId());
+                }
+                if (!dbItemMap.containsKey(itemReq.getId())) {
+                    throw invalidParamException("入库明细 ID【{}】不属于当前入库单", itemReq.getId());
+                }
+            }
+        }
+
+        // 计算本次被删除的明细行 ID 集
+        Set<Long> toDeleteItemIds = new HashSet<>(dbItemMap.keySet());
+        toDeleteItemIds.removeAll(submittedItemIds);
+
+        // 3. 防御性校验：放置记录是否引用了已被删除的明细行 ID，或跨父 ID 串联
+        Set<Long> submittedPlacementIds = new HashSet<>();
+        for (StockInItemSaveReqVO itemReq : safeItemReqs) {
+            if (CollUtil.isNotEmpty(itemReq.getPlacements())) {
+                for (StockInItemPlacementSaveReqVO pReq : itemReq.getPlacements()) {
+                    // 3.1 若放置 payload 显式指定了 stockInItemId
+                    if (pReq.getStockInItemId() != null) {
+                        if (toDeleteItemIds.contains(pReq.getStockInItemId())) {
+                            throw invalidParamException("放置记录引用了已被删除的入库明细 ID【{}】", pReq.getStockInItemId());
+                        }
+                        if (itemReq.getId() != null && !pReq.getStockInItemId().equals(itemReq.getId())) {
+                            throw invalidParamException("放置记录引用的明细 ID【{}】与所属明细【{}】不一致", pReq.getStockInItemId(), itemReq.getId());
+                        }
+                        if (itemReq.getId() == null) {
+                            throw invalidParamException("新增明细行的放置记录不能指定明细 ID【{}】", pReq.getStockInItemId());
+                        }
+                    }
+
+                    // 3.2 若放置记录包含已有 id（更新既有放置）
+                    if (pReq.getId() != null) {
+                        if (!submittedPlacementIds.add(pReq.getId())) {
+                            throw invalidParamException("放置记录 ID【{}】重复提交", pReq.getId());
+                        }
+                        StockInItemPlacementDO dbPlacement = dbPlacementMap.get(pReq.getId());
+                        if (dbPlacement == null) {
+                            throw invalidParamException("放置记录 ID【{}】不属于当前入库单", pReq.getId());
+                        }
+                        if (toDeleteItemIds.contains(dbPlacement.getStockInItemId())) {
+                            throw invalidParamException("放置记录 ID【{}】原所属明细行【{}】已被删除，禁止引用", pReq.getId(), dbPlacement.getStockInItemId());
+                        }
+                        if (itemReq.getId() != null && !dbPlacement.getStockInItemId().equals(itemReq.getId())) {
+                            throw invalidParamException("放置记录 ID【{}】不属于当前明细行【{}】", pReq.getId(), itemReq.getId());
+                        }
+                        if (itemReq.getId() == null) {
+                            throw invalidParamException("不能将已有放置记录【{}】移动到新增明细行", pReq.getId());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. 第一级：父表（入库明细）差异保存
+        // 4.1 删除明细行：其下放置记录一并逻辑删除
+        if (!toDeleteItemIds.isEmpty()) {
+            Set<Long> placementIdsToDelete = new HashSet<>();
+            for (Long delItemId : toDeleteItemIds) {
+                List<StockInItemPlacementDO> pls = dbPlacementsByItemId.get(delItemId);
+                if (CollUtil.isNotEmpty(pls)) {
+                    for (StockInItemPlacementDO pl : pls) {
+                        placementIdsToDelete.add(pl.getId());
+                    }
+                }
+            }
+            if (!placementIdsToDelete.isEmpty()) {
+                stockInItemPlacementMapper.deleteByIds(placementIdsToDelete);
+            }
+            stockInItemMapper.deleteByIds(toDeleteItemIds);
+        }
+
+        // 4.2 保存 / 更新明细行
+        List<StockInItemDO> activeItemDOs = new ArrayList<>();
+        Map<StockInItemSaveReqVO, Long> reqToItemIdMap = new HashMap<>();
+
+        for (StockInItemSaveReqVO itemReq : safeItemReqs) {
+            StockInItemDO itemDO = buildItemDO(itemReq);
+            itemDO.setStockInId(stockInId);
+            if (itemReq.getId() != null) {
+                // 已有明细行：updateById（保留行身份）
+                itemDO.setId(itemReq.getId());
+                stockInItemMapper.updateById(itemDO);
+                reqToItemIdMap.put(itemReq, itemReq.getId());
+            } else {
+                // 新增明细行：insert
+                itemDO.setId(null);
+                stockInItemMapper.insert(itemDO);
+                reqToItemIdMap.put(itemReq, itemDO.getId());
+            }
+            activeItemDOs.add(itemDO);
+        }
+
+        // 5. 第二级：子表（库位放置）差异保存（按明细行独立三分流）
+        for (StockInItemSaveReqVO itemReq : safeItemReqs) {
+            Long currentItemId = reqToItemIdMap.get(itemReq);
+            String itemUnit = itemReq.getUnit();
+            if (!StringUtils.hasText(itemUnit) && "YARN_SPEC".equals(itemReq.getItemType())) {
+                itemUnit = "KG";
+            }
+
+            List<StockInItemPlacementSaveReqVO> reqPlacements = itemReq.getPlacements() != null
+                    ? itemReq.getPlacements()
+                    : Collections.emptyList();
+
+            Set<Long> currentSubmittedPlacementIds = new HashSet<>();
+            List<StockInItemPlacementDO> toInsertPlacements = new ArrayList<>();
+            List<StockInItemPlacementDO> toUpdatePlacements = new ArrayList<>();
+
+            for (StockInItemPlacementSaveReqVO pReq : reqPlacements) {
+                StockInItemPlacementDO pDO = BeanUtils.toBean(pReq, StockInItemPlacementDO.class);
+                pDO.setStockInId(stockInId);
+                pDO.setStockInItemId(currentItemId);
+                WarehouseLocationDO loc = locationMap.get(pReq.getLocationId());
+                pDO.setLocationCode(loc != null ? loc.getCode() : null);
+                pDO.setUnit(itemUnit);
+
+                if (pReq.getId() != null) {
+                    pDO.setId(pReq.getId());
+                    toUpdatePlacements.add(pDO);
+                    currentSubmittedPlacementIds.add(pReq.getId());
+                } else {
+                    pDO.setId(null);
+                    toInsertPlacements.add(pDO);
+                }
+            }
+
+            // DB 中原挂在该明细行下的放置记录
+            List<StockInItemPlacementDO> existingChildPlacements = dbPlacementsByItemId.getOrDefault(currentItemId, Collections.emptyList());
+            Set<Long> toDeleteChildPlacementIds = existingChildPlacements.stream()
+                    .map(StockInItemPlacementDO::getId)
+                    .filter(id -> !currentSubmittedPlacementIds.contains(id))
+                    .collect(Collectors.toSet());
+
+            if (!toDeleteChildPlacementIds.isEmpty()) {
+                stockInItemPlacementMapper.deleteByIds(toDeleteChildPlacementIds);
+            }
+            for (StockInItemPlacementDO pDO : toUpdatePlacements) {
+                stockInItemPlacementMapper.updateById(pDO);
+            }
+            for (StockInItemPlacementDO pDO : toInsertPlacements) {
+                stockInItemPlacementMapper.insert(pDO);
+            }
+        }
+
+        return activeItemDOs;
     }
 
     /**

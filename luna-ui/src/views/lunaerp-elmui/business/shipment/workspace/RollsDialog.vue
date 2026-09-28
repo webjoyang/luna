@@ -14,7 +14,7 @@
       <span v-if="!isReadOnly" class="ml-12px text-gray-400 text-12px">（软提示仅供参考，不做齐套强制）</span>
     </div>
 
-    <el-table :data="rollRows" border stripe class="w-full">
+    <el-table :data="rollRows" :row-key="getRollRowKey" border stripe class="w-full">
       <el-table-column label="#" type="index" width="50" align="center" />
 
       <!-- 卷号 -->
@@ -77,8 +77,8 @@
 
       <!-- 操作 -->
       <el-table-column v-if="!isReadOnly" label="操作" width="70" align="center" fixed="right">
-        <template #default="{ $index }">
-          <el-button link type="danger" size="small" @click="handleDeleteRow($index)">
+        <template #default="{ row }">
+          <el-button link type="danger" size="small" @click="handleDeleteRow(row)">
             删除
           </el-button>
         </template>
@@ -138,12 +138,27 @@ const dialogTitle = computed(() =>
 /** 弹窗内操作的副本 */
 const rollRows = ref<ShipmentRollVO[]>([])
 
+let tempRollKeyCounter = 0
+/** 卷清单表格以行 id 为稳定 key；新增行未落库前以临时 key 保证行唯一性 */
+const getRollRowKey = (row: ShipmentRollVO): string => {
+  if (row.id != null) {
+    return String(row.id)
+  }
+  if (!(row as any)._clientKey) {
+    (row as any)._clientKey = `temp_roll_${++tempRollKeyCounter}`
+  }
+  return String((row as any)._clientKey)
+}
+
 watch(
   () => props.modelValue,
   (open) => {
     if (open) {
-      // 打开时深拷贝，避免直接改父组件引用
-      rollRows.value = props.rolls.map((r) => ({ ...r }))
+      // 打开时深拷贝，保留已有 id、shipmentItemId 等，避免直接改父组件引用
+      rollRows.value = props.rolls.map((r) => ({
+        ...r,
+        _clientKey: (r as any)._clientKey || (r.id != null ? undefined : `temp_roll_${++tempRollKeyCounter}`)
+      }))
     }
   }
 )
@@ -155,15 +170,19 @@ const totalRecordedWeight = computed(() =>
 
 const handleAddRow = () => {
   rollRows.value.push({
+    id: undefined,
+    shipmentItemId: undefined,
     rollNo: '',
     weight: undefined,
     lengthM: undefined,
-    remark: ''
-  })
+    remark: '',
+    _clientKey: `temp_roll_${++tempRollKeyCounter}`
+  } as any)
 }
 
-const handleDeleteRow = (index: number) => {
-  rollRows.value.splice(index, 1)
+const handleDeleteRow = (row: ShipmentRollVO) => {
+  const targetKey = getRollRowKey(row)
+  rollRows.value = rollRows.value.filter((r) => getRollRowKey(r) !== targetKey)
 }
 
 const handleConfirm = () => {

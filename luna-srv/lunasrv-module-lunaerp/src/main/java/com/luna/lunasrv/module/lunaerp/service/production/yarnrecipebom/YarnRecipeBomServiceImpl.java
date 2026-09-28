@@ -198,25 +198,30 @@ public class YarnRecipeBomServiceImpl implements YarnRecipeBomService {
         }
     }
 
+    private YarnRecipeBomItemDO buildItemDO(Long recipeBomId, YarnRecipeBomItemSaveReqVO reqItem) {
+        YarnSpecDO spec = yarnSpecMapper.selectById(reqItem.getYarnSpecId());
+        if (spec == null) {
+            throw exception(YARN_SPEC_NOT_EXISTS);
+        }
+        YarnRecipeBomItemDO itemDO = BeanUtils.toBean(reqItem, YarnRecipeBomItemDO.class);
+        itemDO.setRecipeBomId(recipeBomId);
+        // 若未填工艺或参考价，取规格默认值兜底
+        if (!StringUtils.hasText(itemDO.getSpinMethod())) {
+            itemDO.setSpinMethod(spec.getSpinMethod());
+        }
+        if (itemDO.getRefPrice() == null) {
+            itemDO.setRefPrice(spec.getRefPrice());
+        }
+        return itemDO;
+    }
+
     private List<YarnRecipeBomItemDO> validateAndBuildItems(Long recipeBomId, List<YarnRecipeBomItemSaveReqVO> reqItems) {
         if (CollUtil.isEmpty(reqItems)) {
             return Collections.emptyList();
         }
         return reqItems.stream().map(itemReq -> {
-            YarnSpecDO spec = yarnSpecMapper.selectById(itemReq.getYarnSpecId());
-            if (spec == null) {
-                throw exception(YARN_SPEC_NOT_EXISTS);
-            }
-            YarnRecipeBomItemDO itemDO = BeanUtils.toBean(itemReq, YarnRecipeBomItemDO.class);
+            YarnRecipeBomItemDO itemDO = buildItemDO(recipeBomId, itemReq);
             itemDO.setId(null);
-            itemDO.setRecipeBomId(recipeBomId);
-            // 若未填工艺或参考价，取规格默认值兜底
-            if (!StringUtils.hasText(itemDO.getSpinMethod())) {
-                itemDO.setSpinMethod(spec.getSpinMethod());
-            }
-            if (itemDO.getRefPrice() == null) {
-                itemDO.setRefPrice(spec.getRefPrice());
-            }
             return itemDO;
         }).collect(Collectors.toList());
     }
@@ -259,19 +264,7 @@ public class YarnRecipeBomServiceImpl implements YarnRecipeBomService {
         // 2. 遍历提交明细，校验规格与合法性并分流
         if (CollUtil.isNotEmpty(reqItems)) {
             for (YarnRecipeBomItemSaveReqVO reqItem : reqItems) {
-                YarnSpecDO spec = yarnSpecMapper.selectById(reqItem.getYarnSpecId());
-                if (spec == null) {
-                    throw exception(YARN_SPEC_NOT_EXISTS);
-                }
-                YarnRecipeBomItemDO itemDO = BeanUtils.toBean(reqItem, YarnRecipeBomItemDO.class);
-                itemDO.setRecipeBomId(recipeBomId);
-                // 若未填工艺或参考价，取规格默认值兜底
-                if (!StringUtils.hasText(itemDO.getSpinMethod())) {
-                    itemDO.setSpinMethod(spec.getSpinMethod());
-                }
-                if (itemDO.getRefPrice() == null) {
-                    itemDO.setRefPrice(spec.getRefPrice());
-                }
+                YarnRecipeBomItemDO itemDO = buildItemDO(recipeBomId, reqItem);
 
                 if (reqItem.getId() != null) {
                     Long itemId = reqItem.getId();

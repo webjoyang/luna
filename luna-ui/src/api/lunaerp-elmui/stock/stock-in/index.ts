@@ -12,6 +12,7 @@ export interface StockInItemPlacementVO {
   unit?: string
   remark?: string
   createTime?: Date | string
+  _clientKey?: string
 }
 
 // 入库明细 VO
@@ -38,6 +39,7 @@ export interface StockInItemVO {
   createTime?: Date | string
   placements?: StockInItemPlacementVO[]
   specCascadeValue?: [number, number]
+  _clientKey?: string
 }
 
 // 入库单 VO

@@ -25,7 +25,7 @@
       </div>
     </div>
 
-    <el-table :data="itemsList" border stripe class="w-full">
+    <el-table :data="itemsList" :row-key="getItemRowKey" border stripe class="w-full">
       <el-table-column label="#" type="index" width="50" align="center" />
 
       <!-- 产品档案选择 -->
@@ -202,7 +202,7 @@
 
       <!-- 操作 -->
       <el-table-column label="操作" width="140" align="center" fixed="right">
-        <template #default="{ row, $index }">
+        <template #default="{ row }">
           <el-button
             link
             :type="isReadOnly ? 'info' : 'primary'"
@@ -216,7 +216,7 @@
             link
             type="danger"
             size="small"
-            @click="handleDeleteRow($index)"
+            @click="handleDeleteRow(row)"
           >
             删除
           </el-button>
@@ -379,8 +379,21 @@ const handlePiecesChange = () => {
   emit('recalculate')
 }
 
+let tempItemKeyCounter = 0
+/** 明细表格以行 id 为稳定 key；新增行未落库前以临时 key 保证行唯一性 */
+const getItemRowKey = (row: ShipmentItemVO): string => {
+  if (row.id != null) {
+    return String(row.id)
+  }
+  if (!(row as any)._clientKey) {
+    (row as any)._clientKey = `temp_item_${++tempItemKeyCounter}`
+  }
+  return String((row as any)._clientKey)
+}
+
 const handleAddRow = () => {
   const newRow: ShipmentItemVO = {
+    id: undefined,
     productId: undefined as any,
     productCode: '',
     productName: '',
@@ -395,53 +408,64 @@ const handleAddRow = () => {
     remark: '',
     rolls: []
   }
+  ;(newRow as any)._clientKey = `temp_item_${++tempItemKeyCounter}`
   const next = [...itemsList.value, newRow]
   emit('update:items', next)
   emit('recalculate')
 }
 
-const handleDeleteRow = (index: number) => {
-  const next = [...itemsList.value]
-  next.splice(index, 1)
+const handleDeleteRow = (row: ShipmentItemVO) => {
+  const targetKey = getItemRowKey(row)
+  const next = itemsList.value.filter((item) => getItemRowKey(item) !== targetKey)
   emit('update:items', next)
   emit('recalculate')
 }
 
 // ---- 卷清单弹窗逻辑 ----
 const rollsDialogVisible = ref(false)
-/** 当前打开的明细行索引（-1 表示未打开） */
-const currentRollItemIndex = ref(-1)
+/** 当前打开的明细行唯一标识（id 或 _clientKey） */
+const currentRollItemKey = ref<string | null>(null)
+/** 当前打开的明细行对象 */
+const currentRollItem = computed(() => {
+  if (currentRollItemKey.value == null) return null
+  return itemsList.value.find((item) => getItemRowKey(item) === currentRollItemKey.value) || null
+})
 /** 弹窗标题用的产品标签 */
 const currentRollItemLabel = computed(() => {
-  const idx = currentRollItemIndex.value
-  if (idx < 0 || idx >= itemsList.value.length) return ''
-  const item = itemsList.value[idx]
+  const item = currentRollItem.value
+  if (!item) return ''
   return item.productName
     ? `${item.productName}${item.vatNo ? ' / 缸 ' + item.vatNo : ''}`
     : ''
 })
 /** 传入弹窗的卷数据（只读时为 ref 快照，可写时为空数组后由弹窗 watch 填充） */
 const currentRollItemRolls = computed<ShipmentRollVO[]>(() => {
-  const idx = currentRollItemIndex.value
-  if (idx < 0 || idx >= itemsList.value.length) return []
-  return itemsList.value[idx].rolls ?? []
+  return currentRollItem.value?.rolls ?? []
 })
 
 const handleOpenRolls = (row: ShipmentItemVO) => {
-  const idx = itemsList.value.indexOf(row)
-  if (idx < 0) return
   if (!row.rolls) {
     row.rolls = []
   }
-  currentRollItemIndex.value = idx
+  currentRollItemKey.value = getItemRowKey(row)
   rollsDialogVisible.value = true
 }
 
 const handleRollsConfirm = (rolls: ShipmentRollVO[]) => {
-  const idx = currentRollItemIndex.value
-  if (idx < 0 || idx >= itemsList.value.length) return
-  const next = [...itemsList.value]
-  next[idx] = { ...next[idx], rolls }
+  const key = currentRollItemKey.value
+  if (key == null) return
+  const next = itemsList.value.map((item) => {
+    if (getItemRowKey(item) === key) {
+      return {
+        ...item,
+        rolls: rolls.map((r) => ({
+          ...r,
+          shipmentItemId: item.id || undefined
+        }))
+      }
+    }
+    return item
+  })
   emit('update:items', next)
 }
 

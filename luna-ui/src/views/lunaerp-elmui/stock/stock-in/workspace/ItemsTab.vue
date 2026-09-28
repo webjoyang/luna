@@ -15,7 +15,7 @@
       </el-button>
     </div>
 
-    <el-table :data="itemsList" border stripe class="w-full">
+    <el-table :data="itemsList" :row-key="getRowKey" border stripe class="w-full">
       <el-table-column label="#" type="index" width="50" align="center" />
 
       <!-- 物品类型选择 -->
@@ -466,9 +466,22 @@ const handleQtyOrPriceChange = (row: StockInItemVO) => {
   emit('recalculate')
 }
 
+let tempKeyCounter = 0
+/** 明细表格以行 id 为稳定 key；新增行未落库前以临时 key 保证行唯一性（ADR-0032） */
+const getRowKey = (row: StockInItemVO) => {
+  if (row.id != null) {
+    return row.id
+  }
+  if (!row._clientKey) {
+    row._clientKey = `temp_item_${++tempKeyCounter}`
+  }
+  return row._clientKey
+}
+
 const handleAddRow = () => {
   const newList = [...itemsList.value]
   newList.push({
+    _clientKey: `temp_item_${++tempKeyCounter}`,
     itemType: 'PRODUCT',
     productId: undefined,
     productCode: '',
@@ -513,7 +526,10 @@ const handleOpenPlacement = (row: StockInItemVO, index: number) => {
 }
 
 const handlePlacementConfirm = (placements: StockInItemPlacementVO[]) => {
-  if (currentPlacementIndex.value >= 0 && currentPlacementIndex.value < itemsList.value.length) {
+  if (currentPlacementItem.value) {
+    currentPlacementItem.value.placements = placements
+    emit('update:items', [...itemsList.value])
+  } else if (currentPlacementIndex.value >= 0 && currentPlacementIndex.value < itemsList.value.length) {
     itemsList.value[currentPlacementIndex.value].placements = placements
     emit('update:items', [...itemsList.value])
   }

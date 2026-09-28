@@ -294,12 +294,41 @@ const handleSave = async () => {
   actionLoading.value = true
   try {
     handleRecalculateTotals()
+    const payload: ShipmentVO = {
+      ...formData.value,
+      items: formData.value.items?.map((item) => ({
+        id: item.id || undefined,
+        shipmentId: item.shipmentId || formData.value.id || undefined,
+        productId: item.productId,
+        productCode: item.productCode,
+        productName: item.productName,
+        customerColorNo: item.customerColorNo,
+        colorName: item.colorName,
+        vatNo: item.vatNo,
+        quantity: item.quantity,
+        pieces: item.pieces,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        amount: item.amount,
+        sourceStockInItemId: item.sourceStockInItemId,
+        remark: item.remark,
+        rolls: item.rolls?.map((roll) => ({
+          id: roll.id || undefined,
+          shipmentId: roll.shipmentId || formData.value.id || undefined,
+          shipmentItemId: roll.shipmentItemId || item.id || undefined,
+          rollNo: roll.rollNo,
+          weight: roll.weight,
+          lengthM: roll.lengthM,
+          remark: roll.remark
+        }))
+      }))
+    }
     if (isCreateMode.value) {
-      const newId = await ShipmentApi.createShipment(formData.value)
+      const newId = await ShipmentApi.createShipment(payload)
       message.success('创建草稿成功')
       router.push(`/business/shipment/workspace/${newId}`)
     } else {
-      await ShipmentApi.updateShipment(formData.value)
+      await ShipmentApi.updateShipment(payload)
       message.success('更新草稿成功')
       await loadDetail(shipmentId.value!)
     }
