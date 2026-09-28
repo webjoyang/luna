@@ -124,7 +124,7 @@
         </div>
       </template>
 
-      <el-table :data="formData.items" border style="width: 100%">
+      <el-table :data="formData.items" :row-key="getRowKey" border style="width: 100%">
         <el-table-column type="index" label="序号" width="60" align="center" />
         
         <el-table-column label="纱线规格" min-width="240">
@@ -248,6 +248,19 @@ interface EditableBomItem {
   remark?: string
   refPrice?: number
   specCascadeValue?: [number, number]
+  _clientKey?: string
+}
+
+let tempKeyCounter = 0
+/** 明细表格以行 id 为稳定 key；新增行未落库前以临时 key 保证行唯一性（ADR-0032） */
+const getRowKey = (row: EditableBomItem): string => {
+  if (row.id != null) {
+    return String(row.id)
+  }
+  if (!row._clientKey) {
+    row._clientKey = `temp_${++tempKeyCounter}`
+  }
+  return row._clientKey
 }
 
 const formRef = ref()
@@ -365,6 +378,8 @@ const handleProductChange = (productId?: number) => {
 // 增行
 const handleAddRow = () => {
   formData.items.push({
+    _clientKey: `temp_${++tempKeyCounter}`,
+    id: undefined,
     yarnTypeId: undefined as any,
     yarnSpecId: undefined as any,
     ratio: 0,
@@ -454,6 +469,7 @@ const handleSave = async () => {
       remark: formData.remark,
       status: formData.status,
       items: formData.items.map(item => ({
+        id: item.id != null ? item.id : undefined,
         yarnTypeId: item.yarnTypeId,
         yarnSpecId: item.yarnSpecId,
         ratio: item.ratio,

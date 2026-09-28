@@ -24,13 +24,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 
 /**
@@ -88,18 +92,15 @@ public class YarnRecipeBomServiceImpl implements YarnRecipeBomService {
         validateYarnRecipeBomExists(updateReqVO.getId());
         // 2. 校验产品存在与唯一性（排除自身）
         ProductDO product = validateProductAndUnique(updateReqVO.getId(), updateReqVO.getProductId());
-        // 3. 校验明细规格存在并组装
-        List<YarnRecipeBomItemDO> itemDOList = validateAndBuildItems(updateReqVO.getId(), updateReqVO.getItems());
 
-        // 4. 更新主表
+        // 3. 更新主表
         YarnRecipeBomDO bom = BeanUtils.toBean(updateReqVO, YarnRecipeBomDO.class);
         bom.setProductCode(product.getCode());
         bom.setProductName(product.getName());
         yarnRecipeBomMapper.updateById(bom);
 
-        // 5. 明细整体替换：先删后插（零明细合法）
-        yarnRecipeBomItemMapper.deleteByRecipeBomId(updateReqVO.getId());
-        saveItems(updateReqVO.getId(), itemDOList);
+        // 4. 配比明细差异保存（三分流：update / insert / deleteByIds，ADR-0032）
+        diffSaveItems(updateReqVO.getId(), updateReqVO.getItems());
     }
 
     @Override
@@ -227,6 +228,81 @@ public class YarnRecipeBomServiceImpl implements YarnRecipeBomService {
         for (YarnRecipeBomItemDO item : items) {
             item.setRecipeBomId(recipeBomId);
             yarnRecipeBomItemMapper.insert(item);
+        }
+    }
+
+    /**
+     * 纱线配比 BOM 明细差异保存：将提交的明细行按 id 分流为 update / insert / 逻辑删除三组。
+     *
+     * <ul>
+     *   <li>提交行携带 id 且 id 属于本 BOM → updateById（保留原有行身份与审计信息）</li>
+     *   <li>提交行 id 为 null → insert（新增行）</li>
+     *   <li>本 BOM 库内存量已有 id 未出现在提交行中 → 逻辑删除（deleteByIds）</li>
+     *   <li>提交行携带 id 不属于本 BOM → 报错拦截（防御跨父非法篡改）</li>
+     *   <li>提交行中出现重复 id → 报错拦截</li>
+     * </ul>
+     *
+     * @param recipeBomId 配比 BOM ID
+     * @param reqItems    提交的明细列表（可为空）
+     */
+    private void diffSaveItems(Long recipeBomId, List<YarnRecipeBomItemSaveReqVO> reqItems) {
+        // 1. 查询库内存量明细
+        List<YarnRecipeBomItemDO> dbItems = yarnRecipeBomItemMapper.selectListByRecipeBomId(recipeBomId);
+        Map<Long, YarnRecipeBomItemDO> dbItemMap = dbItems.stream()
+                .collect(Collectors.toMap(YarnRecipeBomItemDO::getId, Function.identity()));
+        Set<Long> remainingDbItemIds = new HashSet<>(dbItemMap.keySet());
+
+        List<YarnRecipeBomItemDO> toInsert = new ArrayList<>();
+        List<YarnRecipeBomItemDO> toUpdate = new ArrayList<>();
+        Set<Long> seenIds = new HashSet<>();
+
+        // 2. 遍历提交明细，校验规格与合法性并分流
+        if (CollUtil.isNotEmpty(reqItems)) {
+            for (YarnRecipeBomItemSaveReqVO reqItem : reqItems) {
+                YarnSpecDO spec = yarnSpecMapper.selectById(reqItem.getYarnSpecId());
+                if (spec == null) {
+                    throw exception(YARN_SPEC_NOT_EXISTS);
+                }
+                YarnRecipeBomItemDO itemDO = BeanUtils.toBean(reqItem, YarnRecipeBomItemDO.class);
+                itemDO.setRecipeBomId(recipeBomId);
+                // 若未填工艺或参考价，取规格默认值兜底
+                if (!StringUtils.hasText(itemDO.getSpinMethod())) {
+                    itemDO.setSpinMethod(spec.getSpinMethod());
+                }
+                if (itemDO.getRefPrice() == null) {
+                    itemDO.setRefPrice(spec.getRefPrice());
+                }
+
+                if (reqItem.getId() != null) {
+                    Long itemId = reqItem.getId();
+                    if (!seenIds.add(itemId)) {
+                        throw invalidParamException("配比明细行 ID【{}】重复提交", itemId);
+                    }
+                    if (!remainingDbItemIds.remove(itemId)) {
+                        throw invalidParamException("配比明细行 ID【{}】不属于当前配比BOM", itemId);
+                    }
+                    itemDO.setId(itemId);
+                    toUpdate.add(itemDO);
+                } else {
+                    itemDO.setId(null);
+                    toInsert.add(itemDO);
+                }
+            }
+        }
+
+        // 3. 执行删除（存量中未被本次提交命中的 ID）
+        if (!remainingDbItemIds.isEmpty()) {
+            yarnRecipeBomItemMapper.deleteByIds(remainingDbItemIds);
+        }
+
+        // 4. 执行更新
+        for (YarnRecipeBomItemDO updateItem : toUpdate) {
+            yarnRecipeBomItemMapper.updateById(updateItem);
+        }
+
+        // 5. 执行插入
+        for (YarnRecipeBomItemDO insertItem : toInsert) {
+            yarnRecipeBomItemMapper.insert(insertItem);
         }
     }
 

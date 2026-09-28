@@ -26,7 +26,9 @@ import org.mockito.MockitoAnnotations;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -210,65 +212,221 @@ class YarnRecipeBomServiceImplTest {
         verify(yarnRecipeBomMapper, never()).updateById(any(YarnRecipeBomDO.class));
     }
 
+    // ==================== 纱线配比BOM明细差异保存（ADR-0032） ====================
+
     @Test
-    void updateYarnRecipeBom_success_replacesItems() {
+    void updateYarnRecipeBom_allExistingItems_updatesItemsZeroDeleteZeroInsert() {
+        YarnRecipeBomDO existingBom = stubBomDO(100L, 1L);
+        when(yarnRecipeBomMapper.selectById(100L)).thenReturn(existingBom);
+        stubProduct(1L, "P001", "全棉汗布");
+
+        YarnRecipeBomItemDO item1 = stubItemDO(201L, 100L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000");
+        YarnRecipeBomItemDO item2 = stubItemDO(202L, 100L, 2L, 102L, "40.00", "气流纺", "纬纱", "25.0000");
+        when(yarnRecipeBomItemMapper.selectListByRecipeBomId(100L)).thenReturn(Arrays.asList(item1, item2));
+
+        stubSpec(101L, "环锭纺", "30.0000");
+        stubSpec(102L, "气流纺", "25.0000");
+
         YarnRecipeBomSaveReqVO req = new YarnRecipeBomSaveReqVO();
         req.setId(100L);
         req.setProductId(1L);
-        req.setRemark("更新配比");
-
-        YarnRecipeBomDO existingBom = new YarnRecipeBomDO();
-        existingBom.setId(100L);
-        existingBom.setProductId(1L);
-        when(yarnRecipeBomMapper.selectById(100L)).thenReturn(existingBom);
-
-        ProductDO product = new ProductDO();
-        product.setId(1L);
-        product.setCode("P001");
-        product.setName("全棉汗布");
-        when(productMapper.selectById(1L)).thenReturn(product);
-
-        YarnRecipeBomItemSaveReqVO item = new YarnRecipeBomItemSaveReqVO();
-        item.setYarnTypeId(1L);
-        item.setYarnSpecId(101L);
-        item.setRatio(new BigDecimal("100.00"));
-        req.setItems(Collections.singletonList(item));
-
-        YarnSpecDO spec = new YarnSpecDO();
-        spec.setId(101L);
-        when(yarnSpecMapper.selectById(101L)).thenReturn(spec);
+        req.setItems(Arrays.asList(
+                itemReq(201L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000"),
+                itemReq(202L, 2L, 102L, "40.00", "气流纺", "纬纱", "25.0000")
+        ));
 
         yarnRecipeBomService.updateYarnRecipeBom(req);
 
-        // 校验主表更新
         verify(yarnRecipeBomMapper).updateById(any(YarnRecipeBomDO.class));
-        // 校验明细先删后插
-        verify(yarnRecipeBomItemMapper).deleteByRecipeBomId(100L);
-        verify(yarnRecipeBomItemMapper, times(1)).insert(any(YarnRecipeBomItemDO.class));
+        verify(yarnRecipeBomItemMapper, never()).deleteByIds(any());
+        verify(yarnRecipeBomItemMapper, never()).deleteByRecipeBomId(any());
+        verify(yarnRecipeBomItemMapper, never()).insert(any(YarnRecipeBomItemDO.class));
+
+        ArgumentCaptor<YarnRecipeBomItemDO> captor = ArgumentCaptor.forClass(YarnRecipeBomItemDO.class);
+        verify(yarnRecipeBomItemMapper, times(2)).updateById(captor.capture());
+        List<YarnRecipeBomItemDO> updated = captor.getAllValues();
+        assertEquals(201L, updated.get(0).getId());
+        assertEquals(new BigDecimal("60.00"), updated.get(0).getRatio());
+        assertEquals(202L, updated.get(1).getId());
+        assertEquals(new BigDecimal("40.00"), updated.get(1).getRatio());
     }
 
     @Test
-    void updateYarnRecipeBom_zeroItems_success() {
+    void updateYarnRecipeBom_modifyItem_updatesTargetItemWithNewValues() {
+        YarnRecipeBomDO existingBom = stubBomDO(100L, 1L);
+        when(yarnRecipeBomMapper.selectById(100L)).thenReturn(existingBom);
+        stubProduct(1L, "P001", "全棉汗布");
+
+        YarnRecipeBomItemDO item1 = stubItemDO(201L, 100L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000");
+        YarnRecipeBomItemDO item2 = stubItemDO(202L, 100L, 2L, 102L, "40.00", "气流纺", "纬纱", "25.0000");
+        when(yarnRecipeBomItemMapper.selectListByRecipeBomId(100L)).thenReturn(Arrays.asList(item1, item2));
+
+        stubSpec(101L, "环锭纺", "30.0000");
+        stubSpec(102L, "气流纺", "25.0000");
+
+        YarnRecipeBomSaveReqVO req = new YarnRecipeBomSaveReqVO();
+        req.setId(100L);
+        req.setProductId(1L);
+        // 修改 item1 的配比与工艺与备注，item2 维持原样
+        req.setItems(Arrays.asList(
+                itemReq(201L, 1L, 101L, "70.00", "紧密纺", "改备注", "32.0000"),
+                itemReq(202L, 2L, 102L, "30.00", "气流纺", "纬纱", "25.0000")
+        ));
+
+        yarnRecipeBomService.updateYarnRecipeBom(req);
+
+        verify(yarnRecipeBomItemMapper, never()).deleteByIds(any());
+        verify(yarnRecipeBomItemMapper, never()).insert(any(YarnRecipeBomItemDO.class));
+
+        ArgumentCaptor<YarnRecipeBomItemDO> captor = ArgumentCaptor.forClass(YarnRecipeBomItemDO.class);
+        verify(yarnRecipeBomItemMapper, times(2)).updateById(captor.capture());
+        YarnRecipeBomItemDO updatedItem1 = captor.getAllValues().stream()
+                .filter(i -> i.getId().equals(201L)).findFirst().orElseThrow();
+        assertEquals(new BigDecimal("70.00"), updatedItem1.getRatio());
+        assertEquals("紧密纺", updatedItem1.getSpinMethod());
+        assertEquals("改备注", updatedItem1.getRemark());
+        assertEquals(new BigDecimal("32.0000"), updatedItem1.getRefPrice());
+    }
+
+    @Test
+    void updateYarnRecipeBom_removeItem_logicallyDeletesRemovedItem() {
+        YarnRecipeBomDO existingBom = stubBomDO(100L, 1L);
+        when(yarnRecipeBomMapper.selectById(100L)).thenReturn(existingBom);
+        stubProduct(1L, "P001", "全棉汗布");
+
+        YarnRecipeBomItemDO item1 = stubItemDO(201L, 100L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000");
+        YarnRecipeBomItemDO item2 = stubItemDO(202L, 100L, 2L, 102L, "40.00", "气流纺", "纬纱", "25.0000");
+        when(yarnRecipeBomItemMapper.selectListByRecipeBomId(100L)).thenReturn(Arrays.asList(item1, item2));
+
+        stubSpec(101L, "环锭纺", "30.0000");
+
+        YarnRecipeBomSaveReqVO req = new YarnRecipeBomSaveReqVO();
+        req.setId(100L);
+        req.setProductId(1L);
+        // 仅提交 201，删除 202
+        req.setItems(Collections.singletonList(
+                itemReq(201L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000")
+        ));
+
+        yarnRecipeBomService.updateYarnRecipeBom(req);
+
+        verify(yarnRecipeBomItemMapper).deleteByIds(eq(Collections.singleton(202L)));
+        verify(yarnRecipeBomItemMapper, times(1)).updateById(any(YarnRecipeBomItemDO.class));
+        verify(yarnRecipeBomItemMapper, never()).insert(any(YarnRecipeBomItemDO.class));
+    }
+
+    @Test
+    void updateYarnRecipeBom_addItem_insertsNewItemAndPreservesExisting() {
+        YarnRecipeBomDO existingBom = stubBomDO(100L, 1L);
+        when(yarnRecipeBomMapper.selectById(100L)).thenReturn(existingBom);
+        stubProduct(1L, "P001", "全棉汗布");
+
+        YarnRecipeBomItemDO item1 = stubItemDO(201L, 100L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000");
+        when(yarnRecipeBomItemMapper.selectListByRecipeBomId(100L)).thenReturn(Collections.singletonList(item1));
+
+        stubSpec(101L, "环锭纺", "30.0000");
+        stubSpec(102L, "气流纺", "25.0000");
+
+        YarnRecipeBomSaveReqVO req = new YarnRecipeBomSaveReqVO();
+        req.setId(100L);
+        req.setProductId(1L);
+        // 提交已存 201 + 新增行（id=null）
+        req.setItems(Arrays.asList(
+                itemReq(201L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000"),
+                itemReq(null, 2L, 102L, "40.00", "气流纺", "新加纱线", "25.0000")
+        ));
+
+        yarnRecipeBomService.updateYarnRecipeBom(req);
+
+        verify(yarnRecipeBomItemMapper, never()).deleteByIds(any());
+        verify(yarnRecipeBomItemMapper, times(1)).updateById(any(YarnRecipeBomItemDO.class));
+
+        ArgumentCaptor<YarnRecipeBomItemDO> insertCaptor = ArgumentCaptor.forClass(YarnRecipeBomItemDO.class);
+        verify(yarnRecipeBomItemMapper, times(1)).insert(insertCaptor.capture());
+        YarnRecipeBomItemDO inserted = insertCaptor.getValue();
+        assertEquals(100L, inserted.getRecipeBomId());
+        assertEquals(2L, inserted.getYarnTypeId());
+        assertEquals(102L, inserted.getYarnSpecId());
+        assertEquals(new BigDecimal("40.00"), inserted.getRatio());
+    }
+
+    @Test
+    void updateYarnRecipeBom_itemNotBelongingToBom_throwsInvalidParamException() {
+        YarnRecipeBomDO existingBom = stubBomDO(100L, 1L);
+        when(yarnRecipeBomMapper.selectById(100L)).thenReturn(existingBom);
+        stubProduct(1L, "P001", "全棉汗布");
+
+        YarnRecipeBomItemDO item1 = stubItemDO(201L, 100L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000");
+        when(yarnRecipeBomItemMapper.selectListByRecipeBomId(100L)).thenReturn(Collections.singletonList(item1));
+
+        stubSpec(101L, "环锭纺", "30.0000");
+
+        YarnRecipeBomSaveReqVO req = new YarnRecipeBomSaveReqVO();
+        req.setId(100L);
+        req.setProductId(1L);
+        // 携带不属于本 BOM 的 id=999
+        req.setItems(Collections.singletonList(
+                itemReq(999L, 1L, 101L, "100.00", "环锭纺", "跨父行", "30.0000")
+        ));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> yarnRecipeBomService.updateYarnRecipeBom(req));
+        assertEquals(400, ex.getCode());
+
+        verify(yarnRecipeBomItemMapper, never()).updateById(any(YarnRecipeBomItemDO.class));
+        verify(yarnRecipeBomItemMapper, never()).deleteByIds(any());
+        verify(yarnRecipeBomItemMapper, never()).insert(any(YarnRecipeBomItemDO.class));
+    }
+
+    @Test
+    void updateYarnRecipeBom_duplicateItemIds_throwsInvalidParamException() {
+        YarnRecipeBomDO existingBom = stubBomDO(100L, 1L);
+        when(yarnRecipeBomMapper.selectById(100L)).thenReturn(existingBom);
+        stubProduct(1L, "P001", "全棉汗布");
+
+        YarnRecipeBomItemDO item1 = stubItemDO(201L, 100L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000");
+        when(yarnRecipeBomItemMapper.selectListByRecipeBomId(100L)).thenReturn(Collections.singletonList(item1));
+
+        stubSpec(101L, "环锭纺", "30.0000");
+
+        YarnRecipeBomSaveReqVO req = new YarnRecipeBomSaveReqVO();
+        req.setId(100L);
+        req.setProductId(1L);
+        // 提交两个重复 id=201
+        req.setItems(Arrays.asList(
+                itemReq(201L, 1L, 101L, "50.00", "环锭纺", "重复1", "30.0000"),
+                itemReq(201L, 1L, 101L, "50.00", "环锭纺", "重复2", "30.0000")
+        ));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> yarnRecipeBomService.updateYarnRecipeBom(req));
+        assertEquals(400, ex.getCode());
+
+        verify(yarnRecipeBomItemMapper, never()).updateById(any(YarnRecipeBomItemDO.class));
+        verify(yarnRecipeBomItemMapper, never()).deleteByIds(any());
+        verify(yarnRecipeBomItemMapper, never()).insert(any(YarnRecipeBomItemDO.class));
+    }
+
+    @Test
+    void updateYarnRecipeBom_toEmptyItems_deletesAllOldItems() {
+        YarnRecipeBomDO existingBom = stubBomDO(100L, 1L);
+        when(yarnRecipeBomMapper.selectById(100L)).thenReturn(existingBom);
+        stubProduct(1L, "P001", "全棉汗布");
+
+        YarnRecipeBomItemDO item1 = stubItemDO(201L, 100L, 1L, 101L, "60.00", "环锭纺", "经纱", "30.0000");
+        YarnRecipeBomItemDO item2 = stubItemDO(202L, 100L, 2L, 102L, "40.00", "气流纺", "纬纱", "25.0000");
+        when(yarnRecipeBomItemMapper.selectListByRecipeBomId(100L)).thenReturn(Arrays.asList(item1, item2));
+
         YarnRecipeBomSaveReqVO req = new YarnRecipeBomSaveReqVO();
         req.setId(100L);
         req.setProductId(1L);
         req.setItems(Collections.emptyList());
 
-        YarnRecipeBomDO existingBom = new YarnRecipeBomDO();
-        existingBom.setId(100L);
-        existingBom.setProductId(1L);
-        when(yarnRecipeBomMapper.selectById(100L)).thenReturn(existingBom);
-
-        ProductDO product = new ProductDO();
-        product.setId(1L);
-        product.setCode("P001");
-        product.setName("全棉汗布");
-        when(productMapper.selectById(1L)).thenReturn(product);
-
         yarnRecipeBomService.updateYarnRecipeBom(req);
 
         verify(yarnRecipeBomMapper).updateById(any(YarnRecipeBomDO.class));
-        verify(yarnRecipeBomItemMapper).deleteByRecipeBomId(100L);
+        verify(yarnRecipeBomItemMapper).deleteByIds(eq(new HashSet<>(Arrays.asList(201L, 202L))));
+        verify(yarnRecipeBomItemMapper, never()).updateById(any(YarnRecipeBomItemDO.class));
         verify(yarnRecipeBomItemMapper, never()).insert(any(YarnRecipeBomItemDO.class));
     }
 
@@ -374,6 +532,63 @@ class YarnRecipeBomServiceImplTest {
         PageResult<YarnRecipeBomRespVO> respPage = yarnRecipeBomService.getYarnRecipeBomPage(req);
         assertEquals(1, respPage.getList().size());
         assertEquals(2, respPage.getList().get(0).getItemCount());
+    }
+
+    // ==================== 辅助方法 ====================
+
+    private YarnRecipeBomDO stubBomDO(Long id, Long productId) {
+        YarnRecipeBomDO bom = new YarnRecipeBomDO();
+        bom.setId(id);
+        bom.setProductId(productId);
+        bom.setProductCode("P001");
+        bom.setProductName("全棉汗布");
+        bom.setStatus("ACTIVE");
+        return bom;
+    }
+
+    private ProductDO stubProduct(Long productId, String code, String name) {
+        ProductDO product = new ProductDO();
+        product.setId(productId);
+        product.setCode(code);
+        product.setName(name);
+        when(productMapper.selectById(productId)).thenReturn(product);
+        return product;
+    }
+
+    private YarnSpecDO stubSpec(Long specId, String spinMethod, String refPrice) {
+        YarnSpecDO spec = new YarnSpecDO();
+        spec.setId(specId);
+        spec.setSpinMethod(spinMethod);
+        if (refPrice != null) {
+            spec.setRefPrice(new BigDecimal(refPrice));
+        }
+        when(yarnSpecMapper.selectById(specId)).thenReturn(spec);
+        return spec;
+    }
+
+    private YarnRecipeBomItemDO stubItemDO(Long id, Long bomId, Long typeId, Long specId, String ratio, String spinMethod, String remark, String refPrice) {
+        YarnRecipeBomItemDO item = new YarnRecipeBomItemDO();
+        item.setId(id);
+        item.setRecipeBomId(bomId);
+        item.setYarnTypeId(typeId);
+        item.setYarnSpecId(specId);
+        item.setRatio(new BigDecimal(ratio));
+        item.setSpinMethod(spinMethod);
+        item.setRemark(remark);
+        item.setRefPrice(refPrice != null ? new BigDecimal(refPrice) : null);
+        return item;
+    }
+
+    private YarnRecipeBomItemSaveReqVO itemReq(Long id, Long typeId, Long specId, String ratio, String spinMethod, String remark, String refPrice) {
+        YarnRecipeBomItemSaveReqVO req = new YarnRecipeBomItemSaveReqVO();
+        req.setId(id);
+        req.setYarnTypeId(typeId);
+        req.setYarnSpecId(specId);
+        req.setRatio(new BigDecimal(ratio));
+        req.setSpinMethod(spinMethod);
+        req.setRemark(remark);
+        req.setRefPrice(refPrice != null ? new BigDecimal(refPrice) : null);
+        return req;
     }
 
 }

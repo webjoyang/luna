@@ -10,6 +10,9 @@ import java.math.BigDecimal;
 @Data
 public class YarnRecipeBomItemSaveReqVO {
 
+    @Schema(description = "明细ID（更新时携带可空行 id，新增时留空）", example = "1024")
+    private Long id;
+
     @Schema(description = "纱线材质ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     @NotNull(message = "纱线材质ID不能为空")
     private Long yarnTypeId;

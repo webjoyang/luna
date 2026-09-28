@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] 配比明细保存 VO 增加可空 id；更新 BOM 时差异保存三分流，提交跨父 id 报错
-- [ ] 配比合计等校验/展示口径在差异保存后不变；删除 BOM 仍级联逻辑删除明细
-- [ ] 前端配比 BOM 编辑页：明细行 id 稳定 key、加载保留、提交回传，交互无变化
-- [ ] ServiceImplTest 四条更新路径齐备
+- [x] 配比明细保存 VO 增加可空 id；更新 BOM 时差异保存三分流，提交跨父 id 报错
+- [x] 配比合计等校验/展示口径在差异保存后不变；删除 BOM 仍级联逻辑删除明细
+- [x] 前端配比 BOM 编辑页：明细行 id 稳定 key、加载保留、提交回传，交互无变化
+- [x] ServiceImplTest 四条更新路径齐备
 - [ ] 人工回归：加载→改配比→加行删行→保存→重开，行不串、配比数据正确
