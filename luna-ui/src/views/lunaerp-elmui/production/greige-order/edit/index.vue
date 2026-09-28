@@ -366,7 +366,14 @@
       </template>
 
       <div class="section-title">颜色投胚分配</div>
-      <el-table :data="colorRows" border size="small" class="color-table" empty-text="暂无颜色行，可点击下方按钮添加（零颜色单据也可保存）">
+      <el-table
+        :data="colorRows"
+        :row-key="getRowKey"
+        border
+        size="small"
+        class="color-table"
+        empty-text="暂无颜色行，可点击下方按钮添加（零颜色单据也可保存）"
+      >
         <el-table-column label="行号" type="index" width="50" align="center" />
         <el-table-column label="颜色" min-width="140">
           <template #default="{ row }">
@@ -530,20 +537,43 @@ const formData = reactive<GreigeOrderVO>({
   status: 'ACTIVE'
 })
 
-// ==================== 颜色投胚分配（聚合保存，ADR-0003） ====================
+// ==================== 颜色投胚分配（聚合保存，ADR-0003 & 差异保存 ADR-0032） ====================
 
 /**
  * 颜色行前端展示类型：损耗率以百分比（lossPercent）录入，
  * 提交时换算回小数 lossRate；demandQty 由前端实时预览、服务端权威重算。
+ * _clientKey 作为新增行前端稳定 row-key（存量行以 id 为 key）。
  */
-type ColorRow = GreigeOrderColorVO & { lossPercent?: number }
+type ColorRow = GreigeOrderColorVO & {
+  lossPercent?: number
+  _clientKey?: string
+}
+
+let tempKeyCounter = 0
+/** 颜色明细表格以行 id 为稳定 key；新增行未落库前以临时 key 保证行唯一性（ADR-0032） */
+const getRowKey = (row: ColorRow) => {
+  if (row.id != null) {
+    return row.id
+  }
+  if (!row._clientKey) {
+    row._clientKey = `temp_${++tempKeyCounter}`
+  }
+  return row._clientKey
+}
 
 /** 颜色行独立于 formData 维护（避开 Object.assign 回填覆盖），保存时并入载荷 */
 const colorRows = ref<ColorRow[]>([])
 
 /** 新增一行空颜色行 */
 const addColor = () => {
-  colorRows.value.push({ color: '', finishedQty: 0, lossPercent: undefined, remark: '' })
+  colorRows.value.push({
+    _clientKey: `temp_${++tempKeyCounter}`,
+    id: undefined,
+    color: '',
+    finishedQty: 0,
+    lossPercent: undefined,
+    remark: ''
+  })
 }
 
 /** 删除指定颜色行 */
@@ -876,8 +906,9 @@ const handleSubmit = async () => {
       productCode: formData.productCode?.trim() || undefined,
       productName: formData.productName?.trim() || undefined,
       greigeTypeId: formData.greigeTypeId || undefined,
-      // 颜色行并入载荷整体保存：损耗率百分比 → 小数；投胚需求传前端预览值（服务端权威重算覆盖）
+      // 颜色行并入载荷差异保存：带 id 走 update、无 id 走 insert；损耗率百分比 → 小数；投胚需求传前端预览值（服务端权威重算覆盖）
       colors: colorRows.value.map((row) => ({
+        id: row.id != null ? row.id : undefined,
         color: row.color,
         finishedQty: row.finishedQty,
         lossRate:

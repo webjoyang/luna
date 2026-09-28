@@ -10,6 +10,9 @@ import java.math.BigDecimal;
 @Data
 public class GreigeOrderColorSaveReqVO {
 
+    @Schema(description = "明细ID（更新时携带可空行 id，新增时留空）", example = "1024")
+    private Long id;
+
     @Schema(description = "颜色", example = "大红")
     @Size(max = 64, message = "颜色长度不能超过 64 位")
     private String color;

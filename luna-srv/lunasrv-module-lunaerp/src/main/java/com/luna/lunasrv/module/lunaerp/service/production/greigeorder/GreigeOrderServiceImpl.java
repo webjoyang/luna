@@ -32,11 +32,17 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_NO_DUPLICATE;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_REFERENCE_NOT_FOUND;
@@ -184,12 +190,8 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         fillSnapshotsAndDefaults(order, refs);
         // 6. 整体保存：可空字段清空随 DO 的 updateStrategy=ALWAYS 一并落库
         greigeOrderMapper.updateById(order);
-        // 7. 颜色投胚分配整体替换：事务内先按 order_id 删旧行，再插本次提交的全部颜色行
-        //    （零颜色也执行删除，保证"清空全部颜色行"语义；line_no 重排、投胚需求权威重算）
-        List<GreigeOrderColorDO> colorDOList = buildColorDOList(updateReqVO.getId(),
-                updateReqVO.getColors(), order.getSuggestedLoss());
-        greigeOrderColorMapper.deleteByOrderId(updateReqVO.getId());
-        saveColors(updateReqVO.getId(), colorDOList);
+        // 7. 颜色投胚分配差异保存（ADR-0032）：按 id 三分流（update / insert / deleteByIds）
+        diffSaveColors(updateReqVO.getId(), updateReqVO.getColors(), order.getSuggestedLoss());
     }
 
     @Override
@@ -358,9 +360,33 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     // ==================== 颜色投胚分配聚合私有方法（ADR-0003） ====================
 
     /**
+     * 将请求颜色行转换为 DO：按提交顺序重排 lineNo、回填 orderId、
+     * 行损耗缺省取主单预设损耗（再缺省 0）、成品量 null 按 0、
+     * 投胚需求权威重算 = 成品量 ÷ (1 − 损耗率)。
+     */
+    private GreigeOrderColorDO toColorDO(Long orderId, int lineNo, GreigeOrderColorSaveReqVO color,
+                                         BigDecimal orderSuggestedLoss) {
+        GreigeOrderColorDO colorDO = BeanUtils.toBean(color, GreigeOrderColorDO.class);
+        colorDO.setOrderId(orderId);
+        colorDO.setLineNo(lineNo);
+        // 行损耗缺省链：行损耗 → 主单预设损耗 → 0；统一 scale=4 对齐 numeric(6,4)
+        BigDecimal lossRate = color.getLossRate() != null
+                ? color.getLossRate() : zeroIfNull(orderSuggestedLoss);
+        BigDecimal finishedQty = zeroIfNull(color.getFinishedQty());
+        BigDecimal roundedLoss = lossRate.setScale(LOSS_SCALE, RoundingMode.HALF_UP);
+        BigDecimal roundedQty = finishedQty.setScale(QTY_SCALE, RoundingMode.HALF_UP);
+        colorDO.setLossRate(roundedLoss);
+        colorDO.setFinishedQty(roundedQty);
+        // 投胚需求用取整后的成品量/损耗率计算，保证与落库存储值口径自洽
+        colorDO.setDemandQty(calculateDemandQty(roundedQty, roundedLoss));
+        return colorDO;
+    }
+
+    /**
      * 将请求颜色行列表转换为 DO 列表：按数组顺序重排 line_no（从 1 开始）、
      * 行损耗缺省取主单预设损耗（再缺省 0）、成品量 null 按 0、
      * 投胚需求服务端权威重算 = 成品量 ÷ (1 − 损耗率)（前端传值一律忽略覆盖）。
+     * 新建时 id 统一置空。
      *
      * @param orderId            胚布单ID（创建时可为 null，由 {@link #saveColors} 回填）
      * @param colors             请求颜色行列表（为 null/空表示零颜色单据，合法）
@@ -375,19 +401,8 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         }
         for (int i = 0; i < colors.size(); i++) {
             GreigeOrderColorSaveReqVO color = colors.get(i);
-            GreigeOrderColorDO colorDO = BeanUtils.toBean(color, GreigeOrderColorDO.class);
-            colorDO.setOrderId(orderId);
-            colorDO.setLineNo(i + 1);
-            // 行损耗缺省链：行损耗 → 主单预设损耗 → 0；统一 scale=4 对齐 numeric(6,4)
-            BigDecimal lossRate = color.getLossRate() != null
-                    ? color.getLossRate() : zeroIfNull(orderSuggestedLoss);
-            BigDecimal finishedQty = zeroIfNull(color.getFinishedQty());
-            BigDecimal roundedLoss = lossRate.setScale(LOSS_SCALE, RoundingMode.HALF_UP);
-            BigDecimal roundedQty = finishedQty.setScale(QTY_SCALE, RoundingMode.HALF_UP);
-            colorDO.setLossRate(roundedLoss);
-            colorDO.setFinishedQty(roundedQty);
-            // 投胚需求用取整后的成品量/损耗率计算，保证与落库存储值口径自洽
-            colorDO.setDemandQty(calculateDemandQty(roundedQty, roundedLoss));
+            GreigeOrderColorDO colorDO = toColorDO(orderId, i + 1, color, orderSuggestedLoss);
+            colorDO.setId(null);
             colorDOList.add(colorDO);
         }
         return colorDOList;
@@ -420,6 +435,71 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
             color.setOrderId(orderId);
         }
         greigeOrderColorMapper.insertBatch(colors);
+    }
+
+    /**
+     * 对胚布单颜色分配明细做差异保存（ADR-0032）：
+     * - 提交行带 id 且属于本单据存量 → updateById
+     * - 提交行无 id → insert
+     * - 本单据库内存量但本次未提交的 id → deleteByIds 批量逻辑删除
+     * - 提交行 id 不属于本单据时报错（防跨父 id 串数据）
+     * - 提交列表中不得有重复行 id
+     * - 行号按提交顺序从 1 开始重排
+     *
+     * @param orderId            胚布单ID
+     * @param colors             提交的颜色列表（可为 null 或空）
+     * @param orderSuggestedLoss 主单预设损耗
+     */
+    private void diffSaveColors(Long orderId, List<GreigeOrderColorSaveReqVO> colors,
+                                BigDecimal orderSuggestedLoss) {
+        // 1. 查询库内存量颜色明细（按 line_no 升序，MP 自动过滤 deleted=1）
+        List<GreigeOrderColorDO> dbColors = greigeOrderColorMapper.selectListByOrderId(orderId);
+        Map<Long, GreigeOrderColorDO> dbColorMap = dbColors.stream()
+                .collect(Collectors.toMap(GreigeOrderColorDO::getId, Function.identity()));
+        Set<Long> remainingDbColorIds = new HashSet<>(dbColorMap.keySet());
+
+        List<GreigeOrderColorDO> toInsert = new ArrayList<>();
+        List<GreigeOrderColorDO> toUpdate = new ArrayList<>();
+        Set<Long> seenIds = new HashSet<>();
+
+        // 2. 遍历提交列表，三分流：更新 / 新增 / 校验跨父非法 ID 及重复 ID
+        if (CollUtil.isNotEmpty(colors)) {
+            for (int i = 0; i < colors.size(); i++) {
+                GreigeOrderColorSaveReqVO color = colors.get(i);
+                GreigeOrderColorDO colorDO = toColorDO(orderId, i + 1, color, orderSuggestedLoss);
+
+                if (color.getId() != null) {
+                    Long colorId = color.getId();
+                    if (!seenIds.add(colorId)) {
+                        throw invalidParamException("胚布单颜色分配明细行 ID【{}】重复提交", colorId);
+                    }
+                    if (!remainingDbColorIds.remove(colorId)) {
+                        // ID 不在当前胚布单存量颜色明细中（可能不存在、已删除或属于其他单据）
+                        throw invalidParamException("胚布单颜色分配明细行 ID【{}】不属于当前胚布单", colorId);
+                    }
+                    colorDO.setId(colorId);
+                    toUpdate.add(colorDO);
+                } else {
+                    colorDO.setId(null);
+                    toInsert.add(colorDO);
+                }
+            }
+        }
+
+        // 3. 执行删除（存量中未被本次提交命中的 ID）
+        if (!remainingDbColorIds.isEmpty()) {
+            greigeOrderColorMapper.deleteByIds(remainingDbColorIds);
+        }
+
+        // 4. 执行更新
+        for (GreigeOrderColorDO updateColorDO : toUpdate) {
+            greigeOrderColorMapper.updateById(updateColorDO);
+        }
+
+        // 5. 执行新增
+        for (GreigeOrderColorDO insertColorDO : toInsert) {
+            greigeOrderColorMapper.insert(insertColorDO);
+        }
     }
 
     // ==================== 编号（ADR-0006） ====================

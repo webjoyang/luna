@@ -34,6 +34,7 @@ import org.mockito.MockitoAnnotations;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -44,6 +45,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -844,53 +846,258 @@ class GreigeOrderServiceImplTest {
     }
 
     @Test
-    void updateGreigeOrder_replacesColorRows_deleteOldThenInsertNew() {
-        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+    void createGreigeOrder_withColors_clearsIdAndSetsLineNo() {
         stubSupplier(1L, "海宁坯布厂");
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
-        reqVO.setId(1L);
-        reqVO.setColors(List.of(colorReq("大红", "500.00", "0.05")));
+        GreigeOrderColorSaveReqVO c1 = colorReq(999L, "大红", "500.00", "0.05");
+        reqVO.setColors(List.of(c1));
 
-        greigeOrderService.updateGreigeOrder(reqVO);
+        greigeOrderService.createGreigeOrder(reqVO);
 
-        // 整体替换：先按 order_id 删旧行，再插本次提交的全部颜色行
-        verify(greigeOrderColorMapper).deleteByOrderId(1L);
         ArgumentCaptor<List<GreigeOrderColorDO>> captor = ArgumentCaptor.forClass(List.class);
         verify(greigeOrderColorMapper).insertBatch(captor.capture());
         List<GreigeOrderColorDO> inserted = captor.getValue();
         assertEquals(1, inserted.size());
-        assertEquals(1L, inserted.get(0).getOrderId(), "颜色行应回填 orderId");
+        assertNull(inserted.get(0).getId(), "新建时即使传入 id 也应清空");
         assertEquals(1, inserted.get(0).getLineNo());
     }
 
+    // ==================== 颜色投胚分配差异保存（ADR-0032） ====================
+
     @Test
-    void updateGreigeOrder_colorsCleared_deletesAllOldRows() {
+    void updateGreigeOrder_allExistingColors_updatesColorsZeroDeleteZeroInsert() {
         when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
         stubSupplier(1L, "海宁坯布厂");
+
+        GreigeOrderColorDO c1 = stubColorDO(101L, 1L, 1, "大红", "500.00", "0.0500", "526.32");
+        GreigeOrderColorDO c2 = stubColorDO(102L, 1L, 2, "藏青", "300.00", "0.1000", "333.33");
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(c1, c2));
+
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
         reqVO.setId(1L);
-        reqVO.setColors(null); // 清空全部颜色行：删除旧行后不插入新行
+        reqVO.setColors(List.of(
+                colorReq(101L, "大红", "500.00", "0.05"),
+                colorReq(102L, "藏青", "300.00", "0.10")
+        ));
 
         greigeOrderService.updateGreigeOrder(reqVO);
 
-        verify(greigeOrderColorMapper).deleteByOrderId(1L);
-        verify(greigeOrderColorMapper, never()).insertBatch(anyList());
+        verify(greigeOrderMapper).updateById(any(GreigeOrderDO.class));
+        verify(greigeOrderColorMapper, never()).deleteByIds(any());
+        verify(greigeOrderColorMapper, never()).deleteByOrderId(any());
+        verify(greigeOrderColorMapper, never()).insert(any(GreigeOrderColorDO.class));
+
+        ArgumentCaptor<GreigeOrderColorDO> captor = ArgumentCaptor.forClass(GreigeOrderColorDO.class);
+        verify(greigeOrderColorMapper, times(2)).updateById(captor.capture());
+        List<GreigeOrderColorDO> updated = captor.getAllValues();
+        assertEquals(101L, updated.get(0).getId());
+        assertEquals(1, updated.get(0).getLineNo());
+        assertEquals(new BigDecimal("526.32"), updated.get(0).getDemandQty());
+        assertEquals(102L, updated.get(1).getId());
+        assertEquals(2, updated.get(1).getLineNo());
+        assertEquals(new BigDecimal("333.33"), updated.get(1).getDemandQty());
+    }
+
+    @Test
+    void updateGreigeOrder_modifyColor_updatesTargetColorWithNewValues() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+
+        GreigeOrderColorDO c1 = stubColorDO(101L, 1L, 1, "大红", "500.00", "0.0500", "526.32");
+        GreigeOrderColorDO c2 = stubColorDO(102L, 1L, 2, "藏青", "300.00", "0.1000", "333.33");
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(c1, c2));
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        // 修改 c1：成色量变为 600.00，损耗率变为 0.08 → 600 ÷ (1 - 0.08) = 652.17
+        reqVO.setColors(List.of(
+                colorReq(101L, "枣红", "600.00", "0.08"),
+                colorReq(102L, "藏青", "300.00", "0.10")
+        ));
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        verify(greigeOrderColorMapper, never()).deleteByIds(any());
+        verify(greigeOrderColorMapper, never()).insert(any(GreigeOrderColorDO.class));
+
+        ArgumentCaptor<GreigeOrderColorDO> captor = ArgumentCaptor.forClass(GreigeOrderColorDO.class);
+        verify(greigeOrderColorMapper, times(2)).updateById(captor.capture());
+        GreigeOrderColorDO updatedC1 = captor.getAllValues().stream()
+                .filter(c -> c.getId().equals(101L)).findFirst().orElseThrow();
+        assertEquals("枣红", updatedC1.getColor());
+        assertEquals(new BigDecimal("600.00"), updatedC1.getFinishedQty());
+        assertEquals(new BigDecimal("0.0800"), updatedC1.getLossRate());
+        assertEquals(new BigDecimal("652.17"), updatedC1.getDemandQty());
+    }
+
+    @Test
+    void updateGreigeOrder_removeColor_logicallyDeletesRemovedColor() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+
+        GreigeOrderColorDO c1 = stubColorDO(101L, 1L, 1, "大红", "500.00", "0.0500", "526.32");
+        GreigeOrderColorDO c2 = stubColorDO(102L, 1L, 2, "藏青", "300.00", "0.1000", "333.33");
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(c1, c2));
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        // 仅保留 101，删除 102
+        reqVO.setColors(List.of(
+                colorReq(101L, "大红", "500.00", "0.05")
+        ));
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        verify(greigeOrderColorMapper).deleteByIds(eq(Set.of(102L)));
+
+        ArgumentCaptor<GreigeOrderColorDO> captor = ArgumentCaptor.forClass(GreigeOrderColorDO.class);
+        verify(greigeOrderColorMapper, times(1)).updateById(captor.capture());
+        assertEquals(101L, captor.getValue().getId());
+        assertEquals(1, captor.getValue().getLineNo());
+
+        verify(greigeOrderColorMapper, never()).insert(any(GreigeOrderColorDO.class));
+    }
+
+    @Test
+    void updateGreigeOrder_addColor_insertsNewColorAndPreservesExisting() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+
+        GreigeOrderColorDO c1 = stubColorDO(101L, 1L, 1, "大红", "500.00", "0.0500", "526.32");
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(c1));
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setColors(List.of(
+                colorReq(101L, "大红", "500.00", "0.05"),
+                colorReq(null, "翠绿", "200.00", "0.05")
+        ));
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        verify(greigeOrderColorMapper, never()).deleteByIds(any());
+        verify(greigeOrderColorMapper, times(1)).updateById(any(GreigeOrderColorDO.class));
+
+        ArgumentCaptor<GreigeOrderColorDO> insertCaptor = ArgumentCaptor.forClass(GreigeOrderColorDO.class);
+        verify(greigeOrderColorMapper).insert(insertCaptor.capture());
+        GreigeOrderColorDO inserted = insertCaptor.getValue();
+        assertNull(inserted.getId());
+        assertEquals(1L, inserted.getOrderId());
+        assertEquals(2, inserted.getLineNo());
+        assertEquals("翠绿", inserted.getColor());
+        // 200 ÷ (1 - 0.05) = 210.53
+        assertEquals(new BigDecimal("210.53"), inserted.getDemandQty());
+    }
+
+    @Test
+    void updateGreigeOrder_colorNotBelongingToOrder_throwsInvalidParamException() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+
+        GreigeOrderColorDO c1 = stubColorDO(101L, 1L, 1, "大红", "500.00", "0.0500", "526.32");
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(c1));
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        // 传入不属于本单据的 ID 999L
+        reqVO.setColors(List.of(
+                colorReq(999L, "错误颜色", "100.00", "0.05")
+        ));
+
+        assertThrows(ServiceException.class, () -> greigeOrderService.updateGreigeOrder(reqVO));
+        verify(greigeOrderColorMapper, never()).updateById(any(GreigeOrderColorDO.class));
+        verify(greigeOrderColorMapper, never()).insert(any(GreigeOrderColorDO.class));
+        verify(greigeOrderColorMapper, never()).deleteByIds(any());
+    }
+
+    @Test
+    void updateGreigeOrder_duplicateColorIds_throwsInvalidParamException() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+
+        GreigeOrderColorDO c1 = stubColorDO(101L, 1L, 1, "大红", "500.00", "0.0500", "526.32");
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(c1));
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setColors(List.of(
+                colorReq(101L, "大红", "500.00", "0.05"),
+                colorReq(101L, "大红重复", "500.00", "0.05")
+        ));
+
+        assertThrows(ServiceException.class, () -> greigeOrderService.updateGreigeOrder(reqVO));
+        verify(greigeOrderColorMapper, never()).updateById(any(GreigeOrderColorDO.class));
+        verify(greigeOrderColorMapper, never()).insert(any(GreigeOrderColorDO.class));
+        verify(greigeOrderColorMapper, never()).deleteByIds(any());
+    }
+
+    @Test
+    void updateGreigeOrder_toEmptyColors_deletesAllOldColors() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+
+        GreigeOrderColorDO c1 = stubColorDO(101L, 1L, 1, "大红", "500.00", "0.0500", "526.32");
+        GreigeOrderColorDO c2 = stubColorDO(102L, 1L, 2, "藏青", "300.00", "0.1000", "333.33");
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(c1, c2));
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setColors(List.of());
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        verify(greigeOrderMapper).updateById(any(GreigeOrderDO.class));
+        verify(greigeOrderColorMapper).deleteByIds(eq(Set.of(101L, 102L)));
+        verify(greigeOrderColorMapper, never()).updateById(any(GreigeOrderColorDO.class));
+        verify(greigeOrderColorMapper, never()).insert(any(GreigeOrderColorDO.class));
+    }
+
+    @Test
+    void updateGreigeOrder_reorderColors_updatesLineNoAccordingToSubmitOrder() {
+        when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
+        stubSupplier(1L, "海宁坯布厂");
+
+        GreigeOrderColorDO c1 = stubColorDO(101L, 1L, 1, "大红", "500.00", "0.0500", "526.32");
+        GreigeOrderColorDO c2 = stubColorDO(102L, 1L, 2, "藏青", "300.00", "0.1000", "333.33");
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(c1, c2));
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        // 调换顺序：c2 先，c1 后
+        reqVO.setColors(List.of(
+                colorReq(102L, "藏青", "300.00", "0.10"),
+                colorReq(101L, "大红", "500.00", "0.05")
+        ));
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderColorDO> captor = ArgumentCaptor.forClass(GreigeOrderColorDO.class);
+        verify(greigeOrderColorMapper, times(2)).updateById(captor.capture());
+        List<GreigeOrderColorDO> updatedList = captor.getAllValues();
+        assertEquals(102L, updatedList.get(0).getId());
+        assertEquals(1, updatedList.get(0).getLineNo());
+        assertEquals(101L, updatedList.get(1).getId());
+        assertEquals(2, updatedList.get(1).getLineNo());
     }
 
     @Test
     void updateGreigeOrder_rowLossTakesOrderSuggestedLossWhenNull() {
         when(greigeOrderMapper.selectById(1L)).thenReturn(greigeOrder(1L, "PB0919777"));
         stubSupplier(1L, "海宁坯布厂");
+
+        GreigeOrderColorDO c1 = stubColorDO(101L, 1L, 1, "大红", "100.00", "0.0500", "105.26");
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of(c1));
+
         GreigeOrderSaveReqVO reqVO = validCreateReqVO();
         reqVO.setId(1L);
         reqVO.setSuggestedLoss(new BigDecimal("0.08"));
-        reqVO.setColors(List.of(colorReq("大红", "100.00", null)));
+        reqVO.setColors(List.of(colorReq(101L, "大红", "100.00", null)));
 
         greigeOrderService.updateGreigeOrder(reqVO);
 
-        ArgumentCaptor<List<GreigeOrderColorDO>> captor = ArgumentCaptor.forClass(List.class);
-        verify(greigeOrderColorMapper).insertBatch(captor.capture());
-        GreigeOrderColorDO row = captor.getValue().get(0);
+        ArgumentCaptor<GreigeOrderColorDO> captor = ArgumentCaptor.forClass(GreigeOrderColorDO.class);
+        verify(greigeOrderColorMapper).updateById(captor.capture());
+        GreigeOrderColorDO row = captor.getValue();
         assertEquals(new BigDecimal("0.0800"), row.getLossRate(), "更新时行损耗缺省同样取主单预设损耗");
         assertEquals(new BigDecimal("108.70"), row.getDemandQty());
     }
@@ -1014,6 +1221,24 @@ class GreigeOrderServiceImplTest {
         colorVO.setFinishedQty(finishedQty == null ? null : new BigDecimal(finishedQty));
         colorVO.setLossRate(lossRate == null ? null : new BigDecimal(lossRate));
         return colorVO;
+    }
+
+    private GreigeOrderColorSaveReqVO colorReq(Long id, String color, String finishedQty, String lossRate) {
+        GreigeOrderColorSaveReqVO colorVO = colorReq(color, finishedQty, lossRate);
+        colorVO.setId(id);
+        return colorVO;
+    }
+
+    private GreigeOrderColorDO stubColorDO(Long id, Long orderId, Integer lineNo, String color, String finishedQty, String lossRate, String demandQty) {
+        GreigeOrderColorDO colorDO = new GreigeOrderColorDO();
+        colorDO.setId(id);
+        colorDO.setOrderId(orderId);
+        colorDO.setLineNo(lineNo);
+        colorDO.setColor(color);
+        colorDO.setFinishedQty(finishedQty == null ? BigDecimal.ZERO : new BigDecimal(finishedQty));
+        colorDO.setLossRate(lossRate == null ? BigDecimal.ZERO : new BigDecimal(lossRate));
+        colorDO.setDemandQty(demandQty == null ? BigDecimal.ZERO : new BigDecimal(demandQty));
+        return colorDO;
     }
 
     private GreigeOrderDO greigeOrder(Long id, String orderNo) {
