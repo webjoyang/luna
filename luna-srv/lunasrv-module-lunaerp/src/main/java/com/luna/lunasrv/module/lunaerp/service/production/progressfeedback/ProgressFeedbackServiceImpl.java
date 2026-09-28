@@ -17,15 +17,23 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.Dy
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.ProgressFeedbackMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.note.ProgressFeedbackNoteMapper;
 import com.luna.lunasrv.module.lunaerp.enums.production.progressfeedback.ProgressFeedbackStatusEnum;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
 import jakarta.annotation.Resource;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_DYEING_COLOR_NOT_EXISTS;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_DYEING_ORDER_STATUS_NOT_ALLOWED;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_VAT_NO_DUPLICATE;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.function.Supplier;
@@ -227,6 +235,51 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
                 .completedVatCount(completedVatCount)
                 .delayedVatCount(delayedVatCount)
                 .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createProgressFeedback(ProgressFeedbackCreateReqVO reqVO) {
+        // 1. 校验数量 > 0
+        if (reqVO.getQuantity() == null || reqVO.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+            throw invalidParamException("本缸数量必须大于0");
+        }
+
+        // 2. 校验染色单存在且状态为 ACTIVE 或 COMPLETED，且未软删（否则 1-030-017-002）
+        DyeingOrderDO order = dyeingOrderMapper.selectById(reqVO.getDyeingOrderId());
+        if (order == null || Boolean.TRUE.equals(order.getDeleted())
+                || (!"ACTIVE".equals(order.getStatus()) && !"COMPLETED".equals(order.getStatus()))) {
+            throw exception(PROGRESS_FEEDBACK_DYEING_ORDER_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 校验染色颜色行存在且属于该单，且未软删（否则 1-030-017-003）
+        DyeingColorDO color = dyeingColorMapper.selectById(reqVO.getDyeingColorId());
+        if (color == null || Boolean.TRUE.equals(color.getDeleted())
+                || !Objects.equals(color.getDyeingOrderId(), reqVO.getDyeingOrderId())) {
+            throw exception(PROGRESS_FEEDBACK_DYEING_COLOR_NOT_EXISTS);
+        }
+
+        // 4. 校验同一染色单同一颜色行下缸号不重复（否则 1-030-017-001）
+        String vatNo = reqVO.getVatNo() != null ? reqVO.getVatNo().trim() : "";
+        ProgressFeedbackDO existing = progressFeedbackMapper.selectByColorIdAndVatNo(reqVO.getDyeingColorId(), vatNo);
+        if (existing != null) {
+            throw exception(PROGRESS_FEEDBACK_VAT_NO_DUPLICATE, vatNo);
+        }
+
+        // 5. 组装并插入新缸（初始状态为 SCHEDULED，排缸日期缺省当天）
+        LocalDate scheduledDate = reqVO.getScheduledDate() != null ? reqVO.getScheduledDate() : todayProvider.get();
+        ProgressFeedbackDO vat = new ProgressFeedbackDO();
+        vat.setDyeingOrderId(reqVO.getDyeingOrderId());
+        vat.setDyeingColorId(reqVO.getDyeingColorId());
+        vat.setVatNo(vatNo);
+        vat.setQuantity(reqVO.getQuantity());
+        vat.setPieces(reqVO.getPieces());
+        vat.setStatus(ProgressFeedbackStatusEnum.SCHEDULED.getValue());
+        vat.setScheduledDate(scheduledDate);
+        vat.setRemark(reqVO.getRemark());
+
+        progressFeedbackMapper.insert(vat);
+        return vat.getId();
     }
 
     // ==================== 私有辅助方法 ====================

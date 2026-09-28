@@ -6,6 +6,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackStatisticsRespVO;
 import com.luna.lunasrv.module.lunaerp.service.production.progressfeedback.ProgressFeedbackService;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
@@ -13,6 +14,8 @@ import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -59,6 +62,13 @@ public class ProgressFeedbackController {
     public CommonResult<ProgressFeedbackStatisticsRespVO> getProgressFeedbackStatistics(
             ProgressFeedbackPageReqVO reqVO) {
         return success(progressFeedbackService.getProgressFeedbackStatistics(reqVO));
+    }
+
+    @PostMapping("/create")
+    @Operation(summary = "新建反馈缸")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:progress-feedback:create')")
+    public CommonResult<Long> createProgressFeedback(@Valid @RequestBody ProgressFeedbackCreateReqVO reqVO) {
+        return success(progressFeedbackService.createProgressFeedback(reqVO));
     }
 
 }

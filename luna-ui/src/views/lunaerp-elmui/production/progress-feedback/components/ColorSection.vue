@@ -60,6 +60,18 @@
             {{ section.coveragePercent }}%
           </el-tag>
         </div>
+
+        <el-button
+          v-hasPermi="['lunaerp:production:progress-feedback:create']"
+          type="primary"
+          size="small"
+          plain
+          :icon="Plus"
+          class="create-vat-btn"
+          @click="handleCreateVat"
+        >
+          建缸
+        </el-button>
       </div>
     </div>
 
@@ -75,10 +87,23 @@
       </div>
 
       <div v-else class="empty-vat-placeholder">
-        <div class="dashed-add-card" title="该颜色明细尚未排缸">
+        <div
+          v-if="canCreate"
+          class="dashed-add-card is-clickable"
+          title="点击为该颜色行建缸"
+          @click="handleCreateVat"
+        >
           <el-icon class="add-icon"><Plus /></el-icon>
           <span class="add-title">未排缸 / ＋ 建缸</span>
-          <span class="add-sub">（建缸功能将在下一阶段开放）</span>
+          <span class="add-sub">点击立即为本颜色行排产建缸</span>
+        </div>
+        <div
+          v-else
+          class="dashed-add-card is-readonly"
+          title="该颜色明细尚未排缸"
+        >
+          <span class="add-title">未排缸</span>
+          <span class="add-sub">暂无排产反馈缸</span>
         </div>
       </div>
     </div>
@@ -88,12 +113,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
+import { hasPermission } from '@/directives/permission/hasPermi'
 import VatCard from './VatCard.vue'
 import type { ProgressFeedbackColorSectionVO } from '@/api/lunaerp-elmui/production/progress-feedback'
 
 const props = defineProps<{
   section: ProgressFeedbackColorSectionVO
 }>()
+
+const canCreate = computed(() => {
+  return hasPermission(['lunaerp:production:progress-feedback:create'])
+})
 
 const isPastDelivery = computed(() => {
   if (!props.section.deliveryDate) return false
@@ -107,6 +137,14 @@ const coverageTagType = computed(() => {
   if (cov > 0) return 'warning'
   return 'info'
 })
+
+const emit = defineEmits<{
+  (e: 'create-vat', section: ProgressFeedbackColorSectionVO): void
+}>()
+
+const handleCreateVat = () => {
+  emit('create-vat', props.section)
+}
 </script>
 
 <style scoped lang="scss">
@@ -265,6 +303,10 @@ const coverageTagType = computed(() => {
         font-size: 13px;
       }
     }
+
+    .create-vat-btn {
+      margin-left: 6px;
+    }
   }
 }
 
@@ -289,23 +331,50 @@ const coverageTagType = computed(() => {
       gap: 8px;
       background: #fafbfc;
       color: #909399;
-      cursor: not-allowed;
       transition: all 0.2s;
+
+      &.is-clickable {
+        cursor: pointer;
+
+        &:hover {
+          border-color: #409eff;
+          background: #f0f7ff;
+          color: #409eff;
+
+          .add-icon,
+          .add-title {
+            color: #409eff;
+          }
+
+          .add-sub {
+            color: #79bbff;
+          }
+        }
+      }
+
+      &.is-readonly {
+        cursor: default;
+        border-style: solid;
+        border-color: #ebeef5;
+      }
 
       .add-icon {
         font-size: 26px;
         color: #b4bccc;
+        transition: color 0.2s;
       }
 
       .add-title {
         font-size: 14px;
         font-weight: 600;
         color: #909399;
+        transition: color 0.2s;
       }
 
       .add-sub {
         font-size: 12px;
         color: #c0c4cc;
+        transition: color 0.2s;
       }
     }
   }

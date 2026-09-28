@@ -89,3 +89,23 @@ export const getProgressFeedbackStatistics = (params: ProgressFeedbackPageParam)
     params
   })
 }
+
+// 建缸 VO
+export interface ProgressFeedbackCreateVO {
+  dyeingOrderId: number
+  dyeingColorId: number
+  vatNo: string
+  quantity: number
+  pieces?: number
+  scheduledDate?: string
+  remark?: string
+}
+
+// 新建反馈缸
+export const createProgressFeedback = (data: ProgressFeedbackCreateVO) => {
+  return request.post<number>({
+    url: '/lunaerp/production/progress-feedback/create',
+    data
+  })
+}
+

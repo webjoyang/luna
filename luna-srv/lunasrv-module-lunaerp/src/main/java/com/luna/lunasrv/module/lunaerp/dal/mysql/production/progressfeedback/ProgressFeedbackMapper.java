@@ -55,4 +55,13 @@ public interface ProgressFeedbackMapper extends BaseMapperX<ProgressFeedbackDO> 
                 .eq(ProgressFeedbackDO::getDyeingColorId, colorId));
     }
 
+    default ProgressFeedbackDO selectByColorIdAndVatNo(Long colorId, String vatNo) {
+        if (colorId == null || vatNo == null) {
+            return null;
+        }
+        return selectOne(new LambdaQueryWrapperX<ProgressFeedbackDO>()
+                .eq(ProgressFeedbackDO::getDyeingColorId, colorId)
+                .eq(ProgressFeedbackDO::getVatNo, vatNo));
+    }
+
 }

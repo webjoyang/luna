@@ -2,6 +2,7 @@ package com.luna.lunasrv.module.lunaerp.service.production.progressfeedback;
 
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackColorSectionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackStatisticsRespVO;
 
@@ -37,5 +38,13 @@ public interface ProgressFeedbackService {
      * @return 统计条数据
      */
     ProgressFeedbackStatisticsRespVO getProgressFeedbackStatistics(ProgressFeedbackPageReqVO reqVO);
+
+    /**
+     * 新建反馈缸
+     *
+     * @param reqVO 建缸信息
+     * @return 反馈缸 ID
+     */
+    Long createProgressFeedback(ProgressFeedbackCreateReqVO reqVO);
 
 }

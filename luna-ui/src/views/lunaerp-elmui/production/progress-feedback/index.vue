@@ -143,6 +143,15 @@
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="handleQuery">查询</el-button>
           <el-button :icon="Refresh" @click="resetQuery">重置</el-button>
+          <el-button
+            v-hasPermi="['lunaerp:production:progress-feedback:create']"
+            type="success"
+            plain
+            :icon="Plus"
+            @click="handleCreateVatStandalone"
+          >
+            新建缸
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -154,6 +163,7 @@
           v-for="section in sectionList"
           :key="section.dyeingColorId"
           :section="section"
+          @create-vat="handleCreateVatForSection"
         />
 
         <!-- 分页条 -->
@@ -176,18 +186,22 @@
         :image-size="120"
       />
     </div>
+
+    <!-- 新建缸弹窗 -->
+    <VatCreateDialog ref="vatCreateDialogRef" @success="handleCreateSuccess" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { Search, Refresh, Odometer, CircleCheck, Warning, DocumentRemove } from '@element-plus/icons-vue'
+import { Search, Refresh, Odometer, CircleCheck, Warning, DocumentRemove, Plus } from '@element-plus/icons-vue'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
 import * as DyeingOrderApi from '@/api/lunaerp-elmui/production/dyeing-order'
 import type { DyeingOrderVO } from '@/api/lunaerp-elmui/production/dyeing-order'
 import ColorSection from './components/ColorSection.vue'
+import VatCreateDialog from './components/VatCreateDialog.vue'
 import {
   getProgressFeedbackPage,
   getProgressFeedbackStatistics,
@@ -201,6 +215,7 @@ defineOptions({ name: 'LunaerpElmuiProductionProgressFeedback' })
 const loading = ref(false)
 const sectionList = ref<ProgressFeedbackColorSectionVO[]>([])
 const total = ref(0)
+const vatCreateDialogRef = ref<InstanceType<typeof VatCreateDialog>>()
 
 const statistics = reactive<ProgressFeedbackStatisticsVO>({
   unscheduledColorCount: 0,
@@ -338,6 +353,22 @@ const handleSizeChange = (val: number) => {
 const handleCurrentChange = (val: number) => {
   queryParams.pageNo = val
   getList()
+}
+
+// 独立菜单建缸
+const handleCreateVatStandalone = () => {
+  vatCreateDialogRef.value?.open()
+}
+
+// 从指定颜色行节建缸
+const handleCreateVatForSection = (section: ProgressFeedbackColorSectionVO) => {
+  vatCreateDialogRef.value?.open(section)
+}
+
+// 建缸成功刷新列表与统计条（保持当前页码，新缸即刻上屏）
+const handleCreateSuccess = () => {
+  getList()
+  getStatistics()
 }
 
 onMounted(() => {

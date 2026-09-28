@@ -16,11 +16,14 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOr
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.DyeingColorMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.ProgressFeedbackMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.note.ProgressFeedbackNoteMapper;
+import com.luna.lunasrv.framework.common.exception.ServiceException;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.enums.production.progressfeedback.ProgressFeedbackStatusEnum;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -31,8 +34,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -361,6 +367,201 @@ class ProgressFeedbackServiceImplTest {
         PageResult<ProgressFeedbackColorSectionRespVO> resDyeing = progressFeedbackService.getProgressFeedbackPage(reqDyeing);
         assertEquals(1, resDyeing.getList().size());
         assertEquals(102L, resDyeing.getList().get(0).getDyeingColorId());
+    }
+
+    // ==================== 8. 建缸逻辑（03 票） ====================
+
+    @Test
+    @DisplayName("建缸成功：缺省状态 SCHEDULED、缺省排缸日为今天、字段正确落库")
+    void createProgressFeedback_success_withDefaultStatusAndScheduledDate() {
+        DyeingOrderDO order = createOrder(1L, "ACTIVE", false, FIXED_TODAY.plusDays(10));
+        when(dyeingOrderMapper.selectById(1L)).thenReturn(order);
+
+        DyeingColorDO color = createColor(101L, 1L, 1, "黑色", new BigDecimal("500.00"), 10, "KG");
+        when(dyeingColorMapper.selectById(101L)).thenReturn(color);
+
+        when(progressFeedbackMapper.selectByColorIdAndVatNo(101L, "V20260901")).thenReturn(null);
+
+        ProgressFeedbackCreateReqVO reqVO = ProgressFeedbackCreateReqVO.builder()
+                .dyeingOrderId(1L)
+                .dyeingColorId(101L)
+                .vatNo("V20260901")
+                .quantity(new BigDecimal("250.00"))
+                .pieces(5)
+                .scheduledDate(null)
+                .remark("首缸加急")
+                .build();
+
+        progressFeedbackService.createProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).insert(captor.capture());
+        ProgressFeedbackDO inserted = captor.getValue();
+
+        assertEquals(1L, inserted.getDyeingOrderId());
+        assertEquals(101L, inserted.getDyeingColorId());
+        assertEquals("V20260901", inserted.getVatNo());
+        assertEquals(new BigDecimal("250.00"), inserted.getQuantity());
+        assertEquals(5, inserted.getPieces());
+        assertEquals(ProgressFeedbackStatusEnum.SCHEDULED.getValue(), inserted.getStatus(), "初始状态必须为 SCHEDULED");
+        assertEquals(FIXED_TODAY, inserted.getScheduledDate(), "缺省排缸日期应为今天");
+        assertEquals("首缸加急", inserted.getRemark());
+    }
+
+    @Test
+    @DisplayName("建缸成功：传入自定义排缸日优先")
+    void createProgressFeedback_success_withCustomScheduledDate() {
+        DyeingOrderDO order = createOrder(2L, "COMPLETED", false, FIXED_TODAY.plusDays(10));
+        when(dyeingOrderMapper.selectById(2L)).thenReturn(order);
+
+        DyeingColorDO color = createColor(201L, 2L, 1, "大红", new BigDecimal("300.00"), 6, "KG");
+        when(dyeingColorMapper.selectById(201L)).thenReturn(color);
+
+        when(progressFeedbackMapper.selectByColorIdAndVatNo(201L, "V20260902")).thenReturn(null);
+
+        LocalDate customDate = LocalDate.of(2026, 10, 5);
+        ProgressFeedbackCreateReqVO reqVO = ProgressFeedbackCreateReqVO.builder()
+                .dyeingOrderId(2L)
+                .dyeingColorId(201L)
+                .vatNo("V20260902")
+                .quantity(new BigDecimal("300.00"))
+                .pieces(6)
+                .scheduledDate(customDate)
+                .remark("补缸")
+                .build();
+
+        progressFeedbackService.createProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).insert(captor.capture());
+        ProgressFeedbackDO inserted = captor.getValue();
+
+        assertEquals(customDate, inserted.getScheduledDate(), "应优先采用传入的排缸日");
+        assertEquals(ProgressFeedbackStatusEnum.SCHEDULED.getValue(), inserted.getStatus());
+    }
+
+    @Test
+    @DisplayName("建缸校验：同单同色缸号重复抛出 001")
+    void createProgressFeedback_vatNoDuplicate_throws001() {
+        DyeingOrderDO order = createOrder(1L, "ACTIVE", false, FIXED_TODAY.plusDays(5));
+        when(dyeingOrderMapper.selectById(1L)).thenReturn(order);
+
+        DyeingColorDO color = createColor(101L, 1L, 1, "黑色", new BigDecimal("500.00"), 10, "KG");
+        when(dyeingColorMapper.selectById(101L)).thenReturn(color);
+
+        ProgressFeedbackDO existingVat = createVat(999L, 1L, 101L, "V01", new BigDecimal("100"), 2, "SCHEDULED");
+        when(progressFeedbackMapper.selectByColorIdAndVatNo(101L, "V01")).thenReturn(existingVat);
+
+        ProgressFeedbackCreateReqVO reqVO = ProgressFeedbackCreateReqVO.builder()
+                .dyeingOrderId(1L)
+                .dyeingColorId(101L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("100.00"))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_VAT_NO_DUPLICATE.getCode(), ex.getCode());
+        verify(progressFeedbackMapper, never()).insert(any(ProgressFeedbackDO.class));
+    }
+
+    @Test
+    @DisplayName("建缸校验：染色单不存在或状态不允许抛出 002 (null/deleted/DRAFT/CANCELLED)")
+    void createProgressFeedback_orderNotActiveOrNotFound_throws002() {
+        ProgressFeedbackCreateReqVO reqVO = ProgressFeedbackCreateReqVO.builder()
+                .dyeingOrderId(1L)
+                .dyeingColorId(101L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("100.00"))
+                .build();
+
+        // 单据不存在
+        when(dyeingOrderMapper.selectById(1L)).thenReturn(null);
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_DYEING_ORDER_STATUS_NOT_ALLOWED.getCode(), ex1.getCode());
+
+        // 单据软删
+        DyeingOrderDO deletedOrder = createOrder(1L, "ACTIVE", true, FIXED_TODAY.plusDays(5));
+        when(dyeingOrderMapper.selectById(1L)).thenReturn(deletedOrder);
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_DYEING_ORDER_STATUS_NOT_ALLOWED.getCode(), ex2.getCode());
+
+        // 单据状态为 DRAFT
+        DyeingOrderDO draftOrder = createOrder(1L, "DRAFT", false, FIXED_TODAY.plusDays(5));
+        when(dyeingOrderMapper.selectById(1L)).thenReturn(draftOrder);
+        ServiceException ex3 = assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_DYEING_ORDER_STATUS_NOT_ALLOWED.getCode(), ex3.getCode());
+
+        // 单据状态为 CANCELLED
+        DyeingOrderDO cancelledOrder = createOrder(1L, "CANCELLED", false, FIXED_TODAY.plusDays(5));
+        when(dyeingOrderMapper.selectById(1L)).thenReturn(cancelledOrder);
+        ServiceException ex4 = assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_DYEING_ORDER_STATUS_NOT_ALLOWED.getCode(), ex4.getCode());
+
+        verify(progressFeedbackMapper, never()).insert(any(ProgressFeedbackDO.class));
+    }
+
+    @Test
+    @DisplayName("建缸校验：颜色行不存在或不归属该单抛出 003")
+    void createProgressFeedback_colorNotFoundOrNotBelongToOrder_throws003() {
+        DyeingOrderDO order = createOrder(1L, "ACTIVE", false, FIXED_TODAY.plusDays(5));
+        when(dyeingOrderMapper.selectById(1L)).thenReturn(order);
+
+        ProgressFeedbackCreateReqVO reqVO = ProgressFeedbackCreateReqVO.builder()
+                .dyeingOrderId(1L)
+                .dyeingColorId(101L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("100.00"))
+                .build();
+
+        // 颜色行不存在
+        when(dyeingColorMapper.selectById(101L)).thenReturn(null);
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_DYEING_COLOR_NOT_EXISTS.getCode(), ex1.getCode());
+
+        // 颜色行软删
+        DyeingColorDO deletedColor = createColor(101L, 1L, 1, "黑色", new BigDecimal("100"), 2, "KG");
+        deletedColor.setDeleted(true);
+        when(dyeingColorMapper.selectById(101L)).thenReturn(deletedColor);
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_DYEING_COLOR_NOT_EXISTS.getCode(), ex2.getCode());
+
+        // 颜色行归属另外一个染色单 (orderId=2L)
+        DyeingColorDO otherOrderColor = createColor(101L, 2L, 1, "黑色", new BigDecimal("100"), 2, "KG");
+        when(dyeingColorMapper.selectById(101L)).thenReturn(otherOrderColor);
+        ServiceException ex3 = assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_DYEING_COLOR_NOT_EXISTS.getCode(), ex3.getCode());
+
+        verify(progressFeedbackMapper, never()).insert(any(ProgressFeedbackDO.class));
+    }
+
+    @Test
+    @DisplayName("建缸校验：数量为空或小于等于0时拦截")
+    void createProgressFeedback_quantityInvalid_throwsException() {
+        ProgressFeedbackCreateReqVO nullQtyReq = ProgressFeedbackCreateReqVO.builder()
+                .dyeingOrderId(1L)
+                .dyeingColorId(101L)
+                .vatNo("V01")
+                .quantity(null)
+                .build();
+        assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(nullQtyReq));
+
+        ProgressFeedbackCreateReqVO zeroQtyReq = ProgressFeedbackCreateReqVO.builder()
+                .dyeingOrderId(1L)
+                .dyeingColorId(101L)
+                .vatNo("V01")
+                .quantity(BigDecimal.ZERO)
+                .build();
+        assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(zeroQtyReq));
+
+        ProgressFeedbackCreateReqVO negativeQtyReq = ProgressFeedbackCreateReqVO.builder()
+                .dyeingOrderId(1L)
+                .dyeingColorId(101L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("-10.00"))
+                .build();
+        assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(negativeQtyReq));
+
+        verify(progressFeedbackMapper, never()).insert(any(ProgressFeedbackDO.class));
     }
 
 }
