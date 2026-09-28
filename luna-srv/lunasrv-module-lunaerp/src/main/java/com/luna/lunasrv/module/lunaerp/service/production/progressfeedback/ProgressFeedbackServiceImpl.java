@@ -95,7 +95,8 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
         List<Long> orderIds = eligibleOrders.stream().map(DyeingOrderDO::getId).collect(Collectors.toList());
 
         // 2. 查询所属颜色明细行，保持单据顺序及行号 lineNo 升序
-        List<DyeingColorDO> colors = getOrderedColors(orderIds, eligibleOrders);
+        boolean includeDeleted = Boolean.TRUE.equals(reqVO.getIncludeDeleted());
+        List<DyeingColorDO> colors = getOrderedColors(orderIds, eligibleOrders, includeDeleted);
         if (CollUtil.isEmpty(colors)) {
             return new PageResult<>(Collections.emptyList(), 0L);
         }
@@ -109,8 +110,8 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
 
         Map<Long, Integer> unresolvedCountMap = getUnresolvedCountMap(allVats);
 
-        // 4. 骨架筛选下推（状态、延期、综合关键词）
-        List<DyeingColorDO> matchedColors = filterColors(colors, orderMap, vatsByColor, reqVO, today);
+        // 4. 骨架筛选下推（状态、延期、未决问题、含已完成、综合关键词）
+        List<DyeingColorDO> matchedColors = filterColors(colors, orderMap, vatsByColor, unresolvedCountMap, reqVO, today);
 
         long total = matchedColors.size();
         if (total == 0) {
@@ -132,7 +133,7 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
         for (DyeingColorDO color : pagedColors) {
             DyeingOrderDO order = orderMap.get(color.getDyeingOrderId());
             List<ProgressFeedbackDO> vats = vatsByColor.getOrDefault(color.getId(), Collections.emptyList());
-            sections.add(buildColorSection(order, color, vats, unresolvedCountMap, today));
+            sections.add(buildColorSection(order, color, vats, unresolvedCountMap, reqVO, today));
         }
 
         return new PageResult<>(sections, total);
@@ -172,38 +173,32 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
         List<Long> orderIds = eligibleOrders.stream().map(DyeingOrderDO::getId).collect(Collectors.toList());
 
         // 2. 查询所属颜色明细行
-        List<DyeingColorDO> colors = dyeingColorMapper.selectList(new LambdaQueryWrapperX<DyeingColorDO>()
-                .in(DyeingColorDO::getDyeingOrderId, orderIds)
-                .eq(DyeingColorDO::getDeleted, false));
+        boolean includeDeleted = Boolean.TRUE.equals(reqVO.getIncludeDeleted());
+        List<DyeingColorDO> colors = getOrderedColors(orderIds, eligibleOrders, includeDeleted);
         if (CollUtil.isEmpty(colors)) {
             return ProgressFeedbackStatisticsRespVO.builder()
                     .unscheduledColorCount(0L)
                     .inProgressVatCount(0L)
                     .completedVatCount(0L)
                     .delayedVatCount(0L)
+                    .unresolvedVatCount(0L)
                     .build();
         }
 
-        // 3. 批量查询反馈缸
+        // 3. 批量查询反馈缸与未决问题
         Set<Long> colorIds = colors.stream().map(DyeingColorDO::getId).collect(Collectors.toSet());
         List<ProgressFeedbackDO> allVats = progressFeedbackMapper.selectListByColorIds(colorIds);
         Map<Long, List<ProgressFeedbackDO>> vatsByColor = allVats.stream()
                 .filter(v -> v.getDeleted() == null || !v.getDeleted())
                 .collect(Collectors.groupingBy(ProgressFeedbackDO::getDyeingColorId));
 
+        Map<Long, Integer> unresolvedCountMap = getUnresolvedCountMap(allVats);
+
         // 4. 若传入综合关键词，对颜色行进行关键词过滤，保持统计与筛选同口径
         if (StringUtils.hasText(reqVO.getKeyword())) {
-            String kw = reqVO.getKeyword().trim();
             colors = colors.stream().filter(color -> {
-                DyeingOrderDO order = orderMap.get(color.getDyeingOrderId());
-                if (order == null) return false;
                 List<ProgressFeedbackDO> vats = vatsByColor.getOrDefault(color.getId(), Collections.emptyList());
-                boolean matchOrder = (order.getContractNo() != null && order.getContractNo().contains(kw))
-                        || (order.getClientName() != null && order.getClientName().contains(kw));
-                boolean matchColor = (color.getCustomerColorNo() != null && color.getCustomerColorNo().contains(kw))
-                        || (color.getColorName() != null && color.getColorName().contains(kw));
-                boolean matchVat = vats.stream().anyMatch(v -> v.getVatNo() != null && v.getVatNo().contains(kw));
-                return matchOrder || matchColor || matchVat;
+                return matchesKeyword(color, vats, reqVO.getKeyword());
             }).collect(Collectors.toList());
         }
 
@@ -216,6 +211,7 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
         long inProgressVatCount = 0L;
         long completedVatCount = 0L;
         long delayedVatCount = 0L;
+        long unresolvedVatCount = 0L;
 
         Set<Long> matchedColorIds = colors.stream().map(DyeingColorDO::getId).collect(Collectors.toSet());
         for (ProgressFeedbackDO vat : allVats) {
@@ -233,6 +229,10 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
             if (order != null && isDelayed(order.getDeliveryDate(), status, today)) {
                 delayedVatCount++;
             }
+
+            if (unresolvedCountMap.getOrDefault(vat.getId(), 0) > 0) {
+                unresolvedVatCount++;
+            }
         }
 
         return ProgressFeedbackStatisticsRespVO.builder()
@@ -240,6 +240,7 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
                 .inProgressVatCount(inProgressVatCount)
                 .completedVatCount(completedVatCount)
                 .delayedVatCount(delayedVatCount)
+                .unresolvedVatCount(unresolvedVatCount)
                 .build();
     }
 
@@ -495,21 +496,25 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
     // ==================== 私有辅助方法 ====================
 
     /**
-     * 查询符合骨架要求的染色单（仅 ACTIVE/COMPLETED，软删默认排除）
+     * 查询符合骨架要求的染色单（仅 ACTIVE/COMPLETED，软删默认排除；含已失效开关时绕过逻辑删除查全量）
      */
     private List<DyeingOrderDO> getEligibleOrders(ProgressFeedbackPageReqVO reqVO) {
-        LambdaQueryWrapperX<DyeingOrderDO> orderWrapper = new LambdaQueryWrapperX<DyeingOrderDO>()
-                .eqIfPresent(DyeingOrderDO::getId, reqVO.getDyeingOrderId())
-                .likeIfPresent(DyeingOrderDO::getContractNo, reqVO.getContractNo())
-                .eqIfPresent(DyeingOrderDO::getDyeingFactoryId, reqVO.getDyeingFactoryId());
-
-        if (!Boolean.TRUE.equals(reqVO.getIncludeDeleted())) {
-            orderWrapper.eq(DyeingOrderDO::getDeleted, false);
+        List<DyeingOrderDO> orders;
+        if (Boolean.TRUE.equals(reqVO.getIncludeDeleted())) {
+            orders = dyeingOrderMapper.selectListIncludingDeleted(
+                    reqVO.getDyeingOrderId(),
+                    reqVO.getContractNo(),
+                    reqVO.getDyeingFactoryId()
+            );
+        } else {
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<DyeingOrderDO> orderWrapper = new LambdaQueryWrapperX<DyeingOrderDO>()
+                    .eqIfPresent(DyeingOrderDO::getId, reqVO.getDyeingOrderId())
+                    .likeIfPresent(DyeingOrderDO::getContractNo, reqVO.getContractNo())
+                    .eqIfPresent(DyeingOrderDO::getDyeingFactoryId, reqVO.getDyeingFactoryId())
+                    .in(DyeingOrderDO::getStatus, "ACTIVE", "COMPLETED")
+                    .orderByDesc(DyeingOrderDO::getOrderDate).orderByDesc(DyeingOrderDO::getId);
+            orders = dyeingOrderMapper.selectList(orderWrapper);
         }
-        orderWrapper.in(DyeingOrderDO::getStatus, "ACTIVE", "COMPLETED");
-        orderWrapper.orderByDesc(DyeingOrderDO::getOrderDate).orderByDesc(DyeingOrderDO::getId);
-
-        List<DyeingOrderDO> orders = dyeingOrderMapper.selectList(orderWrapper);
         if (CollUtil.isEmpty(orders)) {
             return Collections.emptyList();
         }
@@ -524,14 +529,26 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
     /**
      * 按染色单列表顺序与颜色行号 lineNo 排序获取明细行
      */
-    private List<DyeingColorDO> getOrderedColors(List<Long> orderIds, List<DyeingOrderDO> orders) {
-        List<DyeingColorDO> colors = dyeingColorMapper.selectList(new LambdaQueryWrapperX<DyeingColorDO>()
-                .in(DyeingColorDO::getDyeingOrderId, orderIds)
-                .eq(DyeingColorDO::getDeleted, false)
-                .orderByAsc(DyeingColorDO::getLineNo));
+    private List<DyeingColorDO> getOrderedColors(List<Long> orderIds, List<DyeingOrderDO> orders, boolean includeDeleted) {
+        if (CollUtil.isEmpty(orderIds)) {
+            return Collections.emptyList();
+        }
+        List<DyeingColorDO> colors;
+        if (includeDeleted) {
+            colors = dyeingColorMapper.selectListByOrderIdsIncludingDeleted(orderIds);
+        } else {
+            colors = dyeingColorMapper.selectList(new LambdaQueryWrapperX<DyeingColorDO>()
+                    .in(DyeingColorDO::getDyeingOrderId, orderIds)
+                    .orderByAsc(DyeingColorDO::getLineNo));
+        }
         if (CollUtil.isEmpty(colors)) {
             return Collections.emptyList();
         }
+
+        // 内存双重防御
+        colors = colors.stream()
+                .filter(c -> includeDeleted || (c.getDeleted() == null || !c.getDeleted()))
+                .collect(Collectors.toList());
 
         // 建立染色单顺序索引
         Map<Long, Integer> orderIndexMap = new HashMap<>(orders.size());
@@ -581,11 +598,12 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
     /**
      * 骨架颜色行筛选下推
      */
-    private List<DyeingColorDO> filterColors(List<DyeingColorDO> colors,
-                                             Map<Long, DyeingOrderDO> orderMap,
-                                             Map<Long, List<ProgressFeedbackDO>> vatsByColor,
-                                             ProgressFeedbackPageReqVO reqVO,
-                                             LocalDate today) {
+     private List<DyeingColorDO> filterColors(List<DyeingColorDO> colors,
+                                              Map<Long, DyeingOrderDO> orderMap,
+                                              Map<Long, List<ProgressFeedbackDO>> vatsByColor,
+                                              Map<Long, Integer> unresolvedCountMap,
+                                              ProgressFeedbackPageReqVO reqVO,
+                                              LocalDate today) {
         return colors.stream().filter(color -> {
             DyeingOrderDO order = orderMap.get(color.getDyeingOrderId());
             if (order == null) {
@@ -613,7 +631,7 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
                 }
             }
 
-            // 2. 仅看延期筛选
+            // 2. 仅看延期筛选（染色单交货日期 < 今天 且 缸非 COMPLETED）
             if (Boolean.TRUE.equals(reqVO.getDelayedOnly())) {
                 boolean hasDelayed = vats.stream().anyMatch(v -> isDelayed(order.getDeliveryDate(), v.getStatus(), today));
                 if (!hasDelayed) {
@@ -621,15 +639,27 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
                 }
             }
 
-            // 3. 综合关键词筛选（匹配合同号、客户、色号、颜色、缸号）
+            // 3. 仅看未决问题筛选（存在未闭环反馈记录的缸）
+            if (Boolean.TRUE.equals(reqVO.getUnresolvedOnly())) {
+                boolean hasUnresolved = vats.stream().anyMatch(v -> unresolvedCountMap.getOrDefault(v.getId(), 0) > 0);
+                if (!hasUnresolved) {
+                    return false;
+                }
+            }
+
+            // 4. 含已完成开关：默认进行中视图（全缸 COMPLETED 的节隐藏），开启后显示；若筛选 status=COMPLETED 时放行
+            if (!Boolean.TRUE.equals(reqVO.getIncludeCompleted())
+                    && !ProgressFeedbackStatusEnum.COMPLETED.getValue().equals(reqVO.getStatus())) {
+                boolean isAllCompleted = !vats.isEmpty() && vats.stream()
+                        .allMatch(v -> ProgressFeedbackStatusEnum.COMPLETED.getValue().equals(v.getStatus()));
+                if (isAllCompleted) {
+                    return false;
+                }
+            }
+
+            // 5. 关键词筛选（匹配颜色名称、客户色号、缸号，忽略大小写）
             if (StringUtils.hasText(reqVO.getKeyword())) {
-                String kw = reqVO.getKeyword().trim();
-                boolean matchOrder = (order.getContractNo() != null && order.getContractNo().contains(kw))
-                        || (order.getClientName() != null && order.getClientName().contains(kw));
-                boolean matchColor = (color.getCustomerColorNo() != null && color.getCustomerColorNo().contains(kw))
-                        || (color.getColorName() != null && color.getColorName().contains(kw));
-                boolean matchVat = vats.stream().anyMatch(v -> v.getVatNo() != null && v.getVatNo().contains(kw));
-                if (!matchOrder && !matchColor && !matchVat) {
+                if (!matchesKeyword(color, vats, reqVO.getKeyword())) {
                     return false;
                 }
             }
@@ -639,12 +669,28 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
     }
 
     /**
+     * 关键词匹配检查（匹配颜色名称、客户色号、缸号，忽略大小写）
+     */
+    private boolean matchesKeyword(DyeingColorDO color, List<ProgressFeedbackDO> vats, String kw) {
+        if (!StringUtils.hasText(kw)) {
+            return true;
+        }
+        String lowerKw = kw.trim().toLowerCase();
+        boolean matchColor = (color.getCustomerColorNo() != null && color.getCustomerColorNo().toLowerCase().contains(lowerKw))
+                || (color.getColorName() != null && color.getColorName().toLowerCase().contains(lowerKw));
+        boolean matchVat = CollUtil.isNotEmpty(vats) && vats.stream()
+                .anyMatch(v -> v.getVatNo() != null && v.getVatNo().toLowerCase().contains(lowerKw));
+        return matchColor || matchVat;
+    }
+
+    /**
      * 组装单个颜色行节 Response VO（零快照实时取出 + 缸卡列表 + 派生字段）
      */
     private ProgressFeedbackColorSectionRespVO buildColorSection(DyeingOrderDO order,
                                                                  DyeingColorDO color,
                                                                  List<ProgressFeedbackDO> vats,
                                                                  Map<Long, Integer> unresolvedCountMap,
+                                                                 ProgressFeedbackPageReqVO reqVO,
                                                                  LocalDate today) {
         ProgressFeedbackColorSectionRespVO section = new ProgressFeedbackColorSectionRespVO();
         // 染色单实时字段（零快照）
@@ -676,10 +722,32 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
         List<ProgressFeedbackVatRespVO> vatVOList = new ArrayList<>(vats.size());
 
         for (ProgressFeedbackDO vat : vats) {
-            ProgressFeedbackVatRespVO vatVO = BeanUtils.toBean(vat, ProgressFeedbackVatRespVO.class);
             boolean delayed = isDelayed(order.getDeliveryDate(), vat.getStatus(), today);
+            int unresolvedCount = unresolvedCountMap.getOrDefault(vat.getId(), 0);
+
+            // 缸级筛选过滤（仅看延期、仅看未决问题、状态筛选与统计条完全对齐）
+            if (reqVO != null) {
+                if (Boolean.TRUE.equals(reqVO.getDelayedOnly()) && !delayed) {
+                    continue;
+                }
+                if (Boolean.TRUE.equals(reqVO.getUnresolvedOnly()) && unresolvedCount <= 0) {
+                    continue;
+                }
+                if (StringUtils.hasText(reqVO.getStatus()) && !"NOT_SCHEDULED".equals(reqVO.getStatus())) {
+                    String filterStatus = reqVO.getStatus();
+                    if ("IN_PROGRESS".equals(filterStatus)) {
+                        if (ProgressFeedbackStatusEnum.COMPLETED.getValue().equals(vat.getStatus())) {
+                            continue;
+                        }
+                    } else if (!filterStatus.equals(vat.getStatus())) {
+                        continue;
+                    }
+                }
+            }
+
+            ProgressFeedbackVatRespVO vatVO = BeanUtils.toBean(vat, ProgressFeedbackVatRespVO.class);
             vatVO.setDelayed(delayed);
-            vatVO.setUnresolvedIssueCount(unresolvedCountMap.getOrDefault(vat.getId(), 0));
+            vatVO.setUnresolvedIssueCount(unresolvedCount);
             vatVOList.add(vatVO);
 
             if (vat.getQuantity() != null) {
@@ -694,23 +762,26 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
         section.setTotalVatQuantity(totalVatQty.setScale(2, RoundingMode.HALF_UP));
         section.setTotalVatPieces(totalVatPieces);
 
-        // 状态分组计数
-        Map<String, Integer> statusCountMap = vats.stream()
+        // 状态分组计数（基于匹配展示的缸）
+        Map<String, Integer> statusCountMap = vatVOList.stream()
                 .filter(v -> v.getStatus() != null)
-                .collect(Collectors.groupingBy(ProgressFeedbackDO::getStatus, Collectors.summingInt(v -> 1)));
+                .collect(Collectors.groupingBy(ProgressFeedbackVatRespVO::getStatus, Collectors.summingInt(v -> 1)));
         section.setStatusCountMap(statusCountMap);
 
-        // 派生计算：覆盖率与超排标记
+        // 派生计算：覆盖率与超排标记（按全量缸累计）
+        BigDecimal allVatQty = vats.stream()
+                .map(v -> v.getQuantity() != null ? v.getQuantity() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (color.getQuantity() == null || color.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
             // 零/空分母按 0% 处理
             section.setCoveragePercent(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-            section.setOverScheduled(totalVatQty.compareTo(BigDecimal.ZERO) > 0);
+            section.setOverScheduled(allVatQty.compareTo(BigDecimal.ZERO) > 0);
         } else {
-            BigDecimal coverage = totalVatQty.divide(color.getQuantity(), 4, RoundingMode.HALF_UP)
+            BigDecimal coverage = allVatQty.divide(color.getQuantity(), 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100))
                     .setScale(2, RoundingMode.HALF_UP);
             section.setCoveragePercent(coverage);
-            section.setOverScheduled(totalVatQty.compareTo(color.getQuantity()) > 0);
+            section.setOverScheduled(allVatQty.compareTo(color.getQuantity()) > 0);
         }
 
         return section;

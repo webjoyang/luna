@@ -54,6 +54,7 @@ export interface ProgressFeedbackStatisticsVO {
   inProgressVatCount: number
   completedVatCount: number
   delayedVatCount: number
+  unresolvedVatCount?: number
 }
 
 // 分页与筛选查询参数
@@ -66,6 +67,8 @@ export interface ProgressFeedbackPageParam {
   status?: string
   keyword?: string
   delayedOnly?: boolean
+  unresolvedOnly?: boolean
+  includeCompleted?: boolean
   includeDeleted?: boolean
 }
 

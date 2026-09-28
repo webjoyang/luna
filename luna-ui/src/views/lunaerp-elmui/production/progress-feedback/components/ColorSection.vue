@@ -1,5 +1,9 @@
 <template>
-  <div class="color-section-card">
+  <div
+    :id="'section-' + section.dyeingColorId"
+    :data-order-id="section.dyeingOrderId"
+    class="color-section-card"
+  >
     <!-- 节头：染色单与颜色行信息（零快照） + 覆盖率汇总 -->
     <div class="section-header">
       <div class="header-main">
@@ -177,6 +181,26 @@ const handleOpenFeedback = (vat: ProgressFeedbackVatVO) => {
   margin-bottom: 20px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
   overflow: hidden;
+  transition: all 0.3s ease;
+
+  &.highlight-pulse {
+    animation: pulse-border 1.5s ease-in-out;
+  }
+}
+
+@keyframes pulse-border {
+  0% {
+    box-shadow: 0 0 0 0 rgba(64, 158, 255, 0.7);
+    border-color: #409eff;
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(64, 158, 255, 0.25);
+    border-color: #409eff;
+  }
+  100% {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    border-color: #e4e7ed;
+  }
 }
 
 .section-header {

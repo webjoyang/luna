@@ -26,4 +26,23 @@ public interface DyeingColorMapper extends BaseMapperX<DyeingColorDO> {
                 .eq(DyeingColorDO::getDyeingOrderId, orderId));
     }
 
+    /**
+     * 按染色单ID列表查询颜色明细，【包含已逻辑删除的行】（用于进度反馈"含已失效"筛选）。
+     *
+     * 手写 SQL 绕过 MyBatis-Plus 逻辑删除自动过滤；tenant_id 由租户拦截器自动追加。
+     *
+     * @param orderIds 染色单ID集合
+     * @return 颜色明细列表（含已删除行）
+     */
+    @org.apache.ibatis.annotations.Select("<script>"
+            + "SELECT id, dyeing_order_id, line_no, customer_color_no, color_name, "
+            + "quantity, pieces, dyeing_input_qty, dyeing_input_unit, contract_qty, "
+            + "creator, create_time, updater, update_time, deleted, tenant_id "
+            + "FROM lunaerp_production_dyeing_color "
+            + "WHERE dyeing_order_id IN "
+            + "<foreach collection='orderIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "ORDER BY line_no ASC"
+            + "</script>")
+    java.util.List<DyeingColorDO> selectListByOrderIdsIncludingDeleted(@org.apache.ibatis.annotations.Param("orderIds") java.util.Collection<Long> orderIds);
+
 }

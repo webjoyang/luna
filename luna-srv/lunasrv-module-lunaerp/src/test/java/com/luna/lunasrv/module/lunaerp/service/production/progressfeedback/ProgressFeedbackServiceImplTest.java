@@ -978,4 +978,292 @@ class ProgressFeedbackServiceImplTest {
         verify(progressFeedbackMapper, never()).deleteById(any());
     }
 
+    // ==================== 12. 07 票：增强筛选与预警视图 ====================
+
+    @Test
+    @DisplayName("仅看未决问题：仅返回含未闭环问题记录反馈缸的颜色行节")
+    void getProgressFeedbackPage_unresolvedOnlyFilter() {
+        DyeingOrderDO order = createOrder(1L, "ACTIVE", false, FIXED_TODAY.plusDays(5));
+        when(dyeingOrderMapper.selectList(any())).thenReturn(List.of(order));
+
+        DyeingColorDO c1 = createColor(101L, 1L, 1, "有未决问题", new BigDecimal("500"), 20, "KG");
+        DyeingColorDO c2 = createColor(102L, 1L, 2, "已闭环问题", new BigDecimal("500"), 20, "KG");
+        DyeingColorDO c3 = createColor(103L, 1L, 3, "无问题正常缸", new BigDecimal("500"), 20, "KG");
+        when(dyeingColorMapper.selectList(any())).thenReturn(List.of(c1, c2, c3));
+
+        ProgressFeedbackDO vat1 = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500"), 20, "DYEING");
+        ProgressFeedbackDO vat2 = createVat(1002L, 1L, 102L, "V02", new BigDecimal("500"), 20, "DYEING");
+        ProgressFeedbackDO vat3 = createVat(1003L, 1L, 103L, "V03", new BigDecimal("500"), 20, "DYEING");
+        when(progressFeedbackMapper.selectListByColorIds(any())).thenReturn(List.of(vat1, vat2, vat3));
+
+        // 仅 vat1 有未闭环问题
+        ProgressFeedbackNoteDO unresolvedNote = new ProgressFeedbackNoteDO();
+        unresolvedNote.setId(1L);
+        unresolvedNote.setFeedbackId(1001L);
+        unresolvedNote.setIssueFlag(true);
+        unresolvedNote.setResolvedAt(null);
+        unresolvedNote.setDeleted(false);
+
+        when(progressFeedbackNoteMapper.selectUnresolvedListByFeedbackIds(any())).thenReturn(List.of(unresolvedNote));
+
+        ProgressFeedbackPageReqVO reqVO = new ProgressFeedbackPageReqVO();
+        reqVO.setUnresolvedOnly(true);
+
+        PageResult<ProgressFeedbackColorSectionRespVO> result = progressFeedbackService.getProgressFeedbackPage(reqVO);
+
+        assertEquals(1, result.getTotal());
+        assertEquals(1, result.getList().size());
+        assertEquals(101L, result.getList().get(0).getDyeingColorId(), "仅含未闭环问题的颜色行节应被筛出");
+    }
+
+    @Test
+    @DisplayName("含已完成开关：默认隐藏全缸 COMPLETED 节，开启后显示全量，部分完成节不受影响")
+    void getProgressFeedbackPage_includeCompletedFilter() {
+        DyeingOrderDO order = createOrder(1L, "ACTIVE", false, FIXED_TODAY.plusDays(5));
+        when(dyeingOrderMapper.selectList(any())).thenReturn(List.of(order));
+
+        DyeingColorDO cAllCompleted = createColor(101L, 1L, 1, "全完成色", new BigDecimal("500"), 20, "KG");
+        DyeingColorDO cPartialCompleted = createColor(102L, 1L, 2, "部分完成色", new BigDecimal("600"), 25, "KG");
+        DyeingColorDO cZeroVat = createColor(103L, 1L, 3, "未排缸色", new BigDecimal("300"), 12, "KG");
+        when(dyeingColorMapper.selectList(any())).thenReturn(List.of(cAllCompleted, cPartialCompleted, cZeroVat));
+
+        ProgressFeedbackDO vat1 = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500"), 20, "COMPLETED");
+        ProgressFeedbackDO vat2 = createVat(1002L, 1L, 102L, "V02", new BigDecimal("300"), 12, "COMPLETED");
+        ProgressFeedbackDO vat3 = createVat(1003L, 1L, 102L, "V03", new BigDecimal("300"), 13, "DYEING");
+        when(progressFeedbackMapper.selectListByColorIds(any())).thenReturn(List.of(vat1, vat2, vat3));
+
+        // 1. 默认 includeCompleted=false：全完成节被隐藏，部分完成节与未排缸节保留
+        ProgressFeedbackPageReqVO defaultReq = new ProgressFeedbackPageReqVO();
+        defaultReq.setIncludeCompleted(false);
+        PageResult<ProgressFeedbackColorSectionRespVO> defaultResult = progressFeedbackService.getProgressFeedbackPage(defaultReq);
+        assertEquals(2, defaultResult.getTotal());
+        assertEquals(List.of(102L, 103L), defaultResult.getList().stream().map(ProgressFeedbackColorSectionRespVO::getDyeingColorId).toList());
+
+        // 2. 开启 includeCompleted=true：全完成节显示
+        ProgressFeedbackPageReqVO includeReq = new ProgressFeedbackPageReqVO();
+        includeReq.setIncludeCompleted(true);
+        PageResult<ProgressFeedbackColorSectionRespVO> includeResult = progressFeedbackService.getProgressFeedbackPage(includeReq);
+        assertEquals(3, includeResult.getTotal());
+        assertEquals(List.of(101L, 102L, 103L), includeResult.getList().stream().map(ProgressFeedbackColorSectionRespVO::getDyeingColorId).toList());
+
+        // 3. 当筛选 status=COMPLETED 时：即使 includeCompleted=false 也应能查出全完成节
+        ProgressFeedbackPageReqVO statusCompletedReq = new ProgressFeedbackPageReqVO();
+        statusCompletedReq.setStatus("COMPLETED");
+        statusCompletedReq.setIncludeCompleted(false);
+        PageResult<ProgressFeedbackColorSectionRespVO> statusCompletedResult = progressFeedbackService.getProgressFeedbackPage(statusCompletedReq);
+        assertEquals(2, statusCompletedResult.getTotal());
+        assertEquals(List.of(101L, 102L), statusCompletedResult.getList().stream().map(ProgressFeedbackColorSectionRespVO::getDyeingColorId).toList());
+    }
+
+    @Test
+    @DisplayName("含已失效开关：软删单残留缸默认隐藏，开启后可查")
+    void getProgressFeedbackPage_includeDeletedFilter() {
+        DyeingOrderDO activeOrder = createOrder(1L, "ACTIVE", false, FIXED_TODAY.plusDays(5));
+        DyeingOrderDO deletedOrder = createOrder(2L, "ACTIVE", true, FIXED_TODAY.plusDays(5));
+
+        DyeingColorDO c1 = createColor(101L, 1L, 1, "正常单颜色", new BigDecimal("500"), 20, "KG");
+        DyeingColorDO c2 = createColor(102L, 2L, 1, "软删单残留颜色", new BigDecimal("500"), 20, "KG");
+
+        when(dyeingColorMapper.selectList(any())).thenReturn(List.of(c1, c2));
+
+        ProgressFeedbackDO vat1 = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500"), 20, "SCHEDULED");
+        ProgressFeedbackDO vat2 = createVat(1002L, 2L, 102L, "V02", new BigDecimal("500"), 20, "SCHEDULED");
+        when(progressFeedbackMapper.selectListByColorIds(any())).thenReturn(List.of(vat1, vat2));
+
+        // 默认 includeDeleted=false：软删单不纳入 eligibleOrders
+        when(dyeingOrderMapper.selectList(any())).thenReturn(List.of(activeOrder));
+        ProgressFeedbackPageReqVO defaultReq = new ProgressFeedbackPageReqVO();
+        defaultReq.setIncludeDeleted(false);
+        PageResult<ProgressFeedbackColorSectionRespVO> defaultResult = progressFeedbackService.getProgressFeedbackPage(defaultReq);
+        assertEquals(1, defaultResult.getTotal());
+        assertEquals(101L, defaultResult.getList().get(0).getDyeingColorId());
+
+        // 开启 includeDeleted=true：软删单纳入 eligibleOrders
+        when(dyeingOrderMapper.selectListIncludingDeleted(any(), any(), any())).thenReturn(List.of(activeOrder, deletedOrder));
+        when(dyeingColorMapper.selectListByOrderIdsIncludingDeleted(any())).thenReturn(List.of(c1, c2));
+        ProgressFeedbackPageReqVO includeReq = new ProgressFeedbackPageReqVO();
+        includeReq.setIncludeDeleted(true);
+        PageResult<ProgressFeedbackColorSectionRespVO> includeResult = progressFeedbackService.getProgressFeedbackPage(includeReq);
+        assertEquals(2, includeResult.getTotal());
+    }
+
+    @Test
+    @DisplayName("关键词搜索：支持颜色名称、客户色号、缸号不区分大小写模糊匹配")
+    void getProgressFeedbackPage_keywordFilter_matchesAllFields() {
+        DyeingOrderDO order = createOrder(1L, "ACTIVE", false, FIXED_TODAY.plusDays(5));
+        when(dyeingOrderMapper.selectList(any())).thenReturn(List.of(order));
+
+        DyeingColorDO c1 = createColor(101L, 1L, 1, "藏青深蓝", new BigDecimal("500"), 20, "KG");
+        c1.setCustomerColorNo("PANTONE 19-4052");
+        DyeingColorDO c2 = createColor(102L, 1L, 2, "象牙白", new BigDecimal("500"), 20, "KG");
+        c2.setCustomerColorNo("PAN-IVORY");
+        when(dyeingColorMapper.selectList(any())).thenReturn(List.of(c1, c2));
+
+        ProgressFeedbackDO vat1 = createVat(1001L, 1L, 101L, "VAT-NAVY-01", new BigDecimal("500"), 20, "SCHEDULED");
+        ProgressFeedbackDO vat2 = createVat(1002L, 1L, 102L, "VAT-WHITE-01", new BigDecimal("500"), 20, "SCHEDULED");
+        when(progressFeedbackMapper.selectListByColorIds(any())).thenReturn(List.of(vat1, vat2));
+
+        // 匹配颜色名称 "深蓝"
+        ProgressFeedbackPageReqVO kwColor = new ProgressFeedbackPageReqVO();
+        kwColor.setKeyword("深蓝");
+        PageResult<ProgressFeedbackColorSectionRespVO> resColor = progressFeedbackService.getProgressFeedbackPage(kwColor);
+        assertEquals(1, resColor.getTotal());
+        assertEquals(101L, resColor.getList().get(0).getDyeingColorId());
+
+        // 匹配客户色号小写 "pantone"
+        ProgressFeedbackPageReqVO kwPantone = new ProgressFeedbackPageReqVO();
+        kwPantone.setKeyword("pantone");
+        PageResult<ProgressFeedbackColorSectionRespVO> resPantone = progressFeedbackService.getProgressFeedbackPage(kwPantone);
+        assertEquals(1, resPantone.getTotal());
+        assertEquals(101L, resPantone.getList().get(0).getDyeingColorId());
+
+        // 匹配缸号 "white"
+        ProgressFeedbackPageReqVO kwVat = new ProgressFeedbackPageReqVO();
+        kwVat.setKeyword("white");
+        PageResult<ProgressFeedbackColorSectionRespVO> resVat = progressFeedbackService.getProgressFeedbackPage(kwVat);
+        assertEquals(1, resVat.getTotal());
+        assertEquals(102L, resVat.getList().get(0).getDyeingColorId());
+    }
+
+    @Test
+    @DisplayName("统计条增强：包含未决问题缸数且与关键词同口径一致")
+    void getProgressFeedbackStatistics_withUnresolvedAndEnhancedFilters() {
+        DyeingOrderDO order = createOrder(1L, "ACTIVE", false, FIXED_TODAY.minusDays(2)); // 已延期
+        when(dyeingOrderMapper.selectList(any())).thenReturn(List.of(order));
+
+        DyeingColorDO c1 = createColor(101L, 1L, 1, "藏青色", new BigDecimal("500"), 20, "KG");
+        DyeingColorDO c2 = createColor(102L, 1L, 2, "象牙白", new BigDecimal("500"), 20, "KG");
+        when(dyeingColorMapper.selectList(any())).thenReturn(List.of(c1, c2));
+
+        ProgressFeedbackDO vat1 = createVat(1001L, 1L, 101L, "VAT-01", new BigDecimal("500"), 20, "DYEING"); // 延期 + 未决
+        ProgressFeedbackDO vat2 = createVat(1002L, 1L, 102L, "VAT-02", new BigDecimal("500"), 20, "COMPLETED"); // 已完成，不延期
+        when(progressFeedbackMapper.selectListByColorIds(any())).thenReturn(List.of(vat1, vat2));
+
+        ProgressFeedbackNoteDO unresolvedNote = new ProgressFeedbackNoteDO();
+        unresolvedNote.setId(1L);
+        unresolvedNote.setFeedbackId(1001L);
+        unresolvedNote.setIssueFlag(true);
+        unresolvedNote.setResolvedAt(null);
+        unresolvedNote.setDeleted(false);
+        when(progressFeedbackNoteMapper.selectUnresolvedListByFeedbackIds(any())).thenReturn(List.of(unresolvedNote));
+
+        // 查全量统计
+        ProgressFeedbackPageReqVO reqVO = new ProgressFeedbackPageReqVO();
+        ProgressFeedbackStatisticsRespVO stats = progressFeedbackService.getProgressFeedbackStatistics(reqVO);
+
+        assertEquals(0L, stats.getUnscheduledColorCount());
+        assertEquals(1L, stats.getInProgressVatCount());
+        assertEquals(1L, stats.getCompletedVatCount());
+        assertEquals(1L, stats.getDelayedVatCount());
+        assertEquals(1L, stats.getUnresolvedVatCount(), "未决问题缸数应为 1");
+
+        // 传入关键词 "象牙白"
+        ProgressFeedbackPageReqVO kwReq = new ProgressFeedbackPageReqVO();
+        kwReq.setKeyword("象牙白");
+        ProgressFeedbackStatisticsRespVO kwStats = progressFeedbackService.getProgressFeedbackStatistics(kwReq);
+        assertEquals(0L, kwStats.getUnscheduledColorCount());
+        assertEquals(0L, kwStats.getInProgressVatCount());
+        assertEquals(1L, kwStats.getCompletedVatCount());
+        assertEquals(0L, kwStats.getDelayedVatCount());
+        assertEquals(0L, kwStats.getUnresolvedVatCount(), "关键词过滤后未决问题缸数应同口径为 0");
+    }
+
+    @Test
+    @DisplayName("人工回归用例：造延期缸、未闭环问题缸、已完成节、软删单残留缸四类数据逐一验证组合与统计联动")
+    void regression_verifyAllFourScenarios_delayed_unresolved_completed_softDeleted() {
+        // 场景数据造数：
+        // 1. Order 1 (正常单，已延期交期)：下含延期缸
+        DyeingOrderDO orderDelayed = createOrder(1L, "ACTIVE", false, FIXED_TODAY.minusDays(3));
+        // 2. Order 2 (正常单，未延期交期)：下含未决问题缸
+        DyeingOrderDO orderUnresolved = createOrder(2L, "ACTIVE", false, FIXED_TODAY.plusDays(5));
+        // 3. Order 3 (正常单，未延期交期)：下含已完成节
+        DyeingOrderDO orderCompleted = createOrder(3L, "ACTIVE", false, FIXED_TODAY.plusDays(10));
+        // 4. Order 4 (软删除单)：残留缸
+        DyeingOrderDO orderDeleted = createOrder(4L, "ACTIVE", true, FIXED_TODAY.plusDays(5));
+
+        // 颜色行：
+        DyeingColorDO colorDelayed = createColor(101L, 1L, 1, "延期颜色", new BigDecimal("500"), 20, "KG");
+        DyeingColorDO colorUnresolved = createColor(102L, 2L, 1, "未决问题颜色", new BigDecimal("500"), 20, "KG");
+        DyeingColorDO colorCompleted = createColor(103L, 3L, 1, "已完成颜色", new BigDecimal("500"), 20, "KG");
+        DyeingColorDO colorDeletedOrder = createColor(104L, 4L, 1, "软删单残留颜色", new BigDecimal("500"), 20, "KG");
+
+        // 缸数据：
+        // 缸1：延期缸（DYEING 态，Order1 交期已过）
+        ProgressFeedbackDO vatDelayed = createVat(1001L, 1L, 101L, "VAT-DELAYED", new BigDecimal("500"), 20, "DYEING");
+        // 缸2：未决问题缸（SCHEDULED 态，Order2 交期未过，有未决问题记录）
+        ProgressFeedbackDO vatUnresolved = createVat(1002L, 2L, 102L, "VAT-UNRESOLVED", new BigDecimal("500"), 20, "SCHEDULED");
+        // 缸3：已完成缸（COMPLETED 态）
+        ProgressFeedbackDO vatCompleted = createVat(1003L, 3L, 103L, "VAT-COMPLETED", new BigDecimal("500"), 20, "COMPLETED");
+        // 缸4：软删单残留缸（SCHEDULED 态）
+        ProgressFeedbackDO vatDeleted = createVat(1004L, 4L, 104L, "VAT-DELETED-RESIDUAL", new BigDecimal("500"), 20, "SCHEDULED");
+
+        when(dyeingOrderMapper.selectList(any())).thenReturn(List.of(orderDelayed, orderUnresolved, orderCompleted));
+        when(dyeingOrderMapper.selectListIncludingDeleted(any(), any(), any()))
+                .thenReturn(List.of(orderDelayed, orderUnresolved, orderCompleted, orderDeleted));
+
+        when(dyeingColorMapper.selectList(any())).thenReturn(List.of(colorDelayed, colorUnresolved, colorCompleted));
+        when(dyeingColorMapper.selectListByOrderIdsIncludingDeleted(any()))
+                .thenReturn(List.of(colorDelayed, colorUnresolved, colorCompleted, colorDeletedOrder));
+
+        when(progressFeedbackMapper.selectListByColorIds(any()))
+                .thenReturn(List.of(vatDelayed, vatUnresolved, vatCompleted, vatDeleted));
+
+        ProgressFeedbackNoteDO unresolvedNote = new ProgressFeedbackNoteDO();
+        unresolvedNote.setId(1L);
+        unresolvedNote.setFeedbackId(1002L);
+        unresolvedNote.setIssueFlag(true);
+        unresolvedNote.setResolvedAt(null);
+        unresolvedNote.setDeleted(false);
+        when(progressFeedbackNoteMapper.selectUnresolvedListByFeedbackIds(any())).thenReturn(List.of(unresolvedNote));
+
+        // 验证 1：默认进行中视图（includeCompleted=false, includeDeleted=false）
+        ProgressFeedbackPageReqVO defaultReq = new ProgressFeedbackPageReqVO();
+        PageResult<ProgressFeedbackColorSectionRespVO> defaultResult = progressFeedbackService.getProgressFeedbackPage(defaultReq);
+        // 全完成节(103)隐藏，软删单节(104)隐藏，展示 101 和 102
+        assertEquals(2, defaultResult.getTotal());
+        assertEquals(List.of(101L, 102L), defaultResult.getList().stream().map(ProgressFeedbackColorSectionRespVO::getDyeingColorId).toList());
+
+        // 验证 2：仅看延期（delayedOnly=true）-> 仅返回 101 节，且缸列表中仅含延期缸
+        ProgressFeedbackPageReqVO delayedReq = new ProgressFeedbackPageReqVO();
+        delayedReq.setDelayedOnly(true);
+        PageResult<ProgressFeedbackColorSectionRespVO> delayedResult = progressFeedbackService.getProgressFeedbackPage(delayedReq);
+        assertEquals(1, delayedResult.getTotal());
+        assertEquals(101L, delayedResult.getList().get(0).getDyeingColorId());
+        assertEquals(1, delayedResult.getList().get(0).getVats().size());
+        assertTrue(Boolean.TRUE.equals(delayedResult.getList().get(0).getVats().get(0).getDelayed()));
+
+        // 验证 3：仅看未决问题（unresolvedOnly=true）-> 仅返回 102 节，且缸列表中仅含未决问题缸
+        ProgressFeedbackPageReqVO unresolvedReq = new ProgressFeedbackPageReqVO();
+        unresolvedReq.setUnresolvedOnly(true);
+        PageResult<ProgressFeedbackColorSectionRespVO> unresolvedResult = progressFeedbackService.getProgressFeedbackPage(unresolvedReq);
+        assertEquals(1, unresolvedResult.getTotal());
+        assertEquals(102L, unresolvedResult.getList().get(0).getDyeingColorId());
+        assertEquals(1, unresolvedResult.getList().get(0).getVats().size());
+        assertEquals(1, unresolvedResult.getList().get(0).getVats().get(0).getUnresolvedIssueCount());
+
+        // 验证 4：开启含已完成（includeCompleted=true）-> 展现全完成节 103
+        ProgressFeedbackPageReqVO incCompReq = new ProgressFeedbackPageReqVO();
+        incCompReq.setIncludeCompleted(true);
+        PageResult<ProgressFeedbackColorSectionRespVO> incCompResult = progressFeedbackService.getProgressFeedbackPage(incCompReq);
+        assertEquals(3, incCompResult.getTotal());
+        assertTrue(incCompResult.getList().stream().anyMatch(s -> s.getDyeingColorId().equals(103L)));
+
+        // 验证 5：开启含已失效（includeDeleted=true）-> 展现软删单残留节 104
+        ProgressFeedbackPageReqVO incDelReq = new ProgressFeedbackPageReqVO();
+        incDelReq.setIncludeDeleted(true);
+        PageResult<ProgressFeedbackColorSectionRespVO> incDelResult = progressFeedbackService.getProgressFeedbackPage(incDelReq);
+        assertEquals(3, incDelResult.getTotal()); // 101, 102, 104 (103 因 includeCompleted=false 隐藏)
+        assertTrue(incDelResult.getList().stream().anyMatch(s -> s.getDyeingColorId().equals(104L)));
+
+        // 验证 6：统计条计数全口径联动校验
+        ProgressFeedbackStatisticsRespVO stats = progressFeedbackService.getProgressFeedbackStatistics(defaultReq);
+        assertEquals(0L, stats.getUnscheduledColorCount());
+        assertEquals(2L, stats.getInProgressVatCount()); // vatDelayed + vatUnresolved
+        assertEquals(1L, stats.getCompletedVatCount()); // vatCompleted
+        assertEquals(1L, stats.getDelayedVatCount()); // vatDelayed
+        assertEquals(1L, stats.getUnresolvedVatCount()); // vatUnresolved
+    }
+
 }
+
+

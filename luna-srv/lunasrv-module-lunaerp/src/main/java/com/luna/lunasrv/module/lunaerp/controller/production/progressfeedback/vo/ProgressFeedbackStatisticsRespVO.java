@@ -25,4 +25,7 @@ public class ProgressFeedbackStatisticsRespVO {
     @Schema(description = "延期缸数（染色单交货日期 < 今天 且 缸未完成）", requiredMode = Schema.RequiredMode.REQUIRED, example = "2")
     private Long delayedVatCount;
 
+    @Schema(description = "未决问题缸数（存在未闭环反馈记录的缸数）", example = "1")
+    private Long unresolvedVatCount;
+
 }
