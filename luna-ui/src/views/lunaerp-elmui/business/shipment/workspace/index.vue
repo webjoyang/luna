@@ -296,32 +296,23 @@ const handleSave = async () => {
     handleRecalculateTotals()
     const payload: ShipmentVO = {
       ...formData.value,
-      items: formData.value.items?.map((item) => ({
-        id: item.id || undefined,
-        shipmentId: item.shipmentId || formData.value.id || undefined,
-        productId: item.productId,
-        productCode: item.productCode,
-        productName: item.productName,
-        customerColorNo: item.customerColorNo,
-        colorName: item.colorName,
-        vatNo: item.vatNo,
-        quantity: item.quantity,
-        pieces: item.pieces,
-        unit: item.unit,
-        unitPrice: item.unitPrice,
-        amount: item.amount,
-        sourceStockInItemId: item.sourceStockInItemId,
-        remark: item.remark,
-        rolls: item.rolls?.map((roll) => ({
-          id: roll.id || undefined,
-          shipmentId: roll.shipmentId || formData.value.id || undefined,
-          shipmentItemId: roll.shipmentItemId || item.id || undefined,
-          rollNo: roll.rollNo,
-          weight: roll.weight,
-          lengthM: roll.lengthM,
-          remark: roll.remark
-        }))
-      }))
+      items: formData.value.items?.map((item) => {
+        const { _clientKey, ...itemRest } = item as any
+        return {
+          ...itemRest,
+          id: item.id || undefined,
+          shipmentId: item.shipmentId || formData.value.id || undefined,
+          rolls: item.rolls?.map((roll) => {
+            const { _clientKey: rollKey, ...rollRest } = roll as any
+            return {
+              ...rollRest,
+              id: roll.id || undefined,
+              shipmentId: roll.shipmentId || formData.value.id || undefined,
+              shipmentItemId: roll.shipmentItemId || item.id || undefined
+            }
+          })
+        }
+      })
     }
     if (isCreateMode.value) {
       const newId = await ShipmentApi.createShipment(payload)
