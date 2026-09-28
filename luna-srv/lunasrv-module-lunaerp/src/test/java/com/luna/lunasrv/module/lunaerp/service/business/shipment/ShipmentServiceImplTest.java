@@ -27,6 +27,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper
 import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMapper;
+import com.luna.lunasrv.module.lunaerp.service.stock.stockledger.StockLedgerService;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -88,6 +89,9 @@ class ShipmentServiceImplTest {
 
     @Mock
     private StockLedgerMapper stockLedgerMapper;
+
+    @Mock
+    private StockLedgerService stockLedgerService;
 
     @Mock
     private SecurityFrameworkService securityFrameworkService;
@@ -1025,7 +1029,7 @@ class ShipmentServiceImplTest {
 
         // 合并需求 50 + 60 = 110 KG，库存当前仅 100 KG
         when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item1, item2));
-        when(stockLedgerMapper.sumQuantityByWarehouseAndProductAndUnit(2L, 1001L, "KG"))
+        when(stockLedgerService.getProductBalance(2L, 1001L, "KG"))
                 .thenReturn(new BigDecimal("100.00"));
 
         ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.auditShipment(10L));
@@ -1056,7 +1060,7 @@ class ShipmentServiceImplTest {
         item.setRemark("首批出库");
 
         when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item));
-        when(stockLedgerMapper.sumQuantityByWarehouseAndProductAndUnit(2L, 1001L, "KG"))
+        when(stockLedgerService.getProductBalance(2L, 1001L, "KG"))
                 .thenReturn(new BigDecimal("100.00"));
 
         // Act

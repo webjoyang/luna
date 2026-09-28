@@ -28,6 +28,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper
 import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMapper;
+import com.luna.lunasrv.module.lunaerp.service.stock.stockledger.StockLedgerService;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
@@ -157,6 +158,9 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Resource
     private StockLedgerMapper stockLedgerMapper;
+
+    @Resource
+    private StockLedgerService stockLedgerService;
 
     @Resource
     private SecurityFrameworkService securityFrameworkService;
@@ -428,7 +432,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             String key = entry.getKey();
             BigDecimal requiredQty = entry.getValue();
             ShipmentItemDO sampleItem = itemGroupMap.get(key);
-            BigDecimal availableQty = stockLedgerMapper.sumQuantityByWarehouseAndProductAndUnit(
+            BigDecimal availableQty = stockLedgerService.getProductBalance(
                     existing.getWarehouseId(), sampleItem.getProductId(), sampleItem.getUnit());
             if (availableQty == null) {
                 availableQty = BigDecimal.ZERO;
