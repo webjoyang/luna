@@ -368,41 +368,55 @@ const totalQuantityText = computed(() => {
   if (!items.length) return '0'
   const unitMap: Record<string, number> = {}
   for (const item of items) {
-    const u = item.unit || 'KG'
-    unitMap[u] = (unitMap[u] || 0) + (item.quantity || 0)
+    const itemUnit = item.unit || 'KG'
+    unitMap[itemUnit] = (unitMap[itemUnit] || 0) + (item.quantity || 0)
   }
   return Object.entries(unitMap)
-    .map(([u, q]) => `${q.toFixed(2)} ${u}`)
+    .map(([unit, quantity]) => `${quantity.toFixed(2)} ${unit}`)
     .join(' / ')
 })
 
-// 人民币金额大写转换
+// 人民币金额大写转换（采用整分计算，杜绝浮点精度丢失）
 const uppercaseAmount = computed(() => {
-  const n = grandTotalAmount.value
-  if (n == null || isNaN(n) || n === 0) return '零元整'
-  const fraction = ['角', '分']
-  const digit = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖']
-  const unit = [
+  const totalAmount = grandTotalAmount.value
+  if (totalAmount == null || isNaN(totalAmount) || totalAmount === 0) return '零元整'
+  const digits = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖']
+  const bigUnits = [
     ['元', '万', '亿'],
     ['', '拾', '佰', '仟']
   ]
-  const head = n < 0 ? '负' : ''
-  let num = Math.abs(n)
-  let s = ''
-  for (let i = 0; i < fraction.length; i++) {
-    s += (digit[Math.floor(num * 10 * Math.pow(10, i)) % 10] + fraction[i]).replace(/零./, '')
+  const prefix = totalAmount < 0 ? '负' : ''
+  const totalCents = Math.round(Math.abs(totalAmount) * 100)
+  const integerPart = Math.floor(totalCents / 100)
+  const jiao = Math.floor(totalCents / 10) % 10
+  const fen = totalCents % 10
+
+  let fractionStr = ''
+  if (jiao === 0 && fen === 0) {
+    fractionStr = '整'
+  } else {
+    fractionStr =
+      (jiao > 0 ? digits[jiao] + '角' : integerPart > 0 ? '零' : '') +
+      (fen > 0 ? digits[fen] + '分' : '')
   }
-  s = s || '整'
-  num = Math.floor(num)
-  for (let i = 0; i < unit[0].length && num > 0; i++) {
-    let p = ''
-    for (let j = 0; j < unit[1].length && num > 0; j++) {
-      p = digit[num % 10] + unit[1][j] + p
-      num = Math.floor(num / 10)
+
+  let integerStr = ''
+  let remainingInteger = integerPart
+  for (let i = 0; i < bigUnits[0].length && remainingInteger > 0; i++) {
+    let sectionStr = ''
+    for (let j = 0; j < bigUnits[1].length && remainingInteger > 0; j++) {
+      sectionStr = digits[remainingInteger % 10] + bigUnits[1][j] + sectionStr
+      remainingInteger = Math.floor(remainingInteger / 10)
     }
-    s = p.replace(/(零.)*零$/, '').replace(/^$/, '零') + unit[0][i] + s
+    integerStr =
+      sectionStr.replace(/(零.)*零$/, '').replace(/^$/, '零') + bigUnits[0][i] + integerStr
   }
-  return head + s.replace(/(零.)*零元/, '元').replace(/(零.)+/g, '零').replace(/^整$/, '零元整')
+
+  const result =
+    prefix +
+    integerStr.replace(/(零.)*零元/, '元').replace(/(零.)+/g, '零').replace(/^整$/, '零元整') +
+    fractionStr
+  return result || '零元整'
 })
 
 // 装箱清单（扁平化卷清单）

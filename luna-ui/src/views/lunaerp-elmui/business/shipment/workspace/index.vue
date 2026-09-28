@@ -26,8 +26,16 @@
       <div class="action-buttons flex items-center gap-2">
         <el-button @click="handleBack">返回</el-button>
 
-        <!-- 已发货单 COMPLETED：无论查看还是编辑模式均可打印发货单与装箱清单 -->
+        <!-- 已发货单 COMPLETED：无论查看还是编辑模式均可登记签收与打印 -->
         <template v-if="formData.status === 'COMPLETED'">
+          <el-button
+            type="primary"
+            :loading="actionLoading"
+            @click="handleUpdateSign"
+            v-hasPermi="['lunaerp:business:shipment:update']"
+          >
+            保存签收
+          </el-button>
           <el-button
             type="primary"
             plain
@@ -98,16 +106,8 @@
             </el-button>
           </template>
 
-          <!-- 已发货态 COMPLETED：[保存签收] [取消（红冲）] -->
+          <!-- 已发货态 COMPLETED：[取消（红冲）] -->
           <template v-else-if="formData.status === 'COMPLETED'">
-            <el-button
-              type="primary"
-              :loading="actionLoading"
-              @click="handleUpdateSign"
-              v-hasPermi="['lunaerp:business:shipment:update']"
-            >
-              保存签收
-            </el-button>
             <el-button
               type="danger"
               plain

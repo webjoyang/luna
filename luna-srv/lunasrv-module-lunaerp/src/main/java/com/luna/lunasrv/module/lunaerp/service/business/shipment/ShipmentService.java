@@ -91,6 +91,6 @@ public interface ShipmentService {
      *
      * @param reqVO 签收登记参数
      */
-    void updateShipmentSign(ShipmentUpdateSignReqVO reqVO);
+    void updateShipmentSign(@Valid ShipmentUpdateSignReqVO reqVO);
 
 }

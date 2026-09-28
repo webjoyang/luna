@@ -321,7 +321,7 @@ const formData = computed({
   set: (val) => emit('update:modelValue', val)
 })
 
-const canEditSign = computed(() => !props.isViewMode && formData.value.status === 'COMPLETED')
+const canEditSign = computed(() => formData.value.status === 'COMPLETED')
 
 const rules = reactive<FormRules>({
   customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
