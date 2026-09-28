@@ -1,5 +1,9 @@
 <template>
-  <div class="vat-card is-clickable" :class="{ 'is-delayed': vat.delayed }" @click="handleCardClick">
+  <div
+    class="vat-card is-clickable"
+    :class="{ 'is-delayed': vat.delayed }"
+    @click="handleCardClick"
+  >
     <div class="card-header">
       <div class="header-left">
         <span class="vat-no" :title="vat.vatNo">{{ vat.vatNo }}</span>
@@ -83,12 +87,16 @@
         推进至 {{ nextStep.label }}
       </el-button>
       <el-button
+        v-if="canNote"
         size="small"
         text
-        :icon="View"
-        class="detail-btn"
-        @click="handleCardClick"
+        :icon="ChatDotSquare"
+        class="feedback-btn"
+        @click="handleFeedback"
       >
+        反馈
+      </el-button>
+      <el-button size="small" text :icon="View" class="detail-btn" @click="handleCardClick">
         详情
       </el-button>
     </div>
@@ -98,10 +106,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { DICT_TYPE } from '@/utils/dict'
-import { Warning, Right, View } from '@element-plus/icons-vue'
+import { Warning, Right, View, ChatDotSquare } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { hasPermission } from '@/directives/permission/hasPermi'
-import { advanceProgressFeedback, type ProgressFeedbackVatVO } from '@/api/lunaerp-elmui/production/progress-feedback'
+import {
+  advanceProgressFeedback,
+  type ProgressFeedbackVatVO
+} from '@/api/lunaerp-elmui/production/progress-feedback'
 
 const props = defineProps<{
   vat: ProgressFeedbackVatVO
@@ -111,6 +122,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'open-detail', vat: ProgressFeedbackVatVO): void
   (e: 'refresh'): void
+  (e: 'open-feedback', vat: ProgressFeedbackVatVO): void
 }>()
 
 const advancing = ref(false)
@@ -138,6 +150,14 @@ const nextStep = computed(() => {
 const canAdvance = computed(() => {
   return hasPermission(['lunaerp:production:progress-feedback:advance'])
 })
+
+const canNote = computed(() => {
+  return hasPermission(['lunaerp:production:progress-feedback:note'])
+})
+
+const handleFeedback = () => {
+  emit('open-feedback', props.vat)
+}
 
 const stepDateMap = computed<Record<string, string | undefined>>(() => ({
   SCHEDULED: props.vat.scheduledDate,
@@ -407,6 +427,17 @@ const handleAdvance = async () => {
     font-size: 12px;
     height: 26px;
     padding: 0 8px;
+  }
+
+  .feedback-btn {
+    font-size: 12px;
+    color: #409eff;
+    height: 26px;
+    padding: 0 4px;
+
+    &:hover {
+      color: #66b1ff;
+    }
   }
 
   .detail-btn {

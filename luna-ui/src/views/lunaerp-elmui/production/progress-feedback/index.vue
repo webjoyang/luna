@@ -165,6 +165,7 @@
           :section="section"
           @create-vat="handleCreateVatForSection"
           @open-detail="handleOpenVatDetail"
+          @open-feedback="handleOpenFeedback"
           @refresh="handleRefresh"
         />
 
@@ -182,11 +183,7 @@
         </div>
       </template>
 
-      <el-empty
-        v-else-if="!loading"
-        description="暂无进度反馈数据"
-        :image-size="120"
-      />
+      <el-empty v-else-if="!loading" description="暂无进度反馈数据" :image-size="120" />
     </div>
 
     <!-- 新建缸弹窗 -->
@@ -194,12 +191,23 @@
 
     <!-- 缸详情与工序时间轴抽屉 -->
     <VatDetailDrawer ref="vatDetailDrawerRef" @success="handleDetailSuccess" />
+
+    <!-- 缸卡快捷反馈弹窗 -->
+    <FeedbackDialog ref="feedbackDialogRef" @success="handleFeedbackSuccess" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { Search, Refresh, Odometer, CircleCheck, Warning, DocumentRemove, Plus } from '@element-plus/icons-vue'
+import {
+  Search,
+  Refresh,
+  Odometer,
+  CircleCheck,
+  Warning,
+  DocumentRemove,
+  Plus
+} from '@element-plus/icons-vue'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
@@ -208,6 +216,7 @@ import type { DyeingOrderVO } from '@/api/lunaerp-elmui/production/dyeing-order'
 import ColorSection from './components/ColorSection.vue'
 import VatCreateDialog from './components/VatCreateDialog.vue'
 import VatDetailDrawer from './components/VatDetailDrawer.vue'
+import FeedbackDialog from './components/FeedbackDialog.vue'
 import {
   getProgressFeedbackPage,
   getProgressFeedbackStatistics,
@@ -224,6 +233,7 @@ const sectionList = ref<ProgressFeedbackColorSectionVO[]>([])
 const total = ref(0)
 const vatCreateDialogRef = ref<InstanceType<typeof VatCreateDialog>>()
 const vatDetailDrawerRef = ref<InstanceType<typeof VatDetailDrawer>>()
+const feedbackDialogRef = ref<InstanceType<typeof FeedbackDialog>>()
 
 const statistics = reactive<ProgressFeedbackStatisticsVO>({
   unscheduledColorCount: 0,
@@ -392,6 +402,17 @@ const handleDetailSuccess = () => {
 
 // 缸卡推进操作成功刷新
 const handleRefresh = () => {
+  getList()
+  getStatistics()
+}
+
+// 打开缸卡快捷反馈弹窗
+const handleOpenFeedback = (vat: ProgressFeedbackVatVO) => {
+  feedbackDialogRef.value?.open(vat.id, vat.vatNo)
+}
+
+// 快速反馈成功刷新列表与未决问题徽标
+const handleFeedbackSuccess = () => {
   getList()
   getStatistics()
 }

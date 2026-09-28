@@ -18,9 +18,7 @@
               :value="detail.status"
               size="default"
             />
-            <el-tag v-if="detail.delayed" type="danger" effect="dark" size="small">
-              已延期
-            </el-tag>
+            <el-tag v-if="detail.delayed" type="danger" effect="dark" size="small"> 已延期 </el-tag>
             <el-badge
               v-if="detail.unresolvedIssueCount > 0"
               :value="detail.unresolvedIssueCount"
@@ -61,7 +59,12 @@
         <!-- 2. 六工序时间轴 -->
         <div class="timeline-section">
           <div class="section-title">六工序时间轴</div>
-          <el-steps :active="activeStepIndex" finish-status="success" align-center class="steps-flow">
+          <el-steps
+            :active="activeStepIndex"
+            finish-status="success"
+            align-center
+            class="steps-flow"
+          >
             <el-step
               v-for="(st, idx) in sixSteps"
               :key="st.key"
@@ -70,15 +73,11 @@
             >
               <template #description>
                 <div class="step-desc">
-                  <span v-if="st.key === 'NOT_SCHEDULED'" class="step-past">
-                    -
-                  </span>
+                  <span v-if="st.key === 'NOT_SCHEDULED'" class="step-past"> - </span>
                   <span v-else-if="getStepDate(st.key)" class="step-date">
                     {{ getStepDate(st.key) }}
                   </span>
-                  <span v-else-if="idx <= activeStepIndex" class="step-empty">
-                    -
-                  </span>
+                  <span v-else-if="idx <= activeStepIndex" class="step-empty"> - </span>
                 </div>
               </template>
             </el-step>
@@ -111,18 +110,24 @@
             </el-descriptions-item>
             <el-descriptions-item label="颜色明细">
               {{ detail.colorName || '-' }}
-              <span v-if="detail.customerColorNo" class="sub-text">({{ detail.customerColorNo }})</span>
+              <span v-if="detail.customerColorNo" class="sub-text"
+                >({{ detail.customerColorNo }})</span
+              >
             </el-descriptions-item>
             <el-descriptions-item label="投染需求">
               {{ detail.colorQuantity ?? 0 }} {{ detail.unit || 'KG' }}
-              <span v-if="detail.colorPieces != null" class="sub-text">/ {{ detail.colorPieces }} 匹</span>
+              <span v-if="detail.colorPieces != null" class="sub-text"
+                >/ {{ detail.colorPieces }} 匹</span
+              >
             </el-descriptions-item>
             <el-descriptions-item label="排产覆盖率">
               <span :class="{ 'is-over-text': detail.overScheduled }">
                 {{ detail.coveragePercent }}%
                 <span v-if="detail.overScheduled">(超排)</span>
               </span>
-              <span class="sub-text">(已建: {{ detail.totalVatQuantity }} {{ detail.unit || 'KG' }})</span>
+              <span class="sub-text"
+                >(已建: {{ detail.totalVatQuantity }} {{ detail.unit || 'KG' }})</span
+              >
             </el-descriptions-item>
           </el-descriptions>
         </div>
@@ -146,11 +151,7 @@
             <el-row :gutter="16">
               <el-col :span="12">
                 <el-form-item label="缸号" prop="vatNo">
-                  <el-input
-                    v-model="formData.vatNo"
-                    placeholder="请输入缸号"
-                    maxlength="50"
-                  />
+                  <el-input v-model="formData.vatNo" placeholder="请输入缸号" maxlength="50" />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
@@ -270,6 +271,94 @@
             </el-form-item>
           </el-form>
         </div>
+
+        <el-divider class="content-divider" />
+
+        <!-- 5. 反馈记录流水时间线（独立子资源） -->
+        <div class="notes-section">
+          <div class="notes-header">
+            <div class="section-title">跟单反馈流水</div>
+            <el-button
+              v-hasPermi="['lunaerp:production:progress-feedback:note']"
+              type="primary"
+              size="small"
+              plain
+              :icon="ChatDotSquare"
+              @click="handleOpenNoteDialog"
+            >
+              写反馈
+            </el-button>
+          </div>
+
+          <div v-loading="notesLoading" class="notes-content">
+            <el-timeline v-if="notes && notes.length > 0" class="notes-timeline">
+              <el-timeline-item
+                v-for="note in notes"
+                :key="note.id"
+                :timestamp="note.createTime"
+                placement="top"
+                :type="note.issueFlag ? (note.resolvedAt ? 'success' : 'danger') : 'primary'"
+                :hollow="!note.issueFlag"
+              >
+                <div class="note-card">
+                  <div class="note-meta">
+                    <div class="note-tags">
+                      <el-tag v-if="note.issueFlag" type="danger" size="small" effect="dark">
+                        问题
+                      </el-tag>
+                      <el-tag v-if="note.issueFlag && note.resolvedAt" type="success" size="small">
+                        已闭环 ({{ note.resolvedAt }})
+                      </el-tag>
+                      <el-tag v-else-if="note.issueFlag" type="warning" size="small">
+                        待闭环
+                      </el-tag>
+                      <span class="note-creator">记录人: {{ note.creator || '-' }}</span>
+                    </div>
+
+                    <div class="note-actions">
+                      <!-- 闭环操作：仅未闭环的问题记录可闭环 -->
+                      <el-button
+                        v-if="note.issueFlag && !note.resolvedAt"
+                        v-hasPermi="['lunaerp:production:progress-feedback:note']"
+                        type="success"
+                        size="small"
+                        link
+                        @click="handleResolveNote(note)"
+                      >
+                        闭环
+                      </el-button>
+
+                      <!-- 删除操作：普通记录与未闭环问题可删，已闭环问题禁删 -->
+                      <el-button
+                        v-if="!note.issueFlag || !note.resolvedAt"
+                        v-hasPermi="['lunaerp:production:progress-feedback:note']"
+                        type="danger"
+                        size="small"
+                        link
+                        @click="handleDeleteNote(note)"
+                      >
+                        删除
+                      </el-button>
+                      <el-tag v-else type="info" size="small" effect="plain" class="locked-tag">
+                        已闭环禁删
+                      </el-tag>
+                    </div>
+                  </div>
+
+                  <div class="note-body">
+                    {{ note.content }}
+                  </div>
+                </div>
+              </el-timeline-item>
+            </el-timeline>
+
+            <el-empty
+              v-else
+              description="暂无沟通反馈记录，点击右上角【写反馈】快速记录"
+              :image-size="64"
+            />
+          </div>
+        </div>
       </template>
     </div>
 
@@ -286,12 +375,15 @@
         </el-button>
       </div>
     </template>
+
+    <!-- 快速反馈弹窗 -->
+    <FeedbackDialog ref="feedbackDialogRef" @success="handleNoteSuccess" />
   </el-drawer>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
-import { Right, Back } from '@element-plus/icons-vue'
+import { Right, Back, ChatDotSquare } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { DICT_TYPE } from '@/utils/dict'
 import {
@@ -301,6 +393,13 @@ import {
   type ProgressFeedbackDetailVO,
   type ProgressFeedbackUpdateVO
 } from '@/api/lunaerp-elmui/production/progress-feedback'
+import {
+  getNoteListByFeedback,
+  resolveNote,
+  deleteNote,
+  type ProgressFeedbackNoteVO
+} from '@/api/lunaerp-elmui/production/progress-feedback/note'
+import FeedbackDialog from './FeedbackDialog.vue'
 
 const emit = defineEmits<{
   (e: 'success'): void
@@ -313,6 +412,11 @@ const advancing = ref(false)
 const rollingBack = ref(false)
 const detail = ref<ProgressFeedbackDetailVO>()
 const formRef = ref<FormInstance>()
+const feedbackDialogRef = ref<InstanceType<typeof FeedbackDialog>>()
+
+// 反馈记录列表与加载状态
+const notes = ref<ProgressFeedbackNoteVO[]>([])
+const notesLoading = ref(false)
 
 // 六工序定义（含虚拟未排缸）
 const sixSteps = [
@@ -425,7 +529,20 @@ const formRules: FormRules = {
 // 打开抽屉
 const open = async (vatId: number) => {
   visible.value = true
-  await loadDetail(vatId)
+  await Promise.all([loadDetail(vatId), loadNotes(vatId)])
+}
+
+// 加载反馈记录流水
+const loadNotes = async (vatId: number) => {
+  notesLoading.value = true
+  try {
+    const res = await getNoteListByFeedback(vatId)
+    notes.value = res || []
+  } catch (error) {
+    console.error('加载反馈记录失败', error)
+  } finally {
+    notesLoading.value = false
+  }
 }
 
 // 加载详情数据
@@ -539,6 +656,66 @@ const handleSave = async () => {
     console.error('保存缸信息失败', error)
   } finally {
     saving.value = false
+  }
+}
+
+// 刷新抽屉详情与反馈流水并通知父级更新
+const refreshDrawerAndNotify = async () => {
+  if (!detail.value) return
+  await Promise.all([loadDetail(detail.value.id), loadNotes(detail.value.id)])
+  emit('success')
+}
+
+// 打开快速反馈弹窗
+const handleOpenNoteDialog = () => {
+  if (!detail.value) return
+  feedbackDialogRef.value?.open(detail.value.id, detail.value.vatNo)
+}
+
+// 反馈新增成功回调
+const handleNoteSuccess = async () => {
+  await refreshDrawerAndNotify()
+}
+
+// 问题记录闭环
+const handleResolveNote = async (note: ProgressFeedbackNoteVO) => {
+  if (!detail.value) return
+  try {
+    await ElMessageBox.confirm(
+      '确定将该问题记录标记为已闭环吗？闭环后将记录闭环时间，不可重复闭环且不可删除。',
+      '问题闭环确认',
+      {
+        confirmButtonText: '确定闭环',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    )
+    await resolveNote(note.id)
+    ElMessage.success('问题已闭环')
+    await refreshDrawerAndNotify()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('闭环操作失败', error)
+    }
+  }
+}
+
+// 删除反馈记录
+const handleDeleteNote = async (note: ProgressFeedbackNoteVO) => {
+  if (!detail.value) return
+  try {
+    await ElMessageBox.confirm('确定删除该条反馈记录吗？删除后不可恢复。', '删除确认', {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await deleteNote(note.id)
+    ElMessage.success('反馈记录已删除')
+    await refreshDrawerAndNotify()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('删除反馈记录失败', error)
+    }
   }
 }
 
@@ -681,5 +858,73 @@ defineExpose({ open })
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.notes-section {
+  margin-top: 10px;
+
+  .notes-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+
+  .notes-content {
+    min-height: 80px;
+  }
+
+  .notes-timeline {
+    padding-left: 4px;
+    padding-right: 4px;
+
+    :deep(.el-timeline-item__node) {
+      width: 10px;
+      height: 10px;
+    }
+  }
+
+  .note-card {
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 10px 14px;
+    border: 1px solid #ebeef5;
+
+    .note-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+
+      .note-tags {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .note-creator {
+          font-size: 12px;
+          color: #909399;
+        }
+      }
+
+      .note-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .locked-tag {
+          font-size: 11px;
+        }
+      }
+    }
+
+    .note-body {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #303133;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+  }
 }
 </style>

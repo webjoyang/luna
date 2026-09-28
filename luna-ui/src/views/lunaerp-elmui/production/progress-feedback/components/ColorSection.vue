@@ -10,7 +10,11 @@
           <span class="factory-name">染厂: {{ section.dyeingFactoryName || '-' }}</span>
           <span class="divider">|</span>
           <span class="product-info">{{ section.productName || section.productCode || '-' }}</span>
-          <span v-if="section.deliveryDate" class="delivery-date" :class="{ 'is-past': isPastDelivery }">
+          <span
+            v-if="section.deliveryDate"
+            class="delivery-date"
+            :class="{ 'is-past': isPastDelivery }"
+          >
             交期: {{ section.deliveryDate }}
           </span>
         </div>
@@ -35,8 +39,13 @@
       <div class="header-summary">
         <div class="summary-item">
           <span class="summary-label">已建缸合计:</span>
-          <span class="summary-value">{{ section.totalVatQuantity }} {{ section.unit || 'KG' }}</span>
-          <span v-if="section.totalVatPieces != null && section.totalVatPieces > 0" class="pieces-summary">
+          <span class="summary-value"
+            >{{ section.totalVatQuantity }} {{ section.unit || 'KG' }}</span
+          >
+          <span
+            v-if="section.totalVatPieces != null && section.totalVatPieces > 0"
+            class="pieces-summary"
+          >
             ({{ section.totalVatPieces }} 匹)
           </span>
         </div>
@@ -52,11 +61,7 @@
               {{ section.coveragePercent }}% 超排
             </el-tag>
           </el-tooltip>
-          <el-tag
-            v-else
-            :type="coverageTagType"
-            class="coverage-tag"
-          >
+          <el-tag v-else :type="coverageTagType" class="coverage-tag">
             {{ section.coveragePercent }}%
           </el-tag>
         </div>
@@ -85,6 +90,7 @@
           :unit="section.unit"
           @open-detail="handleOpenDetail"
           @refresh="handleRefresh"
+          @open-feedback="handleOpenFeedback"
         />
       </div>
 
@@ -99,11 +105,7 @@
           <span class="add-title">未排缸 / ＋ 建缸</span>
           <span class="add-sub">点击立即为本颜色行排产建缸</span>
         </div>
-        <div
-          v-else
-          class="dashed-add-card is-readonly"
-          title="该颜色明细尚未排缸"
-        >
+        <div v-else class="dashed-add-card is-readonly" title="该颜色明细尚未排缸">
           <span class="add-title">未排缸</span>
           <span class="add-sub">暂无排产反馈缸</span>
         </div>
@@ -147,6 +149,7 @@ const emit = defineEmits<{
   (e: 'create-vat', section: ProgressFeedbackColorSectionVO): void
   (e: 'open-detail', vat: ProgressFeedbackVatVO): void
   (e: 'refresh'): void
+  (e: 'open-feedback', vat: ProgressFeedbackVatVO): void
 }>()
 
 const handleCreateVat = () => {
@@ -159,6 +162,10 @@ const handleOpenDetail = (vat: ProgressFeedbackVatVO) => {
 
 const handleRefresh = () => {
   emit('refresh')
+}
+
+const handleOpenFeedback = (vat: ProgressFeedbackVatVO) => {
+  emit('open-feedback', vat)
 }
 </script>
 
