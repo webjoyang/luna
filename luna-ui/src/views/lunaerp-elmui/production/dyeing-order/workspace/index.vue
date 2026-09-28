@@ -27,12 +27,19 @@
           @cancel="handleBack"
         />
       </el-tab-pane>
+      <el-tab-pane v-if="!isCreateMode" label="进度反馈" name="progress" lazy>
+        <ProgressFeedbackTab
+          :order-id="orderId"
+          :order-status="currentStatus"
+        />
+      </el-tab-pane>
     </el-tabs>
   </ContentWrap>
 </template>
 
 <script lang="ts" setup>
 import BasicInfoTab from './BasicInfoTab.vue'
+import ProgressFeedbackTab from './ProgressFeedbackTab.vue'
 import type { DyeingOrderVO } from '@/api/lunaerp-elmui/production/dyeing-order'
 
 defineOptions({ name: 'LunaerpElmuiProductionDyeingOrderWorkspace' })
