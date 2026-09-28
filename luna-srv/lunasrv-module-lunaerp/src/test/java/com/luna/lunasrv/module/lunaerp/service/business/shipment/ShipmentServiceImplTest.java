@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.business.shipment;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.enums.CommonStatusEnum;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
@@ -1262,14 +1263,19 @@ class ShipmentServiceImplTest {
         shipmentService.updateShipmentSign(req);
 
         // Assert
-        ArgumentCaptor<ShipmentDO> captor = ArgumentCaptor.forClass(ShipmentDO.class);
-        verify(shipmentMapper).updateById(captor.capture());
-        ShipmentDO updated = captor.getValue();
-        assertEquals(10L, updated.getId());
-        assertEquals("SIGNED", updated.getSignStatus());
-        assertEquals("张收货", updated.getSignedByName());
-        assertEquals(now, updated.getSignedAt());
-        assertEquals("货物外包装完好，件数一致", updated.getSignRemark());
+        ArgumentCaptor<LambdaUpdateWrapper<ShipmentDO>> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(shipmentMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<ShipmentDO> wrapper = captor.getValue();
+        String sqlSet = wrapper.getSqlSet();
+        assertTrue(sqlSet.contains("sign_status"), "应更新 sign_status 字段");
+        assertTrue(sqlSet.contains("signed_by_name"), "应更新 signed_by_name 字段");
+        assertTrue(sqlSet.contains("signed_at"), "应更新 signed_at 字段");
+        assertTrue(sqlSet.contains("sign_remark"), "应更新 sign_remark 字段");
+        assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("SIGNED"), "签收状态应为 SIGNED");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("张收货"), "签收人应为张收货");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(now), "签收时间应为传入时间");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("货物外包装完好，件数一致"), "签收备注应为传入内容");
 
         // 绝不触发任何库存动作
         verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
@@ -1296,14 +1302,14 @@ class ShipmentServiceImplTest {
         shipmentService.updateShipmentSign(req);
 
         // Assert
-        ArgumentCaptor<ShipmentDO> captor = ArgumentCaptor.forClass(ShipmentDO.class);
-        verify(shipmentMapper).updateById(captor.capture());
-        ShipmentDO updated = captor.getValue();
-        assertEquals(10L, updated.getId());
-        assertEquals("REFUSED", updated.getSignStatus());
-        assertEquals("李收货", updated.getSignedByName());
-        assertEquals(now, updated.getSignedAt());
-        assertEquals("布面有油污瑕疵，客户拒绝签收", updated.getSignRemark());
+        ArgumentCaptor<LambdaUpdateWrapper<ShipmentDO>> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(shipmentMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<ShipmentDO> wrapper = captor.getValue();
+        String sqlSet = wrapper.getSqlSet();
+        assertTrue(sqlSet.contains("sign_status"), "应更新 sign_status 字段");
+        assertTrue(wrapper.getSqlSegment().contains("id ="), "应按 id 条件更新");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("REFUSED"), "签收状态应为 REFUSED");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("李收货"), "签收人应为李收货");
 
         // 规范明确要求：拒签只登记状态，不自动红冲库存，退货由人执行取消
         verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));

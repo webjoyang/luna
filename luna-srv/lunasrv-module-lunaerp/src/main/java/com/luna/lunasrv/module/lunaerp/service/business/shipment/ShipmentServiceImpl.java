@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.business.shipment;
 
 import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.enums.CommonStatusEnum;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
@@ -121,7 +122,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     /**
      * 默认签收状态：待签收
      */
-    private static final String DEFAULT_SIGN_STATUS = "PENDING";
+    private static final String DEFAULT_SIGN_STATUS = ShipmentSignStatusEnum.PENDING.getValue();
     /**
      * 默认币种：人民币
      */
@@ -554,13 +555,12 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // 4. 更新主表签收字段（拒签只登记状态，不自动红冲、不触发任何库存动作）
-        ShipmentDO updateObj = new ShipmentDO();
-        updateObj.setId(existing.getId());
-        updateObj.setSignStatus(reqVO.getSignStatus());
-        updateObj.setSignedByName(reqVO.getSignedByName());
-        updateObj.setSignedAt(reqVO.getSignedAt());
-        updateObj.setSignRemark(reqVO.getSignRemark());
-        shipmentMapper.updateById(updateObj);
+        shipmentMapper.update(null, new LambdaUpdateWrapper<ShipmentDO>()
+                .eq(ShipmentDO::getId, existing.getId())
+                .set(ShipmentDO::getSignStatus, reqVO.getSignStatus())
+                .set(ShipmentDO::getSignedByName, reqVO.getSignedByName())
+                .set(ShipmentDO::getSignedAt, reqVO.getSignedAt())
+                .set(ShipmentDO::getSignRemark, reqVO.getSignRemark()));
     }
 
     // ==================== 私有方法 ====================
