@@ -25,9 +25,15 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_REFERENCE_NOT_FOUND;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_STATUS_NOT_ALLOWED;
@@ -49,6 +55,9 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
 
     @Resource
     private DyeingColorMapper dyeingColorMapper;
+
+    @Resource
+    private DyeingColorDeleteGuard dyeingColorDeleteGuard;
 
     @Resource
     private SupplierMapper supplierMapper;
@@ -115,11 +124,10 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory());
         // 6. 整体更新（可空字段清空随 DO 的 updateStrategy=ALWAYS 一并落库）
         dyeingOrderMapper.updateById(order);
-        // 7. 颜色明细整体替换：事务内先按 dyeing_order_id 删旧行，再插本次提交的全部颜色行
-        //    （零颜色也执行删除，保证"清空全部颜色行"语义；line_no 从 1 开始重排）
-        List<DyeingColorDO> colorDOList = buildColorDOList(updateReqVO.getId(), updateReqVO.getColors());
-        dyeingColorMapper.deleteByOrderId(updateReqVO.getId());
-        saveColors(updateReqVO.getId(), colorDOList);
+        // 7. 颜色明细差异保存（ADR-0032）：
+        //    带 id 且属于本单据的行走 update、无 id 行走 insert、本单据库内有但本次未提交的行走逻辑删除；
+        //    删除前触发删除守卫校验（Stage 2 扩展点）；提交行 id 不属于本单据时报错；行号按提交顺序重排。
+        diffSaveColors(updateReqVO.getId(), updateReqVO.getColors());
     }
 
     @Override
@@ -271,8 +279,21 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
     // ==================== 颜色明细聚合私有方法（ADR-0003） ====================
 
     /**
+     * 将请求颜色行转换为 DO：按提交顺序重排 lineNo、回填 dyeingOrderId、数量 null 按 0 处理。
+     */
+    private DyeingColorDO toColorDO(Long dyeingOrderId, int lineNo, DyeingColorSaveReqVO color) {
+        DyeingColorDO colorDO = BeanUtils.toBean(color, DyeingColorDO.class);
+        colorDO.setDyeingOrderId(dyeingOrderId);
+        colorDO.setLineNo(lineNo);
+        if (colorDO.getQuantity() == null) {
+            colorDO.setQuantity(BigDecimal.ZERO);
+        }
+        return colorDO;
+    }
+
+    /**
      * 将请求颜色行列表转换为 DO 列表：按数组顺序重排 line_no（从 1 开始）、
-     * 数量 null 按 0 处理。
+     * 数量 null 按 0 处理。新建时 id 统一置空。
      *
      * @param dyeingOrderId 染色单ID
      * @param colors        请求颜色行列表（为 null/空表示零颜色单据，合法）
@@ -285,12 +306,8 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         }
         for (int i = 0; i < colors.size(); i++) {
             DyeingColorSaveReqVO color = colors.get(i);
-            DyeingColorDO colorDO = BeanUtils.toBean(color, DyeingColorDO.class);
-            colorDO.setDyeingOrderId(dyeingOrderId);
-            colorDO.setLineNo(i + 1);
-            if (colorDO.getQuantity() == null) {
-                colorDO.setQuantity(BigDecimal.ZERO);
-            }
+            DyeingColorDO colorDO = toColorDO(dyeingOrderId, i + 1, color);
+            colorDO.setId(null);
             colorDOList.add(colorDO);
         }
         return colorDOList;
@@ -307,6 +324,71 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
             color.setDyeingOrderId(dyeingOrderId);
         }
         dyeingColorMapper.insertBatch(colors);
+    }
+
+    /**
+     * 对染色单颜色明细做差异保存（ADR-0032）：
+     * - 提交行带 id 且属于本单据存量 → updateById
+     * - 提交行无 id → insert
+     * - 本单据库内存量但本次未提交的 id → deleteByIds 批量逻辑删除
+     * - 提交行 id 不属于本单据时报错（防跨父 id 串数据）
+     * - 提交列表中不得有重复行 id
+     * - 行号按提交顺序从 1 开始重排
+     * - 删除前调用 DyeingColorDeleteGuard 扩展点留桩校验
+     *
+     * @param dyeingOrderId 染色单ID
+     * @param colors        提交的颜色列表（可为 null 或空）
+     */
+    private void diffSaveColors(Long dyeingOrderId, List<DyeingColorSaveReqVO> colors) {
+        // 1. 查询库内存量颜色明细（按 line_no 升序，MP 自动过滤 deleted=1）
+        List<DyeingColorDO> dbColors = dyeingColorMapper.selectListByOrderId(dyeingOrderId);
+        Map<Long, DyeingColorDO> dbColorMap = dbColors.stream()
+                .collect(Collectors.toMap(DyeingColorDO::getId, Function.identity()));
+        Set<Long> remainingDbColorIds = new HashSet<>(dbColorMap.keySet());
+
+        List<DyeingColorDO> toInsert = new ArrayList<>();
+        List<DyeingColorDO> toUpdate = new ArrayList<>();
+        Set<Long> seenIds = new HashSet<>();
+
+        // 2. 遍历提交列表，三分流：更新 / 新增 / 校验跨父非法 ID 及重复 ID
+        if (CollUtil.isNotEmpty(colors)) {
+            for (int i = 0; i < colors.size(); i++) {
+                DyeingColorSaveReqVO color = colors.get(i);
+                DyeingColorDO colorDO = toColorDO(dyeingOrderId, i + 1, color);
+
+                if (color.getId() != null) {
+                    Long colorId = color.getId();
+                    if (!seenIds.add(colorId)) {
+                        throw invalidParamException("染色单颜色明细行 ID【{}】重复提交", colorId);
+                    }
+                    if (!remainingDbColorIds.remove(colorId)) {
+                        // ID 不在当前染色单存量颜色明细中（可能不存在、已删除或属于其他单据）
+                        throw invalidParamException("染色单颜色明细行 ID【{}】不属于当前染色单", colorId);
+                    }
+                    colorDO.setId(colorId);
+                    toUpdate.add(colorDO);
+                } else {
+                    colorDO.setId(null);
+                    toInsert.add(colorDO);
+                }
+            }
+        }
+
+        // 3. 执行删除（存量中未被本次提交命中的 ID，前置守卫校验）
+        if (!remainingDbColorIds.isEmpty()) {
+            dyeingColorDeleteGuard.validateCanDeleteColors(dyeingOrderId, remainingDbColorIds);
+            dyeingColorMapper.deleteByIds(remainingDbColorIds);
+        }
+
+        // 4. 执行更新
+        for (DyeingColorDO updateColorDO : toUpdate) {
+            dyeingColorMapper.updateById(updateColorDO);
+        }
+
+        // 5. 执行新增
+        for (DyeingColorDO insertColorDO : toInsert) {
+            dyeingColorMapper.insert(insertColorDO);
+        }
     }
 
 }

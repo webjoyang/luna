@@ -131,6 +131,7 @@
     <div class="section-title">颜色明细</div>
     <el-table
       :data="colorRows"
+      :row-key="getRowKey"
       border
       size="small"
       class="color-table"
@@ -455,8 +456,24 @@ const formData = ref<DyeingOrderVO>({
   status: 'DRAFT'
 })
 
-// ==================== 颜色明细（聚合保存，ADR-0003） ====================
-const colorRows = ref<DyeingColorVO[]>([])
+// ==================== 颜色明细（聚合保存，ADR-0003 & 差异保存 ADR-0032） ====================
+interface DyeingColorRowVO extends DyeingColorVO {
+  _clientKey?: string
+}
+
+const colorRows = ref<DyeingColorRowVO[]>([])
+
+let tempKeyCounter = 0
+/** 颜色明细表格以行 id 为稳定 key；新增行未落库前以临时 key 保证行唯一性（ADR-0032） */
+const getRowKey = (row: DyeingColorRowVO) => {
+  if (row.id != null) {
+    return row.id
+  }
+  if (!row._clientKey) {
+    row._clientKey = `temp_${++tempKeyCounter}`
+  }
+  return row._clientKey
+}
 
 const unitDictOptions = computed(() => {
   const options = getStrDictOptions(DICT_TYPE.LUNAERP_SALES_CONTRACT_UNIT)
@@ -471,6 +488,8 @@ const unitDictOptions = computed(() => {
 
 const addColor = () => {
   colorRows.value.push({
+    _clientKey: `temp_${++tempKeyCounter}`,
+    id: undefined,
     customerColorNo: '',
     colorName: '',
     quantity: 0,
@@ -563,6 +582,8 @@ const handleContractChange = async (val?: number) => {
 
         // 把该合同全部明细行拷到染色单明细
         colorRows.value = items.map((item) => ({
+          _clientKey: `temp_${++tempKeyCounter}`,
+          id: undefined,
           customerColorNo: item.customerColor || '',
           colorName: '',
           quantity: item.quantity != null ? Number(item.quantity) : 0,
@@ -661,7 +682,7 @@ const buildSubmitData = (status: 'DRAFT' | 'ACTIVE'): DyeingOrderVO => ({
   ...formData.value,
   status,
   colors: colorRows.value.map((row) => ({
-    id: row.id,
+    id: row.id != null ? row.id : undefined,
     dyeingOrderId: row.dyeingOrderId,
     lineNo: row.lineNo,
     customerColorNo: row.customerColorNo || '',
