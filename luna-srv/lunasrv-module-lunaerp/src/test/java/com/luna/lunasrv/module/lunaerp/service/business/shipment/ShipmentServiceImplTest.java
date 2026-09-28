@@ -9,6 +9,7 @@ import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
@@ -16,12 +17,16 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemD
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouse.WarehouseDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
+import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMapper;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -32,6 +37,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -47,16 +53,6 @@ import static org.mockito.Mockito.*;
 
 /**
  * {@link ShipmentServiceImpl} 纯 Mockito 单元测试
- *
- * 覆盖 Issue 02 业务行为：
- * 1. 创建：status 缺省 DRAFT；signStatus 缺省 PENDING；currency 缺省 RMB；shippingDate 缺省当天
- * 2. 编号：SH-YYYYMMDD-NNN 按天取号；手填撞号报 SHIPMENT_NO_DUPLICATE (016_001)
- * 3. 关联校验与快照回填：客户必选且 ACTIVE；发货仓库必选且 ACTIVE；合同存在；业务员存在且启用；产品必选存在；来源入库明细存在；违规报 SHIPMENT_RELATED_REF_NOT_EXISTS (016_003)
- * 4. 聚合保存与权威重算：金额 = quantity × unitPrice，整单 totalAmount/totalPieces 服务端重算；允许零明细草稿
- * 5. 更新：仅 DRAFT 可改，非草稿报 SHIPMENT_STATUS_NOT_ALLOW (016_002)；明细与卷清单整表逻辑删除后重插；金额匹数重算
- * 6. 删除：仅 DRAFT 可删，非草稿报 016_002；删除主表级联逻辑删除 items 与 rolls
- * 7. 详情查询与分页查询
- * 8. 预览下一个单号
  */
 class ShipmentServiceImplTest {
 
@@ -79,6 +75,9 @@ class ShipmentServiceImplTest {
     private SalesContractMapper salesContractMapper;
 
     @Mock
+    private SalesContractItemMapper salesContractItemMapper;
+
+    @Mock
     private ProductMapper productMapper;
 
     @Mock
@@ -86,6 +85,12 @@ class ShipmentServiceImplTest {
 
     @Mock
     private AdminUserApi adminUserApi;
+
+    @Mock
+    private StockLedgerMapper stockLedgerMapper;
+
+    @Mock
+    private SecurityFrameworkService securityFrameworkService;
 
     @InjectMocks
     private ShipmentServiceImpl shipmentService;
@@ -98,6 +103,8 @@ class ShipmentServiceImplTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ShipmentDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ShipmentItemDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ShipmentRollDO.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockLedgerDO.class);
+        when(securityFrameworkService.hasPermission(anyString())).thenReturn(true);
 
         when(shipmentMapper.insert(any(ShipmentDO.class))).thenAnswer(invocation -> {
             ShipmentDO doObj = invocation.getArgument(0);
@@ -740,4 +747,432 @@ class ShipmentServiceImplTest {
         verify(shipmentRollMapper).insert(any(ShipmentRollDO.class));
     }
 
+    // ==================== 6. Issue 05 - 从合同明细带入与实时合同未发量 ====================
+
+    private SalesContractItemDO createContractItem(Long id, Long contractId, int lineNo,
+                                                  String productCode, String productName,
+                                                  String customerColor, BigDecimal quantity,
+                                                  BigDecimal unitPrice, String remark) {
+        SalesContractItemDO item = new SalesContractItemDO();
+        item.setId(id);
+        item.setContractId(contractId);
+        item.setLineNo(lineNo);
+        item.setProductCode(productCode);
+        item.setProductName(productName);
+        item.setCustomerColor(customerColor);
+        item.setQuantity(quantity);
+        item.setUnitPrice(unitPrice);
+        item.setRemark(remark);
+        return item;
+    }
+
+    @Test
+    @DisplayName("从合同带入：销售合同不存在报 SHIPMENT_RELATED_REF_NOT_EXISTS (1_030_016_003)")
+    void testFromContract_contractNotExists_throwsException() {
+        when(salesContractMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.getShipmentItemsFromContract(999L));
+        assertEquals(SHIPMENT_RELATED_REF_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("从合同带入：合同存在但明细为空，返回空列表")
+    void testFromContract_emptyItems_returnsEmptyList() {
+        SalesContractDO contract = createContract(3L, "CH20260001");
+        when(salesContractMapper.selectById(3L)).thenReturn(contract);
+        when(salesContractItemMapper.selectListByContractId(3L)).thenReturn(Collections.emptyList());
+
+        List<ShipmentItemRespVO> result = shipmentService.getShipmentItemsFromContract(3L);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("从合同带入：无已生效出库单时，未发量等于合同数量，回填产品快照与单价，且不写库")
+    void testFromContract_success_unshippedQuantityEqualsContractQuantityWhenNoCompletedShipments() {
+        // Arrange
+        SalesContractDO contract = createContract(3L, "CH20260001");
+        contract.setUnit("M");
+        when(salesContractMapper.selectById(3L)).thenReturn(contract);
+
+        SalesContractItemDO item1 = createContractItem(1L, 3L, 1, "PRD-01", "面料A", "RED",
+                new BigDecimal("100.00"), new BigDecimal("25.00"), "首批交货");
+        SalesContractItemDO item2 = createContractItem(2L, 3L, 2, "PRD-02", "面料B", "BLUE",
+                new BigDecimal("50.00"), new BigDecimal("15.00"), null);
+        when(salesContractItemMapper.selectListByContractId(3L)).thenReturn(List.of(item1, item2));
+
+        ProductDO product1 = createProduct(501L, "PRD-01", "面料A");
+        ProductDO product2 = createProduct(502L, "PRD-02", "面料B");
+        when(productMapper.selectByCode("PRD-01")).thenReturn(product1);
+        when(productMapper.selectByCode("PRD-02")).thenReturn(product2);
+
+        // 无已生效出库的发货单
+        when(shipmentMapper.selectListByContractIdAndStatus(3L, "COMPLETED")).thenReturn(Collections.emptyList());
+
+        // Act
+        List<ShipmentItemRespVO> result = shipmentService.getShipmentItemsFromContract(3L);
+
+        // Assert
+        assertEquals(2, result.size());
+
+        ShipmentItemRespVO resp1 = result.get(0);
+        assertEquals(501L, resp1.getProductId());
+        assertEquals("PRD-01", resp1.getProductCode());
+        assertEquals("面料A", resp1.getProductName());
+        assertEquals("RED", resp1.getCustomerColorNo());
+        assertEquals(new BigDecimal("100.00"), resp1.getQuantity());
+        assertEquals(new BigDecimal("25.00"), resp1.getUnitPrice());
+        assertEquals(new BigDecimal("2500.00"), resp1.getAmount());
+        assertEquals("M", resp1.getUnit());
+        assertEquals(1, resp1.getPieces());
+        assertEquals("首批交货", resp1.getRemark());
+
+        ShipmentItemRespVO resp2 = result.get(1);
+        assertEquals(502L, resp2.getProductId());
+        assertEquals("PRD-02", resp2.getProductCode());
+        assertEquals("面料B", resp2.getProductName());
+        assertEquals("BLUE", resp2.getCustomerColorNo());
+        assertEquals(new BigDecimal("50.00"), resp2.getQuantity());
+        assertEquals(new BigDecimal("15.00"), resp2.getUnitPrice());
+        assertEquals(new BigDecimal("750.00"), resp2.getAmount());
+
+        // 验证只读不落库：没有任何 insert/update/delete 调用
+        verify(shipmentMapper, never()).insert(any(ShipmentDO.class));
+        verify(shipmentMapper, never()).updateById(any(ShipmentDO.class));
+        verify(shipmentItemMapper, never()).insert(any(ShipmentItemDO.class));
+        verify(salesContractMapper, never()).updateById(any(SalesContractDO.class));
+    }
+
+    @Test
+    @DisplayName("从合同带入：按 COMPLETED 已生效发货单扣减未发量，依产品+客户色号聚合")
+    void testFromContract_success_unshippedQuantityDeductsCompletedShipments() {
+        // Arrange
+        SalesContractDO contract = createContract(3L, "CH20260001");
+        contract.setUnit("KG");
+        when(salesContractMapper.selectById(3L)).thenReturn(contract);
+
+        SalesContractItemDO item1 = createContractItem(1L, 3L, 1, "PRD-01", "面料A", "RED",
+                new BigDecimal("100.00"), new BigDecimal("20.00"), null);
+        SalesContractItemDO item2 = createContractItem(2L, 3L, 2, "PRD-02", "面料B", "BLUE",
+                new BigDecimal("80.00"), new BigDecimal("30.00"), null);
+        when(salesContractItemMapper.selectListByContractId(3L)).thenReturn(List.of(item1, item2));
+
+        ProductDO product1 = createProduct(501L, "PRD-01", "面料A");
+        ProductDO product2 = createProduct(502L, "PRD-02", "面料B");
+        when(productMapper.selectByCode("PRD-01")).thenReturn(product1);
+        when(productMapper.selectByCode("PRD-02")).thenReturn(product2);
+
+        // 存在两张已完成（COMPLETED）的发货单
+        ShipmentDO shipment1 = new ShipmentDO();
+        shipment1.setId(101L);
+        ShipmentDO shipment2 = new ShipmentDO();
+        shipment2.setId(102L);
+        when(shipmentMapper.selectListByContractIdAndStatus(3L, "COMPLETED")).thenReturn(List.of(shipment1, shipment2));
+
+        // 发货单1已发：PRD-01 RED 40.00
+        ShipmentItemDO shipped1 = new ShipmentItemDO();
+        shipped1.setShipmentId(101L);
+        shipped1.setProductCode("PRD-01");
+        shipped1.setCustomerColorNo("RED");
+        shipped1.setQuantity(new BigDecimal("40.00"));
+
+        // 发货单2已发：PRD-01 RED 20.00，PRD-02 BLUE 35.00
+        ShipmentItemDO shipped2a = new ShipmentItemDO();
+        shipped2a.setShipmentId(102L);
+        shipped2a.setProductCode("PRD-01");
+        shipped2a.setCustomerColorNo("RED");
+        shipped2a.setQuantity(new BigDecimal("20.00"));
+
+        ShipmentItemDO shipped2b = new ShipmentItemDO();
+        shipped2b.setShipmentId(102L);
+        shipped2b.setProductCode("PRD-02");
+        shipped2b.setCustomerColorNo("BLUE");
+        shipped2b.setQuantity(new BigDecimal("35.00"));
+
+        when(shipmentItemMapper.selectListByShipmentIds(List.of(101L, 102L)))
+                .thenReturn(List.of(shipped1, shipped2a, shipped2b));
+
+        // Act
+        List<ShipmentItemRespVO> result = shipmentService.getShipmentItemsFromContract(3L);
+
+        // Assert
+        assertEquals(2, result.size());
+
+        // item1 (PRD-01 RED): 100 - 40 - 20 = 40
+        ShipmentItemRespVO resp1 = result.get(0);
+        assertEquals(new BigDecimal("40.00"), resp1.getQuantity());
+        assertEquals(new BigDecimal("800.00"), resp1.getAmount());
+
+        // item2 (PRD-02 BLUE): 80 - 35 = 45
+        ShipmentItemRespVO resp2 = result.get(1);
+        assertEquals(new BigDecimal("45.00"), resp2.getQuantity());
+        assertEquals(new BigDecimal("1350.00"), resp2.getAmount());
+    }
+
+    @Test
+    @DisplayName("从合同带入：已发数量超过合同数量时，未发量结果保底为 0，不为负数")
+    void testFromContract_success_unshippedQuantityFloorAtZero() {
+        SalesContractDO contract = createContract(3L, "CH20260001");
+        when(salesContractMapper.selectById(3L)).thenReturn(contract);
+
+        SalesContractItemDO item1 = createContractItem(1L, 3L, 1, "PRD-01", "面料A", "RED",
+                new BigDecimal("50.00"), new BigDecimal("10.00"), null);
+        when(salesContractItemMapper.selectListByContractId(3L)).thenReturn(List.of(item1));
+
+        ProductDO product1 = createProduct(501L, "PRD-01", "面料A");
+        when(productMapper.selectByCode("PRD-01")).thenReturn(product1);
+
+        ShipmentDO shipment1 = new ShipmentDO();
+        shipment1.setId(101L);
+        when(shipmentMapper.selectListByContractIdAndStatus(3L, "COMPLETED")).thenReturn(List.of(shipment1));
+
+        // 已发 60，超过合同数量 50
+        ShipmentItemDO shipped1 = new ShipmentItemDO();
+        shipped1.setShipmentId(101L);
+        shipped1.setProductCode("PRD-01");
+        shipped1.setCustomerColorNo("RED");
+        shipped1.setQuantity(new BigDecimal("60.00"));
+        when(shipmentItemMapper.selectListByShipmentIds(List.of(101L))).thenReturn(List.of(shipped1));
+
+        List<ShipmentItemRespVO> result = shipmentService.getShipmentItemsFromContract(3L);
+        assertEquals(1, result.size());
+        assertEquals(new BigDecimal("0.00"), result.get(0).getQuantity());
+        assertEquals(new BigDecimal("0.00"), result.get(0).getAmount());
+    }
+
+    @Test
+    @DisplayName("从合同带入：产品档案未找到时仍带出 productCode 与 productName 快照")
+    void testFromContract_success_productNotFoundStillReturnsCodeAndNameSnapshot() {
+        SalesContractDO contract = createContract(3L, "CH20260001");
+        when(salesContractMapper.selectById(3L)).thenReturn(contract);
+
+        SalesContractItemDO item = createContractItem(1L, 3L, 1, "CUSTOM-CODE", "自定义品种", "BLACK",
+                new BigDecimal("30.00"), new BigDecimal("18.00"), null);
+        when(salesContractItemMapper.selectListByContractId(3L)).thenReturn(List.of(item));
+
+        when(productMapper.selectByCode("CUSTOM-CODE")).thenReturn(null);
+        when(shipmentMapper.selectListByContractIdAndStatus(3L, "COMPLETED")).thenReturn(Collections.emptyList());
+
+        List<ShipmentItemRespVO> result = shipmentService.getShipmentItemsFromContract(3L);
+        assertEquals(1, result.size());
+        assertNull(result.get(0).getProductId());
+        assertEquals("CUSTOM-CODE", result.get(0).getProductCode());
+        assertEquals("自定义品种", result.get(0).getProductName());
+        assertEquals("BLACK", result.get(0).getCustomerColorNo());
+        assertEquals(new BigDecimal("30.00"), result.get(0).getQuantity());
+    }
+
+    // ==================== 7. Issue 04 - 审核出库过账与红冲 ====================
+
+    @Test
+    @DisplayName("审核发货单：发货单不存在报 SHIPMENT_NOT_EXISTS (1_030_016_000)")
+    void testAuditShipment_notExists_throwsException() {
+        when(shipmentMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.auditShipment(999L));
+        assertEquals(SHIPMENT_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("审核发货单：非草稿状态报 SHIPMENT_STATUS_NOT_ALLOW (1_030_016_002)")
+    void testAuditShipment_nonDraftStatus_throwsException() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("COMPLETED");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.auditShipment(10L));
+        assertEquals(SHIPMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("审核发货单：零明细不可审核报 SHIPMENT_AUDIT_NO_ITEMS (1_030_016_004)")
+    void testAuditShipment_noItems_throwsException() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("DRAFT");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(Collections.emptyList());
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.auditShipment(10L));
+        assertEquals(SHIPMENT_AUDIT_NO_ITEMS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("审核发货单：库存不足硬拦截报 SHIPMENT_STOCK_NOT_ENOUGH (1_030_016_005)")
+    void testAuditShipment_stockNotEnough_throwsException() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("DRAFT");
+        shipment.setWarehouseId(2L);
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        ShipmentItemDO item1 = new ShipmentItemDO();
+        item1.setShipmentId(10L);
+        item1.setProductId(1001L);
+        item1.setProductCode("PRD-01");
+        item1.setProductName("面料A");
+        item1.setQuantity(new BigDecimal("50.00"));
+        item1.setUnit("KG");
+
+        ShipmentItemDO item2 = new ShipmentItemDO();
+        item2.setShipmentId(10L);
+        item2.setProductId(1001L);
+        item2.setProductCode("PRD-01");
+        item2.setProductName("面料A");
+        item2.setQuantity(new BigDecimal("60.00"));
+        item2.setUnit("KG");
+
+        // 合并需求 50 + 60 = 110 KG，库存当前仅 100 KG
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item1, item2));
+        when(stockLedgerMapper.sumQuantityByWarehouseAndProductAndUnit(2L, 1001L, "KG"))
+                .thenReturn(new BigDecimal("100.00"));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.auditShipment(10L));
+        assertEquals(SHIPMENT_STOCK_NOT_ENOUGH.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("审核发货单：库存充足审核成功，更新单据为 COMPLETED 并逐条写入 SHIPMENT_OUT 负数流水")
+    void testAuditShipment_success_updatesStatusAndInsertsNegativeLedger() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setShipmentNo("SH-20260928-001");
+        shipment.setStatus("DRAFT");
+        shipment.setWarehouseId(2L);
+        shipment.setWarehouseName("成品一仓");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        ShipmentItemDO item = new ShipmentItemDO();
+        item.setShipmentId(10L);
+        item.setProductId(1001L);
+        item.setProductCode("PRD-01");
+        item.setProductName("面料A");
+        item.setVatNo("VAT-2026-001");
+        item.setQuantity(new BigDecimal("50.00"));
+        item.setUnitPrice(new BigDecimal("20.00"));
+        item.setAmount(new BigDecimal("1000.00"));
+        item.setUnit("KG");
+        item.setRemark("首批出库");
+
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(List.of(item));
+        when(stockLedgerMapper.sumQuantityByWarehouseAndProductAndUnit(2L, 1001L, "KG"))
+                .thenReturn(new BigDecimal("100.00"));
+
+        // Act
+        shipmentService.auditShipment(10L);
+
+        // Assert 状态更新为 COMPLETED
+        ArgumentCaptor<ShipmentDO> shipmentCaptor = ArgumentCaptor.forClass(ShipmentDO.class);
+        verify(shipmentMapper).updateById(shipmentCaptor.capture());
+        assertEquals("COMPLETED", shipmentCaptor.getValue().getStatus());
+
+        // Assert 写入一条负数出库流水
+        ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
+        verify(stockLedgerMapper).insert(ledgerCaptor.capture());
+        StockLedgerDO ledger = ledgerCaptor.getValue();
+
+        assertEquals("PRODUCT", ledger.getItemType());
+        assertEquals(1001L, ledger.getProductId());
+        assertEquals("PRD-01", ledger.getProductCode());
+        assertEquals("面料A", ledger.getProductName());
+        assertEquals(2L, ledger.getWarehouseId());
+        assertEquals("成品一仓", ledger.getWarehouseName());
+        assertNull(ledger.getLocationId());
+        assertNull(ledger.getLocationCode());
+        assertEquals("VAT-2026-001", ledger.getBatchNo());
+        assertEquals("SHIPMENT_OUT", ledger.getTxnType());
+        assertEquals(new BigDecimal("-50.00"), ledger.getQuantity());
+        assertEquals("KG", ledger.getUnit());
+        assertEquals(new BigDecimal("20.00"), ledger.getUnitPrice());
+        assertEquals(new BigDecimal("-1000.00"), ledger.getAmount());
+        assertEquals("SHIPMENT", ledger.getRelatedDocType());
+        assertEquals(10L, ledger.getRelatedDocId());
+        assertEquals("SH-20260928-001", ledger.getRelatedDocNo());
+        assertEquals("首批出库", ledger.getRemark());
+    }
+
+    @Test
+    @DisplayName("取消发货单：草稿态作废更新为 CANCELLED，不写库存流水")
+    void testCancelShipment_draft_success_noLedgerWritten() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("DRAFT");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        // Act
+        shipmentService.cancelShipment(10L);
+
+        // Assert
+        ArgumentCaptor<ShipmentDO> captor = ArgumentCaptor.forClass(ShipmentDO.class);
+        verify(shipmentMapper).updateById(captor.capture());
+        assertEquals("CANCELLED", captor.getValue().getStatus());
+        verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
+    }
+
+    @Test
+    @DisplayName("取消发货单：已发货态红冲更新为 CANCELLED，反查原流水并逐条插入正数 SHIPMENT_OUT_REVERSAL 流水")
+    void testCancelShipment_completed_success_insertsReversalLedgers() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setShipmentNo("SH-20260928-001");
+        shipment.setStatus("COMPLETED");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        // 原流水（负数）
+        StockLedgerDO orig = new StockLedgerDO();
+        orig.setItemType("PRODUCT");
+        orig.setProductId(1001L);
+        orig.setProductCode("PRD-01");
+        orig.setProductName("面料A");
+        orig.setWarehouseId(2L);
+        orig.setWarehouseName("成品一仓");
+        orig.setBatchNo("VAT-001");
+        orig.setQuantity(new BigDecimal("-50.00"));
+        orig.setUnit("KG");
+        orig.setUnitPrice(new BigDecimal("20.00"));
+        orig.setAmount(new BigDecimal("-1000.00"));
+        orig.setRelatedDocType("SHIPMENT");
+        orig.setRelatedDocId(10L);
+        orig.setRelatedDocNo("SH-20260928-001");
+
+        when(stockLedgerMapper.selectListByRelatedDoc("SHIPMENT", 10L, "SHIPMENT_OUT"))
+                .thenReturn(List.of(orig));
+
+        // Act
+        shipmentService.cancelShipment(10L);
+
+        // Assert 单据转 CANCELLED
+        ArgumentCaptor<ShipmentDO> captor = ArgumentCaptor.forClass(ShipmentDO.class);
+        verify(shipmentMapper).updateById(captor.capture());
+        assertEquals("CANCELLED", captor.getValue().getStatus());
+
+        // Assert 写入红冲正数流水
+        ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
+        verify(stockLedgerMapper).insert(ledgerCaptor.capture());
+        StockLedgerDO reversal = ledgerCaptor.getValue();
+
+        assertEquals("SHIPMENT_OUT_REVERSAL", reversal.getTxnType());
+        assertEquals(new BigDecimal("50.00"), reversal.getQuantity());
+        assertEquals(new BigDecimal("1000.00"), reversal.getAmount());
+        assertEquals(1001L, reversal.getProductId());
+        assertEquals("PRD-01", reversal.getProductCode());
+        assertEquals("面料A", reversal.getProductName());
+        assertEquals("VAT-001", reversal.getBatchNo());
+        assertEquals(10L, reversal.getRelatedDocId());
+        assertEquals("SH-20260928-001", reversal.getRelatedDocNo());
+    }
+
+    @Test
+    @DisplayName("取消发货单：已取消终态再操作报 SHIPMENT_STATUS_NOT_ALLOW (1_030_016_002)")
+    void testCancelShipment_alreadyCancelled_throwsException() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("CANCELLED");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.cancelShipment(10L));
+        assertEquals(SHIPMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
 }
+

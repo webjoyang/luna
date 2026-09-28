@@ -40,4 +40,14 @@ public interface StockLedgerService {
      */
     BigDecimal getYarnSpecBalance(Long warehouseId, Long yarnSpecId);
 
+    /**
+     * 获得某仓库下某产品某单位的当前可用余额（SUM(quantity)）
+     *
+     * @param warehouseId 仓库ID
+     * @param productId 产品ID
+     * @param unit 单位
+     * @return 当前可用余额
+     */
+    BigDecimal getProductBalance(Long warehouseId, Long productId, String unit);
+
 }

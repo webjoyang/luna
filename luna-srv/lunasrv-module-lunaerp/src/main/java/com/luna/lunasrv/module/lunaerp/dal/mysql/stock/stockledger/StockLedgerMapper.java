@@ -67,6 +67,20 @@ public interface StockLedgerMapper extends BaseMapperX<StockLedgerDO> {
                                                  @Param("yarnSpecId") Long yarnSpecId);
 
     /**
+     * 统计指定仓库下某产品在特定单位下的当前库存可用余额（SUM(quantity)）
+     *
+     * @param warehouseId 仓库ID
+     * @param productId 产品ID
+     * @param unit 单位
+     * @return 当前可用余额（null 时由 COALESCE 兜底返回 0）
+     */
+    @Select("SELECT COALESCE(SUM(quantity), 0) FROM lunaerp_stock_ledger " +
+            "WHERE warehouse_id = #{warehouseId} AND product_id = #{productId} AND unit = #{unit} AND deleted = 0")
+    BigDecimal sumQuantityByWarehouseAndProductAndUnit(@Param("warehouseId") Long warehouseId,
+                                                       @Param("productId") Long productId,
+                                                       @Param("unit") String unit);
+
+    /**
      * 实时聚合库存余额分页查询
      *
      * 按 item_type, product_id, yarn_spec_id, warehouse_id, unit 分组求和 SUM(quantity)；

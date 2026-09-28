@@ -4,15 +4,25 @@
       <div class="text-14px font-medium text-gray-700">
         发货明细列表（共 {{ itemsList.length }} 条明细）
       </div>
-      <el-button
-        v-if="!isReadOnly"
-        type="primary"
-        plain
-        size="small"
-        @click="handleAddRow"
-      >
-        <Icon icon="ep:plus" class="mr-2px" /> 添加明细
-      </el-button>
+      <div v-if="!isReadOnly" class="flex items-center gap-2">
+        <el-button
+          type="warning"
+          plain
+          size="small"
+          :loading="importLoading"
+          @click="handleImportFromContract"
+        >
+          <Icon icon="ep:download" class="mr-2px" /> 从合同明细带入
+        </el-button>
+        <el-button
+          type="primary"
+          plain
+          size="small"
+          @click="handleAddRow"
+        >
+          <Icon icon="ep:plus" class="mr-2px" /> 添加明细
+        </el-button>
+      </div>
     </div>
 
     <el-table :data="itemsList" border stripe class="w-full">
@@ -243,7 +253,9 @@
 
 <script lang="ts" setup>
 import { ref, computed, onMounted } from 'vue'
+import { useMessage } from '@/hooks/web/useMessage'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
+import * as ShipmentApi from '@/api/lunaerp-elmui/business/shipment'
 import type { ShipmentItemVO, ShipmentRollVO } from '@/api/lunaerp-elmui/business/shipment'
 import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
@@ -252,6 +264,7 @@ import RollsDialog from './RollsDialog.vue'
 const props = defineProps<{
   items?: ShipmentItemVO[]
   isReadOnly: boolean
+  contractId?: number
 }>()
 
 const emit = defineEmits<{
@@ -259,10 +272,56 @@ const emit = defineEmits<{
   (e: 'recalculate'): void
 }>()
 
+const message = useMessage()
+const importLoading = ref(false)
+
 const itemsList = computed<ShipmentItemVO[]>({
   get: () => props.items || [],
   set: (val) => emit('update:items', val)
 })
+
+const handleImportFromContract = async () => {
+  if (!props.contractId) {
+    message.warning('请先在基本信息中选择销售合同')
+    return
+  }
+  if (itemsList.value.length > 0) {
+    await message.confirm('从合同明细带入将覆盖当前发货明细列表，是否确认继续？')
+  }
+  importLoading.value = true
+  try {
+    const contractItems = await ShipmentApi.getShipmentItemsFromContract(props.contractId)
+    if (!contractItems || contractItems.length === 0) {
+      message.info('该销售合同暂无明细数据')
+      return
+    }
+    const formattedItems: ShipmentItemVO[] = contractItems.map((item) => ({
+      productId: item.productId,
+      productCode: item.productCode || '',
+      productName: item.productName || '',
+      customerColorNo: item.customerColorNo || '',
+      colorName: item.colorName || '',
+      vatNo: item.vatNo || '',
+      quantity: item.quantity != null ? item.quantity : 0,
+      pieces: item.pieces != null ? item.pieces : 1,
+      unit: item.unit || 'KG',
+      unitPrice: item.unitPrice != null ? item.unitPrice : 0,
+      amount:
+        item.amount != null
+          ? item.amount
+          : Math.round((item.quantity || 0) * (item.unitPrice || 0) * 100) / 100,
+      remark: item.remark || '',
+      rolls: []
+    }))
+    emit('update:items', formattedItems)
+    emit('recalculate')
+    message.success(`成功带入 ${formattedItems.length} 条合同明细`)
+  } catch (e: any) {
+    // 错误处理由全局拦截或取消提示
+  } finally {
+    importLoading.value = false
+  }
+}
 
 // 产品远程搜索
 const productOptions = ref<ProductVO[]>([])

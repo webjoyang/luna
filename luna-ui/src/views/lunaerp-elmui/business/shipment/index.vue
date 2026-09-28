@@ -142,7 +142,7 @@
         align="center"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" width="200" align="center" fixed="right">
+      <el-table-column label="操作" width="240" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -164,11 +164,38 @@
           <el-button
             v-if="row.status === 'DRAFT'"
             link
+            type="success"
+            @click="handleAudit(row)"
+            v-hasPermi="['lunaerp:business:shipment:audit']"
+          >
+            <Icon icon="ep:check" class="mr-2px" />审核
+          </el-button>
+          <el-button
+            v-if="row.status === 'DRAFT'"
+            link
+            type="warning"
+            @click="handleCancelDraft(row)"
+            v-hasPermi="['lunaerp:business:shipment:update']"
+          >
+            <Icon icon="ep:circle-close" class="mr-2px" />作废
+          </el-button>
+          <el-button
+            v-if="row.status === 'DRAFT'"
+            link
             type="danger"
             @click="handleDelete(row)"
             v-hasPermi="['lunaerp:business:shipment:delete']"
           >
             <Icon icon="ep:delete" class="mr-2px" />删除
+          </el-button>
+          <el-button
+            v-if="row.status === 'COMPLETED'"
+            link
+            type="danger"
+            @click="handleCancelReversal(row)"
+            v-hasPermi="['lunaerp:business:shipment:audit']"
+          >
+            <Icon icon="ep:refresh-left" class="mr-2px" />红冲
           </el-button>
         </template>
       </el-table-column>
@@ -313,6 +340,39 @@ const handleDelete = async (row: ShipmentVO) => {
     await message.confirm(`确认删除发货单【${row.shipmentNo || row.id}】吗？删除后明细与卷清单将一并删除。`)
     await ShipmentApi.deleteShipment(row.id!)
     message.success('删除成功')
+    await getList()
+  } catch {}
+}
+
+/** 审核发货单 */
+const handleAudit = async (row: ShipmentVO) => {
+  try {
+    await message.confirm('确定要审核该发货单吗？审核后将校验库存、扣减库存并记入负数出库流水，且不可修改。', '审核确认')
+    await ShipmentApi.auditShipment(row.id!)
+    message.success('审核出库成功')
+    await getList()
+  } catch {}
+}
+
+/** 作废草稿单 */
+const handleCancelDraft = async (row: ShipmentVO) => {
+  try {
+    await message.confirm('确定要作废该发货单草稿吗？作废后不可恢复。', '作废确认')
+    await ShipmentApi.cancelShipment(row.id!)
+    message.success('作废成功')
+    await getList()
+  } catch {}
+}
+
+/** 已发货红冲取消操作 */
+const handleCancelReversal = async (row: ShipmentVO) => {
+  try {
+    const tip = row.signStatus === 'SIGNED'
+      ? '【注意：该单客户已签收！】确定要取消并红冲该发货单吗？将生成正数红冲流水并恢复库存，且不可撤销！'
+      : '确定要取消并红冲该发货单吗？将生成正数红冲流水并恢复库存，且不可撤销！'
+    await message.confirm(tip, '红冲确认')
+    await ShipmentApi.cancelShipment(row.id!)
+    message.success('红冲取消成功')
     await getList()
   } catch {}
 }

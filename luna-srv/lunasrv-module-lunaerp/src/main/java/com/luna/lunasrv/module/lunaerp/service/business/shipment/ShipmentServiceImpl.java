@@ -10,6 +10,7 @@ import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
@@ -17,15 +18,20 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemD
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouse.WarehouseDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
+import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMapper;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -80,6 +86,37 @@ public class ShipmentServiceImpl implements ShipmentService {
      */
     private static final String DEFAULT_STATUS = "DRAFT";
     /**
+     * 单据状态：已发货
+     */
+    private static final String STATUS_COMPLETED = "COMPLETED";
+    /**
+     * 单据状态：已取消
+     */
+    private static final String STATUS_CANCELLED = "CANCELLED";
+
+    /**
+     * 关联单据类型：发货单
+     */
+    private static final String DOC_TYPE_SHIPMENT = "SHIPMENT";
+    /**
+     * 业务动作类型：发货出库（负数）
+     */
+    private static final String TXN_TYPE_SHIPMENT_OUT = "SHIPMENT_OUT";
+    /**
+     * 业务动作类型：发货出库红冲（正数）
+     */
+    private static final String TXN_TYPE_SHIPMENT_OUT_REVERSAL = "SHIPMENT_OUT_REVERSAL";
+
+    /**
+     * 权限码：修改（用于草稿作废）
+     */
+    private static final String PERMISSION_UPDATE = "lunaerp:business:shipment:update";
+    /**
+     * 权限码：审核（用于审核及红冲）
+     */
+    private static final String PERMISSION_AUDIT = "lunaerp:business:shipment:audit";
+
+    /**
      * 默认签收状态：待签收
      */
     private static final String DEFAULT_SIGN_STATUS = "PENDING";
@@ -107,6 +144,9 @@ public class ShipmentServiceImpl implements ShipmentService {
     private SalesContractMapper salesContractMapper;
 
     @Resource
+    private SalesContractItemMapper salesContractItemMapper;
+
+    @Resource
     private ProductMapper productMapper;
 
     @Resource
@@ -114,6 +154,12 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Resource
     private AdminUserApi adminUserApi;
+
+    @Resource
+    private StockLedgerMapper stockLedgerMapper;
+
+    @Resource
+    private SecurityFrameworkService securityFrameworkService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -251,6 +297,239 @@ public class ShipmentServiceImpl implements ShipmentService {
         // 只读预览、不占号：直接扫描同前缀单号（含已删除行，ADR-0029）
         LocalDate date = shippingDate != null ? shippingDate : LocalDate.now();
         return generateShipmentNo(date);
+    }
+
+    @Override
+    public List<ShipmentItemRespVO> getShipmentItemsFromContract(Long contractId) {
+        // 1. 校验销售合同存在，不存在报 1_030_016_003
+        if (contractId == null) {
+            throw exception(SHIPMENT_RELATED_REF_NOT_EXISTS, "销售合同");
+        }
+        SalesContractDO contract = salesContractMapper.selectById(contractId);
+        if (contract == null) {
+            throw exception(SHIPMENT_RELATED_REF_NOT_EXISTS, "销售合同");
+        }
+
+        // 2. 查询合同明细列表（按 line_no 升序）
+        List<SalesContractItemDO> contractItems = salesContractItemMapper.selectListByContractId(contractId);
+        if (CollUtil.isEmpty(contractItems)) {
+            return Collections.emptyList();
+        }
+
+        // 3. 实时只读计算：按已生效出库的发货单（COMPLETED 态、即已过账写负流水）依产品/客户色号聚合已发数量
+        List<ShipmentDO> completedShipments = shipmentMapper.selectListByContractIdAndStatus(contractId, "COMPLETED");
+        Map<String, BigDecimal> shippedQtyByKey = new HashMap<>();
+        if (CollUtil.isNotEmpty(completedShipments)) {
+            List<Long> completedShipmentIds = completedShipments.stream()
+                    .map(ShipmentDO::getId)
+                    .collect(Collectors.toList());
+            List<ShipmentItemDO> shippedItems = shipmentItemMapper.selectListByShipmentIds(completedShipmentIds);
+            if (CollUtil.isNotEmpty(shippedItems)) {
+                for (ShipmentItemDO shippedItem : shippedItems) {
+                    if (shippedItem.getQuantity() != null && shippedItem.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
+                        String key = makeProductColorKey(shippedItem.getProductCode(), shippedItem.getCustomerColorNo());
+                        shippedQtyByKey.merge(key, shippedItem.getQuantity(), BigDecimal::add);
+                    }
+                }
+            }
+        }
+
+        // 4. 按合同明细逐行组装预填发货明细：
+        //    每行数量缺省为实时计算的"合同未发量"（合同数量 - 已发量，结果 >= 0），不直接落库
+        List<ShipmentItemRespVO> result = new ArrayList<>();
+        for (SalesContractItemDO contractItem : contractItems) {
+            ShipmentItemRespVO resp = new ShipmentItemRespVO();
+
+            // 4.1 产品快照与 ID 反查
+            if (StringUtils.hasText(contractItem.getProductCode())) {
+                ProductDO product = productMapper.selectByCode(contractItem.getProductCode());
+                if (product != null) {
+                    resp.setProductId(product.getId());
+                    resp.setProductCode(product.getCode());
+                    resp.setProductName(StringUtils.hasText(product.getName()) ? product.getName() : contractItem.getProductName());
+                } else {
+                    resp.setProductCode(contractItem.getProductCode());
+                    resp.setProductName(contractItem.getProductName());
+                }
+            } else {
+                resp.setProductName(contractItem.getProductName());
+            }
+
+            // 4.2 客户色号与单价
+            resp.setCustomerColorNo(contractItem.getCustomerColor());
+            BigDecimal unitPrice = contractItem.getUnitPrice() != null ? contractItem.getUnitPrice().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+            resp.setUnitPrice(unitPrice);
+
+            // 4.3 合同未发量计算（贪心扣减池，确保每行未发量 >= 0）
+            BigDecimal contractQty = contractItem.getQuantity() != null ? contractItem.getQuantity() : BigDecimal.ZERO;
+            String key = makeProductColorKey(contractItem.getProductCode(), contractItem.getCustomerColor());
+            BigDecimal shippedTotal = shippedQtyByKey.getOrDefault(key, BigDecimal.ZERO);
+            BigDecimal unshippedQty;
+            if (shippedTotal.compareTo(BigDecimal.ZERO) <= 0) {
+                unshippedQty = contractQty;
+            } else if (shippedTotal.compareTo(contractQty) >= 0) {
+                unshippedQty = BigDecimal.ZERO;
+                shippedQtyByKey.put(key, shippedTotal.subtract(contractQty));
+            } else {
+                unshippedQty = contractQty.subtract(shippedTotal);
+                shippedQtyByKey.put(key, BigDecimal.ZERO);
+            }
+            if (unshippedQty.compareTo(BigDecimal.ZERO) < 0) {
+                unshippedQty = BigDecimal.ZERO;
+            }
+            resp.setQuantity(unshippedQty.setScale(2, RoundingMode.HALF_UP));
+
+            // 4.4 其他字段缺省
+            resp.setPieces(1);
+            resp.setUnit(StringUtils.hasText(contract.getUnit()) ? contract.getUnit() : "KG");
+            resp.setAmount(resp.getQuantity().multiply(unitPrice).setScale(2, RoundingMode.HALF_UP));
+            resp.setRemark(contractItem.getRemark());
+
+            result.add(resp);
+        }
+        return result;
+    }
+
+    private String makeProductColorKey(String productCode, String customerColor) {
+        String p = productCode == null ? "" : productCode.trim().toLowerCase();
+        String c = customerColor == null ? "" : customerColor.trim().toLowerCase();
+        return p + "::" + c;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void auditShipment(Long id) {
+        // 1. 校验发货单存在
+        ShipmentDO existing = validateShipmentExists(id);
+
+        // 2. 状态机守卫：仅草稿态可审核，否则报 1_030_016_002
+        if (!DEFAULT_STATUS.equals(existing.getStatus())) {
+            throw exception(SHIPMENT_STATUS_NOT_ALLOW);
+        }
+
+        // 3. 明细非空校验：零明细不可审核，报 1_030_016_004
+        List<ShipmentItemDO> items = shipmentItemMapper.selectListByShipmentId(id);
+        if (CollUtil.isEmpty(items)) {
+            throw exception(SHIPMENT_AUDIT_NO_ITEMS);
+        }
+
+        // 4. 库存硬校验：按产品+单位+仓库合并需求量对比实时余额，不足硬拦截报 1_030_016_005（不允许负库存）
+        Map<String, BigDecimal> requiredQtyMap = new LinkedHashMap<>();
+        Map<String, ShipmentItemDO> itemGroupMap = new LinkedHashMap<>();
+        for (ShipmentItemDO item : items) {
+            String key = item.getProductId() + "_" + item.getUnit();
+            BigDecimal current = requiredQtyMap.getOrDefault(key, BigDecimal.ZERO);
+            BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
+            requiredQtyMap.put(key, current.add(qty));
+            itemGroupMap.putIfAbsent(key, item);
+        }
+
+        for (Map.Entry<String, BigDecimal> entry : requiredQtyMap.entrySet()) {
+            String key = entry.getKey();
+            BigDecimal requiredQty = entry.getValue();
+            ShipmentItemDO sampleItem = itemGroupMap.get(key);
+            BigDecimal availableQty = stockLedgerMapper.sumQuantityByWarehouseAndProductAndUnit(
+                    existing.getWarehouseId(), sampleItem.getProductId(), sampleItem.getUnit());
+            if (availableQty == null) {
+                availableQty = BigDecimal.ZERO;
+            }
+            if (requiredQty.compareTo(availableQty) > 0) {
+                String productName = StringUtils.hasText(sampleItem.getProductName()) ? sampleItem.getProductName() : sampleItem.getProductCode();
+                throw exception(SHIPMENT_STOCK_NOT_ENOUGH, productName, requiredQty, sampleItem.getUnit(), availableQty, sampleItem.getUnit());
+            }
+        }
+
+        // 5. 更新单据状态为 COMPLETED
+        ShipmentDO updateObj = new ShipmentDO();
+        updateObj.setId(id);
+        updateObj.setStatus(STATUS_COMPLETED);
+        shipmentMapper.updateById(updateObj);
+
+        // 6. 按明细行逐条写负数 SHIPMENT_OUT 流水（同一事务，卷清单不展开，库位为空）
+        for (ShipmentItemDO item : items) {
+            StockLedgerDO ledger = new StockLedgerDO();
+            ledger.setItemType("PRODUCT");
+            ledger.setProductId(item.getProductId());
+            ledger.setProductCode(item.getProductCode());
+            ledger.setProductName(item.getProductName());
+            ledger.setWarehouseId(existing.getWarehouseId());
+            ledger.setWarehouseName(existing.getWarehouseName());
+            ledger.setLocationId(null);
+            ledger.setLocationCode(null);
+            ledger.setBatchNo(item.getVatNo());
+            ledger.setTxnType(TXN_TYPE_SHIPMENT_OUT);
+            ledger.setQuantity(item.getQuantity() != null ? item.getQuantity().negate() : BigDecimal.ZERO);
+            ledger.setUnit(item.getUnit());
+            ledger.setUnitPrice(item.getUnitPrice());
+            ledger.setAmount(item.getAmount() != null ? item.getAmount().negate() : null);
+            ledger.setRelatedDocType(DOC_TYPE_SHIPMENT);
+            ledger.setRelatedDocId(existing.getId());
+            ledger.setRelatedDocNo(existing.getShipmentNo());
+            ledger.setRemark(item.getRemark());
+            stockLedgerMapper.insert(ledger);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelShipment(Long id) {
+        // 1. 校验发货单存在
+        ShipmentDO existing = validateShipmentExists(id);
+
+        if (DEFAULT_STATUS.equals(existing.getStatus())) {
+            // 2.1 草稿态作废：校验 :update 权限
+            if (securityFrameworkService != null && !securityFrameworkService.hasPermission(PERMISSION_UPDATE)) {
+                throw new AccessDeniedException("没有作废发货单草稿权限");
+            }
+            // 仅作废单据，不写流水
+            ShipmentDO updateObj = new ShipmentDO();
+            updateObj.setId(id);
+            updateObj.setStatus(STATUS_CANCELLED);
+            shipmentMapper.updateById(updateObj);
+
+        } else if (STATUS_COMPLETED.equals(existing.getStatus())) {
+            // 2.2 已发货态红冲：校验 :audit 权限
+            if (securityFrameworkService != null && !securityFrameworkService.hasPermission(PERMISSION_AUDIT)) {
+                throw new AccessDeniedException("没有红冲已发货发货单权限");
+            }
+            // 更新单据状态为已取消终态
+            ShipmentDO updateObj = new ShipmentDO();
+            updateObj.setId(id);
+            updateObj.setStatus(STATUS_CANCELLED);
+            shipmentMapper.updateById(updateObj);
+
+            // 红冲过账：同事务反查原流水逐条追加正数反向行（原流水永不物理删除）
+            List<StockLedgerDO> origList = stockLedgerMapper.selectListByRelatedDoc(DOC_TYPE_SHIPMENT, id, TXN_TYPE_SHIPMENT_OUT);
+            if (CollUtil.isNotEmpty(origList)) {
+                for (StockLedgerDO orig : origList) {
+                    StockLedgerDO reversal = new StockLedgerDO();
+                    reversal.setItemType(orig.getItemType() != null ? orig.getItemType() : "PRODUCT");
+                    reversal.setProductId(orig.getProductId());
+                    reversal.setProductCode(orig.getProductCode());
+                    reversal.setProductName(orig.getProductName());
+                    reversal.setYarnSpecId(orig.getYarnSpecId());
+                    reversal.setYarnSpecName(orig.getYarnSpecName());
+                    reversal.setWarehouseId(orig.getWarehouseId());
+                    reversal.setWarehouseName(orig.getWarehouseName());
+                    reversal.setLocationId(orig.getLocationId());
+                    reversal.setLocationCode(orig.getLocationCode());
+                    reversal.setBatchNo(orig.getBatchNo());
+                    reversal.setTxnType(TXN_TYPE_SHIPMENT_OUT_REVERSAL);
+                    reversal.setQuantity(orig.getQuantity() != null ? orig.getQuantity().negate() : BigDecimal.ZERO);
+                    reversal.setUnit(orig.getUnit());
+                    reversal.setUnitPrice(orig.getUnitPrice());
+                    reversal.setAmount(orig.getAmount() != null ? orig.getAmount().negate() : null);
+                    reversal.setRelatedDocType(DOC_TYPE_SHIPMENT);
+                    reversal.setRelatedDocId(orig.getRelatedDocId());
+                    reversal.setRelatedDocNo(orig.getRelatedDocNo());
+                    reversal.setRemark(orig.getRemark());
+                    stockLedgerMapper.insert(reversal);
+                }
+            }
+        } else {
+            // 2.3 CANCELLED 终态或非法状态：报 1_030_016_002
+            throw exception(SHIPMENT_STATUS_NOT_ALLOW);
+        }
     }
 
     // ==================== 私有方法 ====================

@@ -2,6 +2,7 @@ package com.luna.lunasrv.module.lunaerp.controller.business.shipment;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentSaveReqVO;
@@ -17,6 +18,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 import static com.luna.lunasrv.framework.common.util.date.DateUtils.FORMAT_YEAR_MONTH_DAY;
@@ -77,6 +79,32 @@ public class ShipmentController {
             @RequestParam(value = "shippingDate", required = false)
             @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY) LocalDate shippingDate) {
         return success(shipmentService.getNextShipmentNo(shippingDate));
+    }
+
+    @GetMapping("/from-contract")
+    @Operation(summary = "从合同明细带入发货明细（含实时未发量计算）")
+    @Parameter(name = "contractId", description = "销售合同ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:shipment:query') or @ss.hasPermission('lunaerp:business:shipment:create')")
+    public CommonResult<List<ShipmentItemRespVO>> getShipmentItemsFromContract(@RequestParam("contractId") Long contractId) {
+        return success(shipmentService.getShipmentItemsFromContract(contractId));
+    }
+
+    @PutMapping("/audit")
+    @Operation(summary = "审核发货单（DRAFT -> COMPLETED，同事务写负数出库流水）")
+    @Parameter(name = "id", description = "发货单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:shipment:audit')")
+    public CommonResult<Boolean> auditShipment(@RequestParam("id") Long id) {
+        shipmentService.auditShipment(id);
+        return success(true);
+    }
+
+    @PutMapping("/cancel")
+    @Operation(summary = "取消发货单（草稿态作废 / 已发货态红冲）")
+    @Parameter(name = "id", description = "发货单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:business:shipment:update', 'lunaerp:business:shipment:audit')")
+    public CommonResult<Boolean> cancelShipment(@RequestParam("id") Long id) {
+        shipmentService.cancelShipment(id);
+        return success(true);
     }
 
 }

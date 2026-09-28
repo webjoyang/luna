@@ -44,4 +44,13 @@ public class StockLedgerServiceImpl implements StockLedgerService {
         return balance != null ? balance : BigDecimal.ZERO;
     }
 
+    @Override
+    public BigDecimal getProductBalance(Long warehouseId, Long productId, String unit) {
+        if (warehouseId == null || productId == null || unit == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal balance = stockLedgerMapper.sumQuantityByWarehouseAndProductAndUnit(warehouseId, productId, unit);
+        return balance != null ? balance : BigDecimal.ZERO;
+    }
+
 }

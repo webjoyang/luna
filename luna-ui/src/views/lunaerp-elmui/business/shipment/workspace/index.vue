@@ -34,7 +34,7 @@
             </el-button>
           </template>
 
-          <!-- 编辑模式：仅草稿态可保存或删除 -->
+          <!-- 编辑模式：按状态显示操作按钮 -->
           <template v-else-if="formData.status === 'DRAFT'">
             <el-button
               type="danger"
@@ -46,12 +46,42 @@
               删除
             </el-button>
             <el-button
+              type="warning"
+              plain
+              :loading="actionLoading"
+              @click="handleCancelDraft"
+              v-hasPermi="['lunaerp:business:shipment:update']"
+            >
+              作废
+            </el-button>
+            <el-button
               type="primary"
+              plain
               :loading="actionLoading"
               @click="handleSave"
               v-hasPermi="['lunaerp:business:shipment:update']"
             >
               保存修改
+            </el-button>
+            <el-button
+              type="primary"
+              :loading="actionLoading"
+              @click="handleAudit"
+              v-hasPermi="['lunaerp:business:shipment:audit']"
+            >
+              审核
+            </el-button>
+          </template>
+
+          <!-- 已发货态 COMPLETED：[取消（红冲）] -->
+          <template v-else-if="formData.status === 'COMPLETED'">
+            <el-button
+              type="danger"
+              :loading="actionLoading"
+              @click="handleCancelReversal"
+              v-hasPermi="['lunaerp:business:shipment:audit']"
+            >
+              取消（红冲）
             </el-button>
           </template>
         </template>
@@ -73,6 +103,7 @@
       <el-tab-pane label="发货明细" name="items">
         <ItemsTab
           v-model:items="formData.items"
+          :contract-id="formData.salesContractId"
           :is-read-only="isAllReadOnly"
           @recalculate="handleRecalculateTotals"
         />
@@ -241,6 +272,59 @@ const handleDelete = async () => {
     await ShipmentApi.deleteShipment(shipmentId.value)
     message.success('删除成功')
     handleBack()
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 作废草稿 */
+const handleCancelDraft = async () => {
+  if (!shipmentId.value) return
+  try {
+    await message.confirm('确定要作废该发货单草稿吗？作废后不可恢复。', '作废确认')
+    actionLoading.value = true
+    await ShipmentApi.cancelShipment(shipmentId.value)
+    message.success('作废成功')
+    await loadDetail(shipmentId.value)
+  } catch {
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 审核发货单 */
+const handleAudit = async () => {
+  if (!shipmentId.value) return
+  const items = formData.value.items || []
+  if (items.length === 0) {
+    message.error('审核失败：发货单没有明细')
+    return
+  }
+  try {
+    await message.confirm('确定要审核该发货单吗？审核后将校验库存、扣减库存并记入负数出库流水，且不可修改。', '审核确认')
+    actionLoading.value = true
+    await ShipmentApi.auditShipment(shipmentId.value)
+    message.success('审核出库成功')
+    await loadDetail(shipmentId.value)
+  } catch {
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 取消已发货单（红冲） */
+const handleCancelReversal = async () => {
+  if (!shipmentId.value) return
+  try {
+    const tip = formData.value.signStatus === 'SIGNED'
+      ? '【注意：该单客户已签收！】确定要取消并红冲该发货单吗？将生成正数红冲流水并恢复库存，且不可撤销！'
+      : '确定要取消并红冲该发货单吗？将生成正数红冲流水并恢复库存，且不可撤销！'
+    await message.confirm(tip, '红冲确认')
+    actionLoading.value = true
+    await ShipmentApi.cancelShipment(shipmentId.value)
+    message.success('红冲取消成功')
+    await loadDetail(shipmentId.value)
+  } catch {
   } finally {
     actionLoading.value = false
   }

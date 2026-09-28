@@ -1,12 +1,14 @@
 package com.luna.lunasrv.module.lunaerp.service.business.shipment;
 
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentSaveReqVO;
 import jakarta.validation.Valid;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 业务管理 - 发货单 Service 接口
@@ -60,5 +62,27 @@ public interface ShipmentService {
      * @return 发货单号预览
      */
     String getNextShipmentNo(LocalDate shippingDate);
+
+    /**
+     * 从销售合同明细带入发货明细集合（含实时合同未发量计算，只读不落库）
+     *
+     * @param contractId 销售合同ID
+     * @return 预填的发货明细列表
+     */
+    List<ShipmentItemRespVO> getShipmentItemsFromContract(Long contractId);
+
+    /**
+     * 审核发货单（DRAFT -> COMPLETED，硬校验库存可用量后在同事务写负数出库流水）
+     *
+     * @param id 发货单ID
+     */
+    void auditShipment(Long id);
+
+    /**
+     * 取消发货单（草稿态直接作废；已发货态按原流水逐条红冲追加正数流水）
+     *
+     * @param id 发货单ID
+     */
+    void cancelShipment(Long id);
 
 }

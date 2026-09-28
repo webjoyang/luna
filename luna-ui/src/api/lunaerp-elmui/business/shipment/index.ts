@@ -114,3 +114,22 @@ export const updateShipment = (data: ShipmentVO) => {
 export const deleteShipment = (id: number) => {
   return request.delete({ url: '/lunaerp/business/shipment/delete?id=' + id })
 }
+
+// 审核发货单（DRAFT -> COMPLETED，同事务写负数库存流水）
+export const auditShipment = (id: number) => {
+  return request.put({ url: '/lunaerp/business/shipment/audit?id=' + id })
+}
+
+// 取消发货单（草稿作废 / 已发货红冲）
+export const cancelShipment = (id: number) => {
+  return request.put({ url: '/lunaerp/business/shipment/cancel?id=' + id })
+}
+
+// 从销售合同带入发货明细（实时计算未发量）
+export const getShipmentItemsFromContract = (contractId: number) => {
+  return request.get<ShipmentItemVO[]>({
+    url: '/lunaerp/business/shipment/from-contract',
+    params: { contractId }
+  })
+}
+

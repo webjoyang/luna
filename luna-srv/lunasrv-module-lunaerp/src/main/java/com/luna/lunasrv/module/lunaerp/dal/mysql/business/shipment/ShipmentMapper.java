@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment;
 
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
+import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -63,5 +64,18 @@ public interface ShipmentMapper extends BaseMapperX<ShipmentDO> {
             + "sign_remark, remark, creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_business_shipment WHERE shipment_no LIKE CONCAT(#{prefix}, '%')")
     List<ShipmentDO> selectListByShipmentNoPrefixIncludingDeleted(@Param("prefix") String prefix);
+
+    /**
+     * 按销售合同ID与状态查询发货单列表
+     *
+     * @param contractId 销售合同ID
+     * @param status 发货单状态（如 COMPLETED）
+     * @return 发货单列表
+     */
+    default List<ShipmentDO> selectListByContractIdAndStatus(Long contractId, String status) {
+        return selectList(new LambdaQueryWrapperX<ShipmentDO>()
+                .eq(ShipmentDO::getSalesContractId, contractId)
+                .eq(ShipmentDO::getStatus, status));
+    }
 
 }
