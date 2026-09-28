@@ -74,12 +74,22 @@ export interface ShipmentPageParam {
   pageSize?: number
   keyword?: string
   status?: string
+  signStatus?: string
   customerId?: number
   warehouseId?: number
   contractNo?: string
   shippingDate?: string[]
   shippingDateStart?: string
   shippingDateEnd?: string
+}
+
+// 发货单签收登记参数
+export interface ShipmentUpdateSignReqVO {
+  id: number
+  signStatus: string
+  signedByName?: string
+  signedAt?: string
+  signRemark?: string
 }
 
 // 查询发货单分页
@@ -125,6 +135,11 @@ export const cancelShipment = (id: number) => {
   return request.put({ url: '/lunaerp/business/shipment/cancel?id=' + id })
 }
 
+// 登记/修改发货单签收信息（仅 COMPLETED 单据可登记）
+export const updateShipmentSign = (data: ShipmentUpdateSignReqVO) => {
+  return request.put({ url: '/lunaerp/business/shipment/update-sign', data })
+}
+
 // 从销售合同带入发货明细（实时计算未发量）
 export const getShipmentItemsFromContract = (contractId: number) => {
   return request.get<ShipmentItemVO[]>({
@@ -132,4 +147,5 @@ export const getShipmentItemsFromContract = (contractId: number) => {
     params: { contractId }
   })
 }
+
 

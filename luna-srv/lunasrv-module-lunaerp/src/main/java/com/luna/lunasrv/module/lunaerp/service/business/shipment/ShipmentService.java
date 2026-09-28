@@ -5,6 +5,7 @@ import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentI
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentUpdateSignReqVO;
 import jakarta.validation.Valid;
 
 import java.time.LocalDate;
@@ -84,5 +85,12 @@ public interface ShipmentService {
      * @param id 发货单ID
      */
     void cancelShipment(Long id);
+
+    /**
+     * 登记/修改发货单签收信息（仅已发货 COMPLETED 单据可操作）
+     *
+     * @param reqVO 签收登记参数
+     */
+    void updateShipmentSign(ShipmentUpdateSignReqVO reqVO);
 
 }

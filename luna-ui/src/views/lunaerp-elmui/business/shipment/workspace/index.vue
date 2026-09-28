@@ -13,6 +13,11 @@
               :type="DICT_TYPE.LUNAERP_SHIPMENT_STATUS"
               :value="formData.status"
             />
+            <DictTag
+              v-if="formData.signStatus"
+              :type="DICT_TYPE.LUNAERP_SHIPMENT_SIGN_STATUS"
+              :value="formData.signStatus"
+            />
           </div>
         </template>
       </el-page-header>
@@ -20,6 +25,26 @@
       <!-- 操作栏：按状态显示按钮 -->
       <div class="action-buttons flex items-center gap-2">
         <el-button @click="handleBack">返回</el-button>
+
+        <!-- 已发货单 COMPLETED：无论查看还是编辑模式均可打印发货单与装箱清单 -->
+        <template v-if="formData.status === 'COMPLETED'">
+          <el-button
+            type="primary"
+            plain
+            @click="handleOpenPrint('shipment')"
+            v-hasPermi="['lunaerp:business:shipment:print']"
+          >
+            <Icon icon="ep:printer" class="mr-2px" />打印发货单
+          </el-button>
+          <el-button
+            type="info"
+            plain
+            @click="handleOpenPrint('packing')"
+            v-hasPermi="['lunaerp:business:shipment:print']"
+          >
+            <Icon icon="ep:box" class="mr-2px" />打印装箱清单
+          </el-button>
+        </template>
 
         <template v-if="!isViewMode">
           <!-- 新建模式：保存草稿 -->
@@ -73,10 +98,19 @@
             </el-button>
           </template>
 
-          <!-- 已发货态 COMPLETED：[取消（红冲）] -->
+          <!-- 已发货态 COMPLETED：[保存签收] [取消（红冲）] -->
           <template v-else-if="formData.status === 'COMPLETED'">
             <el-button
+              type="primary"
+              :loading="actionLoading"
+              @click="handleUpdateSign"
+              v-hasPermi="['lunaerp:business:shipment:update']"
+            >
+              保存签收
+            </el-button>
+            <el-button
               type="danger"
+              plain
               :loading="actionLoading"
               @click="handleCancelReversal"
               v-hasPermi="['lunaerp:business:shipment:audit']"
@@ -95,6 +129,7 @@
           ref="basicInfoTabRef"
           v-model="formData"
           :is-read-only="isAllReadOnly"
+          :is-view-mode="isViewMode"
           :is-create="isCreateMode"
           :preview-no="previewNo"
         />
@@ -117,6 +152,9 @@
         <LogsTab />
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 打印预览与输出弹窗 -->
+    <PrintShipmentDialog ref="printShipmentDialogRef" />
   </ContentWrap>
 </template>
 
@@ -131,12 +169,18 @@ import BasicInfoTab from './BasicInfoTab.vue'
 import ItemsTab from './ItemsTab.vue'
 import LogsTab from './LogsTab.vue'
 import RollsOverviewTab from './RollsOverviewTab.vue'
+import PrintShipmentDialog from '../components/PrintShipmentDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiBusinessShipmentWorkspace' })
 
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+const printShipmentDialogRef = ref()
+
+const handleOpenPrint = (mode: 'shipment' | 'packing' = 'shipment') => {
+  printShipmentDialogRef.value?.open(formData.value, mode)
+}
 
 const shipmentId = computed(() => (route.params.id ? Number(route.params.id) : undefined))
 const isCreateMode = computed(() => !shipmentId.value)
@@ -324,6 +368,30 @@ const handleCancelReversal = async () => {
     await ShipmentApi.cancelShipment(shipmentId.value)
     message.success('红冲取消成功')
     await loadDetail(shipmentId.value)
+  } catch {
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 登记/修改签收信息 */
+const handleUpdateSign = async () => {
+  if (!formData.value.id) return
+  if (!formData.value.signStatus) {
+    message.error('签收状态不能为空')
+    return
+  }
+  try {
+    actionLoading.value = true
+    await ShipmentApi.updateShipmentSign({
+      id: formData.value.id,
+      signStatus: formData.value.signStatus,
+      signedByName: formData.value.signedByName,
+      signedAt: formData.value.signedAt,
+      signRemark: formData.value.signRemark
+    })
+    message.success('签收信息已更新')
+    await loadDetail(formData.value.id)
   } catch {
   } finally {
     actionLoading.value = false

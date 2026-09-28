@@ -12,6 +12,7 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
+import com.luna.lunasrv.module.lunaerp.enums.business.shipment.ShipmentSignStatusEnum;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemDO;
@@ -536,6 +537,32 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateShipmentSign(ShipmentUpdateSignReqVO reqVO) {
+        // 1. 校验发货单存在
+        ShipmentDO existing = validateShipmentExists(reqVO.getId());
+
+        // 2. 状态守卫：仅已发货态 COMPLETED 允许登记签收，草稿与已取消报 1_030_016_002
+        if (!STATUS_COMPLETED.equals(existing.getStatus())) {
+            throw exception(SHIPMENT_STATUS_NOT_ALLOW);
+        }
+
+        // 3. 签收状态合法性校验：必须是 PENDING / SIGNED / REFUSED 之一，非法报 1_030_016_006
+        if (!ShipmentSignStatusEnum.isValid(reqVO.getSignStatus())) {
+            throw exception(SHIPMENT_SIGN_STATUS_INVALID);
+        }
+
+        // 4. 更新主表签收字段（拒签只登记状态，不自动红冲、不触发任何库存动作）
+        ShipmentDO updateObj = new ShipmentDO();
+        updateObj.setId(existing.getId());
+        updateObj.setSignStatus(reqVO.getSignStatus());
+        updateObj.setSignedByName(reqVO.getSignedByName());
+        updateObj.setSignedAt(reqVO.getSignedAt());
+        updateObj.setSignRemark(reqVO.getSignRemark());
+        shipmentMapper.updateById(updateObj);
+    }
+
     // ==================== 私有方法 ====================
 
     /**
@@ -778,6 +805,7 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         // 等值过滤
         wrapper.eqIfPresent(ShipmentDO::getStatus, reqVO.getStatus());
+        wrapper.eqIfPresent(ShipmentDO::getSignStatus, reqVO.getSignStatus());
         wrapper.eqIfPresent(ShipmentDO::getCustomerId, reqVO.getCustomerId());
         wrapper.eqIfPresent(ShipmentDO::getWarehouseId, reqVO.getWarehouseId());
         wrapper.likeIfPresent(ShipmentDO::getContractNo, reqVO.getContractNo());

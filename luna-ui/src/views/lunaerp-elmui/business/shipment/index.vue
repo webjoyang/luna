@@ -21,6 +21,16 @@
           />
         </el-select>
       </el-form-item>
+      <el-form-item label="签收状态" prop="signStatus">
+        <el-select v-model="queryParams.signStatus" placeholder="全部" clearable class="!w-130px">
+          <el-option
+            v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_SHIPMENT_SIGN_STATUS)"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
+      </el-form-item>
       <el-form-item label="客户" prop="customerId">
         <el-select
           v-model="queryParams.customerId"
@@ -142,7 +152,7 @@
         align="center"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" width="240" align="center" fixed="right">
+      <el-table-column label="操作" width="320" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -191,6 +201,33 @@
           <el-button
             v-if="row.status === 'COMPLETED'"
             link
+            type="primary"
+            @click="openSignDialog(row)"
+            v-hasPermi="['lunaerp:business:shipment:update']"
+          >
+            <Icon icon="ep:edit-pen" class="mr-2px" />签收
+          </el-button>
+          <el-button
+            v-if="row.status === 'COMPLETED'"
+            link
+            type="primary"
+            @click="handleOpenPrint(row, 'shipment')"
+            v-hasPermi="['lunaerp:business:shipment:print']"
+          >
+            <Icon icon="ep:printer" class="mr-2px" />打印发货单
+          </el-button>
+          <el-button
+            v-if="row.status === 'COMPLETED'"
+            link
+            type="info"
+            @click="handleOpenPrint(row, 'packing')"
+            v-hasPermi="['lunaerp:business:shipment:print']"
+          >
+            <Icon icon="ep:box" class="mr-2px" />装箱清单
+          </el-button>
+          <el-button
+            v-if="row.status === 'COMPLETED'"
+            link
             type="danger"
             @click="handleCancelReversal(row)"
             v-hasPermi="['lunaerp:business:shipment:audit']"
@@ -210,6 +247,57 @@
       v-model:limit="queryParams.pageSize"
       @pagination="getList"
     />
+
+    <!-- 打印预览与输出弹窗 -->
+    <PrintShipmentDialog ref="printShipmentDialogRef" />
+
+    <!-- 签收登记弹窗 -->
+    <el-dialog
+      v-model="signDialogVisible"
+      :title="`发货单签收登记 - ${signForm.shipmentNo || ''}`"
+      width="500px"
+      append-to-body
+    >
+      <el-form ref="signFormRef" :model="signForm" :rules="signRules" label-width="90px">
+        <el-form-item label="签收状态" prop="signStatus">
+          <el-radio-group v-model="signForm.signStatus">
+            <el-radio
+              v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_SHIPMENT_SIGN_STATUS)"
+              :key="dict.value"
+              :value="dict.value"
+            >
+              {{ dict.label }}
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="签收人" prop="signedByName">
+          <el-input v-model="signForm.signedByName" placeholder="请输入签收人姓名" clearable />
+        </el-form-item>
+        <el-form-item label="签收时间" prop="signedAt">
+          <el-date-picker
+            v-model="signForm.signedAt"
+            type="datetime"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            placeholder="选择签收时间"
+            class="!w-full"
+          />
+        </el-form-item>
+        <el-form-item label="签收备注" prop="signRemark">
+          <el-input
+            v-model="signForm.signRemark"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入签收备注说明"
+            maxlength="200"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="signDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="signLoading" @click="submitSign">确定</el-button>
+      </template>
+    </el-dialog>
   </ContentWrap>
 </template>
 
@@ -225,11 +313,17 @@ import * as WarehouseApi from '@/api/lunaerp-elmui/stock/warehouse'
 import type { WarehouseVO } from '@/api/lunaerp-elmui/stock/warehouse'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
+import PrintShipmentDialog from './components/PrintShipmentDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiBusinessShipment' })
 
 const router = useRouter()
 const message = useMessage()
+const printShipmentDialogRef = ref()
+
+const handleOpenPrint = (row: ShipmentVO, mode: 'shipment' | 'packing' = 'shipment') => {
+  printShipmentDialogRef.value?.open(row, mode)
+}
 
 const loading = ref(true)
 const total = ref(0)
@@ -241,6 +335,7 @@ interface QueryParams {
   pageSize: number
   keyword: string
   status: string
+  signStatus: string
   customerId: number | undefined
   warehouseId: number | undefined
   contractNo: string
@@ -252,6 +347,7 @@ const queryParams = reactive<QueryParams>({
   pageSize: 20,
   keyword: '',
   status: '',
+  signStatus: '',
   customerId: undefined,
   warehouseId: undefined,
   contractNo: '',
@@ -375,6 +471,52 @@ const handleCancelReversal = async (row: ShipmentVO) => {
     message.success('红冲取消成功')
     await getList()
   } catch {}
+}
+
+// 签收登记弹窗相关状态与方法
+const signDialogVisible = ref(false)
+const signLoading = ref(false)
+const signFormRef = ref()
+const signForm = reactive({
+  id: 0,
+  shipmentNo: '',
+  signStatus: 'PENDING',
+  signedByName: '',
+  signedAt: '',
+  signRemark: ''
+})
+const signRules = reactive({
+  signStatus: [{ required: true, message: '请选择签收状态', trigger: 'change' }]
+})
+
+const openSignDialog = (row: ShipmentVO) => {
+  signForm.id = row.id!
+  signForm.shipmentNo = row.shipmentNo || ''
+  signForm.signStatus = row.signStatus || 'PENDING'
+  signForm.signedByName = row.signedByName || ''
+  signForm.signedAt = row.signedAt || ''
+  signForm.signRemark = row.signRemark || ''
+  signDialogVisible.value = true
+}
+
+const submitSign = async () => {
+  if (!signFormRef.value) return
+  await signFormRef.value.validate()
+  try {
+    signLoading.value = true
+    await ShipmentApi.updateShipmentSign({
+      id: signForm.id,
+      signStatus: signForm.signStatus,
+      signedByName: signForm.signedByName,
+      signedAt: signForm.signedAt,
+      signRemark: signForm.signRemark
+    })
+    message.success('签收信息登记成功')
+    signDialogVisible.value = false
+    await getList()
+  } finally {
+    signLoading.value = false
+  }
 }
 
 onMounted(() => {

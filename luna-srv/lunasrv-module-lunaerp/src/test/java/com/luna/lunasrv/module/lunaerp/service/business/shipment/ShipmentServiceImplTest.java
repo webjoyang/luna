@@ -42,6 +42,7 @@ import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -1177,6 +1178,135 @@ class ShipmentServiceImplTest {
 
         ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.cancelShipment(10L));
         assertEquals(SHIPMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("签收登记：发货单不存在抛出 SHIPMENT_NOT_EXISTS (1_030_016_000)")
+    void testUpdateShipmentSign_notExists_throwsException() {
+        when(shipmentMapper.selectById(10L)).thenReturn(null);
+
+        ShipmentUpdateSignReqVO req = new ShipmentUpdateSignReqVO();
+        req.setId(10L);
+        req.setSignStatus("SIGNED");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipmentSign(req));
+        assertEquals(SHIPMENT_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("签收登记：草稿态单据登记报 SHIPMENT_STATUS_NOT_ALLOW (1_030_016_002)")
+    void testUpdateShipmentSign_draftStatus_throwsException() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("DRAFT");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        ShipmentUpdateSignReqVO req = new ShipmentUpdateSignReqVO();
+        req.setId(10L);
+        req.setSignStatus("SIGNED");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipmentSign(req));
+        assertEquals(SHIPMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("签收登记：已取消态单据登记报 SHIPMENT_STATUS_NOT_ALLOW (1_030_016_002)")
+    void testUpdateShipmentSign_cancelledStatus_throwsException() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("CANCELLED");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        ShipmentUpdateSignReqVO req = new ShipmentUpdateSignReqVO();
+        req.setId(10L);
+        req.setSignStatus("SIGNED");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipmentSign(req));
+        assertEquals(SHIPMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("签收登记：非法签收状态报 SHIPMENT_SIGN_STATUS_INVALID (1_030_016_006)")
+    void testUpdateShipmentSign_invalidSignStatus_throwsException() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("COMPLETED");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        ShipmentUpdateSignReqVO req = new ShipmentUpdateSignReqVO();
+        req.setId(10L);
+        req.setSignStatus("INVALID_STATUS");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> shipmentService.updateShipmentSign(req));
+        assertEquals(SHIPMENT_SIGN_STATUS_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("签收登记：已发货单据登记已签收，成功更新签收人/时间/备注，不产生库存流水")
+    void testUpdateShipmentSign_signed_success_noLedgerWritten() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("COMPLETED");
+        shipment.setSignStatus("PENDING");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        LocalDateTime now = LocalDateTime.of(2026, 9, 28, 14, 30, 0);
+        ShipmentUpdateSignReqVO req = new ShipmentUpdateSignReqVO();
+        req.setId(10L);
+        req.setSignStatus("SIGNED");
+        req.setSignedByName("张收货");
+        req.setSignedAt(now);
+        req.setSignRemark("货物外包装完好，件数一致");
+
+        // Act
+        shipmentService.updateShipmentSign(req);
+
+        // Assert
+        ArgumentCaptor<ShipmentDO> captor = ArgumentCaptor.forClass(ShipmentDO.class);
+        verify(shipmentMapper).updateById(captor.capture());
+        ShipmentDO updated = captor.getValue();
+        assertEquals(10L, updated.getId());
+        assertEquals("SIGNED", updated.getSignStatus());
+        assertEquals("张收货", updated.getSignedByName());
+        assertEquals(now, updated.getSignedAt());
+        assertEquals("货物外包装完好，件数一致", updated.getSignRemark());
+
+        // 绝不触发任何库存动作
+        verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
+    }
+
+    @Test
+    @DisplayName("签收登记：已发货单据登记拒签，只登记状态，不自动红冲、不产生库存流水")
+    void testUpdateShipmentSign_refused_success_noLedgerWritten() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setStatus("COMPLETED");
+        shipment.setSignStatus("PENDING");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        LocalDateTime now = LocalDateTime.of(2026, 9, 28, 15, 0, 0);
+        ShipmentUpdateSignReqVO req = new ShipmentUpdateSignReqVO();
+        req.setId(10L);
+        req.setSignStatus("REFUSED");
+        req.setSignedByName("李收货");
+        req.setSignedAt(now);
+        req.setSignRemark("布面有油污瑕疵，客户拒绝签收");
+
+        // Act
+        shipmentService.updateShipmentSign(req);
+
+        // Assert
+        ArgumentCaptor<ShipmentDO> captor = ArgumentCaptor.forClass(ShipmentDO.class);
+        verify(shipmentMapper).updateById(captor.capture());
+        ShipmentDO updated = captor.getValue();
+        assertEquals(10L, updated.getId());
+        assertEquals("REFUSED", updated.getSignStatus());
+        assertEquals("李收货", updated.getSignedByName());
+        assertEquals(now, updated.getSignedAt());
+        assertEquals("布面有油污瑕疵，客户拒绝签收", updated.getSignRemark());
+
+        // 规范明确要求：拒签只登记状态，不自动红冲库存，退货由人执行取消
+        verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
     }
 }
 

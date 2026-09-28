@@ -5,7 +5,6 @@
     :rules="rules"
     label-width="120px"
     class="max-w-1000px py-16px"
-    :disabled="isReadOnly"
   >
     <el-row :gutter="20">
       <el-col :span="12">
@@ -240,7 +239,7 @@
             v-model="formData.signStatus"
             placeholder="签收状态"
             class="!w-full"
-            disabled
+            :disabled="!canEditSign"
           >
             <el-option
               v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_SHIPMENT_SIGN_STATUS)"
@@ -256,7 +255,8 @@
           <el-input
             v-model="formData.signedByName"
             placeholder="签收人姓名"
-            disabled
+            clearable
+            :disabled="!canEditSign"
           />
         </el-form-item>
       </el-col>
@@ -268,9 +268,9 @@
             v-model="formData.signedAt"
             type="datetime"
             value-format="YYYY-MM-DD HH:mm:ss"
-            placeholder="签收时间"
+            placeholder="选择签收时间"
             class="!w-full"
-            disabled
+            :disabled="!canEditSign"
           />
         </el-form-item>
       </el-col>
@@ -279,7 +279,8 @@
           <el-input
             v-model="formData.signRemark"
             placeholder="签收备注说明"
-            disabled
+            clearable
+            :disabled="!canEditSign"
           />
         </el-form-item>
       </el-col>
@@ -306,6 +307,7 @@ const props = defineProps<{
   isReadOnly: boolean
   isCreate: boolean
   previewNo: string
+  isViewMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -318,6 +320,8 @@ const formData = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val)
 })
+
+const canEditSign = computed(() => !props.isViewMode && formData.value.status === 'COMPLETED')
 
 const rules = reactive<FormRules>({
   customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],

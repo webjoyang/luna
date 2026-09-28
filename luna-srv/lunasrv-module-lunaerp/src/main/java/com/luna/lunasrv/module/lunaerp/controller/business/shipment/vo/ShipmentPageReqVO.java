@@ -21,6 +21,9 @@ public class ShipmentPageReqVO extends PageParam {
     @Schema(description = "发货单状态（DRAFT 草稿 / COMPLETED 已发货 / CANCELLED 已取消）", example = "DRAFT")
     private String status;
 
+    @Schema(description = "签收状态（PENDING 待签收 / SIGNED 已签收 / REFUSED 拒签）", example = "PENDING")
+    private String signStatus;
+
     @Schema(description = "客户ID", example = "100")
     private Long customerId;
 

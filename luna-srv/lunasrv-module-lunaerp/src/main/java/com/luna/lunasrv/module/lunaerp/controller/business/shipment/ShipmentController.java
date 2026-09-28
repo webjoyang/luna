@@ -6,6 +6,7 @@ import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentI
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentUpdateSignReqVO;
 import com.luna.lunasrv.module.lunaerp.service.business.shipment.ShipmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -104,6 +105,14 @@ public class ShipmentController {
     @PreAuthorize("@ss.hasAnyPermissions('lunaerp:business:shipment:update', 'lunaerp:business:shipment:audit')")
     public CommonResult<Boolean> cancelShipment(@RequestParam("id") Long id) {
         shipmentService.cancelShipment(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-sign")
+    @Operation(summary = "登记/修改发货单签收信息（仅已发货 COMPLETED 单据可登记）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:shipment:update')")
+    public CommonResult<Boolean> updateShipmentSign(@Valid @RequestBody ShipmentUpdateSignReqVO reqVO) {
+        shipmentService.updateShipmentSign(reqVO);
         return success(true);
     }
 

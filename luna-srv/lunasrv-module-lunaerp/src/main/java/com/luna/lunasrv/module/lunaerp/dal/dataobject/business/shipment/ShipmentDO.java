@@ -127,14 +127,17 @@ public class ShipmentDO extends TenantBaseDO {
     /**
      * 签收人姓名
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String signedByName;
     /**
      * 签收时间
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime signedAt;
     /**
      * 签收备注
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String signRemark;
     /**
      * 发货备注
