@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,6 +44,8 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_COLOR_HAS_VATS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -631,6 +634,41 @@ class DyeingOrderServiceImplTest {
         assertEquals(501L, captor.getValue().getId());
         assertEquals(1, captor.getValue().getLineNo());
 
+        verify(dyeingColorMapper, never()).insert(any(DyeingColorDO.class));
+    }
+
+    @Test
+    void updateDyeingOrder_removeColorWithVats_guardThrows004AndAbortsSave() {
+        stubExistingOrder(1001L, "DRAFT");
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+
+        DyeingColorDO c1 = stubColorDO(501L, 1001L, 1, "C-01", "藏青", new BigDecimal("500.00"));
+        DyeingColorDO c2 = stubColorDO(502L, 1001L, 2, "C-02", "花灰", new BigDecimal("300.00"));
+        when(dyeingColorMapper.selectListByOrderId(1001L)).thenReturn(List.of(c1, c2));
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+        // 尝试移除 502L
+        reqVO.setColors(List.of(
+                buildColorReqVO(501L, "C-01", "藏青", new BigDecimal("500.00"))
+        ));
+
+        // 守卫拦截：待删除颜色行存在反馈缸，抛出 1-030-017-004
+        doThrow(exception(PROGRESS_FEEDBACK_COLOR_HAS_VATS, "花灰", 2))
+                .when(dyeingColorDeleteGuard).validateCanDeleteColors(eq(1001L), eq(Set.of(502L)));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.updateDyeingOrder(reqVO));
+
+        assertEquals(PROGRESS_FEEDBACK_COLOR_HAS_VATS.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("花灰"));
+        assertTrue(ex.getMessage().contains("2"));
+
+        // 验证删除被硬拦截：明细的 deleteByIds / updateById / insert 均未执行
+        verify(dyeingColorDeleteGuard).validateCanDeleteColors(eq(1001L), eq(Set.of(502L)));
+        verify(dyeingColorMapper, never()).deleteByIds(any());
+        verify(dyeingColorMapper, never()).updateById(any(DyeingColorDO.class));
         verify(dyeingColorMapper, never()).insert(any(DyeingColorDO.class));
     }
 

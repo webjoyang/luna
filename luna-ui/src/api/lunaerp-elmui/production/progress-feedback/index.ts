@@ -203,3 +203,9 @@ export const advanceProgressFeedback = (data: ProgressFeedbackAdvanceVO) => {
   })
 }
 
+// 删除反馈缸（级联删除沟通记录）
+export const deleteProgressFeedback = (id: number) => {
+  return request.delete<boolean>({
+    url: `/lunaerp/production/progress-feedback/${id}`
+  })
+}

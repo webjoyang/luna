@@ -17,6 +17,7 @@ import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -101,6 +102,18 @@ public class ProgressFeedbackController {
     @PreAuthorize("@ss.hasPermission('lunaerp:production:progress-feedback:advance')")
     public CommonResult<Boolean> advanceProgressFeedback(@Valid @RequestBody ProgressFeedbackAdvanceReqVO reqVO) {
         progressFeedbackService.advanceProgressFeedback(reqVO);
+        return success(true);
+    }
+
+    @DeleteMapping({"/{id}", "/delete"})
+    @Operation(summary = "删除反馈缸（级联软删其下所有反馈记录）")
+    @Parameter(name = "id", description = "反馈缸ID", required = true, example = "1001")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:progress-feedback:delete')")
+    public CommonResult<Boolean> deleteProgressFeedback(
+            @PathVariable(value = "id", required = false) Long pathId,
+            @RequestParam(value = "id", required = false) Long queryId) {
+        Long vatId = pathId != null ? pathId : queryId;
+        progressFeedbackService.deleteProgressFeedback(vatId);
         return success(true);
     }
 

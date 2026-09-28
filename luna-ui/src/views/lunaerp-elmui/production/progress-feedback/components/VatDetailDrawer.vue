@@ -364,15 +364,26 @@
 
     <template #footer>
       <div class="drawer-footer">
-        <el-button @click="visible = false">关闭</el-button>
         <el-button
-          v-hasPermi="['lunaerp:production:progress-feedback:update']"
-          type="primary"
-          :loading="saving"
-          @click="handleSave"
+          v-hasPermi="['lunaerp:production:progress-feedback:delete']"
+          type="danger"
+          plain
+          :loading="deleting"
+          @click="handleDelete"
         >
-          保存缸信息修改
+          删除此缸
         </el-button>
+        <div class="footer-right">
+          <el-button @click="visible = false">关闭</el-button>
+          <el-button
+            v-hasPermi="['lunaerp:production:progress-feedback:update']"
+            type="primary"
+            :loading="saving"
+            @click="handleSave"
+          >
+            保存缸信息修改
+          </el-button>
+        </div>
       </div>
     </template>
 
@@ -390,6 +401,7 @@ import {
   getProgressFeedback,
   updateProgressFeedback,
   advanceProgressFeedback,
+  deleteProgressFeedback,
   type ProgressFeedbackDetailVO,
   type ProgressFeedbackUpdateVO
 } from '@/api/lunaerp-elmui/production/progress-feedback'
@@ -719,6 +731,36 @@ const handleDeleteNote = async (note: ProgressFeedbackNoteVO) => {
   }
 }
 
+const deleting = ref(false)
+
+// 删除此缸
+const handleDelete = async () => {
+  if (!detail.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除缸【${detail.value.vatNo}】吗？删除后其下的全部跟单反馈记录将一并级联删除，且不可恢复！`,
+      '删除反馈缸确认',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+        type: 'warning'
+      }
+    )
+    deleting.value = true
+    await deleteProgressFeedback(detail.value.id)
+    ElMessage.success(`缸【${detail.value.vatNo}】已删除`)
+    visible.value = false
+    emit('success')
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('删除反馈缸失败', error)
+    }
+  } finally {
+    deleting.value = false
+  }
+}
+
 defineExpose({ open })
 </script>
 
@@ -925,6 +967,19 @@ defineExpose({ open })
       white-space: pre-wrap;
       word-break: break-all;
     }
+  }
+}
+
+.drawer-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 }
 </style>

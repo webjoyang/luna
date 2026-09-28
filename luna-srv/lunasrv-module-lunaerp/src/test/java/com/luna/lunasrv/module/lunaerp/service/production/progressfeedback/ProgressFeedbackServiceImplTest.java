@@ -933,4 +933,49 @@ class ProgressFeedbackServiceImplTest {
         assertFalse(detail.getOverScheduled());
     }
 
+    // ==================== 10. 删除反馈缸（任意状态可删 + 级联软删记录） ====================
+
+    @Test
+    @DisplayName("删除排缸态反馈缸成功：级联软删反馈记录")
+    void testDeleteProgressFeedback_scheduledVat_success() {
+        Long vatId = 1001L;
+        ProgressFeedbackDO vat = createVat(vatId, 1L, 101L, "VAT-01", new BigDecimal("500.00"), 20, "SCHEDULED");
+        vat.setDeleted(false);
+        when(progressFeedbackMapper.selectById(vatId)).thenReturn(vat);
+
+        progressFeedbackService.deleteProgressFeedback(vatId);
+
+        // 验证级联软删反馈记录与删除缸自身
+        verify(progressFeedbackNoteMapper).delete(any(LambdaQueryWrapperX.class));
+        verify(progressFeedbackMapper).deleteById(vatId);
+    }
+
+    @Test
+    @DisplayName("删除完成态反馈缸成功：任意工序状态均可删除")
+    void testDeleteProgressFeedback_completedVat_success() {
+        Long vatId = 1002L;
+        ProgressFeedbackDO vat = createVat(vatId, 1L, 101L, "VAT-02", new BigDecimal("300.00"), 12, "COMPLETED");
+        vat.setDeleted(false);
+        when(progressFeedbackMapper.selectById(vatId)).thenReturn(vat);
+
+        progressFeedbackService.deleteProgressFeedback(vatId);
+
+        verify(progressFeedbackNoteMapper).delete(any(LambdaQueryWrapperX.class));
+        verify(progressFeedbackMapper).deleteById(vatId);
+    }
+
+    @Test
+    @DisplayName("删除不存在的反馈缸：抛 1-030-017-000 (PROGRESS_FEEDBACK_VAT_NOT_EXISTS)")
+    void testDeleteProgressFeedback_notExists_throws000() {
+        Long vatId = 9999L;
+        when(progressFeedbackMapper.selectById(vatId)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> progressFeedbackService.deleteProgressFeedback(vatId));
+        assertEquals(PROGRESS_FEEDBACK_VAT_NOT_EXISTS.getCode(), ex.getCode());
+
+        verify(progressFeedbackNoteMapper, never()).delete(any(LambdaQueryWrapperX.class));
+        verify(progressFeedbackMapper, never()).deleteById(any());
+    }
+
 }

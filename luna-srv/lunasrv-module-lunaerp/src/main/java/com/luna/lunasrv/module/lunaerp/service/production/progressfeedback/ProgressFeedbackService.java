@@ -73,4 +73,11 @@ public interface ProgressFeedbackService {
      */
     void advanceProgressFeedback(ProgressFeedbackAdvanceReqVO reqVO);
 
+    /**
+     * 删除反馈缸（同事务级联软删其下所有反馈记录）
+     *
+     * @param id 反馈缸 ID
+     */
+    void deleteProgressFeedback(Long id);
+
 }

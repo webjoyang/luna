@@ -729,4 +729,21 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
         return deliveryDate.isBefore(today);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteProgressFeedback(Long id) {
+        // 1. 校验反馈缸是否存在且未软删
+        ProgressFeedbackDO vat = progressFeedbackMapper.selectById(id);
+        if (vat == null || Boolean.TRUE.equals(vat.getDeleted())) {
+            throw exception(PROGRESS_FEEDBACK_VAT_NOT_EXISTS);
+        }
+
+        // 2. 级联逻辑删除其下所有反馈记录
+        progressFeedbackNoteMapper.delete(new LambdaQueryWrapperX<ProgressFeedbackNoteDO>()
+                .eq(ProgressFeedbackNoteDO::getFeedbackId, id));
+
+        // 3. 逻辑删除反馈缸自身
+        progressFeedbackMapper.deleteById(id);
+    }
+
 }

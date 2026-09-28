@@ -99,6 +99,18 @@
       <el-button size="small" text :icon="View" class="detail-btn" @click="handleCardClick">
         详情
       </el-button>
+      <el-button
+        v-if="canDelete"
+        size="small"
+        text
+        type="danger"
+        :icon="Delete"
+        :loading="deleting"
+        class="delete-btn"
+        @click="handleDelete"
+      >
+        删除
+      </el-button>
     </div>
   </div>
 </template>
@@ -106,11 +118,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { DICT_TYPE } from '@/utils/dict'
-import { Warning, Right, View, ChatDotSquare } from '@element-plus/icons-vue'
+import { Warning, Right, View, ChatDotSquare, Delete } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { hasPermission } from '@/directives/permission/hasPermi'
 import {
   advanceProgressFeedback,
+  deleteProgressFeedback,
   type ProgressFeedbackVatVO
 } from '@/api/lunaerp-elmui/production/progress-feedback'
 
@@ -154,6 +167,12 @@ const canAdvance = computed(() => {
 const canNote = computed(() => {
   return hasPermission(['lunaerp:production:progress-feedback:note'])
 })
+
+const canDelete = computed(() => {
+  return hasPermission(['lunaerp:production:progress-feedback:delete'])
+})
+
+const deleting = ref(false)
 
 const handleFeedback = () => {
   emit('open-feedback', props.vat)
@@ -199,6 +218,32 @@ const handleAdvance = async () => {
     }
   } finally {
     advancing.value = false
+  }
+}
+
+const handleDelete = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除缸【${props.vat.vatNo}】吗？删除后其下的全部跟单反馈记录将一并级联删除，且不可恢复！`,
+      '删除反馈缸确认',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+        type: 'warning'
+      }
+    )
+
+    deleting.value = true
+    await deleteProgressFeedback(props.vat.id)
+    ElMessage.success(`缸【${props.vat.vatNo}】已删除`)
+    emit('refresh')
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('删除反馈缸失败', error)
+    }
+  } finally {
+    deleting.value = false
   }
 }
 </script>
@@ -448,6 +493,17 @@ const handleAdvance = async () => {
 
     &:hover {
       color: #409eff;
+    }
+  }
+
+  .delete-btn {
+    font-size: 12px;
+    color: #f56c6c;
+    height: 26px;
+    padding: 0 4px;
+
+    &:hover {
+      color: #f78989;
     }
   }
 }
