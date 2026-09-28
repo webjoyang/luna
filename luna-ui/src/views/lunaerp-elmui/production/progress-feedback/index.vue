@@ -164,6 +164,8 @@
           :key="section.dyeingColorId"
           :section="section"
           @create-vat="handleCreateVatForSection"
+          @open-detail="handleOpenVatDetail"
+          @refresh="handleRefresh"
         />
 
         <!-- 分页条 -->
@@ -189,6 +191,9 @@
 
     <!-- 新建缸弹窗 -->
     <VatCreateDialog ref="vatCreateDialogRef" @success="handleCreateSuccess" />
+
+    <!-- 缸详情与工序时间轴抽屉 -->
+    <VatDetailDrawer ref="vatDetailDrawerRef" @success="handleDetailSuccess" />
   </div>
 </template>
 
@@ -202,11 +207,13 @@ import * as DyeingOrderApi from '@/api/lunaerp-elmui/production/dyeing-order'
 import type { DyeingOrderVO } from '@/api/lunaerp-elmui/production/dyeing-order'
 import ColorSection from './components/ColorSection.vue'
 import VatCreateDialog from './components/VatCreateDialog.vue'
+import VatDetailDrawer from './components/VatDetailDrawer.vue'
 import {
   getProgressFeedbackPage,
   getProgressFeedbackStatistics,
   type ProgressFeedbackColorSectionVO,
   type ProgressFeedbackStatisticsVO,
+  type ProgressFeedbackVatVO,
   type ProgressFeedbackPageParam
 } from '@/api/lunaerp-elmui/production/progress-feedback'
 
@@ -216,6 +223,7 @@ const loading = ref(false)
 const sectionList = ref<ProgressFeedbackColorSectionVO[]>([])
 const total = ref(0)
 const vatCreateDialogRef = ref<InstanceType<typeof VatCreateDialog>>()
+const vatDetailDrawerRef = ref<InstanceType<typeof VatDetailDrawer>>()
 
 const statistics = reactive<ProgressFeedbackStatisticsVO>({
   unscheduledColorCount: 0,
@@ -367,6 +375,23 @@ const handleCreateVatForSection = (section: ProgressFeedbackColorSectionVO) => {
 
 // 建缸成功刷新列表与统计条（保持当前页码，新缸即刻上屏）
 const handleCreateSuccess = () => {
+  getList()
+  getStatistics()
+}
+
+// 打开缸详情与工序时间轴抽屉
+const handleOpenVatDetail = (vat: ProgressFeedbackVatVO) => {
+  vatDetailDrawerRef.value?.open(vat.id)
+}
+
+// 抽屉内推进、回退或保存成功刷新列表与统计条
+const handleDetailSuccess = () => {
+  getList()
+  getStatistics()
+}
+
+// 缸卡推进操作成功刷新
+const handleRefresh = () => {
   getList()
   getStatistics()
 }

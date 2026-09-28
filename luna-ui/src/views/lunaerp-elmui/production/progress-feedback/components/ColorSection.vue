@@ -83,6 +83,8 @@
           :key="vat.id"
           :vat="vat"
           :unit="section.unit"
+          @open-detail="handleOpenDetail"
+          @refresh="handleRefresh"
         />
       </div>
 
@@ -115,7 +117,10 @@ import { computed } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { hasPermission } from '@/directives/permission/hasPermi'
 import VatCard from './VatCard.vue'
-import type { ProgressFeedbackColorSectionVO } from '@/api/lunaerp-elmui/production/progress-feedback'
+import type {
+  ProgressFeedbackColorSectionVO,
+  ProgressFeedbackVatVO
+} from '@/api/lunaerp-elmui/production/progress-feedback'
 
 const props = defineProps<{
   section: ProgressFeedbackColorSectionVO
@@ -140,10 +145,20 @@ const coverageTagType = computed(() => {
 
 const emit = defineEmits<{
   (e: 'create-vat', section: ProgressFeedbackColorSectionVO): void
+  (e: 'open-detail', vat: ProgressFeedbackVatVO): void
+  (e: 'refresh'): void
 }>()
 
 const handleCreateVat = () => {
   emit('create-vat', props.section)
+}
+
+const handleOpenDetail = (vat: ProgressFeedbackVatVO) => {
+  emit('open-detail', vat)
+}
+
+const handleRefresh = () => {
+  emit('refresh')
 }
 </script>
 

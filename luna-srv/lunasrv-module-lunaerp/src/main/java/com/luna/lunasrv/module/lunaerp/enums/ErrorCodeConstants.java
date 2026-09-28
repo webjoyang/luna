@@ -177,6 +177,8 @@ public interface ErrorCodeConstants {
     ErrorCode PROGRESS_FEEDBACK_COLOR_HAS_VATS = new ErrorCode(1_030_017_004, "颜色【{}】下有 {} 条缸进度反馈，请先删除后再移除该颜色行");
     ErrorCode PROGRESS_FEEDBACK_NOTE_NOT_EXISTS = new ErrorCode(1_030_017_100, "反馈记录不存在");
     ErrorCode PROGRESS_FEEDBACK_NOTE_ALREADY_RESOLVED = new ErrorCode(1_030_017_101, "问题已闭环不可操作");
+    ErrorCode PROGRESS_FEEDBACK_STATUS_ADVANCE_NOT_ALLOWED = new ErrorCode(1_030_017_005, "当前状态不允许推进或跳格");
+    ErrorCode PROGRESS_FEEDBACK_STATUS_ROLLBACK_NOT_ALLOWED = new ErrorCode(1_030_017_006, "当前状态不允许回退");
 
 }
 

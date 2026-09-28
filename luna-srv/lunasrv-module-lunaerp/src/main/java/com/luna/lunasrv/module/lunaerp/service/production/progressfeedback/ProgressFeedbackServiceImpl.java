@@ -17,7 +17,10 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.Dy
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.ProgressFeedbackMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.note.ProgressFeedbackNoteMapper;
 import com.luna.lunasrv.module.lunaerp.enums.production.progressfeedback.ProgressFeedbackStatusEnum;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackAdvanceReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackUpdateReqVO;
 import jakarta.annotation.Resource;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +36,10 @@ import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionU
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_DYEING_COLOR_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_DYEING_ORDER_STATUS_NOT_ALLOWED;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_STATUS_ADVANCE_NOT_ALLOWED;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_STATUS_ROLLBACK_NOT_ALLOWED;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_VAT_NO_DUPLICATE;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_VAT_NOT_EXISTS;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.function.Supplier;
@@ -280,6 +286,210 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
 
         progressFeedbackMapper.insert(vat);
         return vat.getId();
+    }
+
+    @Override
+    public ProgressFeedbackDetailRespVO getProgressFeedback(Long id) {
+        // 1. 查询缸
+        ProgressFeedbackDO vat = progressFeedbackMapper.selectById(id);
+        if (vat == null || Boolean.TRUE.equals(vat.getDeleted())) {
+            throw exception(PROGRESS_FEEDBACK_VAT_NOT_EXISTS);
+        }
+
+        // 2. 查询染色单与颜色行实时信息（零快照）
+        DyeingOrderDO order = dyeingOrderMapper.selectById(vat.getDyeingOrderId());
+        DyeingColorDO color = dyeingColorMapper.selectById(vat.getDyeingColorId());
+
+        // 3. 查询同颜色行下的所有缸计算覆盖率与总数量
+        List<ProgressFeedbackDO> colorVats = progressFeedbackMapper.selectListByColorIds(Set.of(vat.getDyeingColorId()));
+        if (colorVats != null) {
+            colorVats = colorVats.stream()
+                    .filter(v -> v.getDeleted() == null || !v.getDeleted())
+                    .collect(Collectors.toList());
+        } else {
+            colorVats = Collections.emptyList();
+        }
+
+        BigDecimal totalVatQty = BigDecimal.ZERO;
+        int totalVatPieces = 0;
+        for (ProgressFeedbackDO v : colorVats) {
+            if (v.getQuantity() != null) {
+                totalVatQty = totalVatQty.add(v.getQuantity());
+            }
+            if (v.getPieces() != null) {
+                totalVatPieces += v.getPieces();
+            }
+        }
+
+        // 4. 查询未决问题数
+        Map<Long, Integer> unresolvedMap = getUnresolvedCountMap(List.of(vat));
+
+        // 5. 组装 DetailRespVO
+        LocalDate today = todayProvider.get();
+        ProgressFeedbackDetailRespVO respVO = BeanUtils.toBean(vat, ProgressFeedbackDetailRespVO.class);
+        respVO.setUnresolvedIssueCount(unresolvedMap.getOrDefault(vat.getId(), 0));
+
+        if (order != null) {
+            respVO.setSalesContractId(order.getSalesContractId());
+            respVO.setContractNo(order.getContractNo());
+            respVO.setCustomerId(order.getCustomerId());
+            respVO.setClientName(order.getClientName());
+            respVO.setDyeingFactoryId(order.getDyeingFactoryId());
+            respVO.setDyeingFactoryName(order.getDyeingFactoryName());
+            respVO.setDeliveryDate(order.getDeliveryDate());
+            respVO.setProductCode(order.getProductCode());
+            respVO.setProductName(order.getProductName());
+            respVO.setDyeingOrderStatus(order.getStatus());
+            respVO.setDelayed(isDelayed(order.getDeliveryDate(), vat.getStatus(), today));
+        } else {
+            respVO.setDelayed(false);
+        }
+
+        if (color != null) {
+            respVO.setLineNo(color.getLineNo());
+            respVO.setCustomerColorNo(color.getCustomerColorNo());
+            respVO.setColorName(color.getColorName());
+            BigDecimal colorQty = color.getQuantity() != null ? color.getQuantity() : BigDecimal.ZERO;
+            respVO.setColorQuantity(colorQty);
+            respVO.setColorPieces(color.getPieces());
+            respVO.setUnit(color.getDyeingInputUnit());
+
+            // 覆盖率与超排
+            if (color.getQuantity() == null || color.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+                respVO.setCoveragePercent(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+                respVO.setOverScheduled(totalVatQty.compareTo(BigDecimal.ZERO) > 0);
+            } else {
+                BigDecimal cov = totalVatQty.divide(color.getQuantity(), 4, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100))
+                        .setScale(2, RoundingMode.HALF_UP);
+                respVO.setCoveragePercent(cov);
+                respVO.setOverScheduled(totalVatQty.compareTo(color.getQuantity()) > 0);
+            }
+        }
+
+        respVO.setTotalVatQuantity(totalVatQty.setScale(2, RoundingMode.HALF_UP));
+        respVO.setTotalVatPieces(totalVatPieces);
+
+        return respVO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateProgressFeedback(ProgressFeedbackUpdateReqVO reqVO) {
+        // 1. 查缸存在性
+        ProgressFeedbackDO vat = progressFeedbackMapper.selectById(reqVO.getId());
+        if (vat == null || Boolean.TRUE.equals(vat.getDeleted())) {
+            throw exception(PROGRESS_FEEDBACK_VAT_NOT_EXISTS);
+        }
+
+        // 2. 校验数量 > 0
+        if (reqVO.getQuantity() == null || reqVO.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+            throw invalidParamException("本缸数量必须大于0");
+        }
+
+        // 3. 同单同色缸号唯一性校验（若修改缸号，不能与同色下其它缸撞重）
+        String newVatNo = reqVO.getVatNo() != null ? reqVO.getVatNo().trim() : "";
+        ProgressFeedbackDO existing = progressFeedbackMapper.selectByColorIdAndVatNo(vat.getDyeingColorId(), newVatNo);
+        if (existing != null && !Objects.equals(existing.getId(), vat.getId())) {
+            throw exception(PROGRESS_FEEDBACK_VAT_NO_DUPLICATE, newVatNo);
+        }
+
+        // 4. 状态变更校验（仅允许保持当前状态，或回退到上一工序）
+        if (StringUtils.hasText(reqVO.getStatus()) && !Objects.equals(reqVO.getStatus().trim(), vat.getStatus())) {
+            String targetStatus = reqVO.getStatus().trim();
+            String prevStatus = getPreviousStatus(vat.getStatus());
+            if (prevStatus == null || !prevStatus.equals(targetStatus)) {
+                throw exception(PROGRESS_FEEDBACK_STATUS_ROLLBACK_NOT_ALLOWED);
+            }
+            // 回退放行（回退不强制清日期，日期以人工修正为准）
+            vat.setStatus(prevStatus);
+        }
+
+        // 5. 更新基本信息与五个阶段日期（COMPLETED 缸仍可修正日期与备注）
+        vat.setVatNo(newVatNo);
+        vat.setQuantity(reqVO.getQuantity());
+        vat.setPieces(reqVO.getPieces());
+        vat.setScheduledDate(reqVO.getScheduledDate());
+        vat.setDyeingStartedDate(reqVO.getDyeingStartedDate());
+        vat.setFixingStartedDate(reqVO.getFixingStartedDate());
+        vat.setQualityCheckDate(reqVO.getQualityCheckDate());
+        vat.setCompletedDate(reqVO.getCompletedDate());
+        vat.setDelayReason(reqVO.getDelayReason());
+        vat.setRemark(reqVO.getRemark());
+
+        progressFeedbackMapper.updateById(vat);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void advanceProgressFeedback(ProgressFeedbackAdvanceReqVO reqVO) {
+        // 1. 查缸存在性
+        ProgressFeedbackDO vat = progressFeedbackMapper.selectById(reqVO.getId());
+        if (vat == null || Boolean.TRUE.equals(vat.getDeleted())) {
+            throw exception(PROGRESS_FEEDBACK_VAT_NOT_EXISTS);
+        }
+
+        // 2. 状态机推进：严格顺序逐格，不允许跳格；COMPLETED 无后继
+        String currentStatus = vat.getStatus();
+        String nextStatus = getNextStatus(currentStatus);
+        if (nextStatus == null) {
+            throw exception(PROGRESS_FEEDBACK_STATUS_ADVANCE_NOT_ALLOWED);
+        }
+
+        // 若传入了目标状态，必须与下一格严格一致，不允许跳格
+        if (StringUtils.hasText(reqVO.getTargetStatus())) {
+            if (!nextStatus.equals(reqVO.getTargetStatus().trim())) {
+                throw exception(PROGRESS_FEEDBACK_STATUS_ADVANCE_NOT_ALLOWED);
+            }
+        }
+
+        // 3. 写入目标状态与对应阶段当天日期戳
+        LocalDate today = todayProvider.get();
+        vat.setStatus(nextStatus);
+        if (ProgressFeedbackStatusEnum.DYEING.getValue().equals(nextStatus)) {
+            vat.setDyeingStartedDate(today);
+        } else if (ProgressFeedbackStatusEnum.FIXING.getValue().equals(nextStatus)) {
+            vat.setFixingStartedDate(today);
+        } else if (ProgressFeedbackStatusEnum.QUALITY_CHECK.getValue().equals(nextStatus)) {
+            vat.setQualityCheckDate(today);
+        } else if (ProgressFeedbackStatusEnum.COMPLETED.getValue().equals(nextStatus)) {
+            vat.setCompletedDate(today);
+        }
+
+        progressFeedbackMapper.updateById(vat);
+    }
+
+    /**
+     * 严格顺序工序链：SCHEDULED -> DYEING -> FIXING -> QUALITY_CHECK -> COMPLETED
+     */
+    private static final List<String> STATUS_SEQUENCE = List.of(
+            ProgressFeedbackStatusEnum.SCHEDULED.getValue(),
+            ProgressFeedbackStatusEnum.DYEING.getValue(),
+            ProgressFeedbackStatusEnum.FIXING.getValue(),
+            ProgressFeedbackStatusEnum.QUALITY_CHECK.getValue(),
+            ProgressFeedbackStatusEnum.COMPLETED.getValue()
+    );
+
+    private String getNextStatus(String currentStatus) {
+        if (currentStatus == null) {
+            return null;
+        }
+        int index = STATUS_SEQUENCE.indexOf(currentStatus);
+        if (index >= 0 && index < STATUS_SEQUENCE.size() - 1) {
+            return STATUS_SEQUENCE.get(index + 1);
+        }
+        return null;
+    }
+
+    private String getPreviousStatus(String currentStatus) {
+        if (currentStatus == null) {
+            return null;
+        }
+        int index = STATUS_SEQUENCE.indexOf(currentStatus);
+        if (index > 0) {
+            return STATUS_SEQUENCE.get(index - 1);
+        }
+        return null;
     }
 
     // ==================== 私有辅助方法 ====================

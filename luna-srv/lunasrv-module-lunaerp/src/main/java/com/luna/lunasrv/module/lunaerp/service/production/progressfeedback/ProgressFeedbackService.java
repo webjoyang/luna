@@ -6,6 +6,10 @@ import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackStatisticsRespVO;
 
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackAdvanceReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackUpdateReqVO;
+
 import java.util.List;
 
 /**
@@ -46,5 +50,27 @@ public interface ProgressFeedbackService {
      * @return 反馈缸 ID
      */
     Long createProgressFeedback(ProgressFeedbackCreateReqVO reqVO);
+
+    /**
+     * 获得反馈缸详情（缸字段 + 五阶段日期 + 颜色行/染色单实时信息 + 延期/覆盖率）
+     *
+     * @param id 反馈缸 ID
+     * @return 反馈缸详情
+     */
+    ProgressFeedbackDetailRespVO getProgressFeedback(Long id);
+
+    /**
+     * 编辑反馈缸信息、阶段日期与状态回退
+     *
+     * @param reqVO 编辑信息
+     */
+    void updateProgressFeedback(ProgressFeedbackUpdateReqVO reqVO);
+
+    /**
+     * 推进反馈缸工序阶段（严格顺序逐格，自动盖当天日期戳）
+     *
+     * @param reqVO 推进参数
+     */
+    void advanceProgressFeedback(ProgressFeedbackAdvanceReqVO reqVO);
 
 }

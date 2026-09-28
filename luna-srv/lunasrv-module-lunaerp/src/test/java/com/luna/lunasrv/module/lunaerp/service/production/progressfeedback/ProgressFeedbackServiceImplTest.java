@@ -17,7 +17,10 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.Dy
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.ProgressFeedbackMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.note.ProgressFeedbackNoteMapper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackAdvanceReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackUpdateReqVO;
 import com.luna.lunasrv.module.lunaerp.enums.production.progressfeedback.ProgressFeedbackStatusEnum;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -562,6 +565,372 @@ class ProgressFeedbackServiceImplTest {
         assertThrows(ServiceException.class, () -> progressFeedbackService.createProgressFeedback(negativeQtyReq));
 
         verify(progressFeedbackMapper, never()).insert(any(ProgressFeedbackDO.class));
+    }
+
+    // ==================== 9. 工序推进逻辑（04 票） ====================
+
+    @Test
+    @DisplayName("工序推进：SCHEDULED -> DYEING，盖染色开始日期戳")
+    void advanceProgressFeedback_scheduledToDyeing_success() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "SCHEDULED");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        ProgressFeedbackAdvanceReqVO reqVO = ProgressFeedbackAdvanceReqVO.builder()
+                .id(1001L)
+                .targetStatus("DYEING")
+                .build();
+
+        progressFeedbackService.advanceProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).updateById(captor.capture());
+        ProgressFeedbackDO updated = captor.getValue();
+
+        assertEquals(ProgressFeedbackStatusEnum.DYEING.getValue(), updated.getStatus());
+        assertEquals(FIXED_TODAY, updated.getDyeingStartedDate(), "推进到染色中应自动盖当天日期戳");
+    }
+
+    @Test
+    @DisplayName("工序推进：DYEING -> FIXING，盖固色开始日期戳")
+    void advanceProgressFeedback_dyeingToFixing_success() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "DYEING");
+        vat.setDyeingStartedDate(FIXED_TODAY.minusDays(2));
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        ProgressFeedbackAdvanceReqVO reqVO = ProgressFeedbackAdvanceReqVO.builder()
+                .id(1001L)
+                .build(); // targetStatus 省略时自动推进到下一格
+
+        progressFeedbackService.advanceProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).updateById(captor.capture());
+        ProgressFeedbackDO updated = captor.getValue();
+
+        assertEquals(ProgressFeedbackStatusEnum.FIXING.getValue(), updated.getStatus());
+        assertEquals(FIXED_TODAY, updated.getFixingStartedDate(), "推进到固色中应自动盖当天日期戳");
+        assertEquals(FIXED_TODAY.minusDays(2), updated.getDyeingStartedDate(), "原有工序日期不受影响");
+    }
+
+    @Test
+    @DisplayName("工序推进：FIXING -> QUALITY_CHECK，盖质检日期戳")
+    void advanceProgressFeedback_fixingToQualityCheck_success() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "FIXING");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        ProgressFeedbackAdvanceReqVO reqVO = ProgressFeedbackAdvanceReqVO.builder()
+                .id(1001L)
+                .targetStatus("QUALITY_CHECK")
+                .build();
+
+        progressFeedbackService.advanceProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).updateById(captor.capture());
+        ProgressFeedbackDO updated = captor.getValue();
+
+        assertEquals(ProgressFeedbackStatusEnum.QUALITY_CHECK.getValue(), updated.getStatus());
+        assertEquals(FIXED_TODAY, updated.getQualityCheckDate(), "推进到质检中应自动盖当天日期戳");
+    }
+
+    @Test
+    @DisplayName("工序推进：QUALITY_CHECK -> COMPLETED，盖完成日期戳")
+    void advanceProgressFeedback_qualityCheckToCompleted_success() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "QUALITY_CHECK");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        ProgressFeedbackAdvanceReqVO reqVO = ProgressFeedbackAdvanceReqVO.builder()
+                .id(1001L)
+                .targetStatus("COMPLETED")
+                .build();
+
+        progressFeedbackService.advanceProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).updateById(captor.capture());
+        ProgressFeedbackDO updated = captor.getValue();
+
+        assertEquals(ProgressFeedbackStatusEnum.COMPLETED.getValue(), updated.getStatus());
+        assertEquals(FIXED_TODAY, updated.getCompletedDate(), "推进到已完成应自动盖当天日期戳");
+    }
+
+    @Test
+    @DisplayName("工序推进校验：跳格推进被拒（抛出 005）")
+    void advanceProgressFeedback_skipStep_throws005() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "SCHEDULED");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        // 试图从 SCHEDULED 直接跳到 FIXING
+        ProgressFeedbackAdvanceReqVO reqVO = ProgressFeedbackAdvanceReqVO.builder()
+                .id(1001L)
+                .targetStatus("FIXING")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> progressFeedbackService.advanceProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_STATUS_ADVANCE_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("工序推进校验：COMPLETED 缸无法再推进（抛出 005）")
+    void advanceProgressFeedback_fromCompleted_throws005() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "COMPLETED");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        ProgressFeedbackAdvanceReqVO reqVO = ProgressFeedbackAdvanceReqVO.builder()
+                .id(1001L)
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> progressFeedbackService.advanceProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_STATUS_ADVANCE_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    // ==================== 10. 缸详情编辑与回退（04 票） ====================
+
+    @Test
+    @DisplayName("编辑缸：修改五个阶段日期与备注延期原因生效")
+    void updateProgressFeedback_modifyDatesAndRemark_success() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "DYEING");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        LocalDate d1 = LocalDate.of(2026, 9, 20);
+        LocalDate d2 = LocalDate.of(2026, 9, 21);
+        LocalDate d3 = LocalDate.of(2026, 9, 22);
+        LocalDate d4 = LocalDate.of(2026, 9, 23);
+        LocalDate d5 = LocalDate.of(2026, 9, 24);
+
+        ProgressFeedbackUpdateReqVO reqVO = ProgressFeedbackUpdateReqVO.builder()
+                .id(1001L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("520.00"))
+                .pieces(11)
+                .status("DYEING")
+                .scheduledDate(d1)
+                .dyeingStartedDate(d2)
+                .fixingStartedDate(d3)
+                .qualityCheckDate(d4)
+                .completedDate(d5)
+                .delayReason("设备修缮")
+                .remark("人工校准")
+                .build();
+
+        progressFeedbackService.updateProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).updateById(captor.capture());
+        ProgressFeedbackDO updated = captor.getValue();
+
+        assertEquals(new BigDecimal("520.00"), updated.getQuantity());
+        assertEquals(11, updated.getPieces());
+        assertEquals(d1, updated.getScheduledDate());
+        assertEquals(d2, updated.getDyeingStartedDate());
+        assertEquals(d3, updated.getFixingStartedDate());
+        assertEquals(d4, updated.getQualityCheckDate());
+        assertEquals(d5, updated.getCompletedDate());
+        assertEquals("设备修缮", updated.getDelayReason());
+        assertEquals("人工校准", updated.getRemark());
+    }
+
+    @Test
+    @DisplayName("编辑缸：COMPLETED 终态缸仍可修正日期与备注（不设严格终态锁）")
+    void updateProgressFeedback_modifyCompletedVatDatesAndRemark_success() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "COMPLETED");
+        vat.setCompletedDate(FIXED_TODAY.minusDays(1));
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        LocalDate newCompletedDate = FIXED_TODAY;
+        ProgressFeedbackUpdateReqVO reqVO = ProgressFeedbackUpdateReqVO.builder()
+                .id(1001L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("500.00"))
+                .completedDate(newCompletedDate)
+                .remark("补录实际出库完成日")
+                .build();
+
+        progressFeedbackService.updateProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).updateById(captor.capture());
+        ProgressFeedbackDO updated = captor.getValue();
+
+        assertEquals(newCompletedDate, updated.getCompletedDate());
+        assertEquals("补录实际出库完成日", updated.getRemark());
+        assertEquals(ProgressFeedbackStatusEnum.COMPLETED.getValue(), updated.getStatus());
+    }
+
+    @Test
+    @DisplayName("编辑缸状态回退：允许回退到上一工序且不强制清除已有日期")
+    void updateProgressFeedback_rollbackOneStep_success() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "COMPLETED");
+        vat.setScheduledDate(FIXED_TODAY.minusDays(4));
+        vat.setDyeingStartedDate(FIXED_TODAY.minusDays(3));
+        vat.setFixingStartedDate(FIXED_TODAY.minusDays(2));
+        vat.setQualityCheckDate(FIXED_TODAY.minusDays(1));
+        vat.setCompletedDate(FIXED_TODAY);
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        // 回退一格：COMPLETED -> QUALITY_CHECK
+        ProgressFeedbackUpdateReqVO reqVO = ProgressFeedbackUpdateReqVO.builder()
+                .id(1001L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("500.00"))
+                .status("QUALITY_CHECK")
+                .scheduledDate(vat.getScheduledDate())
+                .dyeingStartedDate(vat.getDyeingStartedDate())
+                .fixingStartedDate(vat.getFixingStartedDate())
+                .qualityCheckDate(vat.getQualityCheckDate())
+                .completedDate(vat.getCompletedDate()) // 回退不强制清日期，日期以传入为准
+                .build();
+
+        progressFeedbackService.updateProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).updateById(captor.capture());
+        ProgressFeedbackDO updated = captor.getValue();
+
+        assertEquals(ProgressFeedbackStatusEnum.QUALITY_CHECK.getValue(), updated.getStatus(), "状态成功回退到质检中");
+        assertEquals(FIXED_TODAY, updated.getCompletedDate(), "回退不强制清除已盖日期戳");
+    }
+
+    @Test
+    @DisplayName("编辑缸状态回退校验：已排缸无法再回退（抛出 006）")
+    void updateProgressFeedback_rollbackScheduled_throws006() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "SCHEDULED");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        ProgressFeedbackUpdateReqVO reqVO = ProgressFeedbackUpdateReqVO.builder()
+                .id(1001L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("500.00"))
+                .status("NOT_SCHEDULED")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> progressFeedbackService.updateProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_STATUS_ROLLBACK_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("编辑缸状态回退校验：跳级回退被拒（抛出 006）")
+    void updateProgressFeedback_rollbackSkipStep_throws006() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "COMPLETED");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        // 试图从 COMPLETED 直接回退到 DYEING
+        ProgressFeedbackUpdateReqVO reqVO = ProgressFeedbackUpdateReqVO.builder()
+                .id(1001L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("500.00"))
+                .status("DYEING")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> progressFeedbackService.updateProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_STATUS_ROLLBACK_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("编辑缸校验：改缸号与同单同色其它缸撞重抛出 001")
+    void updateProgressFeedback_vatNoDuplicate_throws001() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "SCHEDULED");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        // 存在另一张缸 V02 (id=1002L)
+        ProgressFeedbackDO anotherVat = createVat(1002L, 1L, 101L, "V02", new BigDecimal("300.00"), 6, "SCHEDULED");
+        when(progressFeedbackMapper.selectByColorIdAndVatNo(101L, "V02")).thenReturn(anotherVat);
+
+        ProgressFeedbackUpdateReqVO reqVO = ProgressFeedbackUpdateReqVO.builder()
+                .id(1001L)
+                .vatNo("V02")
+                .quantity(new BigDecimal("500.00"))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> progressFeedbackService.updateProgressFeedback(reqVO));
+        assertEquals(PROGRESS_FEEDBACK_VAT_NO_DUPLICATE.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("编辑缸：保留相同缸号放行通过")
+    void updateProgressFeedback_sameVatNo_success() {
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "V01", new BigDecimal("500.00"), 10, "SCHEDULED");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+        when(progressFeedbackMapper.selectByColorIdAndVatNo(101L, "V01")).thenReturn(vat);
+
+        ProgressFeedbackUpdateReqVO reqVO = ProgressFeedbackUpdateReqVO.builder()
+                .id(1001L)
+                .vatNo("V01")
+                .quantity(new BigDecimal("600.00"))
+                .build();
+
+        progressFeedbackService.updateProgressFeedback(reqVO);
+
+        ArgumentCaptor<ProgressFeedbackDO> captor = ArgumentCaptor.forClass(ProgressFeedbackDO.class);
+        verify(progressFeedbackMapper).updateById(captor.capture());
+        assertEquals(new BigDecimal("600.00"), captor.getValue().getQuantity());
+    }
+
+    // ==================== 11. 缸详情查询（04 票） ====================
+
+    @Test
+    @DisplayName("缸详情查询：包含缸字段、五阶段日期、单据/颜色行实时信息与延期/覆盖率")
+    void getProgressFeedback_detail_returnsOrderColorAndDerivedFields() {
+        DyeingOrderDO order = createOrder(1L, "ACTIVE", false, FIXED_TODAY.minusDays(1)); // 已过期
+        order.setContractNo("HT-888");
+        order.setClientName("东方纺织");
+        order.setDyeingFactoryName("第一染厂");
+        when(dyeingOrderMapper.selectById(1L)).thenReturn(order);
+
+        DyeingColorDO color = createColor(101L, 1L, 1, "湖蓝", new BigDecimal("1000.00"), 40, "KG");
+        color.setCustomerColorNo("PAN-LAKE-BLUE");
+        when(dyeingColorMapper.selectById(101L)).thenReturn(color);
+
+        ProgressFeedbackDO vat = createVat(1001L, 1L, 101L, "VAT-01", new BigDecimal("600.00"), 24, "DYEING");
+        vat.setScheduledDate(FIXED_TODAY.minusDays(5));
+        vat.setDyeingStartedDate(FIXED_TODAY.minusDays(3));
+        vat.setDelayReason("待催化助剂");
+        vat.setRemark("重点跟踪");
+        when(progressFeedbackMapper.selectById(1001L)).thenReturn(vat);
+
+        // 同颜色行下所有缸（计算总数量与覆盖率）
+        ProgressFeedbackDO vat2 = createVat(1002L, 1L, 101L, "VAT-02", new BigDecimal("200.00"), 8, "SCHEDULED");
+        when(progressFeedbackMapper.selectListByColorIds(any())).thenReturn(List.of(vat, vat2));
+
+        // 未决问题
+        ProgressFeedbackNoteDO unresolvedNote = new ProgressFeedbackNoteDO();
+        unresolvedNote.setId(901L);
+        unresolvedNote.setFeedbackId(1001L);
+        unresolvedNote.setIssueFlag(true);
+        unresolvedNote.setResolvedAt(null);
+        unresolvedNote.setDeleted(false);
+        when(progressFeedbackNoteMapper.selectUnresolvedListByFeedbackIds(any())).thenReturn(List.of(unresolvedNote));
+
+        ProgressFeedbackDetailRespVO detail = progressFeedbackService.getProgressFeedback(1001L);
+
+        // 缸字段
+        assertEquals(1001L, detail.getId());
+        assertEquals("VAT-01", detail.getVatNo());
+        assertEquals(new BigDecimal("600.00"), detail.getQuantity());
+        assertEquals(24, detail.getPieces());
+        assertEquals("DYEING", detail.getStatus());
+        assertEquals(FIXED_TODAY.minusDays(5), detail.getScheduledDate());
+        assertEquals(FIXED_TODAY.minusDays(3), detail.getDyeingStartedDate());
+        assertEquals("待催化助剂", detail.getDelayReason());
+        assertEquals("重点跟踪", detail.getRemark());
+
+        // 实时信息（零快照）
+        assertEquals("HT-888", detail.getContractNo());
+        assertEquals("东方纺织", detail.getClientName());
+        assertEquals("第一染厂", detail.getDyeingFactoryName());
+        assertEquals(order.getDeliveryDate(), detail.getDeliveryDate());
+        assertEquals("湖蓝", detail.getColorName());
+        assertEquals("PAN-LAKE-BLUE", detail.getCustomerColorNo());
+        assertEquals(new BigDecimal("1000.00"), detail.getColorQuantity());
+        assertEquals("KG", detail.getUnit());
+
+        // 派生指标
+        assertTrue(detail.getDelayed(), "交期已过且未完成应延期");
+        assertEquals(1, detail.getUnresolvedIssueCount());
+        assertEquals(new BigDecimal("800.00"), detail.getTotalVatQuantity());
+        assertEquals(32, detail.getTotalVatPieces());
+        assertEquals(new BigDecimal("80.00"), detail.getCoveragePercent());
+        assertFalse(detail.getOverScheduled());
     }
 
 }

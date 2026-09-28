@@ -2,19 +2,25 @@ package com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackAdvanceReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackColorSectionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackStatisticsRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackUpdateReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.progressfeedback.ProgressFeedbackService;
-import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -69,6 +75,33 @@ public class ProgressFeedbackController {
     @PreAuthorize("@ss.hasPermission('lunaerp:production:progress-feedback:create')")
     public CommonResult<Long> createProgressFeedback(@Valid @RequestBody ProgressFeedbackCreateReqVO reqVO) {
         return success(progressFeedbackService.createProgressFeedback(reqVO));
+    }
+
+    @GetMapping({"/get", "/{id}"})
+    @Operation(summary = "获得反馈缸详情（缸字段 + 五阶段日期 + 颜色行/染色单实时信息 + 延期/覆盖率）")
+    @Parameter(name = "id", description = "反馈缸ID", required = true, example = "1001")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:progress-feedback:query')")
+    public CommonResult<ProgressFeedbackDetailRespVO> getProgressFeedback(
+            @RequestParam(value = "id", required = false) Long queryId,
+            @PathVariable(value = "id", required = false) Long pathId) {
+        Long vatId = queryId != null ? queryId : pathId;
+        return success(progressFeedbackService.getProgressFeedback(vatId));
+    }
+
+    @PutMapping("/update")
+    @Operation(summary = "编辑反馈缸（修改缸信息、阶段日期或状态回退）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:progress-feedback:update')")
+    public CommonResult<Boolean> updateProgressFeedback(@Valid @RequestBody ProgressFeedbackUpdateReqVO reqVO) {
+        progressFeedbackService.updateProgressFeedback(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/advance")
+    @Operation(summary = "推进反馈缸工序阶段（严格逐格推进，自动盖当天日期戳）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:progress-feedback:advance')")
+    public CommonResult<Boolean> advanceProgressFeedback(@Valid @RequestBody ProgressFeedbackAdvanceReqVO reqVO) {
+        progressFeedbackService.advanceProgressFeedback(reqVO);
+        return success(true);
     }
 
 }
