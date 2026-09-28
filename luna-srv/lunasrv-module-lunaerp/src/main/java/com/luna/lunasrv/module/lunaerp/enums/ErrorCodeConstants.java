@@ -67,6 +67,7 @@ public interface ErrorCodeConstants {
     ErrorCode YARN_ORDER_STATUS_NOT_ALLOWED = new ErrorCode(1_030_009_002, "当前状态不允许该操作");
     ErrorCode YARN_ORDER_REFERENCE_NOT_FOUND = new ErrorCode(1_030_009_003, "关联的{}不存在或不可用");
     ErrorCode YARN_ORDER_GREIGE_ORDERS_EMPTY = new ErrorCode(1_030_009_004, "请至少选择一张胚布指示单");
+    ErrorCode YARN_ORDER_ITEM_INVALID_ID = new ErrorCode(1_030_009_005, "明细行 ID【{}】不属于本采购单，禁止跨单修改");
 
     // ========== 检验单模块 1-030-010-000（主表与明细共用） ==========
     ErrorCode INSPECTION_ORDER_NOT_EXISTS = new ErrorCode(1_030_010_000, "检验单不存在");

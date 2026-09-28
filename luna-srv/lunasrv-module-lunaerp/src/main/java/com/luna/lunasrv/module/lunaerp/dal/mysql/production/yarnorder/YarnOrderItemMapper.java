@@ -9,6 +9,8 @@ import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 生产管理-纱线采购明细表 Mapper
@@ -24,9 +26,32 @@ public interface YarnOrderItemMapper extends BaseMapperX<YarnOrderItemDO> {
                 .orderByAsc(YarnOrderItemDO::getYarnSpecId));
     }
 
+    /**
+     * 查询指定采购单下所有明细的 ID 集合，用于差异保存时判断 ID 归属。
+     */
+    default Set<Long> selectIdsByOrderId(Long orderId) {
+        return selectList(new LambdaQueryWrapperX<YarnOrderItemDO>()
+                .eq(YarnOrderItemDO::getOrderId, orderId)
+                .select(YarnOrderItemDO::getId))
+                .stream()
+                .map(YarnOrderItemDO::getId)
+                .collect(Collectors.toSet());
+    }
+
     default int deleteByOrderId(Long orderId) {
         return delete(new LambdaQueryWrapperX<YarnOrderItemDO>()
                 .eq(YarnOrderItemDO::getOrderId, orderId));
+    }
+
+    /**
+     * 逻辑删除指定 ID 集合的明细行，用于差异保存时删除已移除的行。
+     */
+    default int deleteByIds(Set<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        return delete(new LambdaQueryWrapperX<YarnOrderItemDO>()
+                .in(YarnOrderItemDO::getId, ids));
     }
 
     /**

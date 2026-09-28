@@ -477,11 +477,11 @@ class YarnOrderServiceImplTest {
     }
 
     @Test
-    void updateYarnOrder_success_replacesItems() {
+    void updateYarnOrder_noExistingItems_allItemsInserted() {
+        // Path 1: 更新时提交的明细行全部无 id（新增行），应全部 insert
         YarnOrderSaveReqVO req = new YarnOrderSaveReqVO();
         req.setId(100L);
         req.setOrderNo("YP20260920001");
-        req.setRemark("更新备注");
 
         YarnOrderDO existing = new YarnOrderDO();
         existing.setId(100L);
@@ -489,11 +489,15 @@ class YarnOrderServiceImplTest {
         existing.setStatus("DRAFT");
         when(yarnOrderMapper.selectById(100L)).thenReturn(existing);
 
+        // DB 里该单没有任何明细
+        when(yarnOrderItemMapper.selectIdsByOrderId(100L)).thenReturn(new HashSet<>());
+
         YarnOrderItemSaveReqVO item = new YarnOrderItemSaveReqVO();
         item.setYarnTypeId(1L);
         item.setYarnSpecId(101L);
         item.setPurchaseQty(new BigDecimal("50.00"));
         item.setUnitPrice(new BigDecimal("20.0000"));
+        // id 为 null → 新增路径
         req.setItems(Collections.singletonList(item));
 
         YarnSpecDO spec = new YarnSpecDO();
@@ -503,8 +507,142 @@ class YarnOrderServiceImplTest {
         yarnOrderService.updateYarnOrder(req);
 
         verify(yarnOrderMapper).updateById(any(YarnOrderDO.class));
-        verify(yarnOrderItemMapper).deleteByOrderId(100L);
+        // 不应调用 deleteByIds（无要删除的行）
+        verify(yarnOrderItemMapper, never()).deleteByIds(any());
+        // 不应调用 updateById（无要更新的行）
+        verify(yarnOrderItemMapper, never()).updateById(any(YarnOrderItemDO.class));
+        // 应调用 insertBatch
         verify(yarnOrderItemMapper).insertBatch(anyList());
+    }
+
+    @Test
+    void updateYarnOrder_existingItemUpdated_amountRecalculatedAuthoritatively() {
+        // Path 2: 提交行携带已有 id → updateById，金额权威重算（覆盖前端可能传入的错误金额）
+        YarnOrderSaveReqVO req = new YarnOrderSaveReqVO();
+        req.setId(100L);
+
+        YarnOrderDO existing = new YarnOrderDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        existing.setLossRate(new BigDecimal("5.00"));
+        when(yarnOrderMapper.selectById(100L)).thenReturn(existing);
+
+        // DB 里有明细 id=201
+        Set<Long> existingIds = new HashSet<>(Collections.singletonList(201L));
+        when(yarnOrderItemMapper.selectIdsByOrderId(100L)).thenReturn(existingIds);
+
+        YarnOrderItemSaveReqVO item = new YarnOrderItemSaveReqVO();
+        item.setId(201L);           // 携带已有 id → update
+        item.setYarnTypeId(1L);
+        item.setYarnSpecId(101L);
+        item.setPurchaseQty(new BigDecimal("80.00"));
+        item.setUnitPrice(new BigDecimal("30.0000"));
+        item.setTotalAmount(new BigDecimal("9999.99")); // 前端传错了，应被覆盖为 80*30=2400.00
+        req.setItems(Collections.singletonList(item));
+
+        YarnSpecDO spec = new YarnSpecDO();
+        spec.setId(101L);
+        when(yarnSpecMapper.selectById(101L)).thenReturn(spec);
+
+        yarnOrderService.updateYarnOrder(req);
+
+        verify(yarnOrderMapper).updateById(any(YarnOrderDO.class));
+        // 不应删除任何行（全部在提交列表中）
+        verify(yarnOrderItemMapper, never()).deleteByIds(any());
+        // 不应 insertBatch（无新增行）
+        verify(yarnOrderItemMapper, never()).insertBatch(anyList());
+        // 应 updateById，金额权威重算
+        ArgumentCaptor<YarnOrderItemDO> itemCaptor = ArgumentCaptor.forClass(YarnOrderItemDO.class);
+        verify(yarnOrderItemMapper).updateById(itemCaptor.capture());
+        assertEquals(new BigDecimal("2400.00"), itemCaptor.getValue().getTotalAmount()); // 80 * 30
+    }
+
+    @Test
+    void updateYarnOrder_mixedDifferential_updateInsertDelete() {
+        // Path 3: 混合场景—原有 2 行(201,202)，提交时更新 201、新增一行、删除 202
+        YarnOrderSaveReqVO req = new YarnOrderSaveReqVO();
+        req.setId(100L);
+
+        YarnOrderDO existing = new YarnOrderDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(yarnOrderMapper.selectById(100L)).thenReturn(existing);
+
+        Set<Long> existingIds = new HashSet<>(Arrays.asList(201L, 202L));
+        when(yarnOrderItemMapper.selectIdsByOrderId(100L)).thenReturn(existingIds);
+
+        // 更新 201
+        YarnOrderItemSaveReqVO updateItem = new YarnOrderItemSaveReqVO();
+        updateItem.setId(201L);
+        updateItem.setYarnTypeId(1L);
+        updateItem.setYarnSpecId(101L);
+        updateItem.setPurchaseQty(new BigDecimal("60.00"));
+        updateItem.setUnitPrice(new BigDecimal("25.0000"));
+
+        // 新增行（无 id）
+        YarnOrderItemSaveReqVO newItem = new YarnOrderItemSaveReqVO();
+        newItem.setYarnTypeId(2L);
+        newItem.setYarnSpecId(102L);
+        newItem.setPurchaseQty(new BigDecimal("40.00"));
+        newItem.setUnitPrice(new BigDecimal("15.0000"));
+
+        req.setItems(Arrays.asList(updateItem, newItem));
+        // 202 未出现在提交列表中 → 应被逻辑删除
+
+        YarnSpecDO spec101 = new YarnSpecDO();
+        spec101.setId(101L);
+        when(yarnSpecMapper.selectById(101L)).thenReturn(spec101);
+
+        YarnSpecDO spec102 = new YarnSpecDO();
+        spec102.setId(102L);
+        when(yarnSpecMapper.selectById(102L)).thenReturn(spec102);
+
+        yarnOrderService.updateYarnOrder(req);
+
+        verify(yarnOrderMapper).updateById(any(YarnOrderDO.class));
+        // 验证删除 202
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Set<Long>> deleteCaptor = ArgumentCaptor.forClass(Set.class);
+        verify(yarnOrderItemMapper).deleteByIds(deleteCaptor.capture());
+        assertEquals(Collections.singleton(202L), deleteCaptor.getValue());
+        // 验证更新 201
+        verify(yarnOrderItemMapper).updateById(any(YarnOrderItemDO.class));
+        // 验证插入新行
+        ArgumentCaptor<List<YarnOrderItemDO>> insertCaptor = ArgumentCaptor.forClass(List.class);
+        verify(yarnOrderItemMapper).insertBatch(insertCaptor.capture());
+        assertEquals(1, insertCaptor.getValue().size());
+        assertNull(insertCaptor.getValue().get(0).getId()); // 新行 id 应为 null，由 DB 序列生成
+        assertEquals(new BigDecimal("600.00"), insertCaptor.getValue().get(0).getTotalAmount()); // 40*15
+    }
+
+    @Test
+    void updateYarnOrder_itemIdNotBelongsToOrder_throws1030009005() {
+        // Path 4: 提交行携带 id 但不属于本单 → 抛 1030009005
+        YarnOrderSaveReqVO req = new YarnOrderSaveReqVO();
+        req.setId(100L);
+
+        YarnOrderDO existing = new YarnOrderDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        when(yarnOrderMapper.selectById(100L)).thenReturn(existing);
+
+        // 本单只有明细 201
+        when(yarnOrderItemMapper.selectIdsByOrderId(100L)).thenReturn(new HashSet<>(Collections.singletonList(201L)));
+
+        YarnOrderItemSaveReqVO foreignItem = new YarnOrderItemSaveReqVO();
+        foreignItem.setId(999L);   // 属于其他单的 id
+        foreignItem.setYarnTypeId(1L);
+        foreignItem.setYarnSpecId(101L);
+        req.setItems(Collections.singletonList(foreignItem));
+
+        YarnSpecDO spec = new YarnSpecDO();
+        spec.setId(101L);
+        when(yarnSpecMapper.selectById(101L)).thenReturn(spec);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> yarnOrderService.updateYarnOrder(req));
+        assertEquals(1_030_009_005, ex.getCode());
+        verify(yarnOrderMapper, never()).updateById(any(YarnOrderDO.class));
     }
 
     // ==================== delete 测试 ====================

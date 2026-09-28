@@ -151,16 +151,29 @@ public class YarnOrderServiceImpl implements YarnOrderService {
         validateSourceInstructions(updateReqVO.getSourceInstructions());
         validateItemsReferences(updateReqVO.getItems());
 
-        // 5. 更新主表
+        // 5. 明细差异保存前校验：提交行中携带 id 的，其 id 必须属于本单
+        Long orderId = existing.getId();
+        Set<Long> existingItemIds = yarnOrderItemMapper.selectIdsByOrderId(orderId);
+        List<YarnOrderItemSaveReqVO> itemVOs = updateReqVO.getItems() != null
+                ? updateReqVO.getItems() : Collections.emptyList();
+
+        for (YarnOrderItemSaveReqVO vo : itemVOs) {
+            if (vo.getId() != null && !existingItemIds.contains(vo.getId())) {
+                throw exception(YARN_ORDER_ITEM_INVALID_ID, vo.getId());
+            }
+        }
+
+        // 6. 更新主表
         YarnOrderDO order = BeanUtils.toBean(updateReqVO, YarnOrderDO.class);
         order.setOrderNo(orderNo);
         order.setStatus(existing.getStatus()); // 状态流转必须走专有生命周期方法，不允许通过 update 直接变更
         yarnOrderMapper.updateById(order);
 
-        // 6. 明细整体替换
-        yarnOrderItemMapper.deleteByOrderId(order.getId());
-        saveOrderItems(order.getId(), updateReqVO.getItems(), order.getLossRate() != null ? order.getLossRate() : existing.getLossRate());
+        // 7. 明细差异保存：update / insert / 逻辑删除三分流
+        BigDecimal lossRate = order.getLossRate() != null ? order.getLossRate() : existing.getLossRate();
+        differentialSaveItems(orderId, itemVOs, lossRate, existingItemIds);
     }
+
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -481,6 +494,68 @@ public class YarnOrderServiceImpl implements YarnOrderService {
             items.add(itemDO);
         }
         yarnOrderItemMapper.insertBatch(items);
+    }
+
+    /**
+     * 明细差异保存：将提交的明细行按 id 分流为 update / insert / 逻辑删除三组。
+     *
+     * <ul>
+     *   <li>提交行携带 id 且 id 属于本单 → updateById（保留审计字段，服务端权威重算金额）</li>
+     *   <li>提交行 id 为 null → insert（新增行）</li>
+     *   <li>本单已有 id 未出现在提交行中 → 逻辑删除</li>
+     * </ul>
+     *
+     * @param orderId         采购单 ID
+     * @param itemVOs         前端提交的明细列表（id 已通过归属校验）
+     * @param mainLossRate    主表损耗率，明细行缺省时继承
+     * @param existingItemIds 本单在 DB 中现存的明细 ID 集合（调用前已查询，避免重复查询）
+     */
+    private void differentialSaveItems(Long orderId, List<YarnOrderItemSaveReqVO> itemVOs,
+                                       BigDecimal mainLossRate, Set<Long> existingItemIds) {
+        // 分流
+        List<YarnOrderItemDO> toInsert = new ArrayList<>();
+        List<YarnOrderItemDO> toUpdate = new ArrayList<>();
+        Set<Long> submittedIds = new HashSet<>();
+
+        for (YarnOrderItemSaveReqVO vo : itemVOs) {
+            YarnOrderItemDO itemDO = BeanUtils.toBean(vo, YarnOrderItemDO.class);
+            itemDO.setOrderId(orderId);
+            if (itemDO.getLossRate() == null) {
+                itemDO.setLossRate(mainLossRate != null ? mainLossRate : BigDecimal.ZERO);
+            }
+            // 服务端权威重算金额
+            if (itemDO.getUnitPrice() != null && itemDO.getPurchaseQty() != null) {
+                itemDO.setTotalAmount(itemDO.getUnitPrice().multiply(itemDO.getPurchaseQty()).setScale(2, RoundingMode.HALF_UP));
+            } else {
+                itemDO.setTotalAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+            }
+
+            if (itemDO.getId() != null && existingItemIds.contains(itemDO.getId())) {
+                toUpdate.add(itemDO);
+                submittedIds.add(itemDO.getId());
+            } else {
+                // id 为 null 或不在本单（已由调用方校验不属于本单的 id 会抛异常，此处 id!=null 不会进来）
+                itemDO.setId(null); // 确保新行由 DB 序列生成 id
+                toInsert.add(itemDO);
+            }
+        }
+
+        // 逻辑删除：本单已有 id 中未被提交的行
+        Set<Long> toDelete = new HashSet<>(existingItemIds);
+        toDelete.removeAll(submittedIds);
+        if (!toDelete.isEmpty()) {
+            yarnOrderItemMapper.deleteByIds(toDelete);
+        }
+
+        // 更新已有行
+        for (YarnOrderItemDO item : toUpdate) {
+            yarnOrderItemMapper.updateById(item);
+        }
+
+        // 批量插入新行
+        if (!toInsert.isEmpty()) {
+            yarnOrderItemMapper.insertBatch(toInsert);
+        }
     }
 
     private List<YarnOrderItemRespVO> buildItemRespVOs(List<YarnOrderItemDO> itemDOs) {
