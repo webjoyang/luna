@@ -29,9 +29,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SALES_CONTRACT_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SALES_CONTRACT_NO_DUPLICATE;
+
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 业务管理-销售合同 Service 实现类
@@ -158,15 +165,12 @@ public class SalesContractServiceImpl implements SalesContractService {
         if (!StringUtils.hasText(updateObj.getClientName())) {
             updateObj.setClientName(customer.getCompanyName());
         }
-        // 4. 明细整体替换：先按 contractId 逻辑删除旧明细，再插本次提交的全部明细；
+        // 4. 明细差异保存（ADR-0032）：
+        //    带 id 且属于本合同的行走 update、无 id 行走 insert、本合同库内有但本次未提交的行走逻辑删除；
+        //    提交行 id 不属于本合同时报错（防跨父 id 串数据）；行号按提交顺序重排；
         //    服务端权威重算行金额与主表汇总（请求体传入的 totalQuantity/totalAmount 一律忽略覆盖）
-        List<SalesContractItemDO> itemDOList = buildItemDOList(updateReqVO.getId(), updateReqVO.getItems());
-        BigDecimal[] totals = recalculateTotals(itemDOList);
-        updateObj.setTotalQuantity(totals[0]);
-        updateObj.setTotalAmount(totals[1]);
+        diffSaveItems(updateReqVO.getId(), updateReqVO.getItems(), updateObj);
         salesContractMapper.updateById(updateObj);
-        salesContractItemMapper.deleteByContractId(updateReqVO.getId());
-        saveItems(updateReqVO.getId(), itemDOList);
     }
 
     @Override
@@ -253,6 +257,7 @@ public class SalesContractServiceImpl implements SalesContractService {
         for (int i = 0; i < items.size(); i++) {
             SalesContractItemSaveReqVO item = items.get(i);
             SalesContractItemDO itemDO = BeanUtils.toBean(item, SalesContractItemDO.class);
+            itemDO.setId(null);
             itemDO.setContractId(contractId);
             itemDO.setLineNo(i + 1);
             // 行金额权威重算：数量 × 单价 + 其他费用（null 按 0），统一 scale=2 对齐 numeric(18,2)
@@ -266,6 +271,98 @@ public class SalesContractServiceImpl implements SalesContractService {
             itemDOList.add(itemDO);
         }
         return itemDOList;
+    }
+
+    /**
+     * 对销售合同明细做差异保存（ADR-0032）：
+     * - 提交行带 id 且属于本合同存量 → updateById
+     * - 提交行无 id → insert
+     * - 本合同库内存量但本次未提交的 id → deleteByIds 批量逻辑删除
+     * - 提交行 id 不属于本合同时报错（防跨父 id 串数据）
+     * - 行号按提交顺序从 1 开始重排
+     * - 服务端权威重算行金额与主表汇总（totalQuantity/totalAmount）
+     *
+     * @param contractId 合同ID
+     * @param items      提交的明细列表（可为 null 或空）
+     * @param updateObj  主表待更新对象（回填 totalQuantity、totalAmount）
+     */
+    private void diffSaveItems(Long contractId, List<SalesContractItemSaveReqVO> items, SalesContractDO updateObj) {
+        // 1. 查询库内存量明细（按 line_no 升序，MP 自动过滤 deleted=1）
+        List<SalesContractItemDO> dbItems = salesContractItemMapper.selectListByContractId(contractId);
+        Map<Long, SalesContractItemDO> dbItemMap = dbItems.stream()
+                .collect(Collectors.toMap(SalesContractItemDO::getId, Function.identity()));
+        Set<Long> remainingDbItemIds = new HashSet<>(dbItemMap.keySet());
+
+        // 2. 零明细场景：逻辑删除库内全部存量明细，汇总归零
+        if (CollUtil.isEmpty(items)) {
+            if (!remainingDbItemIds.isEmpty()) {
+                salesContractItemMapper.deleteByIds(remainingDbItemIds);
+            }
+            updateObj.setTotalQuantity(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+            updateObj.setTotalAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+            return;
+        }
+
+        // 3. 遍历提交列表，三分流：更新 / 新增 / 校验跨父非法 ID
+        BigDecimal totalQuantity = BigDecimal.ZERO;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<SalesContractItemDO> toInsert = new ArrayList<>();
+        List<SalesContractItemDO> toUpdate = new ArrayList<>();
+        Set<Long> seenIds = new HashSet<>();
+
+        for (int i = 0; i < items.size(); i++) {
+            SalesContractItemSaveReqVO item = items.get(i);
+            BigDecimal quantity = zeroIfNull(item.getQuantity()).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal unitPrice = zeroIfNull(item.getUnitPrice()).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal otherFees = zeroIfNull(item.getOtherFees()).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal rowAmount = quantity.multiply(unitPrice).add(otherFees).setScale(2, RoundingMode.HALF_UP);
+
+            totalQuantity = totalQuantity.add(quantity);
+            totalAmount = totalAmount.add(rowAmount);
+
+            SalesContractItemDO itemDO = BeanUtils.toBean(item, SalesContractItemDO.class);
+            itemDO.setContractId(contractId);
+            itemDO.setLineNo(i + 1);
+            itemDO.setQuantity(quantity);
+            itemDO.setUnitPrice(unitPrice);
+            itemDO.setOtherFees(otherFees);
+            itemDO.setAmount(rowAmount);
+
+            if (item.getId() != null) {
+                Long itemId = item.getId();
+                if (!seenIds.add(itemId)) {
+                    throw invalidParamException("合同明细行 ID【{}】重复提交", itemId);
+                }
+                if (!remainingDbItemIds.remove(itemId)) {
+                    // ID 不在当前合同存量明细中（可能不存在、已删除或属于其他合同）
+                    throw invalidParamException("合同明细行 ID【{}】不属于当前合同", itemId);
+                }
+                itemDO.setId(itemId);
+                toUpdate.add(itemDO);
+            } else {
+                itemDO.setId(null);
+                toInsert.add(itemDO);
+            }
+        }
+
+        // 4. 执行更新
+        for (SalesContractItemDO updateItemDO : toUpdate) {
+            salesContractItemMapper.updateById(updateItemDO);
+        }
+
+        // 5. 执行新增
+        for (SalesContractItemDO insertItemDO : toInsert) {
+            salesContractItemMapper.insert(insertItemDO);
+        }
+
+        // 6. 执行删除（存量中未被本次提交命中的 ID）
+        if (!remainingDbItemIds.isEmpty()) {
+            salesContractItemMapper.deleteByIds(remainingDbItemIds);
+        }
+
+        // 7. 回填主表汇总
+        updateObj.setTotalQuantity(totalQuantity.setScale(2, RoundingMode.HALF_UP));
+        updateObj.setTotalAmount(totalAmount.setScale(2, RoundingMode.HALF_UP));
     }
 
     /**

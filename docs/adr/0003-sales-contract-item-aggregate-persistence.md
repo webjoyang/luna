@@ -4,6 +4,8 @@
 
 accepted
 
+> **2026-09-28 补注（ADR-0032）**：本 ADR 确立的聚合边界——无独立 Controller/权限码、整表载荷提交、同事务保存、随主表级联逻辑删除、汇总服务端重算——**全部继续有效**；但"对子表按 `contract_id` 先删后插"的持久化机制已被 ADR-0032 取代，七个既有聚合子表统一改为按行 ID 差异保存（未变更行的 ID 保持稳定）。下文涉及"先删后插"的描述请以 ADR-0032 为准。
+
 ## 上下文与决定
 
 `SalesContractItem`（销售合同明细）没有自己的 Controller / 权限码。明细写操作全部嵌在合同保存载荷里：`SalesContractSaveReqVO.items` 携带整份明细列表，服务端在一个事务内对主表 insert/update、对子表按 `contract_id` 先删后插；删除合同时明细随主表一起逻辑删除。明细的读取通过 `SalesContractRespVO.items` 嵌套返回。

@@ -10,6 +10,9 @@ import java.math.BigDecimal;
 @Data
 public class SalesContractItemSaveReqVO {
 
+    @Schema(description = "明细ID（更新时携带可空行 id，新增时留空）", example = "1024")
+    private Long id;
+
     @Schema(description = "产品编号（本票手填输入，03 票接入产品库远程搜索）", example = "P001")
     @Size(max = 64, message = "产品编号长度不能超过 64 位")
     private String productCode;

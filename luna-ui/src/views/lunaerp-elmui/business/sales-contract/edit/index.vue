@@ -179,7 +179,14 @@
       </el-row>
 
       <div class="section-title">商品明细</div>
-      <el-table :data="formData.items" border size="small" class="items-table" empty-text="暂无明细，可点击下方按钮添加（零明细合同也可保存）">
+      <el-table
+        :data="formData.items"
+        :row-key="getRowKey"
+        border
+        size="small"
+        class="items-table"
+        empty-text="暂无明细，可点击下方按钮添加（零明细合同也可保存）"
+      >
         <el-table-column label="行号" type="index" width="50" align="center" />
         <el-table-column label="产品编号" width="170">
           <template #default="{ row }">
@@ -369,11 +376,24 @@ const pageTitle = computed(() => {
   return isViewMode.value ? '查看销售合同' : '编辑销售合同'
 })
 
-// ==================== 商品明细（聚合保存，ADR-0003） ====================
+// ==================== 商品明细（聚合保存，ADR-0003 & 差异保存 ADR-0032） ====================
 
-/** 新增一行空明细 */
+let tempKeyCounter = 0
+/** 明细表格以行 id 为稳定 key；新增行未落库前以临时 key 保证行唯一性 */
+const getRowKey = (row: SalesContractItemVO) => {
+  if (row.id != null) {
+    return row.id
+  }
+  if (!(row as any)._clientKey) {
+    (row as any)._clientKey = `temp_${++tempKeyCounter}`
+  }
+  return (row as any)._clientKey
+}
+
+/** 新增一行空明细（id 留空） */
 const addItem = () => {
   formData.items!.push({
+    id: undefined,
     productCode: '',
     productName: '',
     customerColor: '',
@@ -527,11 +547,27 @@ const handleSubmit = async () => {
   await formRef.value?.validate()
   submitting.value = true
   try {
+    const payload: SalesContractVO = {
+      ...formData,
+      items: formData.items?.map((item) => ({
+        id: item.id || undefined,
+        productCode: item.productCode,
+        productName: item.productName,
+        customerColor: item.customerColor,
+        composition: item.composition,
+        width: item.width,
+        weight: item.weight,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        otherFees: item.otherFees,
+        remark: item.remark
+      }))
+    }
     if (isCreateMode.value) {
-      await SalesContractApi.createSalesContract(formData)
+      await SalesContractApi.createSalesContract(payload)
       message.success('保存成功')
     } else {
-      await SalesContractApi.updateSalesContract(formData)
+      await SalesContractApi.updateSalesContract(payload)
       message.success('保存成功')
     }
     router.push('/business/sales-contract')

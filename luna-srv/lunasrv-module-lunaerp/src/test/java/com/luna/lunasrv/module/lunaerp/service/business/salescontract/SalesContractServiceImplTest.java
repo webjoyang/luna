@@ -610,24 +610,54 @@ class SalesContractServiceImplTest {
         verify(salesContractItemMapper, never()).insertBatch(any());
     }
 
+    private SalesContractItemDO buildItemDO(Long id, Long contractId, int lineNo, String productCode, BigDecimal quantity, BigDecimal unitPrice, BigDecimal otherFees) {
+        SalesContractItemDO item = new SalesContractItemDO();
+        item.setId(id);
+        item.setContractId(contractId);
+        item.setLineNo(lineNo);
+        item.setProductCode(productCode);
+        item.setQuantity(quantity);
+        item.setUnitPrice(unitPrice);
+        item.setOtherFees(otherFees);
+        item.setAmount(quantity.multiply(unitPrice).add(otherFees == null ? BigDecimal.ZERO : otherFees));
+        return item;
+    }
+
     @Test
-    void updateSalesContract_withItems_deletesOldThenInsertsNewAndRecalculates() {
-        when(salesContractMapper.selectById(2048L)).thenReturn(new SalesContractDO());
+    void updateSalesContract_allExistingItems_updatesItemsZeroDeleteZeroInsert() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractItemDO dbItem1 = buildItemDO(101L, 2048L, 1, "P001", new BigDecimal("100"), new BigDecimal("15.50"), new BigDecimal("10"));
+        SalesContractItemDO dbItem2 = buildItemDO(102L, 2048L, 2, "P002", new BigDecimal("200"), new BigDecimal("20.00"), BigDecimal.ZERO);
+        when(salesContractItemMapper.selectListByContractId(2048L)).thenReturn(Arrays.asList(dbItem1, dbItem2));
 
         SalesContractSaveReqVO req = buildCreateReqVO();
         req.setId(2048L);
-        req.setItems(buildTwoItems());
+        List<SalesContractItemSaveReqVO> items = buildTwoItems();
+        items.get(0).setId(101L);
+        items.get(1).setId(102L);
+        req.setItems(items);
+
         salesContractService.updateSalesContract(req);
 
-        // 先逻辑删除旧明细，再插新
-        verify(salesContractItemMapper).deleteByContractId(2048L);
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<SalesContractItemDO>> itemsCaptor =
-                ArgumentCaptor.forClass(List.class);
-        verify(salesContractItemMapper).insertBatch(itemsCaptor.capture());
-        assertEquals(2, itemsCaptor.getValue().size());
-        assertEquals(1, itemsCaptor.getValue().get(0).getLineNo());
-        assertEquals(2, itemsCaptor.getValue().get(1).getLineNo());
+        // 零逻辑删除、零 insert
+        verify(salesContractItemMapper, never()).deleteByIds(any());
+        verify(salesContractItemMapper, never()).deleteByContractId(any());
+        verify(salesContractItemMapper, never()).insert(any(SalesContractItemDO.class));
+        verify(salesContractItemMapper, never()).insertBatch(any());
+
+        // 存量行调用 updateById
+        ArgumentCaptor<SalesContractItemDO> updateCaptor = ArgumentCaptor.forClass(SalesContractItemDO.class);
+        verify(salesContractItemMapper, times(2)).updateById(updateCaptor.capture());
+        List<SalesContractItemDO> updatedItems = updateCaptor.getAllValues();
+        assertEquals(101L, updatedItems.get(0).getId());
+        assertEquals(1, updatedItems.get(0).getLineNo());
+        assertEquals(new BigDecimal("1560.00"), updatedItems.get(0).getAmount());
+        assertEquals(102L, updatedItems.get(1).getId());
+        assertEquals(2, updatedItems.get(1).getLineNo());
+        assertEquals(new BigDecimal("4000.00"), updatedItems.get(1).getAmount());
 
         // 主表汇总重算
         ArgumentCaptor<SalesContractDO> contractCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
@@ -637,22 +667,234 @@ class SalesContractServiceImplTest {
     }
 
     @Test
-    void updateSalesContract_toEmptyItems_deletesOldAndSkipsInsert() {
-        when(salesContractMapper.selectById(2048L)).thenReturn(new SalesContractDO());
+    void updateSalesContract_modifyItem_updatesTargetItemWithNewValues() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractItemDO dbItem1 = buildItemDO(101L, 2048L, 1, "P001", new BigDecimal("100"), new BigDecimal("15.50"), new BigDecimal("10"));
+        SalesContractItemDO dbItem2 = buildItemDO(102L, 2048L, 2, "P002", new BigDecimal("200"), new BigDecimal("20.00"), BigDecimal.ZERO);
+        when(salesContractItemMapper.selectListByContractId(2048L)).thenReturn(Arrays.asList(dbItem1, dbItem2));
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setId(2048L);
+        List<SalesContractItemSaveReqVO> items = buildTwoItems();
+        items.get(0).setId(101L);
+        items.get(0).setQuantity(new BigDecimal("150")); // 150 × 15.50 + 10 = 2335.00
+        items.get(1).setId(102L);
+        req.setItems(items);
+
+        salesContractService.updateSalesContract(req);
+
+        verify(salesContractItemMapper, never()).deleteByIds(any());
+        verify(salesContractItemMapper, never()).insert(any(SalesContractItemDO.class));
+        verify(salesContractItemMapper, never()).insertBatch(any());
+
+        ArgumentCaptor<SalesContractItemDO> updateCaptor = ArgumentCaptor.forClass(SalesContractItemDO.class);
+        verify(salesContractItemMapper, times(2)).updateById(updateCaptor.capture());
+        SalesContractItemDO item1Updated = updateCaptor.getAllValues().get(0);
+        assertEquals(101L, item1Updated.getId());
+        assertEquals(new BigDecimal("150.00"), item1Updated.getQuantity());
+        assertEquals(new BigDecimal("2335.00"), item1Updated.getAmount());
+
+        // 主表汇总: 150 + 200 = 350, 2335 + 4000 = 6335
+        ArgumentCaptor<SalesContractDO> contractCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).updateById(contractCaptor.capture());
+        assertEquals(new BigDecimal("350.00"), contractCaptor.getValue().getTotalQuantity());
+        assertEquals(new BigDecimal("6335.00"), contractCaptor.getValue().getTotalAmount());
+    }
+
+    @Test
+    void updateSalesContract_removeItem_logicallyDeletesRemovedItem() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractItemDO dbItem1 = buildItemDO(101L, 2048L, 1, "P001", new BigDecimal("100"), new BigDecimal("15.50"), new BigDecimal("10"));
+        SalesContractItemDO dbItem2 = buildItemDO(102L, 2048L, 2, "P002", new BigDecimal("200"), new BigDecimal("20.00"), BigDecimal.ZERO);
+        when(salesContractItemMapper.selectListByContractId(2048L)).thenReturn(Arrays.asList(dbItem1, dbItem2));
+
+        // 只保留 item1，移除 item2
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setId(2048L);
+        List<SalesContractItemSaveReqVO> items = Collections.singletonList(buildTwoItems().get(0));
+        items.get(0).setId(101L);
+        req.setItems(items);
+
+        salesContractService.updateSalesContract(req);
+
+        // 恰有未提交的 102L 被逻辑删除
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<java.util.Collection<Long>> deleteCaptor = ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(salesContractItemMapper).deleteByIds(deleteCaptor.capture());
+        assertEquals(Collections.singleton(102L), new java.util.HashSet<>(deleteCaptor.getValue()));
+        verify(salesContractItemMapper, never()).insert(any(SalesContractItemDO.class));
+        verify(salesContractItemMapper, never()).insertBatch(any());
+
+        // 保留的行 updateById，行号重排为 1
+        ArgumentCaptor<SalesContractItemDO> updateCaptor = ArgumentCaptor.forClass(SalesContractItemDO.class);
+        verify(salesContractItemMapper).updateById(updateCaptor.capture());
+        assertEquals(101L, updateCaptor.getValue().getId());
+        assertEquals(1, updateCaptor.getValue().getLineNo());
+
+        // 汇总仅包含 item1
+        ArgumentCaptor<SalesContractDO> contractCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).updateById(contractCaptor.capture());
+        assertEquals(new BigDecimal("100.00"), contractCaptor.getValue().getTotalQuantity());
+        assertEquals(new BigDecimal("1560.00"), contractCaptor.getValue().getTotalAmount());
+    }
+
+    @Test
+    void updateSalesContract_addItem_insertsNewItemAndPreservesExisting() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractItemDO dbItem1 = buildItemDO(101L, 2048L, 1, "P001", new BigDecimal("100"), new BigDecimal("15.50"), new BigDecimal("10"));
+        when(salesContractItemMapper.selectListByContractId(2048L)).thenReturn(Collections.singletonList(dbItem1));
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setId(2048L);
+        List<SalesContractItemSaveReqVO> items = buildTwoItems();
+        items.get(0).setId(101L); // 存量行
+        items.get(1).setId(null); // 新增行（无 id）
+        req.setItems(items);
+
+        salesContractService.updateSalesContract(req);
+
+        // 零删除
+        verify(salesContractItemMapper, never()).deleteByIds(any());
+
+        // 存量行 updateById
+        ArgumentCaptor<SalesContractItemDO> updateCaptor = ArgumentCaptor.forClass(SalesContractItemDO.class);
+        verify(salesContractItemMapper).updateById(updateCaptor.capture());
+        assertEquals(101L, updateCaptor.getValue().getId());
+        assertEquals(1, updateCaptor.getValue().getLineNo());
+
+        // 新增行 insert，回填 contractId 与重排 lineNo=2
+        ArgumentCaptor<SalesContractItemDO> insertCaptor = ArgumentCaptor.forClass(SalesContractItemDO.class);
+        verify(salesContractItemMapper, times(1)).insert(insertCaptor.capture());
+        SalesContractItemDO inserted = insertCaptor.getValue();
+        assertNull(inserted.getId());
+        assertEquals(2048L, inserted.getContractId());
+        assertEquals(2, inserted.getLineNo());
+        assertEquals("P002", inserted.getProductCode());
+        assertEquals(new BigDecimal("200.00"), inserted.getQuantity());
+        assertEquals(new BigDecimal("4000.00"), inserted.getAmount());
+
+        // 汇总为 100+200=300, 1560+4000=5560
+        ArgumentCaptor<SalesContractDO> contractCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).updateById(contractCaptor.capture());
+        assertEquals(new BigDecimal("300.00"), contractCaptor.getValue().getTotalQuantity());
+        assertEquals(new BigDecimal("5560.00"), contractCaptor.getValue().getTotalAmount());
+    }
+
+    @Test
+    void updateSalesContract_itemNotBelongingToContract_throwsInvalidParamException() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractItemDO dbItem1 = buildItemDO(101L, 2048L, 1, "P001", new BigDecimal("100"), new BigDecimal("15.50"), BigDecimal.ZERO);
+        when(salesContractItemMapper.selectListByContractId(2048L)).thenReturn(Collections.singletonList(dbItem1));
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setId(2048L);
+        SalesContractItemSaveReqVO alienItem = new SalesContractItemSaveReqVO();
+        alienItem.setId(999L); // 不属于本合同的明细 ID
+        alienItem.setProductCode("P999");
+        req.setItems(Collections.singletonList(alienItem));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesContractService.updateSalesContract(req));
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("不属于当前合同"));
+
+        verify(salesContractMapper, never()).updateById(any(SalesContractDO.class));
+        verify(salesContractItemMapper, never()).updateById(any(SalesContractItemDO.class));
+        verify(salesContractItemMapper, never()).insert(any(SalesContractItemDO.class));
+        verify(salesContractItemMapper, never()).deleteByIds(any());
+    }
+
+    @Test
+    void updateSalesContract_duplicateItemIds_throwsInvalidParamException() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractItemDO dbItem1 = buildItemDO(101L, 2048L, 1, "P001", new BigDecimal("100"), new BigDecimal("15.50"), BigDecimal.ZERO);
+        when(salesContractItemMapper.selectListByContractId(2048L)).thenReturn(Collections.singletonList(dbItem1));
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setId(2048L);
+        SalesContractItemSaveReqVO row1 = new SalesContractItemSaveReqVO();
+        row1.setId(101L);
+        SalesContractItemSaveReqVO row2 = new SalesContractItemSaveReqVO();
+        row2.setId(101L); // 重复 ID
+        req.setItems(Arrays.asList(row1, row2));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesContractService.updateSalesContract(req));
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("重复"));
+    }
+
+    @Test
+    void updateSalesContract_toEmptyItems_deletesAllOldItemsAndTotalsZero() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractItemDO dbItem1 = buildItemDO(101L, 2048L, 1, "P001", new BigDecimal("100"), new BigDecimal("15.50"), BigDecimal.ZERO);
+        SalesContractItemDO dbItem2 = buildItemDO(102L, 2048L, 2, "P002", new BigDecimal("200"), new BigDecimal("20.00"), BigDecimal.ZERO);
+        when(salesContractItemMapper.selectListByContractId(2048L)).thenReturn(Arrays.asList(dbItem1, dbItem2));
 
         SalesContractSaveReqVO req = buildCreateReqVO();
         req.setId(2048L);
         req.setItems(Collections.emptyList());
         salesContractService.updateSalesContract(req);
 
-        // 删旧 + 不插新（整体替换为空）
-        verify(salesContractItemMapper).deleteByContractId(2048L);
+        // 全部旧行逻辑删除
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<java.util.Collection<Long>> deleteCaptor = ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(salesContractItemMapper).deleteByIds(deleteCaptor.capture());
+        assertEquals(new java.util.HashSet<>(Arrays.asList(101L, 102L)), new java.util.HashSet<>(deleteCaptor.getValue()));
+        verify(salesContractItemMapper, never()).insert(any(SalesContractItemDO.class));
         verify(salesContractItemMapper, never()).insertBatch(any());
+        verify(salesContractItemMapper, never()).updateById(any(SalesContractItemDO.class));
+
         // 汇总归零
         ArgumentCaptor<SalesContractDO> contractCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
         verify(salesContractMapper).updateById(contractCaptor.capture());
         assertEquals(new BigDecimal("0.00"), contractCaptor.getValue().getTotalQuantity());
         assertEquals(new BigDecimal("0.00"), contractCaptor.getValue().getTotalAmount());
+    }
+
+    @Test
+    void updateSalesContract_reorderItems_updatesLineNoAccordingToSubmitOrder() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractItemDO dbItem1 = buildItemDO(101L, 2048L, 1, "P001", new BigDecimal("100"), new BigDecimal("15.50"), BigDecimal.ZERO);
+        SalesContractItemDO dbItem2 = buildItemDO(102L, 2048L, 2, "P002", new BigDecimal("200"), new BigDecimal("20.00"), BigDecimal.ZERO);
+        when(salesContractItemMapper.selectListByContractId(2048L)).thenReturn(Arrays.asList(dbItem1, dbItem2));
+
+        // 提交顺序反转：102 排第一，101 排第二
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setId(2048L);
+        List<SalesContractItemSaveReqVO> items = buildTwoItems();
+        items.get(0).setId(101L);
+        items.get(1).setId(102L);
+        req.setItems(Arrays.asList(items.get(1), items.get(0)));
+
+        salesContractService.updateSalesContract(req);
+
+        ArgumentCaptor<SalesContractItemDO> updateCaptor = ArgumentCaptor.forClass(SalesContractItemDO.class);
+        verify(salesContractItemMapper, times(2)).updateById(updateCaptor.capture());
+        List<SalesContractItemDO> updatedItems = updateCaptor.getAllValues();
+        assertEquals(102L, updatedItems.get(0).getId());
+        assertEquals(1, updatedItems.get(0).getLineNo(), "原第2行应重排为第1行");
+        assertEquals(101L, updatedItems.get(1).getId());
+        assertEquals(2, updatedItems.get(1).getLineNo(), "原第1行应重排为第2行");
     }
 
     @Test
