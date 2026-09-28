@@ -495,5 +495,8 @@ export enum DICT_TYPE {
 
   // ========== LunaERP - 业务管理-发货模块 ==========
   LUNAERP_SHIPMENT_STATUS = 'lunaerp_shipment_status', // 发货单状态（草稿/已发货/已取消）
-  LUNAERP_SHIPMENT_SIGN_STATUS = 'lunaerp_shipment_sign_status' // 发货单签收状态（待签收/已签收/拒签）
+  LUNAERP_SHIPMENT_SIGN_STATUS = 'lunaerp_shipment_sign_status', // 发货单签收状态（待签收/已签收/拒签）
+
+  // ========== LunaERP - 生产管理-进度反馈模块 ==========
+  LUNAERP_PROGRESS_FEEDBACK_STATUS = 'lunaerp_progress_feedback_status' // 进度反馈状态（未排缸/已排缸/染色中/固色中/质检中/已完成）
 }

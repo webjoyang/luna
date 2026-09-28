@@ -14,6 +14,7 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-007-xxx 段（染色单，主表与颜色明细共用）
  *                  与 1-030-008-xxx 段（纱线档案：材质+规格+配比BOM+库存台账共用）
  *                  与 1-030-009-xxx 段（纱线采购单：主表+明细共用）
+ *                  与 1-030-017-xxx 段（进度反馈：反馈缸与反馈记录共用）
  */
 public interface ErrorCodeConstants {
 
@@ -167,6 +168,15 @@ public interface ErrorCodeConstants {
     ErrorCode SHIPMENT_AUDIT_NO_ITEMS = new ErrorCode(1_030_016_004, "审核失败：发货单没有明细");
     ErrorCode SHIPMENT_STOCK_NOT_ENOUGH = new ErrorCode(1_030_016_005, "库存不足：{} 需要 {} {}，当前可用 {} {}");
     ErrorCode SHIPMENT_SIGN_STATUS_INVALID = new ErrorCode(1_030_016_006, "签收状态非法");
+
+    // ========== 生产管理 - 进度反馈模块 1-030-017-000（反馈缸与反馈记录共用） ==========
+    ErrorCode PROGRESS_FEEDBACK_VAT_NOT_EXISTS = new ErrorCode(1_030_017_000, "反馈缸不存在");
+    ErrorCode PROGRESS_FEEDBACK_VAT_NO_DUPLICATE = new ErrorCode(1_030_017_001, "同单同色缸号【{}】已存在");
+    ErrorCode PROGRESS_FEEDBACK_DYEING_ORDER_STATUS_NOT_ALLOWED = new ErrorCode(1_030_017_002, "染色单不存在或状态不允许建缸");
+    ErrorCode PROGRESS_FEEDBACK_DYEING_COLOR_NOT_EXISTS = new ErrorCode(1_030_017_003, "染色颜色行不存在");
+    ErrorCode PROGRESS_FEEDBACK_COLOR_HAS_VATS = new ErrorCode(1_030_017_004, "颜色【{}】下有 {} 条缸进度反馈，请先删除后再移除该颜色行");
+    ErrorCode PROGRESS_FEEDBACK_NOTE_NOT_EXISTS = new ErrorCode(1_030_017_100, "反馈记录不存在");
+    ErrorCode PROGRESS_FEEDBACK_NOTE_ALREADY_RESOLVED = new ErrorCode(1_030_017_101, "问题已闭环不可操作");
 
 }
 

@@ -283,6 +283,38 @@ _避免_：领料单、领纱指示单。
 **IoT 实时快照 (MachineRealtime)**：
 采集的设备最新值，按 `(租户, vendorDeviceId)` 唯一。字段：`status`（running/idle/abnormal/disabled/offline）、`runEfficiencyPct`（运转效率）、`minuteCircleSpeed`（分钟圈速）、`shiftCircles`（班次圈数）、`limitSpeed`、`runMinutes`（运转分钟）、`shiftMinutes`（在班分钟）、`staffOnShift`、`deviceSn`、`fetchedAt`。本期**模型与展示先行、真实采集后置**（ADR-0028）：采集层定义 `LoomDataCollector` 接口，提供手工录入端点+模拟实现，真实定时对接待厂商协议/凭证/现场网络就绪后补；快照不回写织机档案 status（两个信息源不互相污染）。
 
+## 生产管理：进度反馈
+
+**进度反馈 (ProgressFeedback)**：
+对**外发给染厂**的染色订单进行生产进度跟单的记录体系。本期仅覆盖外发染色环节：自织织造进度已由布票体系自动推导（见织造执行），不重复建设；外发胚布进度与全链路进度看板不在本期。进度反馈是染色单之上的**状态覆盖层（Overlay）**：以染色颜色明细行为骨架、以"缸"为最小反馈粒度，只记录执行状态与沟通过程，**不回写染色单任何数据**（零回写惯例），也不替代染色单制单。进度由内部跟单员依据染厂电话/微信汇报在 Web 端代录；MVP 不设染厂外部账号、不做移动端。架构取舍见 ADR-0031。
+_避免_：生产进度（泛指）、进度上报、进度汇报。
+
+**反馈缸 (ProgressVat)**：
+进度反馈的最小记录单位——某张染色单某个颜色行下投染的"一缸"。一个颜色行可分多缸，每缸一条反馈缸记录。字段：`dyeingOrderId` + `dyeingColorId`（稳定关联；颜色行 ID 的稳定性由聚合子表差异保存保证，见 ADR-0032）、`vatNo` 缸号（必填自由文本，同单同色下唯一，由 service 层校验、不建数据库唯一约束）、`quantity` 本缸数量（>0，单位跟随颜色行 KG/M）、`pieces` 匹数（可空）、状态与五个阶段日期戳、`delayReason` 延期原因、`remark`。**不带业务编号**（同染色单 ADR-0009 先例），靠"染色单+颜色+缸号"识别。**零展示快照**：合同号/客户/染厂/产品/颜色等展示信息不落库，列表与详情全部经染色单主表与颜色行子查询实时取出（刻意不一致全项目 ID+名称快照惯例，见 ADR-0031）。
+_避免_：缸卡（指反馈缸的 UI 呈现，非领域对象）、染缸（染厂设备语义）。
+
+**进度状态 (ProgressFeedbackStatus)**：
+固定六工序链，字典 `lunaerp_progress_feedback_status`（id=2247）：`NOT_SCHEDULED` 未排缸（覆盖层虚拟态，对应没有任何反馈缸记录的颜色行）/ `SCHEDULED` 已排缸（建缸时的缺省态）/ `DYEING` 染色中 / `FIXING` 固色中 / `QUALITY_CHECK` 质检中 / `COMPLETED` 已完成。状态只能逐格前进，"推进"动作自动在新阶段盖当天日期戳；编辑时可修正各阶段日期、可回退状态（需二次确认，录错纠偏是刚需）。无"取消/作废"态：录错的缸直接删除，颜色行回到虚拟未排缸，不影响染色单。不引入参考系统的自定义工序模板/工序组合器——不同染厂的工艺差异本期以固定六步承载。
+
+**阶段日期戳 (StageDate)**：
+五个阶段日期：排缸日、染色开始日、固色开始日、质检日、完成日，分别对应六态间的五次推进；由后端在推进时自动写入，可人工修正。
+
+**反馈记录 (ProgressNote)**：
+反馈缸下的跟单沟通流水，作为**独立子资源**处理（有独立的增删端点与 `:note` 权限，模式同检验录检明细 ADR-0014）。字段：`content` 文字内容、`issueFlag` 是否问题、`resolvedAt` 闭环时间、记录人与记录时间。流水只增不改；标记为问题的记录闭环后不可删除；删缸时级联逻辑删除其全部记录。MVP **不含照片/视频附件**——lunaerp 业务侧尚无文件上传使用先例，现场信息先以文字承载，附件随框架上传能力后续再补。
+_避免_：进度日志、评论。
+
+**延期 (ProgressDelay)**：
+缸的交期取染色单交货日期（`deliveryDate`）；当前日期晚于交期且缸状态非 COMPLETED 即判定延期，列表红色标记并计入延期统计；延期原因在缸上以自由文本登记。不做"单工序滞留 N 小时"类预警（依赖自定义工序时间戳，固定六态下价值有限）。
+
+**排产覆盖率 (VatCoverage)**：
+同一染色颜色行下全部反馈缸数量合计 ÷ 该颜色行染色数量，只读动态计算（同"合同未发量"先例，不落库）；已建缸合计超过颜色行染色数量时**警告但允许**（临时加缸是常态，同织造单软校验先例）。不做投入/产出/损耗统计（本期没有成品回产量数据）。
+
+**缸卡墙 (VatWall)**：
+进度反馈的主交互界面：以颜色行为骨架分节（节头展示合同/客户/染厂/产品/颜色、行需求量、已建缸合计与排产覆盖率、状态汇总），节内每缸一张卡片网格横排；零缸颜色行以虚线"＋建缸"占位卡呈现虚拟未排缸行。技术实现为 Vue3 + Element Plus 桌面宽屏版（el-card/el-dialog/el-drawer/el-tag/el-progress + scoped SCSS），只复刻参考系统缸卡墙的信息架构与交互流，不引入其移动端视觉、矩阵视图、实时推送、AI 洞察与语音录入。
+
+**进度反馈双入口**：
+"生产管理 → 进度反馈"独立菜单承载覆盖层缸卡墙列表与建缸；染色单整页编辑页另设"进度反馈"页签，按单查看该单缸卡并可直接建缸。两入口复用同一建缸弹窗与同一套接口；染色单侧只读、零回写。
+
 ## 库存管理
 
 **入库单 (StockIn)**：
@@ -352,6 +384,8 @@ _避免_：WarehouseMap（旧系统含 2D 平面图画布/尺寸/版本，MVP �
 
 织造执行域落 `production` 子包（与胚布单/检验单/质检确认同层），含 5 组并列子包：`production.loom`（织机档案 CRUD）、`production.weavingorder`（织造单主表）、`production.weavingorder.task`（机台任务）、`production.weavingorder.ticket`（布票）、`production.weavingorder.requisition`（领纱单+明细，独立子资源）；IoT 落 `production.iot`（厂商凭证/设备绑定/实时快照三 DO，采集层接口+手工录入端点）。前端视图 `lunaerp-elmui/production/weaving-order/`（列表 + 工作台 5 Tab：基本信息/机台任务/布票/领纱/统计）、`lunaerp-elmui/production/loom/`（织机档案页，IoT 接入与快照作为页内 Tab，不单独开菜单）；前端 API 镜像于 `api/lunaerp-elmui/production/`。胚布单详情（自织单）加"织造进度"区+生成织造单入口；检验单编辑页加卷/匹模式切换。URL 前缀 `/lunaerp/production/{loom|weaving-order[-task|-ticket|-requisition]|iot}`，权限码前缀 `lunaerp:production:<子域>:`，错误码段 **`1-030-015`**（全织造域共用，按子资源分段；避让已占用的质检确认 014 段）。菜单挂 10200 生产管理目录下：**10280 织造单菜单 + 10281-10284 主表按钮；10285 织机档案 + 10286-10288 按钮**（领纱并入织造单工作台 Tab，不开独立菜单）。开发分三期：P1 胚布单自织改造+织造核心+检验单匹装改造；P2 纱线库存+领纱发纱；P3 转检验/入库联动+IoT（见 `.scratch/weaving-execution/`）。
 
+进度反馈落 `production` 子包（与染色单/检验单/织造域同层）：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.progressfeedback[.note]`（反馈缸主表 + 反馈记录独立子资源）；前端视图 `luna-ui/src/views/lunaerp-elmui/production/progress-feedback/`（缸卡墙列表 + 建缸/推进/反馈弹窗 + 缸详情抽屉）、前端 API 镜像；染色单工作台加"进度反馈"页签（双入口，零回写）。URL 前缀 `/lunaerp/production/progress-feedback[-note]`，权限码前缀 `lunaerp:production:progress-feedback:`，六个动作：`query`（菜单承载）/ `create`（建缸）/ `update`（缸信息与阶段日期）/ `advance`（推进状态）/ `note`（反馈记录增删与问题闭环）/ `delete`（删缸，级联软删记录）；错误码段 `1-030-017-xxx`。菜单挂 10200 生产管理：**10400 进度反馈菜单 + 10401-10405 五个按钮位**（create/update/advance/delete/note；跳号原因：10290-10298 已被织造领纱按钮占用、10300 起为库存管理目录）。建表 SQL：`luna-srv/sql/postgresql/lunaerp-production-progress-feedback.sql`（两表 `lunaerp_production_progress_feedback` / `lunaerp_production_progress_feedback_note`）。依赖 ADR-0032（聚合子表差异保存）先行落地，分两阶段交付：阶段一差异保存改造，阶段二进度反馈。
+
 **租户 (Tenant)**：
 多租户通过后端 `TenantBaseDO` 强制（自动注入 `tenant_id` 列、自动过滤查询）。Customer/CustomerContact 与 Supplier/SupplierContact 都继承 `TenantBaseDO`。
 
@@ -390,6 +424,9 @@ _避免_：WarehouseMap（旧系统含 2D 平面图画布/尺寸/版本，MVP �
 **发货管理字典 (Shipment dictionaries)**：
 发货域建两个字典：`lunaerp_shipment_status`（id=2245，DRAFT 草稿 / COMPLETED 已发货 / CANCELLED 已取消）、`lunaerp_shipment_sign_status`（id=2246，PENDING 待签收 / SIGNED 已签收 / REFUSED 拒签）。单位复用库存域 `lunaerp_stock_in_unit`、币种复用销售合同 `lunaerp_sales_contract_currency`；承运商为自由文本不入字典；流水 txn_type（`SHIPMENT_OUT` / `SHIPMENT_OUT_REVERSAL`）为后端内部枚举不入字典。
 
+**进度反馈字典 (Progress feedback dictionaries)**：
+进度反馈域建一个字典：`lunaerp_progress_feedback_status`（id=2247，NOT_SCHEDULED 未排缸 / SCHEDULED 已排缸 / DYEING 染色中 / FIXING 固色中 / QUALITY_CHECK 质检中 / COMPLETED 已完成，固定六工序链）。问题标记为布尔字段不建字典；缸数量单位跟随颜色行，复用 `lunaerp_sales_contract_unit`（KG/M）。
+
 ## 错误码
 
 **错误码段位全表**：`1-030-001-xxx` 产品、`1-030-002-xxx` 胚布品种（`GreigeErrorCodeConstants`，随产品模块迁移先行占用）、`1-030-003-xxx` 销售合同（主表与明细共用）、`1-030-004-xxx` 客户（customer 与 customer-contact 共用）、`1-030-005-xxx` 供应商（supplier 与 supplier-contact 共用：000 供应商不存在 / 001 供应商编号重复 / 002 供应商联系人不存在）、`1-030-006-xxx` 胚布单（主表与颜色分配共用：000 胚布单不存在 / 001 胚布单号重复 / 002 关联引用不存在）、`1-030-007-xxx` 染色单（主表与颜色明细共用：000 染色单不存在 / 001 状态不允许该操作 / 002 关联引用不存在）、`1-030-008-xxx` 纱线档案（材质+规格+配比BOM+库存台账共用：000 材质不存在 / 001 材质名重复 / 002 规格不存在 / 003 规格名重复 / 004 配比BOM不存在 / 005 配比BOM明细不存在 / 006 库存台账不存在 / 007 该产品已存在纱线配比BOM）、`1-030-009-xxx` 纱线采购单（主表+明细共用：000 采购单不存在 / 001 采购单号重复 / 002 状态不允许该操作 / 003 关联引用不存在）。
@@ -412,3 +449,5 @@ _避免_：WarehouseMap（旧系统含 2D 平面图画布/尺寸/版本，MVP �
 胚布单自织改造复用 `1-030-006` 段，检验单匹装改造复用 `1-030-010` 段，库存扩展复用 `1-030-011` 段，不新增错误码。
 
 `1-030-016-xxx` 发货单（主表/明细/卷清单共用，业务管理域）：000 发货单不存在 / 001 发货单号重复 / 002 状态不允许该操作 / 003 关联引用不存在（客户/仓库/合同/产品/来源入库明细/业务员）/ 004 审核失败发货单没有明细 / 005 库存不足（返回需求量与可用量）/ 006 签收状态非法。
+
+`1-030-017-xxx` 进度反馈（生产域，反馈缸/反馈记录共用）：000 反馈缸不存在 / 001 同单同色缸号重复 / 002 染色单不存在或状态不允许建缸（仅 ACTIVE/COMPLETED 单的颜色行可建缸）/ 003 染色颜色行不存在 / 004 颜色行下存在反馈缸不能移除（须先删除缸反馈；染色单差异保存删除守卫跨模块使用本段）/ 100 反馈记录不存在 / 101 问题已闭环不可操作。
