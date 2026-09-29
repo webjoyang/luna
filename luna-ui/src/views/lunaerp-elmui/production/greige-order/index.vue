@@ -75,7 +75,7 @@
           <DictTag :type="DICT_TYPE.LUNAERP_GREIGE_ORDER_STATUS" :value="row.status" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="170" align="center" fixed="right">
+      <el-table-column label="操作" width="240" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -92,6 +92,14 @@
             v-hasPermi="['lunaerp:production:greige-order:update']"
           >
             <Icon icon="ep:edit" class="mr-2px" />编辑
+          </el-button>
+          <el-button
+            link
+            type="primary"
+            @click="openDispatchDrawer(row.id, row.orderNo)"
+            v-hasPermi="['lunaerp:greige-dispatch-record:query']"
+          >
+            <Icon icon="ep:van" class="mr-2px" />发染记录
           </el-button>
           <el-button
             link
@@ -115,12 +123,16 @@
       @pagination="getList"
     />
   </ContentWrap>
+
+  <!-- 发染记录抽屉 -->
+  <DispatchRecordDrawer ref="dispatchDrawerRef" />
 </template>
 
 <script lang="ts" setup>
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as GreigeOrderApi from '@/api/lunaerp-elmui/production/greige-order'
 import type { GreigeOrderVO } from '@/api/lunaerp-elmui/production/greige-order'
+import DispatchRecordDrawer from './components/DispatchRecordDrawer.vue'
 
 defineOptions({ name: 'LunaerpElmuiProductionGreigeOrder' })
 
@@ -131,6 +143,7 @@ const loading = ref(true)
 const total = ref(0)
 const list = ref<GreigeOrderVO[]>([])
 const queryFormRef = ref()
+const dispatchDrawerRef = ref<InstanceType<typeof DispatchRecordDrawer>>()
 
 const queryParams = reactive({
   pageNo: 1,
@@ -181,6 +194,11 @@ const openEdit = (id?: number) => {
 /** 查看：同一表单页只读模式打开 */
 const openView = (id: number) => {
   router.push(`/production/greige-order/edit/${id}?mode=view`)
+}
+
+/** 打开发染记录抽屉 */
+const openDispatchDrawer = (id: number, orderNo: string) => {
+  dispatchDrawerRef.value?.open(id, orderNo)
 }
 
 /** 删除：二次确认后级联逻辑删除主表与颜色行，成功后即时刷新列表 */

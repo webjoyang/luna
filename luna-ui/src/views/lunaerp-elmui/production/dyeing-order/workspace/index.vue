@@ -33,6 +33,12 @@
           :order-status="currentStatus"
         />
       </el-tab-pane>
+      <el-tab-pane v-if="!isCreateMode" label="发染记录" name="dispatch" lazy>
+        <DispatchRecordTab
+          :order-id="orderId"
+          :contract-no="currentContractNo"
+        />
+      </el-tab-pane>
     </el-tabs>
   </ContentWrap>
 </template>
@@ -40,6 +46,7 @@
 <script lang="ts" setup>
 import BasicInfoTab from './BasicInfoTab.vue'
 import ProgressFeedbackTab from './ProgressFeedbackTab.vue'
+import DispatchRecordTab from './DispatchRecordTab.vue'
 import type { DyeingOrderVO } from '@/api/lunaerp-elmui/production/dyeing-order'
 
 defineOptions({ name: 'LunaerpElmuiProductionDyeingOrderWorkspace' })
@@ -52,6 +59,7 @@ const orderId = computed(() => (route.params.id as string) || null)
 const isCreateMode = computed(() => !orderId.value)
 const isViewMode = computed(() => route.query.mode === 'view')
 const currentStatus = ref<string>()
+const currentContractNo = ref<string>()
 
 const pageTitle = computed(() => {
   if (isCreateMode.value) return '新建染色单'
@@ -73,6 +81,7 @@ const handleSwitchToEdit = () => {
 
 const handleOrderLoaded = (order: DyeingOrderVO) => {
   currentStatus.value = order.status
+  currentContractNo.value = order.contractNo
 }
 
 const handleSuccess = (_id: number) => {
