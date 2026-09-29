@@ -9,6 +9,8 @@
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">　　　　　
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <!-- 显式固定 UTF-8（与 application-*.yaml 的 logging.charset.console 一致），避免跟随平台默认字符集（Windows 中文环境为 GBK） -->
+            <charset>UTF-8</charset>
         </encoder>
     </appender>
 
@@ -17,6 +19,8 @@
     <appender name="FILE"  class="ch.qos.logback.core.rolling.RollingFileAppender">
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <pattern>${FILE_LOG_PATTERN}</pattern>
+            <!-- 显式固定 UTF-8（与 application-*.yaml 的 logging.charset.file 一致），保证日志文件编码不随平台默认字符集变化 -->
+            <charset>UTF-8</charset>
         </encoder>
         <!-- 日志文件名 -->
         <file>${LOG_FILE}</file>
