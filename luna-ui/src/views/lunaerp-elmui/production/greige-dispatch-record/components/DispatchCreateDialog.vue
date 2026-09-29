@@ -165,6 +165,7 @@ const formRef = ref<FormInstance>()
 // 模式：greige = 胚布单入口（greigeOrderId 固定），dyeing = 染色单入口（需选胚布单）
 const mode = ref<'greige' | 'dyeing'>('greige')
 const fixedGreigeOrderId = ref<number | null>(null)
+const fixedDyeingOrderId = ref<number | null>(null)
 
 // 胚布单选项（染色单入口用，只展示非取消的胚布单）
 const greigeOrderOptions = ref<GreigeOrderVO[]>([])
@@ -179,6 +180,7 @@ const availableStock = ref<number | null>(null)
 
 const formData = reactive({
   greigeOrderId: null as number | null,
+  dyeingOrderId: undefined as number | undefined,
   warehouseId: null as number | null,
   dispatchDate: formatDate(new Date(), 'YYYY-MM-DD'),
   quantity: undefined as number | undefined,
@@ -227,19 +229,27 @@ const formatQty = (value: number) => {
 const openForGreigeOrder = async (greigeOrderId: number) => {
   mode.value = 'greige'
   fixedGreigeOrderId.value = greigeOrderId
+  fixedDyeingOrderId.value = null
   formData.greigeOrderId = greigeOrderId
-  // 加载胚布单详情获取产品信息
-  const order = await GreigeOrderApi.getGreigeOrder(greigeOrderId)
-  selectedGreigeOrder.value = order
-  dialogVisible.value = true
-  await loadBaseData()
+  formData.dyeingOrderId = undefined
+  try {
+    // 加载胚布单详情获取产品信息
+    const order = await GreigeOrderApi.getGreigeOrder(greigeOrderId)
+    selectedGreigeOrder.value = order
+    dialogVisible.value = true
+    await loadBaseData()
+  } catch {
+    message.error('加载胚布单信息失败')
+  }
 }
 
-/** 打开弹窗：染色单入口（需选择胚布单） */
-const openForDyeingOrder = async (greigeOrders: GreigeOrderVO[]) => {
+/** 打开弹窗：染色单入口（需选择胚布单，自动关联 dyeingOrderId） */
+const openForDyeingOrder = async (dyeingOrderId: number, greigeOrders: GreigeOrderVO[]) => {
   mode.value = 'dyeing'
+  fixedDyeingOrderId.value = dyeingOrderId
   fixedGreigeOrderId.value = null
   formData.greigeOrderId = null
+  formData.dyeingOrderId = dyeingOrderId
   selectedGreigeOrder.value = null
   greigeOrderOptions.value = greigeOrders
   dialogVisible.value = true
@@ -272,13 +282,13 @@ const handleGreigeOrderChange = async (greigeOrderId: number) => {
 /** 仓库变更：查询该仓该产品可用量 */
 const handleWarehouseChange = async (warehouseId: number) => {
   availableStock.value = null
-  if (!warehouseId || !currentProduct.value?.productId) return
+  if (!warehouseId || !currentProduct.value?.productCode) return
   try {
     const res = await InventoryBalanceApi.getInventoryBalancePage({
       pageNo: 1,
       pageSize: 1,
       itemType: 'PRODUCT',
-      keyword: String(currentProduct.value.productId),
+      productKeyword: currentProduct.value.productCode,
       warehouseId
     })
     const item = res?.list?.[0]
@@ -308,6 +318,7 @@ const handleSubmit = async () => {
   try {
     const payload: GreigeDispatchRecordCreateVO = {
       greigeOrderId: formData.greigeOrderId,
+      dyeingOrderId: formData.dyeingOrderId,
       warehouseId: formData.warehouseId,
       dispatchDate: formData.dispatchDate!,
       quantity: formData.quantity!,
@@ -328,6 +339,7 @@ const handleSubmit = async () => {
 /** 关闭清理 */
 const handleClosed = () => {
   formData.greigeOrderId = null
+  formData.dyeingOrderId = undefined
   formData.warehouseId = null
   formData.dispatchDate = formatDate(new Date(), 'YYYY-MM-DD')
   formData.quantity = undefined
@@ -336,6 +348,7 @@ const handleClosed = () => {
   formData.dyeingFactoryName = undefined
   formData.remark = ''
   selectedGreigeOrder.value = null
+  fixedDyeingOrderId.value = null
   availableStock.value = null
   formRef.value?.resetFields()
 }

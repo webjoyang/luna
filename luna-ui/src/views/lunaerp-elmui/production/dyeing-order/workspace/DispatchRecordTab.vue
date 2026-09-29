@@ -127,7 +127,7 @@ const handleOpenCreate = async () => {
     const allOrders = [...(res?.list || []), ...(res2?.list || [])]
     // 过滤出合同号完全匹配的（keyword 可能命中其他字段）
     const matched = allOrders.filter((o: GreigeOrderVO) => o.contractNo === props.contractNo)
-    createDialogRef.value?.openForDyeingOrder(matched)
+    createDialogRef.value?.openForDyeingOrder(Number(props.orderId), matched)
   } catch {
     // ignore
   }
