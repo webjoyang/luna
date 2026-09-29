@@ -79,18 +79,23 @@ CREATE SEQUENCE IF NOT EXISTS lunaerp_production_greige_dispatch_record_seq
     START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 
 -- =============================================================================
--- 2. 菜单：生产管理 → 发染记录
+-- 2. 菜单：生产管理 → 发染记录（id 10500-10503，parent_id=10200 生产管理）
+--    system_menu 无 tenant_id 列；用显式 id + DELETE IN 判存保证幂等。
 -- =============================================================================
-DELETE FROM system_menu WHERE permission LIKE 'lunaerp:greige-dispatch-record:%';
+-- @formatter:off
+BEGIN;
 
-INSERT INTO system_menu (name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted, tenant_id)
-VALUES ('发染记录', '', 2, 50, (SELECT id FROM (SELECT id FROM system_menu WHERE name = '生产管理' AND type = 1 ORDER BY id LIMIT 1) t), 'greige-dispatch-record', 'ep:van', 'production/greigeDispatchRecord/index', 'GreigeDispatchRecord', 0, true, true, true, '1', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0, 0);
+DELETE FROM system_menu WHERE id IN (10500, 10501, 10502, 10503);
 
-INSERT INTO system_menu (name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted, tenant_id)
-VALUES ('发染记录查询', 'lunaerp:greige-dispatch-record:query', 3, 1, (SELECT id FROM (SELECT id FROM system_menu WHERE permission = 'lunaerp:greige-dispatch-record:query' OR (name = '发染记录' AND type = 2) ORDER BY id DESC LIMIT 1) t), '', '', '', '', 0, true, true, true, '1', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0, 0);
+-- 菜单：发染记录（query 权限挂在菜单本身）
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
+VALUES (10500, '发染记录', 'lunaerp:greige-dispatch-record:query', 2, 60, 10200, 'greige-dispatch-record', 'ep:van', 'lunaerp-elmui/production/greige-dispatch-record/index', 'LunaerpElmuiProductionGreigeDispatchRecord', 0, '1', '1', '1', 'admin', '2026-09-29 00:00:00', '1', '2026-09-29 00:00:00', '0');
 
-INSERT INTO system_menu (name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted, tenant_id)
-VALUES ('发染记录创建', 'lunaerp:greige-dispatch-record:create', 3, 2, (SELECT id FROM (SELECT id FROM system_menu WHERE permission = 'lunaerp:greige-dispatch-record:query' OR (name = '发染记录' AND type = 2) ORDER BY id DESC LIMIT 1) t), '', '', '', '', 0, true, true, true, '1', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0, 0);
+-- 按钮：发染记录创建/删除
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
+VALUES (10501, '创建', 'lunaerp:greige-dispatch-record:create', 3, 1, 10500, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-29 00:00:00', '1', '2026-09-29 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
+VALUES (10502, '删除', 'lunaerp:greige-dispatch-record:delete', 3, 2, 10500, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-29 00:00:00', '1', '2026-09-29 00:00:00', '0');
 
-INSERT INTO system_menu (name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted, tenant_id)
-VALUES ('发染记录删除', 'lunaerp:greige-dispatch-record:delete', 3, 3, (SELECT id FROM (SELECT id FROM system_menu WHERE permission = 'lunaerp:greige-dispatch-record:query' OR (name = '发染记录' AND type = 2) ORDER BY id DESC LIMIT 1) t), '', '', '', '', 0, true, true, true, '1', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0, 0);
+COMMIT;
+-- @formatter:on
