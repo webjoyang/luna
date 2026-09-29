@@ -1,11 +1,14 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder;
 
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
+import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -45,5 +48,21 @@ public interface InspectionOrderMapper extends BaseMapperX<InspectionOrderDO> {
             + "creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_production_inspection_order WHERE code = #{code} LIMIT 1")
     InspectionOrderDO selectByCodeIncludingDeleted(@Param("code") String code);
+
+    /**
+     * 按销售合同ID集合批量查询检验单（生产进度聚合用，ADR-0034）。
+     *
+     * <p>返回未加工列表（含各状态），CANCELLED 排除由 Service 内存完成，便于单测。</p>
+     *
+     * @param contractIds 销售合同ID集合
+     * @return 检验单列表
+     */
+    default List<InspectionOrderDO> selectListByContractIds(Collection<Long> contractIds) {
+        if (contractIds == null || contractIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<InspectionOrderDO>()
+                .in(InspectionOrderDO::getSalesContractId, contractIds));
+    }
 
 }

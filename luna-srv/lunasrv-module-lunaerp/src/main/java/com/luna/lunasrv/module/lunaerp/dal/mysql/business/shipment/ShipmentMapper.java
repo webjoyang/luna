@@ -7,6 +7,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -76,6 +78,22 @@ public interface ShipmentMapper extends BaseMapperX<ShipmentDO> {
         return selectList(new LambdaQueryWrapperX<ShipmentDO>()
                 .eq(ShipmentDO::getSalesContractId, contractId)
                 .eq(ShipmentDO::getStatus, status));
+    }
+
+    /**
+     * 按销售合同ID集合批量查询发货单（生产进度发货量聚合用，ADR-0034）。
+     *
+     * <p>返回未加工列表（含各状态），CANCELLED 排除由 Service 内存完成，便于单测。</p>
+     *
+     * @param contractIds 销售合同ID集合
+     * @return 发货单列表
+     */
+    default List<ShipmentDO> selectListByContractIds(Collection<Long> contractIds) {
+        if (contractIds == null || contractIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ShipmentDO>()
+                .in(ShipmentDO::getSalesContractId, contractIds));
     }
 
 }

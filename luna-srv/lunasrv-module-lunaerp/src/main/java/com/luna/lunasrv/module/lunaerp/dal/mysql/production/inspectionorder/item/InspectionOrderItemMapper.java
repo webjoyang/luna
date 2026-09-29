@@ -112,4 +112,20 @@ public interface InspectionOrderItemMapper extends BaseMapperX<InspectionOrderIt
         return selectList(InspectionOrderItemDO::getInspectionOrderId, inspectionOrderId);
     }
 
+    /**
+     * 按检验单ID集合批量查询录检明细（生产进度等级汇总聚合用，ADR-0034）。
+     *
+     * <p>返回未加工列表，等级汇总与总件数统计由 Service 内存完成，便于单测。</p>
+     *
+     * @param inspectionOrderIds 检验单ID集合
+     * @return 录检明细列表
+     */
+    default java.util.List<InspectionOrderItemDO> selectListByInspectionOrderIds(java.util.Collection<Long> inspectionOrderIds) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(inspectionOrderIds)) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<InspectionOrderItemDO>()
+                .in(InspectionOrderItemDO::getInspectionOrderId, inspectionOrderIds));
+    }
+
 }

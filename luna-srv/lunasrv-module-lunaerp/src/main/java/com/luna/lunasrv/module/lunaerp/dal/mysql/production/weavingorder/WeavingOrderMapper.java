@@ -7,6 +7,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -66,6 +68,22 @@ public interface WeavingOrderMapper extends BaseMapperX<WeavingOrderDO> {
     default List<WeavingOrderDO> selectListByGreigeOrderId(Long greigeOrderId) {
         return selectList(new LambdaQueryWrapperX<WeavingOrderDO>()
                 .eq(WeavingOrderDO::getGreigeOrderId, greigeOrderId));
+    }
+
+    /**
+     * 按胚布单ID集合批量查询织造单（生产进度自织进度聚合用，ADR-0034）。
+     *
+     * <p>返回未加工列表（含各状态），CANCELLED 排除与完工口径由 Service 内存完成，便于单测。</p>
+     *
+     * @param greigeOrderIds 胚布单ID集合
+     * @return 织造单列表
+     */
+    default List<WeavingOrderDO> selectListByGreigeOrderIds(Collection<Long> greigeOrderIds) {
+        if (greigeOrderIds == null || greigeOrderIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<WeavingOrderDO>()
+                .in(WeavingOrderDO::getGreigeOrderId, greigeOrderIds));
     }
 
 }

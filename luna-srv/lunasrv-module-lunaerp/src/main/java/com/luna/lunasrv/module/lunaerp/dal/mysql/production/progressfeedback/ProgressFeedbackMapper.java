@@ -47,6 +47,24 @@ public interface ProgressFeedbackMapper extends BaseMapperX<ProgressFeedbackDO> 
                 .orderByAsc(ProgressFeedbackDO::getId));
     }
 
+    /**
+     * 按染色单ID集合批量查询缸表（生产进度缸状态汇总/覆盖率聚合用，ADR-0034）。
+     *
+     * <p>返回未加工列表，状态汇总与延期判定由 Service 内存完成，便于单测。</p>
+     *
+     * @param dyeingOrderIds 染色单ID集合
+     * @return 缸表列表
+     */
+    default List<ProgressFeedbackDO> selectListByDyeingOrderIds(Collection<Long> dyeingOrderIds) {
+        if (dyeingOrderIds == null || dyeingOrderIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ProgressFeedbackDO>()
+                .in(ProgressFeedbackDO::getDyeingOrderId, dyeingOrderIds)
+                .orderByAsc(ProgressFeedbackDO::getVatNo)
+                .orderByAsc(ProgressFeedbackDO::getId));
+    }
+
     default Long selectCountByColorId(Long colorId) {
         if (colorId == null) {
             return 0L;

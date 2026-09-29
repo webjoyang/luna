@@ -17,6 +17,8 @@ import org.apache.ibatis.annotations.Select;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -50,6 +52,28 @@ public interface StockLedgerMapper extends BaseMapperX<StockLedgerDO> {
         return selectList(new LambdaQueryWrapperX<StockLedgerDO>()
                 .eq(StockLedgerDO::getRelatedDocType, relatedDocType)
                 .eq(StockLedgerDO::getRelatedDocId, relatedDocId)
+                .eqIfPresent(StockLedgerDO::getTxnType, txnType)
+                .orderByAsc(StockLedgerDO::getId));
+    }
+
+    /**
+     * 按关联单据类型 + 单据ID集合 + 业务动作类型批量查询流水（生产进度入库/发货量聚合用，ADR-0034）。
+     *
+     * <p>join 反查口径：不给流水表加合同列，按 related_doc_type + related_doc_id 关联源单，
+     * 再由 Service 映射回合同。返回未加工列表（含带符号 quantity 与 unit），KG 过滤由 Service 完成。</p>
+     *
+     * @param relatedDocType 关联单据类型（如 STOCK_IN / SHIPMENT）
+     * @param relatedDocIds  关联单据ID集合
+     * @param txnType        业务动作类型（如 STOCK_IN / SHIPMENT_OUT），可空
+     * @return 流水列表（按主键升序）
+     */
+    default List<StockLedgerDO> selectListByRelatedDocIds(String relatedDocType, Collection<Long> relatedDocIds, String txnType) {
+        if (relatedDocIds == null || relatedDocIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<StockLedgerDO>()
+                .eq(StockLedgerDO::getRelatedDocType, relatedDocType)
+                .in(StockLedgerDO::getRelatedDocId, relatedDocIds)
                 .eqIfPresent(StockLedgerDO::getTxnType, txnType)
                 .orderByAsc(StockLedgerDO::getId));
     }

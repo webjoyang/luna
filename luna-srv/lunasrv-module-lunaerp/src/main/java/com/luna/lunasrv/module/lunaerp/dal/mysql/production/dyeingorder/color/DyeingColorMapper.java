@@ -5,6 +5,8 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.color.DyeingColorDO;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -44,5 +46,21 @@ public interface DyeingColorMapper extends BaseMapperX<DyeingColorDO> {
             + "ORDER BY line_no ASC"
             + "</script>")
     java.util.List<DyeingColorDO> selectListByOrderIdsIncludingDeleted(@org.apache.ibatis.annotations.Param("orderIds") java.util.Collection<Long> orderIds);
+
+    /**
+     * 按染色单ID集合批量查询颜色明细（未删除，生产进度聚合用，ADR-0034）。
+     *
+     * <p>返回未加工列表，KG/M 口径过滤与投染量、覆盖率分母求和由 Service 内存完成，便于单测。</p>
+     *
+     * @param orderIds 染色单ID集合
+     * @return 颜色明细列表
+     */
+    default List<DyeingColorDO> selectListByOrderIds(Collection<Long> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<DyeingColorDO>()
+                .in(DyeingColorDO::getDyeingOrderId, orderIds));
+    }
 
 }

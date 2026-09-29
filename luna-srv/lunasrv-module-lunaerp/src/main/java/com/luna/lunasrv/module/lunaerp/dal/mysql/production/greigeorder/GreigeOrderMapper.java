@@ -1,11 +1,14 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder;
 
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
+import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -52,5 +55,21 @@ public interface GreigeOrderMapper extends BaseMapperX<GreigeOrderDO> {
             + "creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_production_greige_order WHERE order_no = #{orderNo} LIMIT 1")
     GreigeOrderDO selectByOrderNoIncludingDeleted(@Param("orderNo") String orderNo);
+
+    /**
+     * 按销售合同ID集合批量查询胚布单（生产进度聚合用，ADR-0034）。
+     *
+     * <p>返回未加工列表（含各状态），CANCELLED 排除与 KG 口径由 Service 内存完成，便于单测。</p>
+     *
+     * @param contractIds 销售合同ID集合
+     * @return 胚布单列表
+     */
+    default List<GreigeOrderDO> selectListByContractIds(Collection<Long> contractIds) {
+        if (contractIds == null || contractIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<GreigeOrderDO>()
+                .in(GreigeOrderDO::getSalesContractId, contractIds));
+    }
 
 }

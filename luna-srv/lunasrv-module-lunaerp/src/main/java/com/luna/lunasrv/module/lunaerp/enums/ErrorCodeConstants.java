@@ -16,6 +16,7 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-009-xxx 段（纱线采购单：主表+明细共用）
  *                  与 1-030-017-xxx 段（进度反馈：反馈缸与反馈记录共用）
  *                  与 1-030-018-xxx 段（发染记录）
+ *                  与 1-030-019-xxx 段（生产进度查询，只读预留）
  */
 public interface ErrorCodeConstants {
 
@@ -190,6 +191,9 @@ public interface ErrorCodeConstants {
     ErrorCode GREIGE_DISPATCH_WAREHOUSE_NOT_ENABLED = new ErrorCode(1_030_018_004, "仓库不存在或未启用");
     ErrorCode GREIGE_DISPATCH_STOCK_NOT_ENOUGH = new ErrorCode(1_030_018_005, "库存不足：需求【{}】，可用【{}】");
     ErrorCode GREIGE_DISPATCH_ALREADY_REVERSED = new ErrorCode(1_030_018_007, "该发染记录已被撤销，不可重复删除");
+
+    // ========== 生产管理 - 生产进度查询模块 1-030-019-000（只读聚合，ADR-0034） ==========
+    ErrorCode PRODUCTION_PROGRESS_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_019_000, "销售合同不存在");
 
 }
 
