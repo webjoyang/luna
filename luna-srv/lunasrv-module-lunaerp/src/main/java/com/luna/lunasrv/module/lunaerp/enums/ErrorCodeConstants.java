@@ -15,6 +15,7 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-008-xxx 段（纱线档案：材质+规格+配比BOM+库存台账共用）
  *                  与 1-030-009-xxx 段（纱线采购单：主表+明细共用）
  *                  与 1-030-017-xxx 段（进度反馈：反馈缸与反馈记录共用）
+ *                  与 1-030-018-xxx 段（发染记录）
  */
 public interface ErrorCodeConstants {
 
@@ -180,6 +181,15 @@ public interface ErrorCodeConstants {
     ErrorCode PROGRESS_FEEDBACK_NOTE_NOT_AN_ISSUE = new ErrorCode(1_030_017_102, "该记录非问题不可闭环");
     ErrorCode PROGRESS_FEEDBACK_STATUS_ADVANCE_NOT_ALLOWED = new ErrorCode(1_030_017_005, "当前状态不允许推进或跳格");
     ErrorCode PROGRESS_FEEDBACK_STATUS_ROLLBACK_NOT_ALLOWED = new ErrorCode(1_030_017_006, "当前状态不允许回退");
+
+    // ========== 生产管理 - 发染记录模块 1-030-018-000 ==========
+    ErrorCode GREIGE_DISPATCH_NOT_EXISTS = new ErrorCode(1_030_018_000, "发染记录不存在");
+    ErrorCode GREIGE_DISPATCH_GREIGE_ORDER_NOT_EXISTS = new ErrorCode(1_030_018_001, "胚布单不存在或已取消");
+    ErrorCode GREIGE_DISPATCH_DYEING_ORDER_NOT_EXISTS = new ErrorCode(1_030_018_002, "染色单不存在");
+    ErrorCode GREIGE_DISPATCH_DYEING_ORDER_CONTRACT_MISMATCH = new ErrorCode(1_030_018_003, "染色单合同与胚布单合同不一致");
+    ErrorCode GREIGE_DISPATCH_WAREHOUSE_NOT_ENABLED = new ErrorCode(1_030_018_004, "仓库不存在或未启用");
+    ErrorCode GREIGE_DISPATCH_STOCK_NOT_ENOUGH = new ErrorCode(1_030_018_005, "库存不足：需求【{}】，可用【{}】");
+    ErrorCode GREIGE_DISPATCH_ALREADY_REVERSED = new ErrorCode(1_030_018_007, "该发染记录已被撤销，不可重复删除");
 
 }
 
