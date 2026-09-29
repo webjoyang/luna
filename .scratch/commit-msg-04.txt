@@ -1,0 +1,25 @@
+feat(lunaerp-elmui): 生产进度独立菜单页——跨合同列表 + 单合同抽屉 (issue 04, ADR-0034)
+
+「生产管理 → 生产进度」上线，MVP 闭环完成。纯消费 issue 03 的 page/get 只读接口，
+后端 Java 零改动；前端不做任何二次聚合，口径唯一由后端保证。
+
+- API 封装 production-progress：page/get + 完整 VO 类型 + NEAR_DELIVERY_DAYS（镜像后端阈值）
+- 列表页：spec 定义的 15 列（合同号/客户/业务员/交期/状态/需求/胚布计划/投染/已发染/
+  排产覆盖率/胚布入库/成品入库/已发货/未发量/预警）；筛选关键字 + 交期范围 + 状态 +
+  仅看预警 + 含已取消；默认排除 CANCELLED；排序交给后端（交期升序、无交期排最后），
+  前端不二次排序；点击行或合同号打开抽屉
+- 单合同抽屉：合同头 + 预警标签 + 六环节分区卡片（胚布/织造/染色/检验/入库/出货，
+  含进度对照条）+ 发染记录下钻表格与缸状态汇总、检验等级汇总下钻
+- utils.ts 收口展示口径：formatKg、距交期天数、交期着色（逾期红/临期橙/无交期灰）、
+  预警配色只此一份，列表行与抽屉头部共用
+- M 单位合同：demandKg 与 unshippedKg 在 KG 口径下无定义（后端需求不进 KG 合计、
+  未发量=需求-已发），显示占位「—」；其余环节的 KG 量是流水与执行单据的真实聚合，
+  原样展示不抹除；以 demandKg 为分母的对照条不渲染，避免假 0%
+- 菜单/权限 SQL：10410 挂 10200「生产管理」，sort=11 排在进度反馈后，
+  权限 lunaerp:production-progress:query 与 Controller @PreAuthorize 一致；无表结构变更
+- 只读边界：抽屉无新增/删除入口，发染记录增删仍走 issue 02 的双入口
+
+验证：pnpm ts:check 新增文件零错误；eslint/prettier/stylelint 全通过；
+pnpm build:local 成功产出独立 chunk；mvn test（lunaerp）26 项全绿；
+/code-review 双轴复查 Spec 轴 0 发现、Standards 轴 1 项重复代码已抽出 utils 修复。
+手工验收（需连库执行 SQL 后走设计文档「验证方式」清单）留待人工，issue 04 转 ready-for-human。
