@@ -126,7 +126,13 @@ Java 后端：`master` 分支为 JDK 8 + Spring Boot 2.7，`master-jdk17` 分支
 3. Windows 终端乱码处理：后端日志（控制台与 `${user.home}/logs/lunasrv-server.log`）均为 UTF-8 输出，
    若终端使用默认 GBK 代码页（936）查看会出现乱码（如“瀹屾璇锋眰”）。
    本工作区集成终端已默认配置为 UTF-8 代码页（见 `.vscode/settings.json` 的 `PowerShell (UTF-8)` 配置）；
-   若在外部独立终端启动，请先执行 `chcp 65001` 再启动服务。
+   若在外部独立终端启动，可先执行 `chcp 65001` 再启动服务（仅当前窗口生效），
+   或在 PowerShell 配置文件（`notepad $PROFILE`）中加入以下两行永久生效（新开窗口自动应用）：
+
+   ```powershell
+   [Console]::InputEncoding = [Text.Encoding]::UTF8
+   [Console]::OutputEncoding = [Text.Encoding]::UTF8
+   ```
 
 ### 启动信息
 
