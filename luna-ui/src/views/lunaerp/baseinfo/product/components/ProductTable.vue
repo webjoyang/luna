@@ -12,15 +12,12 @@
         <span class="cell-code">{{ row.code }}</span>
       </template>
     </el-table-column>
-    <el-table-column
-      label="产品名称"
-      prop="name"
-      min-width="180"
-      :show-overflow-tooltip="true"
-    />
+    <el-table-column label="产品名称" prop="name" min-width="180" :show-overflow-tooltip="true" />
     <el-table-column label="类型" prop="type" width="100" align="center">
       <template #default="{ row }">
-        <el-tag v-if="row.type" size="small" type="primary" effect="light">{{ row.type }}</el-tag>
+        <el-tag v-if="row.type" size="small" type="primary" effect="light">
+          {{ row.typeLabel || row.type }}
+        </el-tag>
         <span v-else>—</span>
       </template>
     </el-table-column>

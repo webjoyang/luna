@@ -1,5 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.baseinfo.product;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
@@ -23,6 +25,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
@@ -39,6 +42,10 @@ import static org.mockito.Mockito.when;
  * 3. yarnSpecs / costItems 以 JSON 字符串原样存取，后端不解析内部结构
  * 4. 已删除的 output / patternNo / tempCode / conversionRate 不再出现在 DO 与 VO 上
  *
+ * 以及可清空列的更新策略（ticket 04）：
+ * 5. 前端能清空的列声明 FieldStrategy.ALWAYS，否则 updateById 跳过 null、旧值残留
+ * 6. 逻辑删除只改 status，不能把 ALWAYS 列刷成 null
+ *
  * @author luna
  */
 class ProductServiceImplTest {
@@ -48,6 +55,14 @@ class ProductServiceImplTest {
      */
     private static final List<String> REMOVED_FIELDS =
             Arrays.asList("output", "patternNo", "tempCode", "conversionRate");
+
+    /**
+     * 编辑表单允许清空、因而必须走 FieldStrategy.ALWAYS 的列（ticket 04 表单接管的选填字段）
+     */
+    private static final List<String> CLEARABLE_FIELDS = Arrays.asList(
+            "greigeTypeId", "fabricType", "fabricTypeLabel",
+            "wovenTotalEnds", "wovenReedNo",
+            "wovenWarpDensity", "wovenWeftDensity", "wovenLoomWeftDensity");
 
     /**
      * 纱线规格 JSON 原文（针织行 + 梭织经纬精算行的超集，后端不解析）
@@ -200,7 +215,7 @@ class ProductServiceImplTest {
 
     @Test
     void productDo_declaresAllAdr0035Columns() {
-        // DO 不加 @TableField，靠 map-underscore-to-camel-case 映射，字段名拼错即静默丢列，此处兜底校验
+        // DO 靠 map-underscore-to-camel-case 映射列名（@TableField 只声明更新策略、不覆盖列名），字段名拼错即静默丢列，此处兜底校验
         List<String> expectedColumns = Arrays.asList(
                 "fabric_type", "fabric_type_label", "type_label",
                 "woven_total_ends", "woven_reed_no", "woven_warp_density",
@@ -217,6 +232,44 @@ class ProductServiceImplTest {
         for (String removedColumn : Arrays.asList("output", "pattern_no", "temp_code", "conversion_rate")) {
             assertFalse(declared.contains(removedColumn), "ProductDO 仍映射已删除列 " + removedColumn);
         }
+    }
+
+    @Test
+    void clearableColumns_useAlwaysUpdateStrategy() throws NoSuchFieldException {
+        // 默认策略 NOT_NULL 会跳过 null：前端清空数字输入框后提交 null，库里旧值残留、重开又回显
+        for (String fieldName : CLEARABLE_FIELDS) {
+            TableField tableField = ProductDO.class.getDeclaredField(fieldName).getAnnotation(TableField.class);
+            assertNotNull(tableField,
+                    fieldName + " 缺少 @TableField(updateStrategy = FieldStrategy.ALWAYS)，用户清空后旧值会残留");
+            assertEquals(FieldStrategy.ALWAYS, tableField.updateStrategy(),
+                    fieldName + " 的更新策略应为 ALWAYS");
+        }
+    }
+
+    @Test
+    void deleteProduct_marksDeletedWithoutWipingClearableColumns() {
+        ProductDO existing = new ProductDO();
+        existing.setId(1024L);
+        existing.setCode("P0001");
+        existing.setStatus("ACTIVE");
+        existing.setGreigeTypeId("gt-001");
+        existing.setFabricType("WOVEN");
+        existing.setFabricTypeLabel("梭织");
+        existing.setWovenTotalEnds(new BigDecimal("8880.00"));
+        existing.setWovenLoomWeftDensity(new BigDecimal("30.00"));
+        when(productMapper.selectById(1024L)).thenReturn(existing);
+        when(productMapper.selectByIds(anyCollection())).thenReturn(Collections.singletonList(existing));
+
+        productService.deleteProduct(1024L);
+
+        // 逻辑删除只置 status，不能借局部 DO 把 ALWAYS 列刷成 null
+        ProductDO updated = captureUpdated();
+        assertEquals("DELETED", updated.getStatus());
+        assertEquals("gt-001", updated.getGreigeTypeId());
+        assertEquals("WOVEN", updated.getFabricType());
+        assertEquals("梭织", updated.getFabricTypeLabel());
+        assertEquals(new BigDecimal("8880.00"), updated.getWovenTotalEnds());
+        assertEquals(new BigDecimal("30.00"), updated.getWovenLoomWeftDensity());
     }
 
     // ==================== 私有方法 ====================

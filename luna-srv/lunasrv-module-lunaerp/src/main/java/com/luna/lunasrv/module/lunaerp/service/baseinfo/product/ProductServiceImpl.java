@@ -269,11 +269,11 @@ public class ProductServiceImpl implements ProductService {
             return;
         }
         // 1. 先置 status='DELETED'
+        //    必须基于已查出的完整实体更新：ProductDO 有若干列声明了 FieldStrategy.ALWAYS，
+        //    若用只带 id/status 的局部 DO，这些列会被一并刷成 null
         for (ProductDO product : products) {
-            ProductDO updateObj = new ProductDO();
-            updateObj.setId(product.getId());
-            updateObj.setStatus(STATUS_DELETED);
-            productMapper.updateById(updateObj);
+            product.setStatus(STATUS_DELETED);
+            productMapper.updateById(product);
         }
         // 2. 逻辑删除产品
         productMapper.deleteByIds(ids);

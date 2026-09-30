@@ -44,7 +44,9 @@
 <script lang="ts" setup>
 import { getBoolDictOptions, getIntDictOptions, getStrDictOptions } from '@/utils/dict'
 
-defineOptions({ name: 'DictSelect' })
+// 多根节点（select / radio / checkbox 三分支）下 attrs 无法自动继承，已由各分支的 v-bind="attrs" 手动透传，
+// 此处显式关闭继承，避免业务页面直接复用本组件时控制台刷 "Extraneous non-props attributes" 警告
+defineOptions({ name: 'DictSelect', inheritAttrs: false })
 
 const attrs = useAttrs()
 

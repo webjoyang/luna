@@ -455,6 +455,10 @@ export enum DICT_TYPE {
   // ========== LunaERP - 基本信息-供应商模块 ==========
   LUNAERP_SUPPLIER_TYPE = 'lunaerp_supplier_type', // 供应商类型（18 项经营类别）
 
+  // ========== LunaERP - 基本信息-产品模块 ==========
+  LUNAERP_PRODUCT_CATEGORY = 'lunaerp_product_category', // 产品类别（成品/胚布/半成品，存 product.type + type_label）
+  LUNAERP_FABRIC_TYPE = 'lunaerp_fabric_type', // 布种（针织/梭织/经编/纬编，存 product.fabric_type + fabric_type_label）
+
   // ========== LunaERP - 业务管理-销售合同模块 ==========
   LUNAERP_SALES_CONTRACT_STATUS = 'lunaerp_sales_contract_status', // 销售合同状态
   LUNAERP_SALES_CONTRACT_TRADE_TYPE = 'lunaerp_sales_contract_trade_type', // 销售合同贸易类型

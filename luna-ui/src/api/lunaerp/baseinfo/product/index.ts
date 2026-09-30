@@ -15,13 +15,17 @@ export interface ProductImageVO {
   sortOrder: number
 }
 
-// 产品信息 VO
+// 产品信息 VO（对齐 ADR-0035：删 output/patternNo/tempCode/conversionRate，增布种/类别标签/梭织参数/成本设置 17 列）
+// 可空字段声明为 `| null`：编辑时提交 null 表示「清空」，后端 ProductDO 对应列已加 FieldStrategy.ALWAYS
 export interface ProductVO {
   id?: number
   code: string
   normalizedCode?: string
   name: string
+  /** 产品类别（字典 lunaerp_product_category 的 value） */
   type: string
+  /** 产品类别字典标签（名称冗余，供列表直接展示） */
+  typeLabel?: string
   composition: string
   widthCm: number
   weightGsm: number
@@ -34,16 +38,45 @@ export interface ProductVO {
   featuredOrder?: number
   yarnSpecs?: string
   machineType?: string
-  output?: string
   remark?: string
+  /** 供应商样号（ADR-0035 更正标签，原「原厂编号」） */
   supplierCode?: string
-  tempCode?: string
   craftType?: string
   color?: string
-  greigeTypeId?: string
-  patternNo?: string
+  greigeTypeId?: string | null
   standardLength?: string
-  conversionRate?: number
+  /** 布种（字典 lunaerp_fabric_type 的 value，选填，提交 null 表示清空） */
+  fabricType?: string | null
+  /** 布种字典标签（名称冗余，与 fabricType 成对清空） */
+  fabricTypeLabel?: string | null
+  /** 梭织-总经根数 */
+  wovenTotalEnds?: number | null
+  /** 梭织-筘号 */
+  wovenReedNo?: number | null
+  /** 梭织-经密（根/CM） */
+  wovenWarpDensity?: number | null
+  /** 梭织-纬密（根/CM） */
+  wovenWeftDensity?: number | null
+  /** 梭织-上机纬密（根/CM） */
+  wovenLoomWeftDensity?: number | null
+  /** 织物结构（KNIT 针织 / WOVEN 梭织） */
+  fabricConstruction?: string
+  /** 梭织估算方式（SIMPLE 简易估算 / PROFESSIONAL 经纬精算） */
+  wovenCalculationMode?: string
+  /** 坯布克重（GSM） */
+  greigeWeightGsm?: number | null
+  /** 坯布门幅（CM） */
+  greigeWidthCm?: number | null
+  /** 针织加工费（元/KG） */
+  knitProcessingFeePerKg?: number | null
+  /** 织造费（元/M） */
+  weavingFeePerMeter?: number | null
+  /** 其他加工费（元/M） */
+  otherProcessingFeePerMeter?: number | null
+  /** 包装费 */
+  packagingFee?: number | null
+  /** 税率 */
+  taxRate?: number | null
   costItems?: string
   costPrice?: number
   costStatus?: string

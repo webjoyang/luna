@@ -53,18 +53,14 @@
         <div class="card-body">
           <div class="card-name" :title="row.name">{{ row.name || '—' }}</div>
           <div class="card-sub">
-            <span v-if="row.type" class="sub-type">{{ row.type }}</span>
+            <span v-if="row.type" class="sub-type">{{ row.typeLabel || row.type }}</span>
             <span class="sub-composition" :title="row.composition">
               {{ row.composition || '—' }}
             </span>
           </div>
           <div class="card-specs">
-            <span class="spec-item">
-              <em>克重</em>{{ row.weightGsm ?? '—' }}<i>GSM</i>
-            </span>
-            <span class="spec-item">
-              <em>门幅</em>{{ row.widthCm ?? '—' }}<i>CM</i>
-            </span>
+            <span class="spec-item"> <em>克重</em>{{ row.weightGsm ?? '—' }}<i>GSM</i> </span>
+            <span class="spec-item"> <em>门幅</em>{{ row.widthCm ?? '—' }}<i>CM</i> </span>
           </div>
           <!-- 彩色标签 chips -->
           <div v-if="row.tags && row.tags.length" class="card-tags">
@@ -74,7 +70,7 @@
               class="tag-chip"
               :style="chipStyle(tag.color)"
             >
-              <i class="tag-dot" :style="{ background: resolveTagSwatch(tag.color).ink }" />
+              <i class="tag-dot" :style="{ background: resolveTagSwatch(tag.color).ink }"></i>
               {{ tag.name }}
             </span>
             <span v-if="row.tags.length > 6" class="tag-chip tag-more">

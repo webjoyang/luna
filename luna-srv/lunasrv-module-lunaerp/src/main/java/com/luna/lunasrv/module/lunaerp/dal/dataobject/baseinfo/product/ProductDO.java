@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
@@ -104,7 +106,10 @@ public class ProductDO extends TenantBaseDO {
     private String color;
     /**
      * 所属胚布品种ID（历史 UUID 字符串，可空）
+     *
+     * ALWAYS：前端清空时需把关联真正解除为 null（默认 NOT_NULL 会跳过、旧值残留）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String greigeTypeId;
     /**
      * 标准米长
@@ -112,11 +117,15 @@ public class ProductDO extends TenantBaseDO {
     private String standardLength;
     /**
      * 布种（取字典 lunaerp_fabric_type 的 value）
+     *
+     * ALWAYS：布种为选填且允许清空（与 fabricTypeLabel 成对），默认 NOT_NULL 会跳过 null 导致旧值删不掉
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String fabricType;
     /**
      * 布种字典标签（名称冗余）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String fabricTypeLabel;
     /**
      * 产品类别字典标签（名称冗余，type 列存字典值）
@@ -124,23 +133,30 @@ public class ProductDO extends TenantBaseDO {
     private String typeLabel;
     /**
      * 梭织-总经根数
+     *
+     * ALWAYS：5 个梭织参数均为选填且允许清空，默认 NOT_NULL 会跳过 null 导致旧值删不掉
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal wovenTotalEnds;
     /**
      * 梭织-筘号
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal wovenReedNo;
     /**
      * 梭织-经密（根/CM）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal wovenWarpDensity;
     /**
      * 梭织-纬密（根/CM）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal wovenWeftDensity;
     /**
      * 梭织-上机纬密（根/CM）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal wovenLoomWeftDensity;
     /**
      * 织物结构（KNIT 针织 / WOVEN 梭织）
