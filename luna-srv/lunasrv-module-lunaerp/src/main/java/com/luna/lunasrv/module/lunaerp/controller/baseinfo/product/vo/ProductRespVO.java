@@ -23,8 +23,11 @@ public class ProductRespVO {
     @Schema(description = "产品名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "莫代尔汗布")
     private String name;
 
-    @Schema(description = "产品类型", requiredMode = Schema.RequiredMode.REQUIRED, example = "汗布")
+    @Schema(description = "产品类别（字典 lunaerp_product_category 的 value）", requiredMode = Schema.RequiredMode.REQUIRED, example = "FINISHED")
     private String type;
+
+    @Schema(description = "产品类别字典标签（名称冗余，供前端直接展示）", example = "成品")
+    private String typeLabel;
 
     @Schema(description = "成分", requiredMode = Schema.RequiredMode.REQUIRED, example = "NR")
     private String composition;
@@ -63,17 +66,11 @@ public class ProductRespVO {
     @Schema(description = "机型")
     private String machineType;
 
-    @Schema(description = "产量")
-    private String output;
-
     @Schema(description = "备注")
     private String remark;
 
-    @Schema(description = "原厂编号")
+    @Schema(description = "供应商样号")
     private String supplierCode;
-
-    @Schema(description = "临时编号")
-    private String tempCode;
 
     @Schema(description = "工艺类型")
     private String craftType;
@@ -84,14 +81,56 @@ public class ProductRespVO {
     @Schema(description = "所属胚布品种ID")
     private String greigeTypeId;
 
-    @Schema(description = "花型号")
-    private String patternNo;
-
     @Schema(description = "标准米长")
     private String standardLength;
 
-    @Schema(description = "算长系数（1KG = ?米/码）")
-    private BigDecimal conversionRate;
+    @Schema(description = "布种（字典 lunaerp_fabric_type 的 value）", example = "KNIT")
+    private String fabricType;
+
+    @Schema(description = "布种字典标签（名称冗余，供前端直接展示）", example = "针织")
+    private String fabricTypeLabel;
+
+    @Schema(description = "梭织-总经根数")
+    private BigDecimal wovenTotalEnds;
+
+    @Schema(description = "梭织-筘号")
+    private BigDecimal wovenReedNo;
+
+    @Schema(description = "梭织-经密（根/CM）")
+    private BigDecimal wovenWarpDensity;
+
+    @Schema(description = "梭织-纬密（根/CM）")
+    private BigDecimal wovenWeftDensity;
+
+    @Schema(description = "梭织-上机纬密（根/CM）")
+    private BigDecimal wovenLoomWeftDensity;
+
+    @Schema(description = "织物结构（KNIT 针织 / WOVEN 梭织）")
+    private String fabricConstruction;
+
+    @Schema(description = "梭织估算方式（SIMPLE 简易估算 / PROFESSIONAL 经纬精算）")
+    private String wovenCalculationMode;
+
+    @Schema(description = "坯布克重（GSM）")
+    private BigDecimal greigeWeightGsm;
+
+    @Schema(description = "坯布门幅（CM）")
+    private BigDecimal greigeWidthCm;
+
+    @Schema(description = "针织加工费（元/KG）")
+    private BigDecimal knitProcessingFeePerKg;
+
+    @Schema(description = "织造费（元/M）")
+    private BigDecimal weavingFeePerMeter;
+
+    @Schema(description = "其他加工费（元/M）")
+    private BigDecimal otherProcessingFeePerMeter;
+
+    @Schema(description = "包装费")
+    private BigDecimal packagingFee;
+
+    @Schema(description = "税率")
+    private BigDecimal taxRate;
 
     @Schema(description = "成本项明细（JSON 原文）")
     private String costItems;

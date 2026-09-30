@@ -20,3 +20,9 @@
 - [ ] 保存时 yarnSpecs/costItems 序列化为 JSON 字符串提交后端
 - [ ] 编辑已有产品时所有纱线行和成本项正确回显
 - [ ] 针织→梭织、简易→经纬精算模式切换时不丢失已录入纱线行数据
+
+## Comments
+
+- 2026-09-30（来自工单 02）：本分区依赖的后端列已全部就位（均 BigDecimal / String，后端不解析 JSON）：fabricConstruction（KNIT/WOVEN）、wovenCalculationMode（SIMPLE/PROFESSIONAL）、greigeWeightGsm、greigeWidthCm、knitProcessingFeePerKg、weavingFeePerMeter、otherProcessingFeePerMeter、packagingFee、taxRate、yarnSpecs、costItems。
+  - 加工费/坯布参数/包装费/税率清空后若提交 null，`updateById` 会跳过该字段、旧值残留（同工单 04 的提醒）：数字输入框需以空串提交，或后续给 ProductDO 可空字段统一补 `@TableField(updateStrategy = FieldStrategy.ALWAYS)`。
+  - 成本汇总为前端实时计算（工单 03 的 `calculateProductYarnCost`），后端不算、不存；costPrice/costStatus 仍由现有写入路径维护，本工单不要改。

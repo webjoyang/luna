@@ -15,3 +15,9 @@
 - [ ] 纱线规格和成本结构明细分区有占位区域，不报错
 - [ ] 保存产品时新字段（梭织参数/布种/类别标签）正确提交到后端
 - [ ] 编辑已有产品时所有新字段正确回显
+
+## Comments
+
+- 2026-09-30（来自工单 02）：后端契约已就绪——ProductSaveReqVO/ProductRespVO 已删 output/patternNo/tempCode/conversionRate，已增 typeLabel、fabricType/fabricTypeLabel 与 5 个梭织参数（wovenTotalEnds/wovenReedNo/wovenWarpDensity/wovenWeftDensity/wovenLoomWeftDensity，均 BigDecimal）。
+  - 前端 `api/lunaerp/baseinfo/product/index.ts` 的类型定义需同步删 4 增 17，否则提交的旧字段会被后端静默丢弃（Jackson 不报错）。
+  - **清空字段注意**：后端 `updateProduct` 用 `updateById`，null 字段被 MyBatis-Plus 跳过、库里旧值残留。梭织参数用 el-input-number 清空后若提交 null 就删不掉旧值，需以空串提交（或回头给 ProductDO 可空字段补 `@TableField(updateStrategy = FieldStrategy.ALWAYS)`）。
