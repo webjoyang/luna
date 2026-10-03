@@ -441,10 +441,8 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // 5. 更新单据状态为 COMPLETED
-        ShipmentDO updateObj = new ShipmentDO();
-        updateObj.setId(id);
-        updateObj.setStatus(STATUS_COMPLETED);
-        shipmentMapper.updateById(updateObj);
+        existing.setStatus(STATUS_COMPLETED);
+        shipmentMapper.updateById(existing);
 
         // 6. 按明细行逐条写负数 SHIPMENT_OUT 流水（同一事务，卷清单不展开，库位为空）
         for (ShipmentItemDO item : items) {
@@ -483,10 +481,8 @@ public class ShipmentServiceImpl implements ShipmentService {
                 throw new AccessDeniedException("没有作废发货单草稿权限");
             }
             // 仅作废单据，不写流水
-            ShipmentDO updateObj = new ShipmentDO();
-            updateObj.setId(id);
-            updateObj.setStatus(STATUS_CANCELLED);
-            shipmentMapper.updateById(updateObj);
+            existing.setStatus(STATUS_CANCELLED);
+            shipmentMapper.updateById(existing);
 
         } else if (STATUS_COMPLETED.equals(existing.getStatus())) {
             // 2.2 已发货态红冲：校验 :audit 权限
@@ -494,10 +490,8 @@ public class ShipmentServiceImpl implements ShipmentService {
                 throw new AccessDeniedException("没有红冲已发货发货单权限");
             }
             // 更新单据状态为已取消终态
-            ShipmentDO updateObj = new ShipmentDO();
-            updateObj.setId(id);
-            updateObj.setStatus(STATUS_CANCELLED);
-            shipmentMapper.updateById(updateObj);
+            existing.setStatus(STATUS_CANCELLED);
+            shipmentMapper.updateById(existing);
 
             // 红冲过账：同事务反查原流水逐条追加正数反向行（原流水永不物理删除）
             List<StockLedgerDO> origList = stockLedgerMapper.selectListByRelatedDoc(DOC_TYPE_SHIPMENT, id, TXN_TYPE_SHIPMENT_OUT);

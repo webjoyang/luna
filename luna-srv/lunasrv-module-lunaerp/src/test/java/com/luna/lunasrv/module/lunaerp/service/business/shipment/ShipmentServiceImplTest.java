@@ -1654,6 +1654,9 @@ class ShipmentServiceImplTest {
         shipment.setStatus("DRAFT");
         shipment.setWarehouseId(2L);
         shipment.setWarehouseName("成品一仓");
+        shipment.setContractNo("CH20260001");
+        shipment.setCarrier("顺丰速运");
+        shipment.setFreightFee(new BigDecimal("150.00"));
         when(shipmentMapper.selectById(10L)).thenReturn(shipment);
 
         ShipmentItemDO item = new ShipmentItemDO();
@@ -1675,10 +1678,14 @@ class ShipmentServiceImplTest {
         // Act
         shipmentService.auditShipment(10L);
 
-        // Assert 状态更新为 COMPLETED
+        // Assert 状态更新为 COMPLETED，且原有业务字段不被清空
         ArgumentCaptor<ShipmentDO> shipmentCaptor = ArgumentCaptor.forClass(ShipmentDO.class);
         verify(shipmentMapper).updateById(shipmentCaptor.capture());
-        assertEquals("COMPLETED", shipmentCaptor.getValue().getStatus());
+        ShipmentDO updatedShipment = shipmentCaptor.getValue();
+        assertEquals("COMPLETED", updatedShipment.getStatus());
+        assertEquals("CH20260001", updatedShipment.getContractNo());
+        assertEquals("顺丰速运", updatedShipment.getCarrier());
+        assertEquals(new BigDecimal("150.00"), updatedShipment.getFreightFee());
 
         // Assert 写入一条负数出库流水
         ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
@@ -1711,6 +1718,9 @@ class ShipmentServiceImplTest {
         ShipmentDO shipment = new ShipmentDO();
         shipment.setId(10L);
         shipment.setStatus("DRAFT");
+        shipment.setContractNo("CH20260001");
+        shipment.setCarrier("顺丰速运");
+        shipment.setFreightFee(new BigDecimal("150.00"));
         when(shipmentMapper.selectById(10L)).thenReturn(shipment);
 
         // Act
@@ -1719,7 +1729,11 @@ class ShipmentServiceImplTest {
         // Assert
         ArgumentCaptor<ShipmentDO> captor = ArgumentCaptor.forClass(ShipmentDO.class);
         verify(shipmentMapper).updateById(captor.capture());
-        assertEquals("CANCELLED", captor.getValue().getStatus());
+        ShipmentDO updatedShipment = captor.getValue();
+        assertEquals("CANCELLED", updatedShipment.getStatus());
+        assertEquals("CH20260001", updatedShipment.getContractNo());
+        assertEquals("顺丰速运", updatedShipment.getCarrier());
+        assertEquals(new BigDecimal("150.00"), updatedShipment.getFreightFee());
         verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
     }
 
@@ -1730,6 +1744,9 @@ class ShipmentServiceImplTest {
         shipment.setId(10L);
         shipment.setShipmentNo("SH-20260928-001");
         shipment.setStatus("COMPLETED");
+        shipment.setContractNo("CH20260001");
+        shipment.setCarrier("顺丰速运");
+        shipment.setFreightFee(new BigDecimal("150.00"));
         when(shipmentMapper.selectById(10L)).thenReturn(shipment);
 
         // 原流水（负数）
@@ -1755,10 +1772,14 @@ class ShipmentServiceImplTest {
         // Act
         shipmentService.cancelShipment(10L);
 
-        // Assert 单据转 CANCELLED
+        // Assert 单据转 CANCELLED，且保留原有业务字段
         ArgumentCaptor<ShipmentDO> captor = ArgumentCaptor.forClass(ShipmentDO.class);
         verify(shipmentMapper).updateById(captor.capture());
-        assertEquals("CANCELLED", captor.getValue().getStatus());
+        ShipmentDO updatedShipment = captor.getValue();
+        assertEquals("CANCELLED", updatedShipment.getStatus());
+        assertEquals("CH20260001", updatedShipment.getContractNo());
+        assertEquals("顺丰速运", updatedShipment.getCarrier());
+        assertEquals(new BigDecimal("150.00"), updatedShipment.getFreightFee());
 
         // Assert 写入红冲正数流水
         ArgumentCaptor<StockLedgerDO> ledgerCaptor = ArgumentCaptor.forClass(StockLedgerDO.class);
