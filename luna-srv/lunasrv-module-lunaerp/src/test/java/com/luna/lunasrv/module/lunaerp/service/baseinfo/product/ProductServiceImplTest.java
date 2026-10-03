@@ -62,7 +62,11 @@ class ProductServiceImplTest {
     private static final List<String> CLEARABLE_FIELDS = Arrays.asList(
             "greigeTypeId", "fabricType", "fabricTypeLabel",
             "wovenTotalEnds", "wovenReedNo",
-            "wovenWarpDensity", "wovenWeftDensity", "wovenLoomWeftDensity");
+            "wovenWarpDensity", "wovenWeftDensity", "wovenLoomWeftDensity",
+            "fabricConstruction", "wovenCalculationMode",
+            "greigeWeightGsm", "greigeWidthCm",
+            "knitProcessingFeePerKg", "weavingFeePerMeter", "otherProcessingFeePerMeter",
+            "packagingFee", "taxRate", "yarnSpecs", "costItems");
 
     /**
      * 纱线规格 JSON 原文（针织行 + 梭织经纬精算行的超集，后端不解析）

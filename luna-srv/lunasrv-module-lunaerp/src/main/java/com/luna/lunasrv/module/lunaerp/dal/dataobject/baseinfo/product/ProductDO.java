@@ -83,6 +83,7 @@ public class ProductDO extends TenantBaseDO {
     /**
      * 纱支明细（JSON 字符串数组：纱支/纺法/比例/备注/单价）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String yarnSpecs;
     /**
      * 机型
@@ -161,42 +162,52 @@ public class ProductDO extends TenantBaseDO {
     /**
      * 织物结构（KNIT 针织 / WOVEN 梭织）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String fabricConstruction;
     /**
      * 梭织估算方式（SIMPLE 简易估算 / PROFESSIONAL 经纬精算）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String wovenCalculationMode;
     /**
      * 坯布克重（GSM，梭织简易估算用）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal greigeWeightGsm;
     /**
      * 坯布门幅（CM，梭织简易估算用）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal greigeWidthCm;
     /**
      * 针织加工费（元/KG）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal knitProcessingFeePerKg;
     /**
      * 织造费（元/M）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal weavingFeePerMeter;
     /**
      * 其他加工费（元/M）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal otherProcessingFeePerMeter;
     /**
      * 包装费
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal packagingFee;
     /**
      * 税率
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal taxRate;
     /**
      * 成本项明细（JSON 字符串数组：供应商/工序/单价/损耗率）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String costItems;
     /**
      * 汇总成本价（由成本项计算，冗余存储）

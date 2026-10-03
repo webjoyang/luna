@@ -52,6 +52,17 @@ function productVO(overrides: Partial<ProductVO> = {}): ProductVO {
     wovenWarpDensity: 52,
     wovenWeftDensity: 28,
     wovenLoomWeftDensity: 30,
+    fabricConstruction: 'WOVEN',
+    wovenCalculationMode: 'PROFESSIONAL',
+    greigeWeightGsm: 240,
+    greigeWidthCm: 150,
+    knitProcessingFeePerKg: 4.5,
+    weavingFeePerMeter: 3.2,
+    otherProcessingFeePerMeter: 1.8,
+    packagingFee: 0.3,
+    taxRate: 0.13,
+    yarnSpecs: '[{"yarnSpecId":123,"yarnSpecName":"32S 棉"}]',
+    costItems: '[{"supplierId":"s1","process":"染整"}]',
     status: 'ACTIVE',
     isPublic: true,
     isFeatured: false,
@@ -84,6 +95,17 @@ describe('createDefaultProductFormData - 新建缺省值', () => {
     expect(data.wovenWeftDensity).toBeUndefined()
     expect(data.wovenLoomWeftDensity).toBeUndefined()
     expect(data.greigeTypeId).toBeUndefined()
+    expect(data.greigeWeightGsm).toBeUndefined()
+    expect(data.greigeWidthCm).toBeUndefined()
+    expect(data.knitProcessingFeePerKg).toBeUndefined()
+    expect(data.weavingFeePerMeter).toBeUndefined()
+    expect(data.otherProcessingFeePerMeter).toBeUndefined()
+    expect(data.packagingFee).toBeUndefined()
+    expect(data.taxRate).toBeUndefined()
+    expect(data.fabricConstruction).toBe('KNIT')
+    expect(data.wovenCalculationMode).toBe('SIMPLE')
+    expect(data.yarnSpecs).toBe('')
+    expect(data.costItems).toBe('')
     expect(data.code).toBe('')
     expect(data.type).toBe('')
     expect(data.typeLabel).toBe('')
@@ -95,7 +117,7 @@ describe('createDefaultProductFormData - 新建缺省值', () => {
 })
 
 describe('toProductFormData - 详情回显', () => {
-  test('ADR-0035 新增字段全部回显（类别/布种 value+label、梭织参数 5 列）', () => {
+  test('ADR-0035 新增字段全部回显（类别/布种 value+label、梭织参数 5 列、织物结构与成本项）', () => {
     const data = toProductFormData(productVO())
     expect(data.id).toBe(1024)
     expect(data.type).toBe('FINISHED')
@@ -107,6 +129,17 @@ describe('toProductFormData - 详情回显', () => {
     expect(data.wovenWarpDensity).toBe(52)
     expect(data.wovenWeftDensity).toBe(28)
     expect(data.wovenLoomWeftDensity).toBe(30)
+    expect(data.fabricConstruction).toBe('WOVEN')
+    expect(data.wovenCalculationMode).toBe('PROFESSIONAL')
+    expect(data.greigeWeightGsm).toBe(240)
+    expect(data.greigeWidthCm).toBe(150)
+    expect(data.knitProcessingFeePerKg).toBe(4.5)
+    expect(data.weavingFeePerMeter).toBe(3.2)
+    expect(data.otherProcessingFeePerMeter).toBe(1.8)
+    expect(data.packagingFee).toBe(0.3)
+    expect(data.taxRate).toBe(0.13)
+    expect(data.yarnSpecs).toBe('[{"yarnSpecId":123,"yarnSpecName":"32S 棉"}]')
+    expect(data.costItems).toBe('[{"supplierId":"s1","process":"染整"}]')
     expect(data.supplierCode).toBe('SUP-001')
     expect(data.standardLength).toBe('100')
     expect(data.greigeTypeId).toBe('gt-001')
@@ -238,10 +271,64 @@ describe('toProductSavePayload - 提交载荷', () => {
     ).toBe('gt-001')
   })
 
-  test('不含 yarnSpecs / costItems 键（工单 05 负责，避免覆盖库里已有 JSON）', () => {
-    const keys = Object.keys(toProductSavePayload(form(), resolveDictLabel))
-    expect(keys).not.toContain('yarnSpecs')
-    expect(keys).not.toContain('costItems')
+  test('含 yarnSpecs / costItems 键，有值透传，空时提交 null', () => {
+    const withJson = toProductSavePayload(
+      form({
+        yarnSpecs: '[{"yarnSpecId":123}]',
+        costItems: '[{"supplierId":"s1"}]'
+      }),
+      resolveDictLabel
+    )
+    expect(withJson.yarnSpecs).toBe('[{"yarnSpecId":123}]')
+    expect(withJson.costItems).toBe('[{"supplierId":"s1"}]')
+
+    const empty = toProductSavePayload(form({ yarnSpecs: '', costItems: '' }), resolveDictLabel)
+    expect(empty.yarnSpecs).toBeNull()
+    expect(empty.costItems).toBeNull()
+  })
+
+  test('织物结构/估算方式/成本设置字段正确提交', () => {
+    const payload = toProductSavePayload(
+      form({
+        fabricConstruction: 'WOVEN',
+        wovenCalculationMode: 'PROFESSIONAL',
+        greigeWeightGsm: 240,
+        greigeWidthCm: 150,
+        knitProcessingFeePerKg: 4.5,
+        weavingFeePerMeter: 3.2,
+        otherProcessingFeePerMeter: 1.8,
+        packagingFee: 0.3,
+        taxRate: 0.13
+      }),
+      resolveDictLabel
+    )
+    expect(payload.fabricConstruction).toBe('WOVEN')
+    expect(payload.wovenCalculationMode).toBe('PROFESSIONAL')
+    expect(payload.greigeWeightGsm).toBe(240)
+    expect(payload.greigeWidthCm).toBe(150)
+    expect(payload.knitProcessingFeePerKg).toBe(4.5)
+    expect(payload.weavingFeePerMeter).toBe(3.2)
+    expect(payload.otherProcessingFeePerMeter).toBe(1.8)
+    expect(payload.packagingFee).toBe(0.3)
+    expect(payload.taxRate).toBe(0.13)
+  })
+
+  test('成本数值字段清空后提交 null，保证后端可清掉旧值', () => {
+    const payload = toProductSavePayload(form(), resolveDictLabel)
+    for (const key of [
+      'greigeWeightGsm',
+      'greigeWidthCm',
+      'knitProcessingFeePerKg',
+      'weavingFeePerMeter',
+      'otherProcessingFeePerMeter',
+      'packagingFee',
+      'taxRate'
+    ] as const) {
+      expect(Object.keys(payload)).toContain(key)
+      expect(payload[key]).toBeNull()
+    }
+    expect(payload.fabricConstruction).toBe('KNIT')
+    expect(payload.wovenCalculationMode).toBe('SIMPLE')
   })
 
   test('不含 ADR-0035 已删除的 4 个字段', () => {
@@ -310,6 +397,17 @@ describe('回显 → 提交 往返', () => {
       wovenWarpDensity: 52,
       wovenWeftDensity: 28,
       wovenLoomWeftDensity: 30,
+      fabricConstruction: 'WOVEN',
+      wovenCalculationMode: 'PROFESSIONAL',
+      greigeWeightGsm: 240,
+      greigeWidthCm: 150,
+      knitProcessingFeePerKg: 4.5,
+      weavingFeePerMeter: 3.2,
+      otherProcessingFeePerMeter: 1.8,
+      packagingFee: 0.3,
+      taxRate: 0.13,
+      yarnSpecs: '[{"yarnSpecId":123}]',
+      costItems: '[{"supplierId":"s1"}]',
       standardLength: '100',
       supplierCode: 'SUP-001'
     })

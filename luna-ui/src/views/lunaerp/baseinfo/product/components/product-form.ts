@@ -59,6 +59,28 @@ export interface ProductFormData {
   wovenWarpDensity: number | undefined
   wovenWeftDensity: number | undefined
   wovenLoomWeftDensity: number | undefined
+  /** 织物结构（KNIT 针织 / WOVEN 梭织） */
+  fabricConstruction: 'KNIT' | 'WOVEN'
+  /** 梭织估算方式（SIMPLE 简易估算 / PROFESSIONAL 经纬精算） */
+  wovenCalculationMode: 'SIMPLE' | 'PROFESSIONAL'
+  /** 坯布克重（GSM，梭织简易估算用） */
+  greigeWeightGsm: number | undefined
+  /** 坯布门幅（CM，梭织简易估算用） */
+  greigeWidthCm: number | undefined
+  /** 针织加工费（元/KG） */
+  knitProcessingFeePerKg: number | undefined
+  /** 织造费（元/M） */
+  weavingFeePerMeter: number | undefined
+  /** 其他加工费（元/M） */
+  otherProcessingFeePerMeter: number | undefined
+  /** 包装费 */
+  packagingFee: number | undefined
+  /** 税率 */
+  taxRate: number | undefined
+  /** 纱线规格 JSON 字符串 */
+  yarnSpecs: string
+  /** 成本项明细 JSON 字符串 */
+  costItems: string
 }
 
 /** 新建表单缺省值；status 跟随列表当前分段（在售 / 草稿） */
@@ -88,7 +110,18 @@ export const createDefaultProductFormData = (status: string = 'ACTIVE'): Product
   wovenReedNo: undefined,
   wovenWarpDensity: undefined,
   wovenWeftDensity: undefined,
-  wovenLoomWeftDensity: undefined
+  wovenLoomWeftDensity: undefined,
+  fabricConstruction: 'KNIT',
+  wovenCalculationMode: 'SIMPLE',
+  greigeWeightGsm: undefined,
+  greigeWidthCm: undefined,
+  knitProcessingFeePerKg: undefined,
+  weavingFeePerMeter: undefined,
+  otherProcessingFeePerMeter: undefined,
+  packagingFee: undefined,
+  taxRate: undefined,
+  yarnSpecs: '',
+  costItems: ''
 })
 
 /**
@@ -134,7 +167,18 @@ export const toProductFormData = (data: ProductVO): ProductFormData => ({
   wovenReedNo: toNumberOrUndefined(data.wovenReedNo),
   wovenWarpDensity: toNumberOrUndefined(data.wovenWarpDensity),
   wovenWeftDensity: toNumberOrUndefined(data.wovenWeftDensity),
-  wovenLoomWeftDensity: toNumberOrUndefined(data.wovenLoomWeftDensity)
+  wovenLoomWeftDensity: toNumberOrUndefined(data.wovenLoomWeftDensity),
+  fabricConstruction: (data.fabricConstruction as 'KNIT' | 'WOVEN') || 'KNIT',
+  wovenCalculationMode: (data.wovenCalculationMode as 'SIMPLE' | 'PROFESSIONAL') || 'SIMPLE',
+  greigeWeightGsm: toNumberOrUndefined(data.greigeWeightGsm),
+  greigeWidthCm: toNumberOrUndefined(data.greigeWidthCm),
+  knitProcessingFeePerKg: toNumberOrUndefined(data.knitProcessingFeePerKg),
+  weavingFeePerMeter: toNumberOrUndefined(data.weavingFeePerMeter),
+  otherProcessingFeePerMeter: toNumberOrUndefined(data.otherProcessingFeePerMeter),
+  packagingFee: toNumberOrUndefined(data.packagingFee),
+  taxRate: toNumberOrUndefined(data.taxRate),
+  yarnSpecs: toText(data.yarnSpecs),
+  costItems: toText(data.costItems)
 })
 
 /**
@@ -156,9 +200,8 @@ const resolveDictLabelOrFallback = (
 /**
  * 表单数据 → 保存载荷。
  *
- * 刻意不带 yarnSpecs / costItems：这两个 JSON 列由工单 05 的纱线规格与成本结构明细分区维护，
- * 缺键时后端 `updateById` 跳过该列，库里已有内容不会被覆盖。
  * 选填字段清空后一律以 null 提交（而非丢键），配合 ProductDO 的 `FieldStrategy.ALWAYS` 才能真正清掉旧值。
+ * 包含 yarnSpecs 与 costItems 两个 JSON 列，以及织物结构、估算方式与加工费/成本设置字段。
  */
 export const toProductSavePayload = (
   form: ProductFormData,
@@ -204,5 +247,16 @@ export const toProductSavePayload = (
   wovenReedNo: form.wovenReedNo ?? null,
   wovenWarpDensity: form.wovenWarpDensity ?? null,
   wovenWeftDensity: form.wovenWeftDensity ?? null,
-  wovenLoomWeftDensity: form.wovenLoomWeftDensity ?? null
+  wovenLoomWeftDensity: form.wovenLoomWeftDensity ?? null,
+  fabricConstruction: form.fabricConstruction || 'KNIT',
+  wovenCalculationMode: form.wovenCalculationMode || 'SIMPLE',
+  greigeWeightGsm: form.greigeWeightGsm ?? null,
+  greigeWidthCm: form.greigeWidthCm ?? null,
+  knitProcessingFeePerKg: form.knitProcessingFeePerKg ?? null,
+  weavingFeePerMeter: form.weavingFeePerMeter ?? null,
+  otherProcessingFeePerMeter: form.otherProcessingFeePerMeter ?? null,
+  packagingFee: form.packagingFee ?? null,
+  taxRate: form.taxRate ?? null,
+  yarnSpecs: form.yarnSpecs || null,
+  costItems: form.costItems || null
 })

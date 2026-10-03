@@ -36,7 +36,7 @@ export interface ProductVO {
   isPublic?: boolean
   isFeatured?: boolean
   featuredOrder?: number
-  yarnSpecs?: string
+  yarnSpecs?: string | null
   machineType?: string
   remark?: string
   /** 供应商样号（ADR-0035 更正标签，原「原厂编号」） */
@@ -77,7 +77,7 @@ export interface ProductVO {
   packagingFee?: number | null
   /** 税率 */
   taxRate?: number | null
-  costItems?: string
+  costItems?: string | null
   costPrice?: number
   costStatus?: string
   costUpdatedAt?: Date | string

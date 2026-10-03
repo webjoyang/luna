@@ -84,6 +84,31 @@ export function applyInputWaste(netCost: number, wasteRate: unknown): number {
 }
 
 /**
+ * 计算单行纱线对总成本的贡献金额（含投入损耗，口径与 calculateProductYarnCost 一致）。
+ * - 针织：单价 × 比例% ÷ (1 - 损耗率)
+ * - 梭织经纬精算：每米用量 × 单价 ÷ (1 - 损耗率)
+ * - 梭织简易估算：每米重量 × 单价 × 比例% ÷ (1 - 损耗率)
+ */
+export function calculateYarnRowContribution(
+  spec: CostableYarnSpec,
+  fabricConstruction: FabricConstruction,
+  wovenCalculationMode: WovenCalculationMode,
+  kgPerMeter: number
+): number {
+  const price = n(spec.price)
+  if (fabricConstruction === 'KNIT') {
+    const net = (price * Math.max(0, n(spec.ratio))) / 100
+    return money(applyInputWaste(net, spec.wasteRate))
+  }
+  if (wovenCalculationMode === 'PROFESSIONAL') {
+    const net = price * Math.max(0, n(spec.consumptionKgPerMeter))
+    return money(applyInputWaste(net, spec.wasteRate))
+  }
+  const net = kgPerMeter * price * (Math.max(0, n(spec.ratio)) / 100)
+  return money(applyInputWaste(net, spec.wasteRate))
+}
+
+/**
  * 计算产品纱线成本汇总。
  *
  * - 针织：basis=KG，纱线成本/KG = Σ(单价 × 比例% / (1 - 损耗率))，总成本 = 纱线成本 + 针织加工费

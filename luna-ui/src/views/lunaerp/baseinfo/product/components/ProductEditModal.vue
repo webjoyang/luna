@@ -280,33 +280,11 @@
         </el-row>
       </motion.div>
 
-      <!-- ========== 4. 纱线规格（占位，工单 05 接入 ProductYarnCostSection） ========== -->
-      <motion.div
-        class="form-section"
-        :initial="{ opacity: 0, y: 14 }"
-        :animate="{ opacity: 1, y: 0 }"
-        :transition="{ duration: 0.35, delay: 0.11, ease: EASE }"
-      >
-        <div class="section-title">纱线规格</div>
-        <div class="section-placeholder">
-          <Icon icon="ep:box" :size="15" />
-          <span>针织 / 梭织双 Tab 录入即将上线，产品已有的纱线规格数据保持不变。</span>
-        </div>
-      </motion.div>
-
-      <!-- ========== 5. 成本结构明细（占位，工单 05 接入 ProductYarnCostSection） ========== -->
-      <motion.div
-        class="form-section"
-        :initial="{ opacity: 0, y: 14 }"
-        :animate="{ opacity: 1, y: 0 }"
-        :transition="{ duration: 0.35, delay: 0.14, ease: EASE }"
-      >
-        <div class="section-title">成本结构明细</div>
-        <div class="section-placeholder">
-          <Icon icon="ep:coin" :size="15" />
-          <span>成本项、加工费与成本汇总即将上线，产品已有的成本明细数据保持不变。</span>
-        </div>
-      </motion.div>
+      <!-- ========== 4 & 5. 纱线规格与成本结构明细 ========== -->
+      <ProductYarnCostSection
+        v-model="formData"
+        :disabled="formLoading || submitLoading"
+      />
     </el-form>
 
     <template #footer>
@@ -335,6 +313,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import DictSelect from '@/components/FormCreate/src/components/DictSelect.vue'
 import ProductTagZone from './ProductTagZone.vue'
 import GreigeTypePicker from './GreigeTypePicker.vue'
+import ProductYarnCostSection from './ProductYarnCostSection.vue'
 import {
   createDefaultProductFormData,
   toProductFormData,

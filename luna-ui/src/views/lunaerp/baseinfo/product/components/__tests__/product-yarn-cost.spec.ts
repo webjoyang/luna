@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   calculateProductYarnCost,
+  calculateYarnRowContribution,
   type ProductYarnCostSettings
 } from '../product-yarn-cost'
 
@@ -229,3 +230,39 @@ describe('calculateProductYarnCost - 梭织经纬精算（basis=METER）', () =>
     expect(result.yarnCostPerMeter).toBe(1000)
   })
 })
+
+describe('calculateYarnRowContribution - 单行贡献计算', () => {
+  test('针织模式单行贡献含损耗', () => {
+    // 单价 20, 比例 60%, 损耗 5% -> 20 * 0.6 / 0.95 = 12.6316
+    const val = calculateYarnRowContribution(
+      { price: 20, ratio: 60, wasteRate: 5 },
+      'KNIT',
+      'SIMPLE',
+      0
+    )
+    expect(val).toBe(12.6316)
+  })
+
+  test('梭织经纬精算单行贡献含损耗', () => {
+    // 单价 20, 每米用量 0.1, 损耗 10% -> 20 * 0.1 / 0.9 = 2.2222
+    const val = calculateYarnRowContribution(
+      { price: 20, consumptionKgPerMeter: 0.1, wasteRate: 10 },
+      'WOVEN',
+      'PROFESSIONAL',
+      0.24
+    )
+    expect(val).toBe(2.2222)
+  })
+
+  test('梭织简易估算单行贡献含损耗', () => {
+    // 每米重量 0.24, 单价 20, 比例 50%, 损耗 0% -> 0.24 * 20 * 0.5 = 2.4
+    const val = calculateYarnRowContribution(
+      { price: 20, ratio: 50, wasteRate: 0 },
+      'WOVEN',
+      'SIMPLE',
+      0.24
+    )
+    expect(val).toBe(2.4)
+  })
+})
+
