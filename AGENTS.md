@@ -10,7 +10,7 @@ Five canonical roles mapped to repo labels: `needs-triage`→`bug:triage`, `need
 
 ### Domain docs
 
-Single-context layout: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Multi-context layout: root `CONTEXT-MAP.md` routes to per-context `CONTEXT.md` files under `docs/contexts/` (shared + baseinfo/business/production/stock); ADRs stay globally numbered in `docs/adr/`. See `docs/agents/domain.md`.
 
 ### 以上文档请尽量用中文编写
 

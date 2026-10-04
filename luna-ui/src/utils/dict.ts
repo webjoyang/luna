@@ -502,5 +502,11 @@ export enum DICT_TYPE {
   LUNAERP_SHIPMENT_SIGN_STATUS = 'lunaerp_shipment_sign_status', // 发货单签收状态（待签收/已签收/拒签）
 
   // ========== LunaERP - 生产管理-进度反馈模块 ==========
-  LUNAERP_PROGRESS_FEEDBACK_STATUS = 'lunaerp_progress_feedback_status' // 进度反馈状态（未排缸/已排缸/染色中/固色中/质检中/已完成）
+  LUNAERP_PROGRESS_FEEDBACK_STATUS = 'lunaerp_progress_feedback_status', // 进度反馈状态（未排缸/已排缸/染色中/固色中/质检中/已完成）
+
+  // ========== LunaERP - 样品管理-样品分析模块 ==========
+  LUNAERP_SAMPLE_PROCESS = 'lunaerp_sample_process', // 工序
+  LUNAERP_SAMPLE_DYEING_PROCESS = 'lunaerp_sample_dyeing_process', // 双染工艺
+  LUNAERP_SAMPLE_MACHINE_TYPE = 'lunaerp_sample_machine_type', // 机型
+  LUNAERP_SAMPLE_SPIN_METHOD = 'lunaerp_sample_spin_method' // 纺法
 }

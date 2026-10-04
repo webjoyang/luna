@@ -616,6 +616,26 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/sample',
+    component: Layout,
+    name: 'lunaerpElmuiSampleStatic',
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'sample-analysis/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/sample/sample-analysis/workspace/index.vue'),
+        name: 'LunaerpElmuiSampleSampleAnalysisWorkspace',
+        meta: {
+          title: '样品分析工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/sample/sample-analysis'
+        }
+      }
+    ]
+  },
+  {
     path: '/hrm',
     component: Layout,
     name: 'HrmCenter',

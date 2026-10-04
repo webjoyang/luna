@@ -4,43 +4,43 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists: it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+This repo uses the **multi-context** layout:
+
+1. **`CONTEXT-MAP.md`** at the repo root: the single entry point. It routes to one `CONTEXT.md` per bounded context and lists cross-context relationships.
+2. **`docs/contexts/shared/CONTEXT.md`**: cross-context platform conventions (multi-tenancy, soft delete, frontend/backend module layout, the error-code segment registry). Read it first, regardless of topic.
+3. **The domain `CONTEXT.md` file(s) for your topic**, under `docs/contexts/`:
+   - `baseinfo` — customer, supplier, product master data
+   - `business` — sales contract, shipment
+   - `production` — greige/dyeing/yarn/inspection/confirmation/weaving/progress
+   - `stock` — stock-in, warehouse/location, stock ledger/balance
+4. **`docs/adr/`**: read ADRs that touch the area you're about to work in.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
 
 ## File structure
 
-Single-context repo (most repos):
+This repo contains two top-level projects — `luna-srv` (Spring Boot backend) and `luna-ui` (Vue3 frontend) — and each bounded context spans both. Context docs therefore live in a repo-level `docs/contexts/` directory rather than inside either project:
 
 ```
 /
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
+├── CONTEXT-MAP.md                         ← context index + routing
+├── docs/
+│   ├── adr/                               ← all ADRs, single global numbering (ADR-xxxx)
+│   └── contexts/
+│       ├── shared/CONTEXT.md              ← cross-context conventions
+│       ├── baseinfo/CONTEXT.md
+│       ├── business/CONTEXT.md
+│       ├── production/CONTEXT.md
+│       └── stock/CONTEXT.md
+├── luna-srv/                              ← backend: module lunaerp, packages baseinfo/business/production/stock
+└── luna-ui/                               ← frontend
 ```
 
-Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
-
-```
-/
-├── CONTEXT-MAP.md
-├── docs/adr/                          ← system-wide decisions
-└── src/
-    ├── ordering/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                  ← context-specific decisions
-    └── billing/
-        ├── CONTEXT.md
-        └── docs/adr/
-```
+ADRs deliberately have **no per-context `adr/` subdirectories**: they are globally numbered in one flat `docs/adr/` because specs and context docs reference them by number across contexts.
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
+When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in the relevant context's `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
 
 If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 

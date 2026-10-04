@@ -33,4 +33,25 @@ public class ErrorCodeConstantsTest {
         assertEquals(1_030_017_102, ErrorCodeConstants.PROGRESS_FEEDBACK_NOTE_NOT_AN_ISSUE.getCode());
         assertEquals("该记录非问题不可闭环", ErrorCodeConstants.PROGRESS_FEEDBACK_NOTE_NOT_AN_ISSUE.getMsg());
     }
+
+    @Test
+    void testSampleAnalysisErrorCodes() {
+        assertEquals(1_030_018_000, SampleErrorCodeConstants.SAMPLE_ANALYSIS_NOT_EXISTS.getCode());
+        assertEquals("样品分析不存在", SampleErrorCodeConstants.SAMPLE_ANALYSIS_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_018_001, SampleErrorCodeConstants.SAMPLE_ANALYSIS_NO_DUPLICATE.getCode());
+        assertTrue(SampleErrorCodeConstants.SAMPLE_ANALYSIS_NO_DUPLICATE.getMsg().contains("样品编号"));
+
+        assertEquals(1_030_018_002, SampleErrorCodeConstants.SAMPLE_ANALYSIS_REF_NOT_EXISTS.getCode());
+        assertEquals("关联引用不存在", SampleErrorCodeConstants.SAMPLE_ANALYSIS_REF_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_018_003, SampleErrorCodeConstants.SAMPLE_ANALYSIS_LOSS_RATE_INVALID.getCode());
+        assertTrue(SampleErrorCodeConstants.SAMPLE_ANALYSIS_LOSS_RATE_INVALID.getMsg().contains("损耗率"));
+
+        assertEquals(1_030_018_004, SampleErrorCodeConstants.SAMPLE_ANALYSIS_PRODUCT_NAME_EMPTY.getCode());
+        assertEquals("产品名称不能为空", SampleErrorCodeConstants.SAMPLE_ANALYSIS_PRODUCT_NAME_EMPTY.getMsg());
+
+        assertEquals(1_030_018_100, SampleErrorCodeConstants.SAMPLE_ANALYSIS_YARN_SPEC_NOT_EXISTS.getCode());
+        assertTrue(SampleErrorCodeConstants.SAMPLE_ANALYSIS_YARN_SPEC_NOT_EXISTS.getMsg().contains("纱线规格"));
+    }
 }

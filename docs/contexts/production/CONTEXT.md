@@ -1,98 +1,8 @@
-# 项目术语表
+# 生产管理域术语表（production）
 
-本文件是 Luna ERP 仓库的权威术语表。这里只收录领域概念，不写实现细节。
-当对话或代码中含糊使用某个词时，以此文件为准。
-
-## 客户与联系人
-
-**客户 (Customer)**：
-企业或个人，业务销售/服务的对象。区别于 `User`（系统登录身份）：客户是市场侧实体，User 是系统侧身份。一个客户有 12 个基础档案字段（companyName、shortName、phone、address、clientType、industry、scale、source、cooperationStatus、unifiedSocialCreditCode、remark、status），并可拥有多条 `客户联系人`。
-_避免_：Client、BusinessClient、客户主体。旧系统 Prisma 模型叫 `BusinessClient`，新系统正名为 `customer`，理由是中文"客户"对应 `customer` 更直接，同时避开旧系统 `clientType` 字段被业务部隔离逻辑占用导致的命名冲突。公司名字段最初为 `company`，后与供应商模块统一正名为 `companyName`（列 `company_name`）。
-
-**客户联系人 (CustomerContact)**：
-关联到某个客户的人（如采购、财务、仓管）。P1 含 6 个字段：name、position、phone、email、remark、isPrimary。作为独立子资源处理，有自己的 CRUD 端点与权限码，不嵌在父级客户的保存载荷里整体替换。
-_避免_：ClientContact、联系人（无前缀时歧义）。
-
-**客户工作台 (CustomerWorkspace)**：
-查看/编辑单个客户的多 Tab 容器。7 个 Tab 与旧系统 tab-config 对齐：基础档案 / 联系人 / 合同 / 寄样 / 画像分析 / 位置分布 / 拜访记录。P1 激活"基础档案"与"联系人"，其余 5 个为"开发中"占位。
-
-## 供应商与联系人
-
-**供应商 (Supplier)**：
-向本企业供货或提供加工服务的外部工厂、公司或档口（如纱线厂、坯布厂、染厂、门市部等），是采购入库与付款的往来主体。区别于 `客户`（销售侧）与 `User`（系统登录身份）。一个供应商 MVP 含 9 个基础档案字段：supplierNo、companyName、shortName、phone、address、supplierType、machineType、remark、status，并可拥有多条 `供应商联系人`。
-_避免_：Vendor、厂商（口语）、供货方。旧系统 Prisma 模型即名 `Supplier`（英文沿用），但旧字段 `code` 正名为 `supplierNo`、公司名字段与客户统一为 `companyName`。旧系统的银行信息(bankName/bankAccount)、经纬度、工厂照片与付款资料附件、财务统计(totalPaid/totalOwed)、登录账号关联、businessOwnership、extensionData 自定义字段、草稿/审批态均不进入 MVP。
-
-**供应商联系人 (SupplierContact)**：
-关联到某个供应商的人（如接单业务员、财务、档口人员）。字段与独立子资源模式与 `客户联系人` 完全同构：name、position、phone、email、remark、isPrimary，拥有独立 CRUD 端点与权限码，不随父级整体保存替换。
-_避免_：VendorContact、SupplierLinkman。
-
-**供应商编号 (SupplierNo)**：
-形如 `SUP20260001`：`SUP` + 年份 + 4 位顺序号（超 9999 自然扩位），租户内全量唯一（含软删行、不重用），新建缺省由服务端生成、也可手填（撞号报错），并提供只读的"预览下一个编号"接口。规则与合同编号同构，见 ADR-0005。
-_避免_：code、supplierCode（旧字段名）。
-
-**供应商类型 (SupplierType)**：
-供应商的经营类别，字典 `lunaerp_supplier_type`。MVP seed 18 项：纱线厂、坯布厂、工贸一体、绣花厂、染厂、扎染、印花厂、烫金厂、压花厂、复合厂、外贸公司、检验仓库、拉毛摇粒厂、水洗厂、小缸厂、门市部、检测中心、货运。字段可空，后续由系统字典后台维护（MVP 不做旧系统的前端自助增删与待审核）。
-
-**供应商工作台 (SupplierWorkspace)**：
-查看/编辑单个供应商的多 Tab 容器。MVP 激活"基础档案"与"联系人"两个 Tab；"入库记录 / 付款记录 / 关联品种 / 位置分布"为"开发中"占位，分别对应旧系统的 StockIn、PaymentRequest、Product/GreigeBatch、地图定位关联。
-
-**主营机型 (machineType)**：
-供应商主要设备/加工能力的自由文本说明（如"34寸28针""喷水织机"），可空。区别于 `供应商类型`（分类枚举）。
-
-## 业务管理：销售合同
-
-**销售合同 (SalesContract)**：
-与客户签订的布匹销售约定，记载交易条款与商品明细，是业务管理域的第一个单据。
-_避免_：合同（无前缀时与未来的采购合同歧义）、订单。
-
-**合同明细 (SalesContractItem)**：
-一份销售合同中，按单个品种（客户色号 / 门幅 / 克重组合）逐行记录的数量、单价、其他费用与金额条目。一份合同含 0~N 条明细，允许先建档后补明细。明细是合同聚合的一部分，随合同整体保存、级联删除，没有独立操作界面（与客户联系人的独立资源模式刻意相反，见 ADR-0003）。
-_避免_：合同商品、明细行（口语）。
-
-**贸易类型 (TradeType)**：
-`DOMESTIC` 内销（缺省）/ `EXPORT` 外销，区分销售方向。MVP 仅作标记；外贸专属字段（贸易术语、港口、英文抬头等）与出口单证在后续版本补。
-
-**订单属性 (OrderType)**：
-`BULK` 大货（缺省）/ `SAMPLE` 样布，区分批量生产订单与打样。
-
-**合同状态 (SalesContractStatus)**：
-`ACTIVE` 进行中（新建缺省）/ `COMPLETED` 已完成 / `CANCELLED` 已取消。MVP 无审批流，由编辑页手动切换，不做流转约束。旧系统的审批态（draft/submitted/approved/rejected）、业务进度 progress、回款状态 paymentStatus 三套状态在 MVP 均不引入。
-
-**业务员 (Salesperson)**：
-负责该合同的内部销售人员，关联 system `User`，可空。区别于客户侧的客户联系人。
-
-**客户名称快照 (clientName)**：
-建单时从客户档案复制到合同上的客户公司名。客户档案后续改名不影响既有合同；客户为必选（`customerId` 逻辑关联，不建数据库外键），联系人与地址选客户时带出但可手工修改。
-
-**合同编号 (ContractNo)**：
-形如 `CH20260001`：`CH` + 年份 + 4 位顺序号（超 9999 自然扩位），租户内唯一，新建缺省由服务端生成、也可手填（撞号报错）。编号在软删除后也不释放、不重用（见 ADR-0004）。
-
-## 业务管理：发货管理
-
-**发货单 (Shipment)**：
-向客户交付布匹货物的出库凭证，是业务管理域的第二个单据，也是库存出库的权威凭证（见 ADR-0029）。三态严格过账状态机（`DRAFT` / `COMPLETED` / `CANCELLED`）。一张发货单对应单一发货仓库。审核即出库过账写负库存流水（`SHIPMENT_OUT`），取消已发货单逐条红冲正流水（`SHIPMENT_OUT_REVERSAL`）。
-_避免_：销售出库单（本系统以发货单兼作销售出库凭证，不另设销售出库单）、送货单。
-
-**发货明细 (ShipmentItem)**：
-一张发货单中按产品 + 客户色号 + 缸号聚合的品类汇总行，记录数量、匹数、单位、单价与金额。随发货单整单聚合保存、级联逻辑删除（见 ADR-0003）。行金额由服务端重算（数量 × 单价）。可关联来源入库明细（追溯用，零回写、不锁库）。
-
-**卷清单 (ShipmentRoll)**：
-发货明细下逐卷登记的布卷记录（卷号、实称重量 KG、米数、备注），独立子表存储，随发货单整单聚合保存，软齐套不锁卷（见 ADR-0030）。不设卷号数据库唯一约束。
-
-**发货单号 (ShipmentNo)**：
-形如 `SH-YYYYMMDD-NNN`：`SH` + 年月日 8 位 + 3 位日流水（超 999 自然扩位），按天取号，租户内全量唯一含软删行（ADR-0029）。
-
-**发货单状态 (ShipmentStatus)**：
-字典 `lunaerp_shipment_status`（id=2245）：`DRAFT` 草稿（缺省）/ `COMPLETED` 已发货 / `CANCELLED` 已取消。仅草稿可编辑删除；审核（发货）同事务写负流水；取消已发货单逐条红冲正流水；取消草稿仅作废不写流水。
-
-**签收状态 (ShipmentSignStatus)**：
-字典 `lunaerp_shipment_sign_status`（id=2246）：`PENDING` 待签收（缺省）/ `SIGNED` 已签收 / `REFUSED` 拒签。文员轻量内部登记，仅 COMPLETED 单可登记/修改；拒签不自动红冲库存。
-
-**运费 (FreightFee)**：
-发货物流产生的运费金额，独立字段记录，不并入货物金额合计。
-
-**合同未发量 (ContractUnshippedQuantity)**：
-销售合同某明细行的合同数量减去该合同已生效的发货出库数量（按 SHIPMENT_OUT 流水实时聚合），只读动态计算，不落库。
+本文件是 Luna ERP **生产管理域（production）**的权威术语表，收录胚布单、染色单、纱线采购、检验单、质检确认、织造执行、进度反馈、生产进度的领域概念。
+仓库领域文档总入口见根目录 `CONTEXT-MAP.md`；跨域平台约定（租户、软删除、前后端模块约定、错误码段位总表）见 `docs/contexts/shared/CONTEXT.md`。
+当对话或代码中含糊使用某个词时，以本文件为准。
 
 ## 生产管理：胚布单
 
@@ -148,7 +58,7 @@ _避免_：颜色明细（口语）、colors（旧系统 JSON 字段名）。
 ## 生产管理：纱线采购
 
 **纱线材质 (YarnType)**：
-纱线按材质类型归档的第一级主数据，是纱线规格的父级。`lunaerp_production_yarn_type` 主表仅含 name/sort/status + 框架列，seed 7 项：棉/涤/人棉/氨纶/锦纶/粘胶/混纺。**材质类型不入字典**（数量稳定、枚举式直接 seed 表，见 ADR-0011）。
+纱线按材质类型归档的第一级主数据，是纱线规格的父级。`lunaerp_production_yarn_type` 主表仅含 name/sort/status + 框架列，**不内置 seed**，主数据由纱线档案页面创建维护（如棉/涤/人棉/氨纶/锦纶/粘胶/混纺）。**材质类型不入字典**（见 ADR-0011）。
 _避免_：纱线类型、YarnCategory（旧系统术语保留追溯）。
 
 **纱线规格 (YarnSpec)**：
@@ -328,99 +238,27 @@ _避免_：订单进度、OrderProgress（旧系统名称，保留以追溯）�
 **生产进度预警 (ProgressAlert)**：
 生产进度视图上的只读风险标记，MVP 三条规则：① 临期——交期距今 ≤7 天且仍有未发量；② 超期——交期已过且仍有未发量；③ 延期缸——该合同染色单下存在延期反馈缸（延期的判定见进度反馈"延期"）。规则后续按需扩展（排产超量等），不在视图上手工维护。
 
-## 库存管理
-
-**入库单 (StockIn)**：
-登记货物实际入库的库存凭证，是库存管理域（stock）的第一个单据，也是继 baseinfo/business/production 之后第四个顶级业务域。入库单是**库存账的凭证**：审核即在同事务写库存流水（过账），已审核单只能取消（红冲），状态机严格守卫（ADR-0016），刻意不一致合同/胚布/染色/检验单 MVP 的"编辑页自由切态"惯例。主表含入库类型、入库仓库（一单一仓库、必填）、供应商（可空）、销售合同/胚布单/染色单/胚布品种四类上游关联（**全部可空、仅存在性校验与名称快照、零回写零联动**）、金额合计、单据日期。主表**不设数量合计**：明细单位允许 KG/M 混用，跨单位求和无意义。
-_避免_：入库指示单、收货单。旧系统 Prisma 模型即名 `StockIn`（英文沿用），旧系统的审批态/QC_PENDING、应付付款/对账财务锁、订单进度回写、批次转可用、OCR 智能录入、多合同分摊均不进入 MVP。
-
-**入库类型 (StockInType)**：
-字典 `lunaerp_stock_in_type`（id=2234），回答"货从哪来"的四类稳定场景：`PURCHASE` 采购入库 / `PRODUCTION` 生产入库（胚布、成品布生产回库）/ `RETURN` 退货入库 / `OTHER` 其他入库。不沿用旧系统的纺织链路细分 8 型（GREIGE/YARN/DYEING/WASHING/POST/PRODUCT/INSPECTION/SPOT）——"是什么货"由明细产品表达，细分类型是为旧系统批次联动服务的，本期联动不做。采购退货（出库方向）不属本类型集，随出库模块再引入。
-
-**入库明细 (StockInItem)**：
-入库单中逐行登记的实收条目，通过 `itemType` 区分两类物品（ADR-0026）：`PRODUCT` 产品（缺省，关联产品档案 + 编码/名称快照）/ `YARN_SPEC` 纱线规格（关联 `yarnSpecId`+`yarnSpecName` 快照，单位固定 KG，产品字段禁填）。两类共用字段：batchNo 批次号/缸号（自由文本）、rollNo 卷号、pieceCount 匹数（缺省 1）、quantity 数量（>0）、unit 单位（产品行 KG/M 允许同单混用；纱线行固定 KG）、unitPrice 单价、amount 金额（=数量×单价，服务端权威重算）、remark。纱线采购入库经此进入通用库存（type=PURCHASE），不另建纱线入库凭证。明细**随入库单聚合保存、级联删除，无独立端点/权限码**（ADR-0003 模式；与检验单录检明细的独立子资源 ADR-0014 刻意不同）。允许零明细草稿，审核时至少一条明细。
-
-**库位分配 (StockInPlacement)**：
-入库明细到库位的放置记录（`lunaerp_stock_in_item_placement`）。一条明细可拆多条放置：库位（必须属于本单入库仓库的启用库位）+ 匹数 + 数量 + 备注，表达"同一产品行 10 匹分放两个库位"。随入库单聚合保存，无独立端点。MVP **不强制齐套**：不校验放置匹数合计等于明细（前端仅提示"已分配 X/共 Y 匹"），未分配明细审核照常过账（流水库位为空），支持先入账后上架。放置记录是库存流水按库位展开的数据来源（ADR-0017/0018）。
-
-**仓库 (Warehouse)**：
-存放货物的物理仓库主数据。字段：仓库编号 warehouseNo（`WH`+年份+4 位流水，如 WH20260001，服务端取号/可手填，租户内全量唯一含软删行）、名称必填、地址、状态（ACTIVE/INACTIVE，不建字典）、备注。删除守卫：下有库位或已被入库单引用则禁止删除、引导停用；停用仓库不可被新单选择，历史快照不变。一张入库单只能入一个仓库。
-_避免_：WarehouseMap（旧系统含 2D 平面图画布/尺寸/版本，MVP 不做）。
-
-**库位 (WarehouseLocation)**：
-仓库内的具体存放位置，两级简版（仓库→库位，无库区）。字段：所属仓库、code 编码（手填如 `A-01-02`，**同一仓库内唯一**含软删行）、名称、排序、状态、备注。明确不建旧系统的库区（WarehouseZone）、平面图、行列层/xyz 坐标、容量、二维码（ADR-0018）。被放置记录引用的库位禁止删除。
-
-**库存台账/流水 (StockLedger)**：
-全物品通用的库存流水账（`lunaerp_stock_ledger`），只存流水不存余额（ADR-0017，**supersedes 已废弃的纱线专用台账 ADR-0012**）。流水只增不改不删。携带物品身份：`product_id` 与 `yarn_spec_id` **互斥**（随入库明细 itemType 扩展，ADR-0026），以及仓库（必填）、库位（可空）、批次、带符号数量/金额、单位、关联凭证（类型+ID+单号）。收支类型 `txn_type` 为后端内部枚举、不入字典：入库审核 `STOCK_IN` 正数 / 入库红冲 `STOCK_IN_REVERSAL` 负数 / 领纱发纱 `YARN_OUT` 负数 / 撤销发纱 `YARN_OUT_REVERSAL` 正数（ADR-0027）/ 发染出库 `PROCESS_OUT` 负数 / 发染红冲 `PROCESS_OUT_REVERSAL` 正数（发染记录过账）。
-
-**库存余额 (StockBalance)**：
-不是表，而是流水实时聚合结果：`SUM(quantity) GROUP BY 物品（产品或纱线规格）+ 单位 + 仓库`。本期提供只读"库存查询"（产品与纱线规格共用余额列表 + 流水明细分页两个 Tab）。库位级余额、负库存校验（领纱发纱在应用层拦截）、初始库存导入本期均不做（库存账户从 0 起）。
-
-**入库单号 (StockInNo)**：
-形如 `IN-20260923-001`：`IN` + `-` + 年月日 8 位 + `-` + 3 位日流水（超 999 自然扩位），**按天取号**，租户内全量唯一、软删不释放。沿用检验单号 ADR-0015 的连字符风格（与 SUP/CH/PB/YP 无连字符惯例刻意不同，本期第二个带连字符编号）。新建缺省服务端生成、也可手填（撞号报错），提供预览下一个编号接口。
-
-**入库单状态 (StockInStatus)**：
-三态严格状态机（ADR-0016，字典 `lunaerp_stock_in_status`，id=2233）：`DRAFT` 草稿（缺省，可改可删）/ `COMPLETED` 已审核（过账完成，只读，只能红冲取消）/ `CANCELLED` 已取消（终态）。无 ACTIVE（审核是瞬时动作）、无 QC_PENDING（质检归检验单）、无审批流。草稿取消不写流水；已审核取消按原流水逐条写红冲。审核/红冲权限 `:audit` 与制单 `:create/:update` 独立分权。
-
-## 状态与生命周期
-
-**客户状态 (Status)**：
-两态：`ACTIVE`（启用，新建缺省） / `INACTIVE`（停用）。旧系统的 `PENDING_APPROVAL` / `REJECTED` 审批态在 P1 不引入（无审批流），后续上审批流时再追加。供应商状态与此完全同构（旧系统另有 `DRAFT` 草稿态，MVP 不引入）。
-
-**客户简称 (shortName)**：
-客户与供应商共用的展示缩写。用户未填时由后端自动用 `companyName` 回填。列表展示优先用 `shortName || companyName`。
-
 ## 模块边界
-
-**模块落点 (Module placement)**：
-客户功能落在 `lunaerp` 模块的 `baseinfo`（基本信息）子包下，前后端一致：
-
-- 后端：`com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.baseinfo.customer[.contact]`
-- 前端视图：`luna-ui/src/views/lunaerp-elmui/baseinfo/customer/`
-- 前端 API：`luna-ui/src/api/lunaerp-elmui/baseinfo/customer/`
-
-`lunaerp-elmui`（lunaerp 的 Element-Plus UI 区块）是 `views/` 下的新目录，与既有的 `views/lunaerp/` 平级。它是一个**临时快速实现版**：用 Element Plus 快速搭出业务核心，先跑通前后端服务与关键流程。**未来 lunaerp 业务视图的正式 UI 仍然落到默认目录 `views/lunaerp/`**，`lunaerp-elmui/` 只承担"先行验证"的角色。详见 ADR-0001。
-
-销售合同落在 `business`（业务管理）子包，与 `baseinfo` 平级：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.business.salescontract[.item]`，前端 `lunaerp-elmui/business/sales-contract/`（视图与 API 目录镜像）。
 
 胚布单落在 `production`（生产管理）子包，与 `baseinfo` / `business` 平级：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.greigeorder[.color]`，前端 `lunaerp-elmui/production/greige-order/`（视图与 API 目录镜像）。
 
 纱线采购域同样落在 `production` 子包下，包含 4 个并列子包：`production.yarntype`（材质 CRUD，无字典）、`production.yarnspec`（规格 CRUD + cascade-options 两级级联数据源）、`production.yarnrecipebom`（配比 BOM 主从表 CRUD + get-by-product-id）、`production.yarnorder`（采购单主从表 CRUD + 状态操作 + calculate 测算接口；原 stockledger 台账已于 2026-09-21 撤销回退）。前端视图 `lunaerp-elmui/production/yarn-master/`（材质+规格合并管理页）、`yarn-recipe-bom/`（配比 BOM 管理页）、`yarn-order/`（采购单列表+编辑页）。URL 前缀 `/lunaerp/production/{yarn-type|yarn-spec|yarn-recipe-bom|yarn-order}`，权限码前缀 `lunaerp:production:<子域>:`。详见 ADR-0011。
 
-供应商与客户同落 `baseinfo` 子包：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.baseinfo.supplier[.suppliercontact]`；前端视图 `luna-ui/src/views/lunaerp-elmui/baseinfo/supplier/`、前端 API `luna-ui/src/api/lunaerp-elmui/baseinfo/supplier/`（含 supplier-contact）。URL 前缀 `/lunaerp/baseinfo/supplier[-contact]`，权限码前缀 `lunaerp:baseinfo:supplier[-contact]:`。
-
 检验单落 `production` 子包（与胚布单/染色单/纱线同层）：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.inspectionorder[.item]`；前端视图 `luna-ui/src/views/lunaerp-elmui/production/inspection-order/`、前端 API `luna-ui/src/api/lunaerp-elmui/production/inspection-order/`（含 inspection-order-item）。URL 前缀 `/lunaerp/production/inspection-order[-item]`，权限码前缀 `lunaerp:production:inspection-order[-item]:`，错误码段 `1-030-010-xxx`（主表与明细共用）。**录检明细作为独立子资源**（刻意不一致 ADR-0003，理由见 ADR-0014）。菜单挂 10200 生产管理目录下：10260 检验单菜单 + 10261-10263 主表按钮 + 10264-10267 明细按钮（仿供应商 10050-53/10060-63 同构）。
 
 质检确认同样落 `production` 子包：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.inspectionconfirmation`（**单包单实体，无独立明细子资源**——认定留痕链行同表，非主从结构）；前端视图 `luna-ui/src/views/lunaerp-elmui/production/inspection-confirmation/`（单列表页 + 页内弹窗：认定对话框、手工登记、按日打印、工资扣款汇总、认定链详情）、前端 API 目录镜像。URL 前缀 `/lunaerp/production/inspection-confirmation`，权限码前缀 `lunaerp:production:inspection-confirmation:`，动作码六个：`query`（菜单承载）/`create`（手工登记）/`generate`（检验单工作台生成）/`confirm`（认定与撤销）/`print`/`payroll`；错误码段 `1-030-014-xxx`。菜单挂 10200 生产管理：10270 质检确认（承载 query）+ 10271-10275 五个按钮位（create/generate/confirm/print/payroll）。"生成质检确认"按钮物理上在检验单工作台，但鉴权用本域 `:generate` 码（创建的是质检确认数据，不挂检验单更新权限，ADR-0019）。建表 SQL：`luna-srv/sql/postgresql/lunaerp-production-inspection-confirmation.sql`。
 
-库存管理落新建的 `stock` 顶级子包（与 baseinfo/business/production 平级），含 4 个并列子包：`stock.stockin`（入库单主表 + 明细 + 库位分配三个 DO 同包，聚合保存，仅主表有 Controller）、`stock.stockledger`（库存流水写入与余额/流水只读查询）、`stock.warehouse`（仓库 CRUD + 取号 + 删除守卫）、`stock.warehouselocation`（库位 CRUD + 仓内唯一 + 删除守卫）。前端视图 `lunaerp-elmui/stock/stock-in/`（列表 + 工作台：基本信息/入库明细含 PlacementDialog/操作日志占位）、`stock/inventory-balance/`（余额 + 流水两 Tab）、`stock/warehouse/`（仓库/库位主从同页）；前端 API 镜像于 `api/lunaerp-elmui/stock/`。URL 前缀 `/lunaerp/stock/{stock-in|stock-ledger|inventory-balance|warehouse|warehouse-location}`，权限码前缀 `lunaerp:stock:<子域>:`（入库单含独立 `:audit` 审核/红冲权限），错误码段 `1-030-011`（入库单/明细/放置）、`1-030-012`（台账/余额，本期只读预留）、`1-030-013`（仓库/库位）。菜单新建 10300 库存管理目录（sort 103）：10310 入库管理 + 10311-10314（含审核按钮）、10320 库存查询、10330 仓库管理 + 10331-10336。
+织造执行域落 `production` 子包（与胚布单/检验单/质检确认同层），含 5 组并列子包：`production.loom`（织机档案 CRUD）、`production.weavingorder`（织造单主表）、`production.weavingorder.task`（机台任务）、`production.weavingorder.ticket`（布票）、`production.weavingorder.requisition`（领纱单+明细，独立子资源）；IoT 落 `production.iot`（厂商凭证/设备绑定/实时快照三 DO，采集层接口+手工录入端点）；发染记录落 `production.greigedispatch`。前端视图 `lunaerp-elmui/production/weaving-order/`（列表 + 工作台 5 Tab：基本信息/机台任务/布票/领纱/统计）、`lunaerp-elmui/production/loom/`（织机档案页，IoT 接入与快照作为页内 Tab，不单独开菜单）；前端 API 镜像于 `api/lunaerp-elmui/production/`。胚布单详情（自织单）加"织造进度"区+生成织造单入口；检验单编辑页加卷/匹模式切换。URL 前缀 `/lunaerp/production/{loom|weaving-order[-task|-ticket|-requisition]|iot}`，权限码前缀 `lunaerp:production:<子域>:`，错误码段 **`1-030-015`**（全织造域共用，按子资源分段；避让已占用的质检确认 014 段）。菜单挂 10200 生产管理目录下：**10280 织造单菜单 + 10281-10284 主表按钮；10285 织机档案 + 10286-10288 按钮**（领纱并入织造单工作台 Tab，不开独立菜单）。开发分三期：P1 胚布单自织改造+织造核心+检验单匹装改造；P2 纱线库存+领纱发纱；P3 转检验/入库联动+IoT（见 `.scratch/weaving-execution/`）。
 
-织造执行域落 `production` 子包（与胚布单/检验单/质检确认同层），含 5 组并列子包：`production.loom`（织机档案 CRUD）、`production.weavingorder`（织造单主表）、`production.weavingorder.task`（机台任务）、`production.weavingorder.ticket`（布票）、`production.weavingorder.requisition`（领纱单+明细，独立子资源）；IoT 落 `production.iot`（厂商凭证/设备绑定/实时快照三 DO，采集层接口+手工录入端点）。前端视图 `lunaerp-elmui/production/weaving-order/`（列表 + 工作台 5 Tab：基本信息/机台任务/布票/领纱/统计）、`lunaerp-elmui/production/loom/`（织机档案页，IoT 接入与快照作为页内 Tab，不单独开菜单）；前端 API 镜像于 `api/lunaerp-elmui/production/`。胚布单详情（自织单）加"织造进度"区+生成织造单入口；检验单编辑页加卷/匹模式切换。URL 前缀 `/lunaerp/production/{loom|weaving-order[-task|-ticket|-requisition]|iot}`，权限码前缀 `lunaerp:production:<子域>:`，错误码段 **`1-030-015`**（全织造域共用，按子资源分段；避让已占用的质检确认 014 段）。菜单挂 10200 生产管理目录下：**10280 织造单菜单 + 10281-10284 主表按钮；10285 织机档案 + 10286-10288 按钮**（领纱并入织造单工作台 Tab，不开独立菜单）。开发分三期：P1 胚布单自织改造+织造核心+检验单匹装改造；P2 纱线库存+领纱发纱；P3 转检验/入库联动+IoT（见 `.scratch/weaving-execution/`）。
-
-进度反馈落 `production` 子包（与染色单/检验单/织造域同层）：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.progressfeedback[.note]`（反馈缸主表 + 反馈记录独立子资源）；前端视图 `luna-ui/src/views/lunaerp-elmui/production/progress-feedback/`（缸卡墙列表 + 建缸/推进/反馈弹窗 + 缸详情抽屉）、前端 API 镜像；染色单工作台加"进度反馈"页签（双入口，零回写）。URL 前缀 `/lunaerp/production/progress-feedback[-note]`，权限码前缀 `lunaerp:production:progress-feedback:`，六个动作：`query`（菜单承载）/ `create`（建缸）/ `update`（缸信息与阶段日期）/ `advance`（推进状态）/ `note`（反馈记录增删与问题闭环）/ `delete`（删缸，级联软删记录）；错误码段 `1-030-017-xxx`。菜单挂 10200 生产管理：**10400 进度反馈菜单 + 10401-10405 五个按钮位**（create/update/advance/delete/note；跳号原因：10290-10298 已被织造领纱按钮占用、10300 起为库存管理目录）。建表 SQL：`luna-srv/sql/postgresql/lunaerp-production-progress-feedback.sql`（两表 `lunaerp_production_progress_feedback` / `lunaerp_production_progress_feedback_note`）。依赖 ADR-0032（聚合子表差异保存）先行落地，分两阶段交付：阶段一差异保存改造，阶段二进度反馈。
-
-**租户 (Tenant)**：
-多租户通过后端 `TenantBaseDO` 强制（自动注入 `tenant_id` 列、自动过滤查询）。Customer/CustomerContact 与 Supplier/SupplierContact 都继承 `TenantBaseDO`。
-
-**软删除 (Soft delete)**：
-记录通过 `BaseDO`/`TenantBaseDO` 继承的 `deleted` int2 列做逻辑删除，查询自动过滤 `deleted = 0`。客户与供应商删除时 service 层都先置 `status = 'INACTIVE'` 再走逻辑删除（与 product 模块模式一致），便于忽略 `deleted` 的审计/列表查询仍能看到生命周期变化。供应商编号的唯一索引与取号扫描显式包含已删除行（ADR-0005），是该过滤机制的刻意例外。
+进度反馈落 `production` 子包（与染色单/检验单/织造域同层）：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.progressfeedback[.note]`（反馈缸主表 + 反馈记录独立子资源）；生产进度聚合视图落 `production.productionprogress`（只读查询，无独立表）。前端视图 `luna-ui/src/views/lunaerp-elmui/production/progress-feedback/`（缸卡墙列表 + 建缸/推进/反馈弹窗 + 缸详情抽屉）、前端 API 镜像；染色单工作台加"进度反馈"页签（双入口，零回写）。URL 前缀 `/lunaerp/production/progress-feedback[-note]`，权限码前缀 `lunaerp:production:progress-feedback:`，六个动作：`query`（菜单承载）/ `create`（建缸）/ `update`（缸信息与阶段日期）/ `advance`（推进状态）/ `note`（反馈记录增删与问题闭环）/ `delete`（删缸，级联软删记录）；错误码段 `1-030-017-xxx`。菜单挂 10200 生产管理：**10400 进度反馈菜单 + 10401-10405 五个按钮位**（create/update/advance/delete/note；跳号原因：10290-10298 已被织造领纱按钮占用、10300 起为库存管理目录）。建表 SQL：`luna-srv/sql/postgresql/lunaerp-production-progress-feedback.sql`（两表 `lunaerp_production_progress_feedback` / `lunaerp_production_progress_feedback_note`）。依赖 ADR-0032（聚合子表差异保存）先行落地，分两阶段交付：阶段一差异保存改造，阶段二进度反馈。
 
 ## 字典
-
-**客户字典 (Customer dictionaries)**：
-客户的 `clientType` / `industry` / `scale` / `source` / `cooperationStatus` 五个枚举性质字段统一接入 yudao 框架的 `system_dict_*` 机制，字典 type 命名前缀 `lunaerp_customer_`：`lunaerp_customer_client_type` / `lunaerp_customer_industry` / `lunaerp_customer_scale` / `lunaerp_customer_source` / `lunaerp_customer_cooperation_status`。前端用 `<DictTag>` 渲染。
-
-**销售合同字典 (Sales contract dictionaries)**：
-合同的枚举字段同样走 `system_dict_*`，前缀 `lunaerp_sales_contract_`：`lunaerp_sales_contract_status`（ACTIVE/COMPLETED/CANCELLED）、`lunaerp_sales_contract_trade_type`（DOMESTIC/EXPORT）、`lunaerp_sales_contract_order_type`（BULK/SAMPLE）、`lunaerp_sales_contract_unit`（KG/M）、`lunaerp_sales_contract_currency`（RMB/USD/EUR/HKD）。
 
 **胚布单字典 (Greige order dictionaries)**：
 胚布单 MVP 只有一个枚举字段走字典：`lunaerp_greige_order_status`（ACTIVE/COMPLETED/CANCELLED）。数量单位统一 KG，不建单位字典。
 
-**供应商字典 (Supplier dictionaries)**：
-供应商枚举字段走 `system_dict_*`，前缀 `lunaerp_supplier_`：MVP 仅 `lunaerp_supplier_type`（18 项经营类别，见 `供应商类型`）。状态 ACTIVE/INACTIVE 不建字典，与客户一致。
-
 **纱线采购域字典 (Yarn domain dictionaries)**：
-纱线采购域只建一个字典：`lunaerp_yarn_order_status`（DRAFT/ACTIVE/COMPLETED/CANCELLED，仿染色单）。**纱线材质不入字典**（直接 seed 表，见 ADR-0011）。纱线规格的 spin_method/luster 等均为自由文本不建字典。库存台账 type 枚举不入字典（仅后端服务内部使用）。
+纱线采购域只建一个字典：`lunaerp_yarn_order_status`（DRAFT/ACTIVE/COMPLETED/CANCELLED，仿染色单）。**纱线材质不入字典**（主数据由纱线档案页面维护，不内置 seed，见 ADR-0011）。纱线规格的 spin_method/luster 等均为自由文本不建字典。库存台账 type 枚举不入字典（仅后端服务内部使用）。
 
 **检验单字典 (Inspection order dictionaries)**：
 检验单域建两个字典：`lunaerp_inspection_order_status`（id=2231，DRAFT/ACTIVE/COMPLETED/CANCELLED，仿染色单/纱线采购单四态）、`lunaerp_inspection_grade`（id=2232，A 一等品 / B 二等品 / C 三等品 / DEFECTIVE 等外品，4 项）。type 字段（GREIGE/FINISHED）不入字典，仅后端枚举使用。本期无同步入库，不建入库卷状态（rollStatus）字典。
@@ -431,36 +269,27 @@ _避免_：WarehouseMap（旧系统含 2D 平面图画布/尺寸/版本，MVP �
 **织造执行字典 (Weaving execution dictionaries)**：
 织造执行域建七个字典（id 自 2238 起，避让质检确认 2236/2237）：`lunaerp_weaving_order_status`（id=2238，DRAFT 待排产/ACTIVE 生产中/COMPLETED 已完工/CANCELLED 已取消）、`lunaerp_weaving_task_status`（id=2239，PENDING 待开始/IN_PROGRESS 生产中/HALTED 暂停异常/COMPLETED 已完工）、`lunaerp_weaving_ticket_status`（id=2240，GENERATED 已生成/STARTED 已开工/COMPLETED 已完工/INSPECTED 已检验/STOCKED 已入库/EXCEPTION 异常/VOID 作废）、`lunaerp_greige_production_mode`（id=2241，SELF 自织/OUTSOURCE 外发）、`lunaerp_inspection_package_mode`（id=2242，ROLL 卷装/PIECE 匹装）、`lunaerp_yarn_requisition_status`（id=2243，DRAFT 草稿/ACTIVE 待发纱/PARTIAL 部分发纱/DISPATCHED 已发纱/CLOSED 已关闭）、`lunaerp_weaving_exception_type`（id=2244，YARN_BREAK 断纱/CLOTH_DAMAGE 坏布/YARN_SHORTAGE 缺纱停机/MACHINE_CHANGE 换机/WORKER_CHANGE 换人）。织机 ACTIVE/INACTIVE 不建字典（对齐仓库/客户/供应商）；IoT 凭证/绑定状态与设备快照状态为后端内部枚举不入字典（同 txn_type 先例）。
 
-**库存管理字典 (Stock dictionaries)**：
-库存域建三个字典：`lunaerp_stock_in_status`（id=2233，DRAFT/COMPLETED/CANCELLED 三态严格过账，ADR-0016）、`lunaerp_stock_in_type`（id=2234，PURCHASE 采购入库/PRODUCTION 生产入库/RETURN 退货入库/OTHER 其他入库）、`lunaerp_stock_in_unit`（id=2235，KG/M；库存域独立单位字典，不复用 lunaerp_sales_contract_unit）。仓库/库位的 ACTIVE/INACTIVE 状态不建字典（对齐客户/供应商）；流水 txn_type（STOCK_IN/STOCK_IN_REVERSAL/**YARN_OUT/YARN_OUT_REVERSAL**）为后端内部枚举，不入字典（同 ADR-0012 先例）。
-
-**发货管理字典 (Shipment dictionaries)**：
-发货域建两个字典：`lunaerp_shipment_status`（id=2245，DRAFT 草稿 / COMPLETED 已发货 / CANCELLED 已取消）、`lunaerp_shipment_sign_status`（id=2246，PENDING 待签收 / SIGNED 已签收 / REFUSED 拒签）。单位复用库存域 `lunaerp_stock_in_unit`、币种复用销售合同 `lunaerp_sales_contract_currency`；承运商为自由文本不入字典；流水 txn_type（`SHIPMENT_OUT` / `SHIPMENT_OUT_REVERSAL`）为后端内部枚举不入字典。
-
 **进度反馈字典 (Progress feedback dictionaries)**：
 进度反馈域建一个字典：`lunaerp_progress_feedback_status`（id=2247，NOT_SCHEDULED 未排缸 / SCHEDULED 已排缸 / DYEING 染色中 / FIXING 固色中 / QUALITY_CHECK 质检中 / COMPLETED 已完成，固定六工序链）。问题标记为布尔字段不建字典；缸数量单位跟随颜色行，复用 `lunaerp_sales_contract_unit`（KG/M）。
 
 ## 错误码
 
-**错误码段位全表**：`1-030-001-xxx` 产品、`1-030-002-xxx` 胚布品种（`GreigeErrorCodeConstants`，随产品模块迁移先行占用）、`1-030-003-xxx` 销售合同（主表与明细共用）、`1-030-004-xxx` 客户（customer 与 customer-contact 共用）、`1-030-005-xxx` 供应商（supplier 与 supplier-contact 共用：000 供应商不存在 / 001 供应商编号重复 / 002 供应商联系人不存在）、`1-030-006-xxx` 胚布单（主表与颜色分配共用：000 胚布单不存在 / 001 胚布单号重复 / 002 关联引用不存在）、`1-030-007-xxx` 染色单（主表与颜色明细共用：000 染色单不存在 / 001 状态不允许该操作 / 002 关联引用不存在）、`1-030-008-xxx` 纱线档案（材质+规格+配比BOM+库存台账共用：000 材质不存在 / 001 材质名重复 / 002 规格不存在 / 003 规格名重复 / 004 配比BOM不存在 / 005 配比BOM明细不存在 / 006 库存台账不存在 / 007 该产品已存在纱线配比BOM）、`1-030-009-xxx` 纱线采购单（主表+明细共用：000 采购单不存在 / 001 采购单号重复 / 002 状态不允许该操作 / 003 关联引用不存在）。
+错误码段位总表与新模块取段规则见 `docs/contexts/shared/CONTEXT.md`。本域占用段位：
 
-客户最初设计误记为 002 段，落地时发现与胚布品种整段重号，因胚布品种已随主线先行上线，客户（后开发模块）改用 004 段。胚布单设计时误记 005 段空闲，落地前核实发现供应商已占用 005 段，胚布单顺延为 006 段。
+- `1-030-006-xxx` 胚布单（主表与颜色分配共用：000 胚布单不存在 / 001 胚布单号重复 / 002 关联引用不存在）
+- `1-030-007-xxx` 染色单（主表与颜色明细共用：000 染色单不存在 / 001 状态不允许该操作 / 002 关联引用不存在）
+- `1-030-008-xxx` 纱线档案（材质+规格+配比BOM+库存台账共用：000 材质不存在 / 001 材质名重复 / 002 规格不存在 / 003 规格名重复 / 004 配比BOM不存在 / 005 配比BOM明细不存在 / 006 库存台账不存在 / 007 该产品已存在纱线配比BOM）
+- `1-030-009-xxx` 纱线采购单（主表+明细共用：000 采购单不存在 / 001 采购单号重复 / 002 状态不允许该操作 / 003 关联引用不存在）
+- `1-030-010-xxx` 检验单（主表与明细共用，本期新增）：000 检验单不存在 / 001 检验单号重复 / 002 状态不允许该操作 / 003 关联引用不存在 / 004 单内卷号缸号重复 / 100 录检明细不存在（主表段 000-004，明细段从 100 起避开主表）
+- `1-030-014-xxx` 质检确认（ADR-0019/0020/0021）：000 质检确认记录不存在 / 001 状态不允许该操作（如重复认定、撤销未认定记录）/ 002 检验单不存在 / 003 检验单状态不允许生成（仅 ACTIVE/COMPLETED）/ 004 责任类型非法 / 005 操作失误必须指定挡车工 / 006 手工登记必填项缺失（卷号/等级/责任类型等）。幂等生成跳过已存在卷不报错（接口返回新增/跳过计数），故不设"重复生成"错误码。
+- `1-030-015-xxx` 织造执行域（主表/机台任务/布票/织机/领纱/IoT 共用，按子资源分段）：
+  - 织造单（000-009）：000 织造单不存在 / 001 织造单号重复 / 002 状态不允许该操作 / 003 关联胚布单不存在或非自织态 / 004 计划匹数非法。
+  - 机台任务（100-109）：100 机台任务不存在 / 101 任务状态不允许该操作（如已完工标停机）/ 102 关联织机不存在。
+  - 布票（110-129）：110 布票不存在 / 111 布票当前状态不允许该扫码动作 / 112 布票已作废 / 113 异常类型非法。
+  - 织机（200-209）：200 织机不存在 / 201 织机号重复 / 202 织机已被机台任务引用不能删除。
+  - 领纱（300-319）：300 领纱单不存在 / 301 领纱单号重复 / 310 领纱明细不存在 / 311 纱线库存不足（返回需求量/可用量）/ 312 领纱单状态不允许发纱。
+  - IoT（400-419）：400 厂商凭证不存在 / 401 厂商账号重复 / 410 设备绑定不存在 / 411 设备已绑定 / 420 快照不存在。
 
-`1-030-010-xxx` 检验单（主表与明细共用，本期新增）：000 检验单不存在 / 001 检验单号重复 / 002 状态不允许该操作 / 003 关联引用不存在 / 004 单内卷号缸号重复 / 100 录检明细不存在（主表段 000-004，明细段从 100 起避开主表）。
+  胚布单自织改造复用 `1-030-006` 段，检验单匹装改造复用 `1-030-010` 段，库存扩展复用 `1-030-011` 段，不新增错误码。
 
-`1-030-011-xxx` 入库单（主表/明细/放置共用，库存域）：000 入库单不存在 / 001 入库单号重复 / 002 状态不允许该操作 / 003 关联引用不存在（仓库/供应商/合同/胚布单/染色单/胚布品种/产品/库位）/ 004 库位不属于入库仓库 / 005 审核失败单无明细。`1-030-012-xxx` 库存台账/余额（本期只读查询，预留段位，暂不定义具体错误码）。`1-030-013-xxx` 仓库与库位：000 仓库不存在 / 001 仓库编号重复 / 002 仓库下有库位不能删除 / 003 仓库被入库单引用不能删除 / 100 库位不存在 / 101 同仓库内库位编码重复 / 102 库位被放置记录引用不能删除（主表段 000-003，库位段从 100 起）。
-
-`1-030-014-xxx` 质检确认（生产域，ADR-0019/0020/0021）：000 质检确认记录不存在 / 001 状态不允许该操作（如重复认定、撤销未认定记录）/ 002 检验单不存在 / 003 检验单状态不允许生成（仅 ACTIVE/COMPLETED）/ 004 责任类型非法 / 005 操作失误必须指定挡车工 / 006 手工登记必填项缺失（卷号/等级/责任类型等）。幂等生成跳过已存在卷不报错（接口返回新增/跳过计数），故不设"重复生成"错误码。
-
-`1-030-015-xxx` 织造执行域（主表/机台任务/布票/织机/领纱/IoT 共用，按子资源分段）：
-- 织造单（000-009）：000 织造单不存在 / 001 织造单号重复 / 002 状态不允许该操作 / 003 关联胚布单不存在或非自织态 / 004 计划匹数非法。
-- 机台任务（100-109）：100 机台任务不存在 / 101 任务状态不允许该操作（如已完工标停机）/ 102 关联织机不存在。
-- 布票（110-129）：110 布票不存在 / 111 布票当前状态不允许该扫码动作 / 112 布票已作废 / 113 异常类型非法。
-- 织机（200-209）：200 织机不存在 / 201 织机号重复 / 202 织机已被机台任务引用不能删除。
-- 领纱（300-319）：300 领纱单不存在 / 301 领纱单号重复 / 310 领纱明细不存在 / 311 纱线库存不足（返回需求量/可用量）/ 312 领纱单状态不允许发纱。
-- IoT（400-419）：400 厂商凭证不存在 / 401 厂商账号重复 / 410 设备绑定不存在 / 411 设备已绑定 / 420 快照不存在。
-胚布单自织改造复用 `1-030-006` 段，检验单匹装改造复用 `1-030-010` 段，库存扩展复用 `1-030-011` 段，不新增错误码。
-
-`1-030-016-xxx` 发货单（主表/明细/卷清单共用，业务管理域）：000 发货单不存在 / 001 发货单号重复 / 002 状态不允许该操作 / 003 关联引用不存在（客户/仓库/合同/产品/来源入库明细/业务员）/ 004 审核失败发货单没有明细 / 005 库存不足（返回需求量与可用量）/ 006 签收状态非法。
-
-`1-030-017-xxx` 进度反馈（生产域，反馈缸/反馈记录共用）：000 反馈缸不存在 / 001 同单同色缸号重复 / 002 染色单不存在或状态不允许建缸（仅 ACTIVE/COMPLETED 单的颜色行可建缸）/ 003 染色颜色行不存在 / 004 颜色行下存在反馈缸不能移除（须先删除缸反馈；染色单差异保存删除守卫跨模块使用本段）/ 100 反馈记录不存在 / 101 问题已闭环不可操作。
+- `1-030-017-xxx` 进度反馈（反馈缸/反馈记录共用）：000 反馈缸不存在 / 001 同单同色缸号重复 / 002 染色单不存在或状态不允许建缸（仅 ACTIVE/COMPLETED 单的颜色行可建缸）/ 003 染色颜色行不存在 / 004 颜色行下存在反馈缸不能移除（须先删除缸反馈；染色单差异保存删除守卫跨模块使用本段）/ 100 反馈记录不存在 / 101 问题已闭环不可操作。
