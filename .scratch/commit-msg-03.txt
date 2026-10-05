@@ -1,6 +1,0 @@
-feat(lunaerp): 客户联系人 CRUD 端到端（票 03）
-
-- SQL: lunaerp_baseinfo_customer_contact 表 DDL + 序列 + 全列注释；10040 隐藏权限节点（type=2/visible=0/无 component）+ 10041-10043 按钮权限
-- 后端 customercontact 子包：DO/Mapper/Service/Controller + 3 VO，独立权限码 lunaerp:baseinfo:customer-contact:*，错误码 1_030_002_001
-- 纯 Mockito 测试 14 例（Service 8 + VO 校验 6），全绿
-- 前端 contact.ts API + ContactsTab.vue（列表/新增编辑弹窗/删除二次确认），workspace 联系人 Tab 替换占位
