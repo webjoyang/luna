@@ -42,7 +42,7 @@
             size="small"
             type="danger"
             plain
-            :disabled="isReadOnly || isBoardEmpty"
+            :disabled="isReadOnly"
             @click="handleClear"
           >
             <Icon icon="ep:delete" class="mr-4px" /> 清空
@@ -90,22 +90,15 @@
             class="stitch-cell-wrapper flex items-center justify-center"
             :class="{ 'mr-6px': (cIndex + 1) % 4 === 0 && cIndex + 1 !== board.columns }"
           >
-            <button
-              type="button"
-              class="stitch-cell-btn transition-colors duration-150"
-              :class="[
-                getCellClass(cell),
-                {
-                  'cursor-pointer hover:opacity-80 active:scale-95': !isReadOnly,
-                  'cursor-not-allowed opacity-75': isReadOnly
-                }
-              ]"
+            <el-button
+              class="stitch-cell-btn !p-0"
+              :class="getCellClass(cell)"
               :disabled="isReadOnly"
               :title="getCellTitle(cell, rIndex, cIndex)"
               @click="handleCellClick(rIndex, cIndex)"
             >
               {{ cell || '' }}
-            </button>
+            </el-button>
           </div>
         </div>
       </div>
@@ -158,11 +151,6 @@ watch(
   { immediate: true }
 )
 
-const isBoardEmpty = computed(() => {
-  if (!board.value.data) return true
-  return board.value.data.every((row) => row.every((cell) => !cell))
-})
-
 /** 点击单个格子按五态循环 */
 const handleCellClick = (rowIndex: number, colIndex: number) => {
   if (props.isReadOnly) return
@@ -186,7 +174,7 @@ const handleRemoveCols = () => {
 
 /** 清空全部符号（二次确认） */
 const handleClear = async () => {
-  if (props.isReadOnly || isBoardEmpty.value) return
+  if (props.isReadOnly) return
   try {
     await ElMessageBox.confirm('确认清空三角排列画板上的全部符号吗？', '清空确认', {
       confirmButtonText: '确认清空',
