@@ -129,6 +129,41 @@ describe('sample-cost-calculator (样品分析成本核算纯函数)', () => {
     })
   })
 
+  describe('Issue 06 回归断言：供应商报价与对外报价不参与内部总成本计算', () => {
+    it('设定任意供应商报价与对外报价，内部成本核算结果恒保持不变', () => {
+      const yarnSpecs = [
+        { yarnSpecId: 1, unitPrice: 30, ratio: 100 }
+      ]
+      const baseSettings = {
+        productionCost: 2,
+        dyeingCost: 1,
+        otherCost: 0.5,
+        lossRate: 5
+      }
+      const baseResult = calculateSampleCost(yarnSpecs, baseSettings)
+
+      // 无论带多少供应商胚布报价与客户对外报价
+      const settingsWithQuotes = {
+        ...baseSettings,
+        quotedPrice: 99999.99,
+        quotedRemark: '含税含运费',
+        supplierQuotes: [
+          { supplierId: 101, supplierName: '昂贵供应商', greigePrice: 88888.88 },
+          { supplierId: null, supplierName: '纯手填档口', greigePrice: 0.01 }
+        ]
+      }
+      const quoteResult = calculateSampleCost(yarnSpecs, settingsWithQuotes as any)
+
+      expect(quoteResult.yarnCost).toBe(baseResult.yarnCost)
+      expect(quoteResult.productionCost).toBe(baseResult.productionCost)
+      expect(quoteResult.dyeingCost).toBe(baseResult.dyeingCost)
+      expect(quoteResult.otherCost).toBe(baseResult.otherCost)
+      expect(quoteResult.lossRate).toBe(baseResult.lossRate)
+      expect(quoteResult.totalCost).toBe(baseResult.totalCost)
+      expect(quoteResult.totalCost).toBe(35.26) // (30 + 2 + 1 + 0.5) / 0.95 = 33.5 / 0.95 = 35.263... -> 35.26
+    })
+  })
+
   describe('辅助工具函数 round2, round4', () => {
     it('round2 正确四舍五入保留 2 位小数', () => {
       expect(round2(33.0526)).toBe(33.05)

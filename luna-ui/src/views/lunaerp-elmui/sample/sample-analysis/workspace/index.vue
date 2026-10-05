@@ -119,6 +119,7 @@ const activeTab = ref('basic')
 const saving = ref(false)
 const isViewMode = ref(false)
 const previewNo = ref('')
+const MAX_PHOTOS_LIMIT = 9
 
 const basicInfoTabRef = ref<InstanceType<typeof SampleBasicInfoTab>>()
 const craftTabRef = ref<InstanceType<typeof SampleCraftTab>>()
@@ -165,6 +166,7 @@ const defaultFormData = (): SampleAnalysisVO => ({
   stitchArrange: createDefaultStitchArrange(),
   yarnSpecs: [],
   yarnArranges: [],
+  supplierQuotes: [],
   productionCost: undefined,
   dyeingCost: undefined,
   otherCost: undefined,
@@ -223,8 +225,8 @@ const handleSave = async () => {
   }
 
   // 1.1 校验照片数量上限
-  if (formData.value.photos && formData.value.photos.length > 9) {
-    message.error('样品照片最多上传 9 张')
+  if (formData.value.photos && formData.value.photos.length > MAX_PHOTOS_LIMIT) {
+    message.error(`样品照片最多上传 ${MAX_PHOTOS_LIMIT} 张`)
     activeTab.value = 'basic'
     return
   }
@@ -277,6 +279,14 @@ const handleSave = async () => {
         draftText: a.draftText,
         borderStatus: a.borderStatus,
         description: a.description
+      })),
+      supplierQuotes: (formData.value.supplierQuotes || []).map((q) => ({
+        id: q.id,
+        sampleAnalysisId: q.sampleAnalysisId,
+        supplierId: q.supplierId,
+        supplierName: q.supplierName,
+        greigePrice: q.greigePrice,
+        remark: q.remark
       }))
     }
     if (sampleId.value) {
@@ -322,6 +332,10 @@ const loadDetail = async (id: number) => {
       })),
       yarnArranges: (data.yarnArranges || []).map((arrange) => ({
         ...arrange
+      })),
+      supplierQuotes: (data.supplierQuotes || []).map((quote) => ({
+        ...quote,
+        _key: quote.id ? `quote_${quote.id}` : `quote_${Date.now()}_${Math.random()}`
       }))
     }
   } catch {}

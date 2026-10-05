@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.sample.sampleanalysis;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
@@ -35,21 +37,25 @@ public class SampleAnalysisYarnArrangeDO extends TenantBaseDO {
     /**
      * 路号
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String code;
 
     /**
      * 绕纱表述（如 25.1cm/1 花宽）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String draftText;
 
     /**
      * 对针（如 第一路对针）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String borderStatus;
 
     /**
      * 描述（如 开幅线）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String description;
 
 }

@@ -34,6 +34,16 @@ export interface SampleAnalysisYarnArrangeVO {
   _key?: string
 }
 
+export interface SampleAnalysisSupplierQuoteVO {
+  id?: number
+  sampleAnalysisId?: number
+  supplierId?: number | null
+  supplierName?: string
+  greigePrice?: number | null
+  remark?: string
+  _key?: string
+}
+
 // 样品分析 VO
 export interface SampleAnalysisVO {
   id?: number
@@ -67,6 +77,7 @@ export interface SampleAnalysisVO {
   stitchArrange?: SampleAnalysisStitchArrangeVO
   yarnSpecs?: SampleAnalysisYarnSpecVO[]
   yarnArranges?: SampleAnalysisYarnArrangeVO[]
+  supplierQuotes?: SampleAnalysisSupplierQuoteVO[]
   productionCost?: number
   dyeingCost?: number
   otherCost?: number
@@ -114,6 +125,7 @@ export interface SampleAnalysisSaveReqVO {
   stitchArrange?: SampleAnalysisStitchArrangeVO
   yarnSpecs?: SampleAnalysisYarnSpecVO[]
   yarnArranges?: SampleAnalysisYarnArrangeVO[]
+  supplierQuotes?: SampleAnalysisSupplierQuoteVO[]
   productionCost?: number
   dyeingCost?: number
   otherCost?: number

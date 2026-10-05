@@ -16,10 +16,14 @@ import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.Sampl
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisSaveReqVO;
 import org.springframework.security.access.AccessDeniedException;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisStitchArrangeVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisSupplierQuoteRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisSupplierQuoteSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisYarnArrangeRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisYarnArrangeSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.sample.sampleanalysis.SampleAnalysisDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.sample.sampleanalysis.SampleAnalysisSupplierQuoteDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.sample.sampleanalysis.SampleAnalysisYarnArrangeDO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisYarnSpecSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisYarnSpecRespVO;
@@ -131,6 +135,8 @@ class SampleAnalysisServiceImplTest {
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), SampleAnalysisYarnArrangeDO.class);
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), SampleAnalysisYarnSpecDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SampleAnalysisSupplierQuoteDO.class);
 
         // 设置安全上下文（默认模拟登录用户 ID=10L，昵称="测试业务员"）
         setLoginUser(10L, "测试业务员");
@@ -1176,7 +1182,27 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("删除样品分析：级联逻辑删除绕纱行")
+    @DisplayName("更新样品分析：yarnArranges 为 null 时不触碰存量绕纱行（不误删）")
+    void updateSampleAnalysis_yarnArrangesNull_doesNotDeleteExistingRows() {
+        SampleAnalysisDO exist = new SampleAnalysisDO();
+        exist.setId(1001L);
+        exist.setProductName("全棉汗布");
+        when(sampleAnalysisMapper.selectById(1001L)).thenReturn(exist);
+
+        SampleAnalysisSaveReqVO updateReq = new SampleAnalysisSaveReqVO();
+        updateReq.setId(1001L);
+        updateReq.setProductName("全棉汗布修改");
+        updateReq.setYarnArranges(null);
+
+        sampleAnalysisService.updateSampleAnalysis(updateReq);
+
+        verify(sampleAnalysisYarnArrangeMapper, never()).selectListBySampleAnalysisId(any());
+        verify(sampleAnalysisYarnArrangeMapper, never()).deleteByIds(any());
+        verify(sampleAnalysisYarnArrangeMapper, never()).deleteById(any(Long.class));
+    }
+
+    @Test
+    @DisplayName("删除样品分析：级联逻辑删除绕纱行，且删除后详情查询无法查出")
     void deleteSampleAnalysis_cascadeSoftDeletesYarnArranges() {
         SampleAnalysisDO exist = new SampleAnalysisDO();
         exist.setId(1001L);
@@ -1189,6 +1215,359 @@ class SampleAnalysisServiceImplTest {
         verify(sampleAnalysisMapper).deleteById(1001L);
         // 验证绕纱行被级联删除
         verify(sampleAnalysisYarnArrangeMapper).deleteBySampleAnalysisId(1001L);
+
+        // 验证删除后若主表不存在，查询详情直接抛出 SAMPLE_ANALYSIS_NOT_EXISTS，无法查出任何绕纱行
+        when(sampleAnalysisMapper.selectById(1001L)).thenReturn(null);
+        ServiceException ex = assertThrows(ServiceException.class, () -> sampleAnalysisService.getSampleAnalysis(1001L));
+        assertEquals(SAMPLE_ANALYSIS_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+
+    // ==================== 12. 供应商报价登记与对外报价闭环（Issue 06） ====================
+
+    @Test
+    @DisplayName("供应商报价：supplierId 存在但供应商档案不存在时抛出 1_030_018_002")
+    void create_supplierNotExists_throwsSampleAnalysisRefNotExists() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("测试布");
+        SampleAnalysisSupplierQuoteSaveReqVO quote = new SampleAnalysisSupplierQuoteSaveReqVO();
+        quote.setSupplierId(999L);
+        quote.setGreigePrice(new BigDecimal("18.50"));
+        reqVO.setSupplierQuotes(List.of(quote));
+
+        when(sampleAnalysisMapper.selectListByNoPrefixIncludingDeleted(any())).thenReturn(Collections.emptyList());
+        when(supplierMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> sampleAnalysisService.createSampleAnalysis(reqVO));
+        assertEquals(SAMPLE_ANALYSIS_REF_NOT_EXISTS.getCode(), ex.getCode());
+        verify(sampleAnalysisSupplierQuoteMapper, never()).insert(any(SampleAnalysisSupplierQuoteDO.class));
+    }
+
+    @Test
+    @DisplayName("供应商报价：停用状态的供应商允许正常选择并快照公司名")
+    void create_supplierInactive_allowedAndSnapshotsCompanyName() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("测试布");
+        SampleAnalysisSupplierQuoteSaveReqVO quote = new SampleAnalysisSupplierQuoteSaveReqVO();
+        quote.setSupplierId(201L);
+        quote.setGreigePrice(new BigDecimal("22.00"));
+        reqVO.setSupplierQuotes(List.of(quote));
+
+        SupplierDO supplier = new SupplierDO();
+        supplier.setId(201L);
+        supplier.setCompanyName("华纺纺织厂");
+        supplier.setStatus("INACTIVE"); // 停用状态
+
+        when(sampleAnalysisMapper.selectListByNoPrefixIncludingDeleted(any())).thenReturn(Collections.emptyList());
+        when(supplierMapper.selectById(201L)).thenReturn(supplier);
+
+        sampleAnalysisService.createSampleAnalysis(reqVO);
+
+        ArgumentCaptor<SampleAnalysisSupplierQuoteDO> captor = ArgumentCaptor.forClass(SampleAnalysisSupplierQuoteDO.class);
+        verify(sampleAnalysisSupplierQuoteMapper).insert(captor.capture());
+        assertEquals(201L, captor.getValue().getSupplierId());
+        assertEquals("华纺纺织厂", captor.getValue().getSupplierName());
+        assertEquals(new BigDecimal("22.00"), captor.getValue().getGreigePrice());
+    }
+
+    @Test
+    @DisplayName("供应商报价：纯手填供应商名称放行且不查询供应商档案")
+    void create_pureManualSupplierName_allowedWithoutQueryingSupplierMapper() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("测试布");
+        SampleAnalysisSupplierQuoteSaveReqVO quote = new SampleAnalysisSupplierQuoteSaveReqVO();
+        quote.setSupplierId(null);
+        quote.setSupplierName("柯桥某档口");
+        quote.setGreigePrice(new BigDecimal("19.80"));
+        reqVO.setSupplierQuotes(List.of(quote));
+
+        when(sampleAnalysisMapper.selectListByNoPrefixIncludingDeleted(any())).thenReturn(Collections.emptyList());
+
+        sampleAnalysisService.createSampleAnalysis(reqVO);
+
+        verify(supplierMapper, never()).selectById(any());
+        ArgumentCaptor<SampleAnalysisSupplierQuoteDO> captor = ArgumentCaptor.forClass(SampleAnalysisSupplierQuoteDO.class);
+        verify(sampleAnalysisSupplierQuoteMapper).insert(captor.capture());
+        assertNull(captor.getValue().getSupplierId());
+        assertEquals("柯桥某档口", captor.getValue().getSupplierName());
+    }
+
+    @Test
+    @DisplayName("供应商报价：胚布报价留空可正常保存且不报错")
+    void create_greigePriceNull_allowedToSave() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("测试布");
+        SampleAnalysisSupplierQuoteSaveReqVO quote = new SampleAnalysisSupplierQuoteSaveReqVO();
+        quote.setSupplierName("意向供应商");
+        quote.setGreigePrice(null);
+        quote.setRemark("等待下周给价");
+        reqVO.setSupplierQuotes(List.of(quote));
+
+        when(sampleAnalysisMapper.selectListByNoPrefixIncludingDeleted(any())).thenReturn(Collections.emptyList());
+
+        sampleAnalysisService.createSampleAnalysis(reqVO);
+
+        ArgumentCaptor<SampleAnalysisSupplierQuoteDO> captor = ArgumentCaptor.forClass(SampleAnalysisSupplierQuoteDO.class);
+        verify(sampleAnalysisSupplierQuoteMapper).insert(captor.capture());
+        assertNull(captor.getValue().getGreigePrice());
+        assertEquals("等待下周给价", captor.getValue().getRemark());
+    }
+
+    @Test
+    @DisplayName("供应商报价容错：历史报价行引用的供应商事后被停用或删除，主表更新时不拦截并保留历史")
+    void update_historicalQuoteRow_deletedOrInactiveSupplier_doesNotBlock() {
+        Long sampleId = 100L;
+        SampleAnalysisDO exist = new SampleAnalysisDO();
+        exist.setId(sampleId);
+        exist.setSampleAnalysisNo("SA20260001");
+        exist.setProductName("全棉针织");
+        when(sampleAnalysisMapper.selectById(sampleId)).thenReturn(exist);
+
+        // 存量报价行：supplierId=201L
+        SampleAnalysisSupplierQuoteDO dbQuote = new SampleAnalysisSupplierQuoteDO();
+        dbQuote.setId(10L);
+        dbQuote.setSampleAnalysisId(sampleId);
+        dbQuote.setSupplierId(201L);
+        dbQuote.setSupplierName("历史供应商快照");
+        dbQuote.setGreigePrice(new BigDecimal("15.00"));
+
+        when(sampleAnalysisSupplierQuoteMapper.selectListBySampleAnalysisId(sampleId)).thenReturn(new ArrayList<>(List.of(dbQuote)));
+        // 模拟 supplierMapper.selectById(201L) 为 null（已删除）
+        lenient().when(supplierMapper.selectById(201L)).thenReturn(null);
+
+        // 提交更新：修改胚布单价为 16.50，supplierId 保持 201L
+        SampleAnalysisSaveReqVO updateReq = new SampleAnalysisSaveReqVO();
+        updateReq.setId(sampleId);
+        updateReq.setProductName("全棉针织修改");
+        SampleAnalysisSupplierQuoteSaveReqVO submitQuote = new SampleAnalysisSupplierQuoteSaveReqVO();
+        submitQuote.setId(10L);
+        submitQuote.setSupplierId(201L);
+        submitQuote.setSupplierName("历史供应商快照");
+        submitQuote.setGreigePrice(new BigDecimal("16.50"));
+        updateReq.setSupplierQuotes(List.of(submitQuote));
+
+        assertDoesNotThrow(() -> sampleAnalysisService.updateSampleAnalysis(updateReq));
+        ArgumentCaptor<SampleAnalysisSupplierQuoteDO> captor = ArgumentCaptor.forClass(SampleAnalysisSupplierQuoteDO.class);
+        verify(sampleAnalysisSupplierQuoteMapper).updateById(captor.capture());
+        assertEquals(10L, captor.getValue().getId());
+        assertEquals(new BigDecimal("16.50"), captor.getValue().getGreigePrice());
+        assertEquals("历史供应商快照", captor.getValue().getSupplierName());
+        // 且未调用 supplierMapper 进行强行拦截
+        verify(supplierMapper, never()).selectById(201L);
+    }
+
+    @Test
+    @DisplayName("供应商报价：差异保存（增、改、删）各行正确调用 insert / updateById / deleteById")
+    void update_diffSaveSupplierQuotes_insertUpdateDeleteTranches() {
+        Long sampleId = 100L;
+        SampleAnalysisDO exist = new SampleAnalysisDO();
+        exist.setId(sampleId);
+        exist.setSampleAnalysisNo("SA20260001");
+        exist.setProductName("全棉汗布");
+        when(sampleAnalysisMapper.selectById(sampleId)).thenReturn(exist);
+
+        // 库内存量：id=1L, id=2L
+        SampleAnalysisSupplierQuoteDO row1 = new SampleAnalysisSupplierQuoteDO();
+        row1.setId(1L);
+        row1.setSampleAnalysisId(sampleId);
+        row1.setSupplierName("旧供应商1");
+
+        SampleAnalysisSupplierQuoteDO row2 = new SampleAnalysisSupplierQuoteDO();
+        row2.setId(2L);
+        row2.setSampleAnalysisId(sampleId);
+        row2.setSupplierName("旧供应商2");
+        row2.setGreigePrice(new BigDecimal("10.00"));
+
+        when(sampleAnalysisSupplierQuoteMapper.selectListBySampleAnalysisId(sampleId)).thenReturn(new ArrayList<>(List.of(row1, row2)));
+
+        // 本次提交：修改 row2，新增 row3，删除 row1（不提交即删除）
+        SampleAnalysisSaveReqVO updateReq = new SampleAnalysisSaveReqVO();
+        updateReq.setId(sampleId);
+        updateReq.setProductName("全棉汗布");
+
+        SampleAnalysisSupplierQuoteSaveReqVO updateVo = new SampleAnalysisSupplierQuoteSaveReqVO();
+        updateVo.setId(2L);
+        updateVo.setSupplierName("供应商2-改名");
+        updateVo.setGreigePrice(new BigDecimal("12.00"));
+
+        SampleAnalysisSupplierQuoteSaveReqVO insertVo = new SampleAnalysisSupplierQuoteSaveReqVO();
+        insertVo.setId(null);
+        insertVo.setSupplierName("全新供应商3");
+        insertVo.setGreigePrice(new BigDecimal("25.00"));
+
+        updateReq.setSupplierQuotes(List.of(updateVo, insertVo));
+
+        sampleAnalysisService.updateSampleAnalysis(updateReq);
+
+        // 验证删除 row1
+        verify(sampleAnalysisSupplierQuoteMapper).deleteById(1L);
+
+        // 验证更新 row2
+        ArgumentCaptor<SampleAnalysisSupplierQuoteDO> updateCaptor = ArgumentCaptor.forClass(SampleAnalysisSupplierQuoteDO.class);
+        verify(sampleAnalysisSupplierQuoteMapper).updateById(updateCaptor.capture());
+        assertEquals(2L, updateCaptor.getValue().getId());
+        assertEquals("供应商2-改名", updateCaptor.getValue().getSupplierName());
+        assertEquals(new BigDecimal("12.00"), updateCaptor.getValue().getGreigePrice());
+
+        // 验证新增 row3
+        ArgumentCaptor<SampleAnalysisSupplierQuoteDO> insertCaptor = ArgumentCaptor.forClass(SampleAnalysisSupplierQuoteDO.class);
+        verify(sampleAnalysisSupplierQuoteMapper).insert(insertCaptor.capture());
+        assertNull(insertCaptor.getValue().getId());
+        assertEquals(sampleId, insertCaptor.getValue().getSampleAnalysisId());
+        assertEquals("全新供应商3", insertCaptor.getValue().getSupplierName());
+    }
+
+    @Test
+    @DisplayName("级联删除：删除样品分析主表时级联逻辑删除供应商报价子表")
+    void delete_cascadesSupplierQuotes() {
+        Long sampleId = 1001L;
+        SampleAnalysisDO exist = new SampleAnalysisDO();
+        exist.setId(sampleId);
+        exist.setProductName("全棉汗布");
+        when(sampleAnalysisMapper.selectById(sampleId)).thenReturn(exist);
+
+        sampleAnalysisService.deleteSampleAnalysis(sampleId);
+
+        verify(sampleAnalysisMapper).deleteById(sampleId);
+        verify(sampleAnalysisSupplierQuoteMapper).deleteBySampleAnalysisId(sampleId);
+    }
+
+    @Test
+    @DisplayName("详情还原：查询详情时还原供应商报价子表列表")
+    void getSampleAnalysis_restoresSupplierQuotes() {
+        Long sampleId = 1001L;
+        SampleAnalysisDO sampleDO = new SampleAnalysisDO();
+        sampleDO.setId(sampleId);
+        sampleDO.setProductName("全棉汗布");
+        when(sampleAnalysisMapper.selectById(sampleId)).thenReturn(sampleDO);
+
+        SampleAnalysisSupplierQuoteDO q1 = new SampleAnalysisSupplierQuoteDO();
+        q1.setId(10L);
+        q1.setSampleAnalysisId(sampleId);
+        q1.setSupplierName("供应商A");
+        q1.setGreigePrice(new BigDecimal("21.50"));
+
+        SampleAnalysisSupplierQuoteDO q2 = new SampleAnalysisSupplierQuoteDO();
+        q2.setId(20L);
+        q2.setSampleAnalysisId(sampleId);
+        q2.setSupplierName("供应商B");
+        q2.setGreigePrice(new BigDecimal("22.80"));
+
+        when(sampleAnalysisSupplierQuoteMapper.selectListBySampleAnalysisId(sampleId)).thenReturn(List.of(q1, q2));
+
+        SampleAnalysisRespVO resp = sampleAnalysisService.getSampleAnalysis(sampleId);
+        assertNotNull(resp.getSupplierQuotes());
+        assertEquals(2, resp.getSupplierQuotes().size());
+        assertEquals("供应商A", resp.getSupplierQuotes().get(0).getSupplierName());
+        assertEquals(new BigDecimal("21.50"), resp.getSupplierQuotes().get(0).getGreigePrice());
+        assertEquals("供应商B", resp.getSupplierQuotes().get(1).getSupplierName());
+        assertEquals(new BigDecimal("22.80"), resp.getSupplierQuotes().get(1).getGreigePrice());
+    }
+
+    @Test
+    @DisplayName("回归断言：供应商报价与对外报价任意取值，总成本恒不受影响（不进总成本计算）")
+    void regression_supplierQuoteAndQuotedPrice_doNotAffectTotalCost() {
+        // 设定内部成本：工费 2.00 + 染费 1.00 + 其他 0.50，损耗率 5%
+        // 基准内部总成本：(2 + 1 + 0.5) / (1 - 0.05) = 3.5 / 0.95 = 3.6842... -> 3.68
+        BigDecimal expectedCost = new BigDecimal("3.68");
+
+        when(sampleAnalysisMapper.selectListByNoPrefixIncludingDeleted(any())).thenReturn(Collections.emptyList());
+
+        // 场景 1：无报价信息
+        SampleAnalysisSaveReqVO req1 = new SampleAnalysisSaveReqVO();
+        req1.setProductName("基准布");
+        req1.setProductionCost(new BigDecimal("2.00"));
+        req1.setDyeingCost(new BigDecimal("1.00"));
+        req1.setOtherCost(new BigDecimal("0.50"));
+        req1.setLossRate(new BigDecimal("5"));
+
+        sampleAnalysisService.createSampleAnalysis(req1);
+        ArgumentCaptor<SampleAnalysisDO> captor1 = ArgumentCaptor.forClass(SampleAnalysisDO.class);
+        verify(sampleAnalysisMapper, atLeastOnce()).insert(captor1.capture());
+        assertEquals(expectedCost, captor1.getValue().getTotalCost());
+
+        // 场景 2：填入极大供应商报价（99999.99）与极大对外报价（88888.88），总成本依然恒等于 3.68
+        SampleAnalysisSaveReqVO req2 = new SampleAnalysisSaveReqVO();
+        req2.setProductName("带报价布");
+        req2.setProductionCost(new BigDecimal("2.00"));
+        req2.setDyeingCost(new BigDecimal("1.00"));
+        req2.setOtherCost(new BigDecimal("0.50"));
+        req2.setLossRate(new BigDecimal("5"));
+        req2.setQuotedPrice(new BigDecimal("88888.88"));
+        req2.setQuotedRemark("含税含运费对外报价");
+
+        SampleAnalysisSupplierQuoteSaveReqVO quote2 = new SampleAnalysisSupplierQuoteSaveReqVO();
+        quote2.setSupplierName("高价供应商");
+        quote2.setGreigePrice(new BigDecimal("99999.99"));
+        req2.setSupplierQuotes(List.of(quote2));
+
+        sampleAnalysisService.createSampleAnalysis(req2);
+        ArgumentCaptor<SampleAnalysisDO> captor2 = ArgumentCaptor.forClass(SampleAnalysisDO.class);
+        verify(sampleAnalysisMapper, atLeastOnce()).insert(captor2.capture());
+        assertEquals(expectedCost, captor2.getValue().getTotalCost());
+        assertEquals(new BigDecimal("88888.88"), captor2.getValue().getQuotedPrice());
+        assertEquals("含税含运费对外报价", captor2.getValue().getQuotedRemark());
+
+        // 场景 3：填入极小报价（0.01），总成本依然恒等于 3.68
+        SampleAnalysisSaveReqVO req3 = new SampleAnalysisSaveReqVO();
+        req3.setProductName("极小报价布");
+        req3.setProductionCost(new BigDecimal("2.00"));
+        req3.setDyeingCost(new BigDecimal("1.00"));
+        req3.setOtherCost(new BigDecimal("0.50"));
+        req3.setLossRate(new BigDecimal("5"));
+        req3.setQuotedPrice(new BigDecimal("0.01"));
+
+        SampleAnalysisSupplierQuoteSaveReqVO quote3 = new SampleAnalysisSupplierQuoteSaveReqVO();
+        quote3.setSupplierName("低价供应商");
+        quote3.setGreigePrice(new BigDecimal("0.01"));
+        req3.setSupplierQuotes(List.of(quote3));
+
+        sampleAnalysisService.createSampleAnalysis(req3);
+        ArgumentCaptor<SampleAnalysisDO> captor3 = ArgumentCaptor.forClass(SampleAnalysisDO.class);
+        verify(sampleAnalysisMapper, atLeastOnce()).insert(captor3.capture());
+        assertEquals(expectedCost, captor3.getValue().getTotalCost());
+    }
+
+    @Test
+    @DisplayName("回归断言：对外报价任意取值，月结收费统计金额保持不变（不参与未付/已付统计）")
+    void regression_quotedPrice_doesNotAffectPaymentStats() {
+        SampleAnalysisDO r1 = new SampleAnalysisDO();
+        r1.setId(1L);
+        r1.setUnitPrice(new BigDecimal("30.00"));
+        r1.setIsPaid(true);
+        r1.setQuotedPrice(new BigDecimal("9999.00")); // 高对外报价
+
+        SampleAnalysisDO r2 = new SampleAnalysisDO();
+        r2.setId(2L);
+        r2.setUnitPrice(new BigDecimal("50.00"));
+        r2.setIsPaid(false);
+        r2.setQuotedPrice(new BigDecimal("8888.00")); // 高对外报价
+
+        when(sampleAnalysisMapper.selectList(any())).thenReturn(List.of(r1, r2));
+
+        SampleAnalysisPaymentStatsRespVO stats = sampleAnalysisService.getSampleAnalysisPaymentStats(new SampleAnalysisPageReqVO());
+        // 统计口径只以 unitPrice 结算：paid=30.00, unpaid=50.00, count=2
+        assertEquals(new BigDecimal("30.00"), stats.getPaidAmount());
+        assertEquals(new BigDecimal("50.00"), stats.getUnpaidAmount());
+        assertEquals(2L, stats.getTotalCount());
+    }
+
+    @Test
+    @DisplayName("损耗率校验：损耗率非法边界（100、-1）抛出 1_030_018_003 异常")
+    void save_lossRateInvalid_throwsException() {
+        // 1. lossRate = 100
+        SampleAnalysisSaveReqVO req1 = new SampleAnalysisSaveReqVO();
+        req1.setProductName("测试布");
+        req1.setLossRate(new BigDecimal("100"));
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> sampleAnalysisService.createSampleAnalysis(req1));
+        assertEquals(SAMPLE_ANALYSIS_LOSS_RATE_INVALID.getCode(), ex1.getCode());
+
+        // 2. lossRate = -1
+        SampleAnalysisSaveReqVO req2 = new SampleAnalysisSaveReqVO();
+        req2.setProductName("测试布");
+        req2.setLossRate(new BigDecimal("-1"));
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> sampleAnalysisService.createSampleAnalysis(req2));
+        assertEquals(SAMPLE_ANALYSIS_LOSS_RATE_INVALID.getCode(), ex2.getCode());
     }
 
 

@@ -172,27 +172,195 @@
       </div>
     </el-card>
 
-    <!-- 供应商报价登记与对外报价占位卡片（票 06） -->
+    <!-- 供应商报价登记（Issue 06） -->
     <el-card shadow="never" class="mb-16px">
       <template #header>
         <div class="flex items-center justify-between">
-          <span class="font-bold text-14px">供应商报价登记与对外报价</span>
-          <el-tag type="info" size="small">功能待后续上线</el-tag>
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-14px">供应商报价登记</span>
+            <el-tag type="info" size="small">纯登记参考 · 不进总成本</el-tag>
+          </div>
+          <el-button
+            v-if="!isReadOnly"
+            type="primary"
+            plain
+            size="small"
+            @click="handleAddQuote"
+          >
+            <Icon icon="ep:plus" class="mr-4px" />
+            新增报价行
+          </el-button>
         </div>
       </template>
-      <div class="py-20px text-center text-gray-400">
-        <Icon icon="ep:money" class="text-32px mb-8px" />
-        <div>供应商报价登记与对外报价（票 06）将在后续票中开放</div>
+
+      <div class="text-12px text-gray-400 mb-12px">
+        登记供应商胚布报价供商务参考。可下拉搜索已有供应商档案（自动快照公司名），亦可纯手填供应商名称；报价留空可保存，纯登记绝不计入内部总成本。
+      </div>
+
+      <el-table
+        :data="formData.supplierQuotes || []"
+        border
+        size="small"
+        class="w-full"
+        empty-text="暂无供应商报价，点击右上角「新增报价行」添加"
+      >
+        <el-table-column label="#" type="index" width="50" align="center" />
+
+        <el-table-column label="关联供应商档案" min-width="180">
+          <template #default="{ row }">
+            <template v-if="!isReadOnly">
+              <el-select
+                v-model="row.supplierId"
+                filterable
+                remote
+                clearable
+                :remote-method="searchSuppliers"
+                :loading="supplierLoading"
+                placeholder="搜索供应商档案(可选)"
+                class="!w-full"
+                @change="(val: number | null) => handleSupplierChange(row, val)"
+                @clear="handleSupplierClear(row)"
+              >
+                <!-- 历史存量兜底选项（防不在分页中或已停用/已软删时不回显） -->
+                <el-option
+                  v-if="row.supplierId && !supplierOptions.some((s) => s.id === row.supplierId)"
+                  :key="row.supplierId"
+                  :label="row.supplierName ? `${row.supplierName} (#${row.supplierId})` : `供应商 #${row.supplierId}`"
+                  :value="row.supplierId"
+                />
+                <el-option
+                  v-for="s in supplierOptions"
+                  :key="s.id"
+                  :label="`${s.companyName}${s.status === 'INACTIVE' ? ' (已停用)' : ''}`"
+                  :value="s.id!"
+                />
+              </el-select>
+            </template>
+            <template v-else>
+              <span v-if="row.supplierId" class="text-gray-600">
+                档案编号 #{{ row.supplierId }}
+              </span>
+              <span v-else class="text-gray-400">未关联档案</span>
+            </template>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="供应商名称 (快照/手填)" min-width="180">
+          <template #default="{ row }">
+            <template v-if="!isReadOnly">
+              <el-input
+                v-model="row.supplierName"
+                placeholder="选择档案自动填充，亦可直接手填"
+                clearable
+              />
+            </template>
+            <template v-else>
+              <span>{{ row.supplierName || '-' }}</span>
+            </template>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="胚布报价 (元/KG)" width="160">
+          <template #default="{ row }">
+            <template v-if="!isReadOnly">
+              <el-input-number
+                v-model="row.greigePrice"
+                :precision="2"
+                :step="0.5"
+                :min="0"
+                placeholder="可留空"
+                controls-position="right"
+                class="!w-full"
+              />
+            </template>
+            <template v-else>
+              <span v-if="row.greigePrice != null" class="font-medium text-blue-600">
+                ¥ {{ Number(row.greigePrice).toFixed(2) }}
+              </span>
+              <span v-else class="text-gray-400">-</span>
+            </template>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="备注说明" min-width="200">
+          <template #default="{ row }">
+            <template v-if="!isReadOnly">
+              <el-input
+                v-model="row.remark"
+                placeholder="如门幅克重要求、含税运说明等"
+                clearable
+              />
+            </template>
+            <template v-else>
+              <span>{{ row.remark || '-' }}</span>
+            </template>
+          </template>
+        </el-table-column>
+
+        <el-table-column v-if="!isReadOnly" label="操作" width="70" align="center">
+          <template #default="{ $index }">
+            <el-button
+              type="danger"
+              link
+              size="small"
+              @click="handleRemoveQuote($index)"
+            >
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 客户对外报价（Issue 06） -->
+    <el-card shadow="never" class="mb-16px">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-14px">客户对外报价</span>
+            <el-tag type="warning" size="small">对外商用 · 不进成本与月结收费</el-tag>
+          </div>
+        </div>
+      </template>
+
+      <el-row :gutter="24">
+        <el-col :span="8">
+          <el-form-item label="对外报价(元/米)" prop="quotedPrice">
+            <el-input-number
+              v-model="formData.quotedPrice"
+              :precision="2"
+              :step="1"
+              :min="0"
+              placeholder="0.00"
+              class="!w-full"
+              controls-position="right"
+            />
+          </el-form-item>
+        </el-col>
+        <el-col :span="16">
+          <el-form-item label="报价备注" prop="quotedRemark">
+            <el-input
+              v-model="formData.quotedRemark"
+              placeholder="如：含税开票不含运费、起订量 500KG 等"
+              clearable
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <div class="text-12px text-gray-400 pl-110px">
+        （对外报价为向客户提供的成品报价参考，纯登记记录，不参与内部总成本核算，亦不计入月结收费金额统计）
       </div>
     </el-card>
   </el-form>
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { SampleAnalysisVO } from '@/api/lunaerp-elmui/sample/sample-analysis'
+import type { SampleAnalysisVO, SampleAnalysisSupplierQuoteVO } from '@/api/lunaerp-elmui/sample/sample-analysis'
 import { calculateSampleCost, validateLossRate } from './sample-cost-calculator'
+import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
+import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
 
 defineProps<{
   isReadOnly: boolean
@@ -203,6 +371,63 @@ const formData = defineModel<SampleAnalysisVO>({ required: true })
 // 实时计算成本预览
 const costPreview = computed(() => {
   return calculateSampleCost(formData.value.yarnSpecs, formData.value)
+})
+
+// 供应商下拉联想
+const supplierOptions = ref<SupplierVO[]>([])
+const supplierLoading = ref(false)
+
+const searchSuppliers = async (query = '') => {
+  supplierLoading.value = true
+  try {
+    const res = await SupplierApi.getSupplierPage({
+      search: query,
+      pageNo: 1,
+      pageSize: 20
+    })
+    supplierOptions.value = res.list || []
+  } catch {
+    supplierOptions.value = []
+  } finally {
+    supplierLoading.value = false
+  }
+}
+
+const handleSupplierChange = (row: SampleAnalysisSupplierQuoteVO, supplierId: number | null) => {
+  if (!supplierId) {
+    row.supplierId = null
+    return
+  }
+  const found = supplierOptions.value.find((s) => s.id === supplierId)
+  if (found) {
+    row.supplierId = found.id
+    row.supplierName = found.companyName
+  }
+}
+
+const handleSupplierClear = (row: SampleAnalysisSupplierQuoteVO) => {
+  row.supplierId = null
+}
+
+const handleAddQuote = () => {
+  if (!formData.value.supplierQuotes) {
+    formData.value.supplierQuotes = []
+  }
+  formData.value.supplierQuotes.push({
+    supplierId: null,
+    supplierName: '',
+    greigePrice: null,
+    remark: '',
+    _key: `quote_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+  })
+}
+
+const handleRemoveQuote = (index: number) => {
+  formData.value.supplierQuotes?.splice(index, 1)
+}
+
+onMounted(() => {
+  searchSuppliers()
 })
 
 // 表单校验
