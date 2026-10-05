@@ -132,12 +132,12 @@
       <el-table-column label="照片" width="80" align="center">
         <template #default="{ row }">
           <el-image
-            v-if="row.firstPhotoUrl || (row.photos && row.photos.length > 0)"
-            :src="row.firstPhotoUrl || row.photos[0]"
+            v-if="row.firstPhotoUrl"
+            :src="row.firstPhotoUrl"
             class="w-40px h-40px rounded border border-gray-200"
             fit="cover"
             preview-teleported
-            :preview-src-list="[row.firstPhotoUrl || row.photos[0]]"
+            :preview-src-list="[row.firstPhotoUrl]"
             @click.stop
           >
             <template #error>

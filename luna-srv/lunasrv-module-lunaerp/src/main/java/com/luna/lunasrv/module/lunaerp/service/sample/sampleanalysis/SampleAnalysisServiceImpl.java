@@ -249,9 +249,7 @@ public class SampleAnalysisServiceImpl implements SampleAnalysisService {
     public SampleAnalysisRespVO getSampleAnalysis(Long id) {
         SampleAnalysisDO sampleDO = validateSampleAnalysisExists(id);
         SampleAnalysisRespVO respVO = BeanUtils.toBean(sampleDO, SampleAnalysisRespVO.class);
-        if (respVO.getPhotos() != null && !respVO.getPhotos().isEmpty()) {
-            respVO.setFirstPhotoUrl(respVO.getPhotos().get(0));
-        }
+        populateFirstPhotoUrl(respVO);
         // 还原供应商报价子表
         List<SampleAnalysisSupplierQuoteDO> quotes = sampleAnalysisSupplierQuoteMapper.selectListBySampleAnalysisId(id);
         respVO.setSupplierQuotes(BeanUtils.toBean(quotes, SampleAnalysisSupplierQuoteRespVO.class));
@@ -272,9 +270,7 @@ public class SampleAnalysisServiceImpl implements SampleAnalysisService {
         PageResult<SampleAnalysisRespVO> respPage = BeanUtils.toBean(pageResult, SampleAnalysisRespVO.class);
         if (respPage.getList() != null) {
             for (SampleAnalysisRespVO item : respPage.getList()) {
-                if (item.getPhotos() != null && !item.getPhotos().isEmpty()) {
-                    item.setFirstPhotoUrl(item.getPhotos().get(0));
-                }
+                populateFirstPhotoUrl(item);
                 // 列表只请求第一张，详情才返回全部 URL（避免列表接口载荷因照片数量明显膨胀）
                 item.setPhotos(null);
             }
@@ -497,6 +493,15 @@ public class SampleAnalysisServiceImpl implements SampleAnalysisService {
     private void validatePhotos(List<String> photos) {
         if (photos != null && photos.size() > MAX_PHOTOS_COUNT) {
             throw exception(SAMPLE_ANALYSIS_PHOTO_COUNT_EXCEED);
+        }
+    }
+
+    /**
+     * 填充第一张照片 URL（用于列表展示与封面图）
+     */
+    private void populateFirstPhotoUrl(SampleAnalysisRespVO respVO) {
+        if (respVO != null && respVO.getPhotos() != null && !respVO.getPhotos().isEmpty()) {
+            respVO.setFirstPhotoUrl(respVO.getPhotos().get(0));
         }
     }
 
@@ -849,6 +854,9 @@ public class SampleAnalysisServiceImpl implements SampleAnalysisService {
      * - 库内存量未提交 -> deleteByIds
      */
     private void diffSaveYarnArranges(Long sampleAnalysisId, List<SampleAnalysisYarnArrangeSaveReqVO> reqArranges) {
+        if (reqArranges == null) {
+            return;
+        }
         List<SampleAnalysisYarnArrangeDO> dbArranges = sampleAnalysisYarnArrangeMapper.selectListBySampleAnalysisId(sampleAnalysisId);
         Map<Long, SampleAnalysisYarnArrangeDO> dbArrangeMap = dbArranges.stream()
                 .collect(Collectors.toMap(SampleAnalysisYarnArrangeDO::getId, Function.identity()));
@@ -858,8 +866,7 @@ public class SampleAnalysisServiceImpl implements SampleAnalysisService {
         List<SampleAnalysisYarnArrangeDO> toUpdate = new ArrayList<>();
         Set<Long> seenIds = new HashSet<>();
 
-        if (reqArranges != null) {
-            for (SampleAnalysisYarnArrangeSaveReqVO item : reqArranges) {
+        for (SampleAnalysisYarnArrangeSaveReqVO item : reqArranges) {
                 if (item == null) {
                     continue;
                 }
@@ -881,7 +888,6 @@ public class SampleAnalysisServiceImpl implements SampleAnalysisService {
                     toInsert.add(insertDO);
                 }
             }
-        }
 
         // 3. 执行删除（未被本次提交命中的存量 ID）
         if (!remainingDbIds.isEmpty()) {

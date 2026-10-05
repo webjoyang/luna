@@ -184,12 +184,12 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span class="font-bold text-14px">来样实物照片</span>
-            <el-tag :type="(formData.photos?.length || 0) >= 9 ? 'warning' : 'info'" size="small">
-              {{ formData.photos?.length || 0 }} / 9 张
+            <el-tag :type="(formData.photos?.length || 0) >= MAX_PHOTOS_LIMIT ? 'warning' : 'info'" size="small">
+              {{ formData.photos?.length || 0 }} / {{ MAX_PHOTOS_LIMIT }} 张
             </el-tag>
           </div>
           <span v-if="!isReadOnly" class="text-12px text-gray-400">
-            最多 9 张；按上传顺序排序，第 1 张作为列表封面图；已满 9 张时禁止继续上传
+            最多 {{ MAX_PHOTOS_LIMIT }} 张；按上传顺序排序，第 1 张作为列表封面图；已满 {{ MAX_PHOTOS_LIMIT }} 张时禁止继续上传
           </span>
         </div>
       </template>
@@ -207,12 +207,12 @@
       <div
         v-else
         :class="{
-          'hide-uploader': isReadOnly || (formData.photos && formData.photos.length >= 9)
+          'hide-uploader': isReadOnly || (formData.photos && formData.photos.length >= MAX_PHOTOS_LIMIT)
         }"
       >
         <UploadImgs
           v-model="formData.photos"
-          :limit="9"
+          :limit="MAX_PHOTOS_LIMIT"
           :disabled="isReadOnly"
           height="110px"
           width="110px"
@@ -228,6 +228,9 @@ import { UploadImgs } from '@/components/UploadFile'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { SampleAnalysisVO } from '@/api/lunaerp-elmui/sample/sample-analysis'
+
+/** 样品照片最大上传限制（对齐后端 MAX_PHOTOS_COUNT = 9） */
+const MAX_PHOTOS_LIMIT = 9
 
 const props = defineProps<{
   isReadOnly: boolean
