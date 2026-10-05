@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisStitchArrangeVO;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -188,7 +189,7 @@ public class SampleAnalysisDO extends TenantBaseDO {
      * 三角排列画板数据（JSONB，结构 {columns, rows, data}）
      */
     @TableField(typeHandler = JacksonTypeHandler.class, updateStrategy = FieldStrategy.ALWAYS)
-    private Object stitchArrange;
+    private SampleAnalysisStitchArrangeVO stitchArrange;
 
     /**
      * 生产工费（元/KG）

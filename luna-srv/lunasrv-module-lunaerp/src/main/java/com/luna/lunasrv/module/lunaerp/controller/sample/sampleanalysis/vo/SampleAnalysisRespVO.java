@@ -96,7 +96,7 @@ public class SampleAnalysisRespVO {
     private String firstPhotoUrl;
 
     @Schema(description = "三角排列画板数据")
-    private Object stitchArrange;
+    private SampleAnalysisStitchArrangeVO stitchArrange;
 
     @Schema(description = "生产工费（元/KG）", example = "4.50")
     private BigDecimal productionCost;
@@ -139,5 +139,14 @@ public class SampleAnalysisRespVO {
 
     @Schema(description = "更新时间")
     private LocalDateTime updateTime;
+
+    @Schema(description = "纱线规格明细列表")
+    private List<SampleAnalysisYarnSpecRespVO> yarnSpecs;
+
+    @Schema(description = "绕纱行列表")
+    private List<SampleAnalysisYarnArrangeRespVO> yarnArranges;
+
+    @Schema(description = "供应商报价明细列表")
+    private List<SampleAnalysisSupplierQuoteRespVO> supplierQuotes;
 
 }

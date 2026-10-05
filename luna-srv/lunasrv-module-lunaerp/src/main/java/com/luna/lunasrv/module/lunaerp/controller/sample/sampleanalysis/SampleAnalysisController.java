@@ -3,6 +3,8 @@ package com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis;
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisPaymentReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisPaymentStatsRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.sample.sampleanalysis.SampleAnalysisService;
@@ -70,6 +72,21 @@ public class SampleAnalysisController {
     @PreAuthorize("@ss.hasPermission('lunaerp:sample:sample-analysis:query')")
     public CommonResult<String> getNextSampleAnalysisNo() {
         return success(sampleAnalysisService.getNextSampleAnalysisNo());
+    }
+
+    @PutMapping("/payment")
+    @Operation(summary = "更新样品分析付款状态（单条/批量）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:sample:sample-analysis:pay')")
+    public CommonResult<Boolean> updateSampleAnalysisPayment(@Valid @RequestBody SampleAnalysisPaymentReqVO paymentReqVO) {
+        sampleAnalysisService.updateSampleAnalysisPayment(paymentReqVO);
+        return success(true);
+    }
+
+    @GetMapping("/payment-stats")
+    @Operation(summary = "获得样品分析付款统计（三值口径：未付金额/已付金额/任务总数）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:sample:sample-analysis:query')")
+    public CommonResult<SampleAnalysisPaymentStatsRespVO> getSampleAnalysisPaymentStats(@Validated SampleAnalysisPageReqVO pageReqVO) {
+        return success(sampleAnalysisService.getSampleAnalysisPaymentStats(pageReqVO));
     }
 
 }

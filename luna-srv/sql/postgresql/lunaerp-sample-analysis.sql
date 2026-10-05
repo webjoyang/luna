@@ -127,9 +127,146 @@ COMMENT ON COLUMN lunaerp_sample_analysis.deleted IS '是否删除';
 COMMENT ON COLUMN lunaerp_sample_analysis.tenant_id IS '租户编号';
 
 -- =============================================================================
+-- 1.1 样品分析纱线规格明细子表 lunaerp_sample_analysis_yarn_spec
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS lunaerp_sample_analysis_yarn_spec (
+    id                       int8          NOT NULL,
+    sample_analysis_id       int8          NOT NULL,
+    yarn_spec_id             int8          NOT NULL,
+    yarn_type_id             int8          NULL,
+    yarn_type_name           varchar(64)   NULL,
+    spec_name                varchar(128)  NULL,
+    spin_method              varchar(64)   NULL,
+    ratio                    numeric(10,2) NULL,
+    unit_price               numeric(18,2) NULL,
+    remark                   varchar(500)  NULL,
+    creator                  varchar(64)   NULL DEFAULT '',
+    create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                  varchar(64)   NULL DEFAULT '',
+    update_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted                  int2          NOT NULL DEFAULT 0,
+    tenant_id                int8          NOT NULL DEFAULT 0
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pk_lunaerp_sample_analysis_yarn_spec') THEN
+        ALTER TABLE lunaerp_sample_analysis_yarn_spec ADD CONSTRAINT pk_lunaerp_sample_analysis_yarn_spec PRIMARY KEY (id);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_lunaerp_sample_analysis_yarn_spec_sample_id
+    ON lunaerp_sample_analysis_yarn_spec (tenant_id, sample_analysis_id);
+
+COMMENT ON TABLE lunaerp_sample_analysis_yarn_spec IS '样品管理-样品分析纱线规格明细子表';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.id IS '明细ID';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.sample_analysis_id IS '样品分析ID（lunaerp_sample_analysis.id）';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.yarn_spec_id IS '纱线规格ID（lunaerp_production_yarn_spec.id）';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.yarn_type_id IS '纱线材质ID快照';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.yarn_type_name IS '纱线材质名称快照';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.spec_name IS '纱线规格名称快照';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.spin_method IS '纺法快照';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.ratio IS '用纱比例（百分比数字，如 30 表示 30%）';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.unit_price IS '单价（元/KG）';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.remark IS '备注';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.creator IS '创建者';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.create_time IS '创建时间';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.updater IS '更新者';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.update_time IS '更新时间';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.deleted IS '是否删除';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_spec.tenant_id IS '租户编号';
+
+-- =============================================================================
+-- 1.2 样品分析绕纱行子表 lunaerp_sample_analysis_yarn_arrange（避让 SQL 保留词 desc，描述列命名为 description，ADR-0036）
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS lunaerp_sample_analysis_yarn_arrange (
+    id                       int8          NOT NULL,
+    sample_analysis_id       int8          NOT NULL,
+    code                     varchar(64)   NULL,
+    draft_text               varchar(255)  NULL,
+    border_status            varchar(128)  NULL,
+    description              varchar(500)  NULL,
+    creator                  varchar(64)   NULL DEFAULT '',
+    create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                  varchar(64)   NULL DEFAULT '',
+    update_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted                  int2          NOT NULL DEFAULT 0,
+    tenant_id                int8          NOT NULL DEFAULT 0
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pk_lunaerp_sample_analysis_yarn_arrange') THEN
+        ALTER TABLE lunaerp_sample_analysis_yarn_arrange ADD CONSTRAINT pk_lunaerp_sample_analysis_yarn_arrange PRIMARY KEY (id);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_lunaerp_sample_analysis_yarn_arrange_sample_id
+    ON lunaerp_sample_analysis_yarn_arrange (tenant_id, sample_analysis_id);
+
+COMMENT ON TABLE lunaerp_sample_analysis_yarn_arrange IS '样品管理-样品分析绕纱行子表';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.id IS '明细ID';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.sample_analysis_id IS '所属样品分析ID（lunaerp_sample_analysis.id）';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.code IS '路号';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.draft_text IS '绕纱表述（如 25.1cm/1 花宽）';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.border_status IS '对针（如 第一路对针）';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.description IS '描述（如 开幅线）';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.creator IS '创建者';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.create_time IS '创建时间';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.updater IS '更新者';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.update_time IS '更新时间';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.deleted IS '是否删除';
+COMMENT ON COLUMN lunaerp_sample_analysis_yarn_arrange.tenant_id IS '租户编号';
+
+-- =============================================================================
+-- 1.3 样品分析供应商报价子表 lunaerp_sample_analysis_supplier_quote
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS lunaerp_sample_analysis_supplier_quote (
+    id                       int8          NOT NULL,
+    sample_analysis_id       int8          NOT NULL,
+    supplier_id              int8          NULL,
+    supplier_name            varchar(255)  NULL,
+    greige_price             numeric(18,2) NULL,
+    remark                   varchar(500)  NULL,
+    creator                  varchar(64)   NULL DEFAULT '',
+    create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                  varchar(64)   NULL DEFAULT '',
+    update_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted                  int2          NOT NULL DEFAULT 0,
+    tenant_id                int8          NOT NULL DEFAULT 0
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pk_lunaerp_sample_analysis_supplier_quote') THEN
+        ALTER TABLE lunaerp_sample_analysis_supplier_quote ADD CONSTRAINT pk_lunaerp_sample_analysis_supplier_quote PRIMARY KEY (id);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_lunaerp_sample_analysis_supplier_quote_sample_id
+    ON lunaerp_sample_analysis_supplier_quote (tenant_id, sample_analysis_id);
+
+COMMENT ON TABLE lunaerp_sample_analysis_supplier_quote IS '样品管理-样品分析供应商报价子表';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.id IS '明细ID';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.sample_analysis_id IS '样品分析ID（lunaerp_sample_analysis.id）';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.supplier_id IS '供应商ID（lunaerp_baseinfo_supplier.id，可空）';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.supplier_name IS '供应商名称快照（手填或联想带出）';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.greige_price IS '胚布报价（元/KG）';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.remark IS '备注';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.creator IS '创建者';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.create_time IS '创建时间';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.updater IS '更新者';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.update_time IS '更新时间';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.deleted IS '是否删除';
+COMMENT ON COLUMN lunaerp_sample_analysis_supplier_quote.tenant_id IS '租户编号';
+
+-- =============================================================================
 -- 2. 主键序列（MyBatis-Plus PostgreSQL INPUT 模式按 @KeySequence 取 nextval，可重复执行）
 -- =============================================================================
 CREATE SEQUENCE IF NOT EXISTS lunaerp_sample_analysis_seq;
+CREATE SEQUENCE IF NOT EXISTS lunaerp_sample_analysis_yarn_spec_seq;
+CREATE SEQUENCE IF NOT EXISTS lunaerp_sample_analysis_yarn_arrange_seq;
+CREATE SEQUENCE IF NOT EXISTS lunaerp_sample_analysis_supplier_quote_seq;
 
 -- =============================================================================
 -- 3. 菜单与按钮（system_menu，可重复执行）

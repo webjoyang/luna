@@ -148,13 +148,28 @@
               controls-position="right"
             />
           </el-form-item>
-        </el-col>
         <el-col :span="8">
+          <el-form-item label="月结单价(元)" prop="unitPrice">
+            <el-input-number
+              v-model="formData.unitPrice"
+              :precision="2"
+              :step="5"
+              :min="0"
+              placeholder="默认 30.00"
+              class="!w-full"
+              controls-position="right"
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="24">
+        <el-col :span="24">
           <el-form-item label="备注" prop="remark">
             <el-input
               v-model="formData.remark"
               type="textarea"
-              :rows="1"
+              :rows="2"
               placeholder="其他备注说明"
               clearable
             />
@@ -163,17 +178,45 @@
       </el-row>
     </el-card>
 
-    <!-- 照片占位卡片 -->
+    <!-- 来样照片卡片 -->
     <el-card shadow="never">
       <template #header>
         <div class="flex items-center justify-between">
-          <span class="font-bold text-14px">来样实物照片（最多 9 张）</span>
-          <el-tag type="info" size="small">功能待后续上线</el-tag>
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-14px">来样实物照片</span>
+            <el-tag :type="(formData.photos?.length || 0) >= 9 ? 'warning' : 'info'" size="small">
+              {{ formData.photos?.length || 0 }} / 9 张
+            </el-tag>
+          </div>
+          <span v-if="!isReadOnly" class="text-12px text-gray-400">
+            最多 9 张；按上传顺序排序，第 1 张作为列表封面图；已满 9 张时禁止继续上传
+          </span>
         </div>
       </template>
-      <div class="py-20px text-center text-gray-400">
+
+      <!-- 查看模式无照片 -->
+      <div
+        v-if="isReadOnly && (!formData.photos || formData.photos.length === 0)"
+        class="py-20px text-center text-gray-400"
+      >
         <Icon icon="ep:picture" class="text-32px mb-8px" />
-        <div>照片上传与缩略图展示功能将在后续票（票 07）中开放</div>
+        <div>暂无来样照片</div>
+      </div>
+
+      <!-- 照片上传与展示 -->
+      <div
+        v-else
+        :class="{
+          'hide-uploader': isReadOnly || (formData.photos && formData.photos.length >= 9)
+        }"
+      >
+        <UploadImgs
+          v-model="formData.photos"
+          :limit="9"
+          :disabled="isReadOnly"
+          height="110px"
+          width="110px"
+        />
       </div>
     </el-card>
   </el-form>
@@ -181,6 +224,7 @@
 
 <script lang="ts" setup>
 import type { FormInstance, FormRules } from 'element-plus'
+import { UploadImgs } from '@/components/UploadFile'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { SampleAnalysisVO } from '@/api/lunaerp-elmui/sample/sample-analysis'
@@ -260,6 +304,15 @@ defineExpose({
 })
 
 onMounted(() => {
+  if (!formData.value.photos) {
+    formData.value.photos = []
+  }
   searchCustomers('')
 })
 </script>
+
+<style lang="scss" scoped>
+:deep(.hide-uploader .el-upload--picture-card) {
+  display: none !important;
+}
+</style>

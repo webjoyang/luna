@@ -91,7 +91,7 @@ public class SampleAnalysisSaveReqVO {
     private List<String> photos;
 
     @Schema(description = "三角排列画板数据")
-    private Object stitchArrange;
+    private SampleAnalysisStitchArrangeVO stitchArrange;
 
     @Schema(description = "生产工费（元/KG）", example = "4.50")
     private BigDecimal productionCost;
@@ -116,5 +116,14 @@ public class SampleAnalysisSaveReqVO {
 
     @Schema(description = "备注", example = "来样手感偏硬")
     private String remark;
+
+    @Schema(description = "纱线规格明细列表")
+    private List<SampleAnalysisYarnSpecSaveReqVO> yarnSpecs;
+
+    @Schema(description = "绕纱行列表")
+    private List<SampleAnalysisYarnArrangeSaveReqVO> yarnArranges;
+
+    @Schema(description = "供应商报价明细列表")
+    private List<SampleAnalysisSupplierQuoteSaveReqVO> supplierQuotes;
 
 }

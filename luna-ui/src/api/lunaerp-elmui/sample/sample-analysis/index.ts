@@ -1,5 +1,39 @@
 import request from '@/config/axios'
 
+export type StitchSymbol = '' | 'v' | '-' | '+' | '='
+
+export interface SampleAnalysisStitchArrangeVO {
+  columns: number
+  rows: number
+  data: StitchSymbol[][]
+}
+
+export interface SampleAnalysisYarnSpecVO {
+  id?: number
+  sampleAnalysisId?: number
+  yarnSpecId: number | null
+  yarnTypeId?: number | null
+  yarnTypeName?: string
+  specName?: string
+  spinMethod?: string
+  ratio: number | null
+  unitPrice?: number | null
+  sortOrder?: number
+  remark?: string
+  createTime?: string
+  specCascadeValue?: [number, number]
+}
+
+export interface SampleAnalysisYarnArrangeVO {
+  id?: number
+  sampleAnalysisId?: number
+  code?: string
+  draftText?: string
+  borderStatus?: string
+  description?: string
+  _key?: string
+}
+
 // 样品分析 VO
 export interface SampleAnalysisVO {
   id?: number
@@ -30,7 +64,9 @@ export interface SampleAnalysisVO {
   stitchLength?: string
   photos?: string[]
   firstPhotoUrl?: string
-  stitchArrange?: any
+  stitchArrange?: SampleAnalysisStitchArrangeVO
+  yarnSpecs?: SampleAnalysisYarnSpecVO[]
+  yarnArranges?: SampleAnalysisYarnArrangeVO[]
   productionCost?: number
   dyeingCost?: number
   otherCost?: number
@@ -75,7 +111,9 @@ export interface SampleAnalysisSaveReqVO {
   theoreticalOutput?: string
   stitchLength?: string
   photos?: string[]
-  stitchArrange?: any
+  stitchArrange?: SampleAnalysisStitchArrangeVO
+  yarnSpecs?: SampleAnalysisYarnSpecVO[]
+  yarnArranges?: SampleAnalysisYarnArrangeVO[]
   productionCost?: number
   dyeingCost?: number
   otherCost?: number
@@ -117,7 +155,31 @@ export const getSampleAnalysisPage = (params: SampleAnalysisPageReqVO): Promise<
   return request.get({ url: '/lunaerp/sample/sample-analysis/page', params })
 }
 
+// 样品分析付款更新 Req VO
+export interface SampleAnalysisPaymentReqVO {
+  ids: number[]
+  isPaid: boolean
+}
+
+// 样品分析付款统计 Resp VO
+export interface SampleAnalysisPaymentStatsRespVO {
+  unpaidAmount: number
+  paidAmount: number
+  totalCount: number
+}
+
 // 预览下一个样品编号
 export const getNextSampleAnalysisNo = (): Promise<string> => {
   return request.get({ url: '/lunaerp/sample/sample-analysis/next-no' })
 }
+
+// 更新样品分析付款状态（单条/批量）
+export const updateSampleAnalysisPayment = (data: SampleAnalysisPaymentReqVO): Promise<boolean> => {
+  return request.put({ url: '/lunaerp/sample/sample-analysis/payment', data })
+}
+
+// 获得样品分析付款统计
+export const getSampleAnalysisPaymentStats = (params: SampleAnalysisPageReqVO): Promise<SampleAnalysisPaymentStatsRespVO> => {
+  return request.get({ url: '/lunaerp/sample/sample-analysis/payment-stats', params })
+}
+

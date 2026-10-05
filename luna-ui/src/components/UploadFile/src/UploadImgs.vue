@@ -54,9 +54,12 @@ defineOptions({ name: 'UploadImgs' })
 const message = useMessage() // 消息弹窗
 // 查看图片
 const imagePreview = (imgUrl: string) => {
+  const urls = fileList.value.map((item) => item.url).filter(Boolean) as string[]
+  const initialIndex = urls.indexOf(imgUrl)
   createImageViewer({
     zIndex: 9999999,
-    urlList: [imgUrl]
+    urlList: urls.length > 0 ? urls : [imgUrl],
+    initialIndex: initialIndex >= 0 ? initialIndex : 0
   })
 }
 
@@ -136,13 +139,15 @@ const emit = defineEmits<UploadEmits>()
 const uploadSuccess: UploadProps['onSuccess'] = (res: any): void => {
   message.success('上传成功')
   const response = res as { data: string }
-  // 删除自身
+  // 删除自身临时项
   const index = fileList.value.findIndex(
     (item) => (item.response as { data?: string } | undefined)?.data === response.data
   )
-  fileList.value.splice(index, 1)
+  if (index !== -1) {
+    fileList.value.splice(index, 1)
+  }
   uploadList.value.push({ name: response.data, url: response.data })
-  if (uploadList.value.length == uploadNumber.value) {
+  if (uploadList.value.length >= uploadNumber.value) {
     fileList.value.push(...uploadList.value)
     uploadList.value = []
     uploadNumber.value = 0
@@ -154,14 +159,15 @@ const uploadSuccess: UploadProps['onSuccess'] = (res: any): void => {
 watch(
   () => props.modelValue,
   (val: string | string[]) => {
-    if (!val) {
+    if (!val || (Array.isArray(val) && val.length === 0)) {
       fileList.value = [] // fix：处理掉缓存，表单重置后上传组件的内容并没有重置
       return
     }
 
     fileList.value = [] // 保障数据为空
+    const list = Array.isArray(val) ? val : [val]
     fileList.value.push(
-      ...(val as string[]).map((url) => ({ name: url.substring(url.lastIndexOf('/') + 1), url }))
+      ...list.map((url) => ({ name: url.substring(url.lastIndexOf('/') + 1), url }))
     )
   },
   { immediate: true, deep: true }

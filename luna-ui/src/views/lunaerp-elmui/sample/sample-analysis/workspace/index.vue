@@ -17,6 +17,23 @@
       </el-page-header>
 
       <div class="action-buttons flex items-center gap-2">
+        <!-- 付款状态标签（常驻展示） -->
+        <el-tag :type="formData.isPaid ? 'success' : 'danger'" size="default">
+          {{ formData.isPaid ? '已付款' : '未付款' }}
+        </el-tag>
+
+        <!-- 单条付款状态切换（仅当已建记录且有收费权限时展示） -->
+        <el-button
+          v-if="sampleId"
+          :type="formData.isPaid ? 'warning' : 'success'"
+          plain
+          @click="handleTogglePayment"
+          v-hasPermi="['lunaerp:sample:sample-analysis:pay']"
+        >
+          <Icon :icon="formData.isPaid ? 'ep:close' : 'ep:check'" class="mr-2px" />
+          {{ formData.isPaid ? '标记为未付款' : '标记为已付款' }}
+        </el-button>
+
         <el-button @click="handleBack">返回</el-button>
 
         <!-- 查看模式操作 -->
@@ -67,6 +84,7 @@
 
       <el-tab-pane label="针织工艺" name="craft">
         <SampleCraftTab
+          ref="craftTabRef"
           v-model="formData"
           :is-read-only="isViewMode"
         />
@@ -74,6 +92,7 @@
 
       <el-tab-pane label="成本报价" name="cost">
         <SampleCostTab
+          ref="costTabRef"
           v-model="formData"
           :is-read-only="isViewMode"
         />
@@ -88,6 +107,7 @@ import SampleCraftTab from './SampleCraftTab.vue'
 import SampleCostTab from './SampleCostTab.vue'
 import * as SampleAnalysisApi from '@/api/lunaerp-elmui/sample/sample-analysis'
 import type { SampleAnalysisVO, SampleAnalysisSaveReqVO } from '@/api/lunaerp-elmui/sample/sample-analysis'
+import { createDefaultStitchArrange } from './stitch-board'
 
 defineOptions({ name: 'LunaerpElmuiSampleSampleAnalysisWorkspace' })
 
@@ -101,6 +121,8 @@ const isViewMode = ref(false)
 const previewNo = ref('')
 
 const basicInfoTabRef = ref<InstanceType<typeof SampleBasicInfoTab>>()
+const craftTabRef = ref<InstanceType<typeof SampleCraftTab>>()
+const costTabRef = ref<InstanceType<typeof SampleCostTab>>()
 
 const sampleId = computed(() => {
   const id = route.params.id
@@ -140,13 +162,18 @@ const defaultFormData = (): SampleAnalysisVO => ({
   theoreticalOutput: '',
   stitchLength: '',
   photos: [],
+  stitchArrange: createDefaultStitchArrange(),
+  yarnSpecs: [],
+  yarnArranges: [],
   productionCost: undefined,
   dyeingCost: undefined,
   otherCost: undefined,
   lossRate: undefined,
+  totalCost: undefined,
   quotedPrice: undefined,
   quotedRemark: '',
   unitPrice: 30,
+  isPaid: false,
   remark: ''
 })
 
@@ -155,6 +182,22 @@ const formData = ref<SampleAnalysisVO>(defaultFormData())
 /** 返回列表 */
 const handleBack = () => {
   router.push('/sample/sample-analysis')
+}
+
+/** 切换当前记录付款状态（单条走收费端点） */
+const handleTogglePayment = async () => {
+  if (!sampleId.value) return
+  const targetPaid = !formData.value.isPaid
+  const actionText = targetPaid ? '已付款' : '未付款'
+  try {
+    await message.confirm(`确认将当前样品分析标记为「${actionText}」吗？`)
+    await SampleAnalysisApi.updateSampleAnalysisPayment({
+      ids: [sampleId.value],
+      isPaid: targetPaid
+    })
+    formData.value.isPaid = targetPaid
+    message.success(`标记为${actionText}成功`)
+  } catch {}
 }
 
 /** 取消编辑 */
@@ -179,10 +222,62 @@ const handleSave = async () => {
     return
   }
 
+  // 1.1 校验照片数量上限
+  if (formData.value.photos && formData.value.photos.length > 9) {
+    message.error('样品照片最多上传 9 张')
+    activeTab.value = 'basic'
+    return
+  }
+
+  // 1.2 校验针织工艺明细（规格必选、比例 > 0）
+  try {
+    const craftValid = craftTabRef.value?.validate?.()
+    if (craftValid === false) {
+      activeTab.value = 'craft'
+      return
+    }
+  } catch {
+    activeTab.value = 'craft'
+    return
+  }
+
+  // 1.3 校验成本报价（损耗率 0 <= lossRate < 100）
+  try {
+    const costValid = costTabRef.value?.validate?.()
+    if (costValid === false) {
+      activeTab.value = 'cost'
+      return
+    }
+  } catch {
+    activeTab.value = 'cost'
+    return
+  }
+
   saving.value = true
   try {
     const saveReq: SampleAnalysisSaveReqVO = {
-      ...formData.value
+      ...formData.value,
+      yarnSpecs: (formData.value.yarnSpecs || []).map((s, idx) => ({
+        id: s.id,
+        sampleAnalysisId: s.sampleAnalysisId,
+        yarnSpecId: s.yarnSpecId,
+        yarnTypeId: s.yarnTypeId,
+        yarnTypeName: s.yarnTypeName,
+        specName: s.specName,
+        spinMethod: s.spinMethod,
+        ratio: s.ratio,
+        unitPrice: s.unitPrice,
+        sortOrder: idx + 1,
+        remark: s.remark
+      })),
+      yarnArranges: (formData.value.yarnArranges || []).map((a) => ({
+        id: a.id,
+        sampleAnalysisId: a.sampleAnalysisId,
+        code: a.code,
+        draftText: a.draftText,
+        borderStatus: a.borderStatus,
+        description: a.description
+      }))
     }
     if (sampleId.value) {
       saveReq.id = sampleId.value
@@ -218,7 +313,16 @@ const loadDetail = async (id: number) => {
     const data = await SampleAnalysisApi.getSampleAnalysis(id)
     formData.value = {
       ...defaultFormData(),
-      ...data
+      ...data,
+      photos: data.photos || [],
+      stitchArrange: data.stitchArrange ? data.stitchArrange : createDefaultStitchArrange(),
+      yarnSpecs: (data.yarnSpecs || []).map((spec) => ({
+        ...spec,
+        specCascadeValue: spec.yarnTypeId && spec.yarnSpecId ? [spec.yarnTypeId, spec.yarnSpecId] : undefined
+      })),
+      yarnArranges: (data.yarnArranges || []).map((arrange) => ({
+        ...arrange
+      }))
     }
   } catch {}
 }

@@ -1,19 +1,39 @@
 package com.luna.lunasrv.module.lunaerp.service.sample.sampleanalysis;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.framework.security.core.LoginUser;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisPaymentReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisPaymentStatsRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisSaveReqVO;
+import org.springframework.security.access.AccessDeniedException;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisStitchArrangeVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisYarnArrangeRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisYarnArrangeSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.sample.sampleanalysis.SampleAnalysisDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.sample.sampleanalysis.SampleAnalysisYarnArrangeDO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisYarnSpecSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisYarnSpecRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnspec.YarnSpecDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarntype.YarnTypeDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.sample.sampleanalysis.SampleAnalysisYarnSpecDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarntype.YarnTypeMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.sample.sampleanalysis.SampleAnalysisMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.sample.sampleanalysis.SampleAnalysisSupplierQuoteMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.sample.sampleanalysis.SampleAnalysisYarnArrangeMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.sample.sampleanalysis.SampleAnalysisYarnSpecMapper;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -34,6 +54,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import static com.luna.lunasrv.module.lunaerp.enums.SampleErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -58,6 +79,7 @@ import static org.mockito.Mockito.*;
  * 12. 删除为逻辑删除，删除不存在记录抛 1_030_018_000
  * 13. 分页与关键字模糊搜索（覆盖 sample_analysis_no, client_name, product_name, client_style_no, composition）
  * 14. 租户隔离代表用例：不同租户取号互相独立
+ * 15. 绕纱行子表：聚合保存、四字段全空保存、差异保存（增改删）、级联软删
  *
  * @author luna
  */
@@ -68,10 +90,31 @@ class SampleAnalysisServiceImplTest {
     private SampleAnalysisMapper sampleAnalysisMapper;
 
     @Mock
+    private SampleAnalysisYarnArrangeMapper sampleAnalysisYarnArrangeMapper;
+
+    @Mock
+    private SampleAnalysisYarnSpecMapper sampleAnalysisYarnSpecMapper;
+
+    @Mock
+    private YarnSpecMapper yarnSpecMapper;
+
+    @Mock
+    private YarnTypeMapper yarnTypeMapper;
+
+    @Mock
     private CustomerMapper customerMapper;
 
     @Mock
     private AdminUserApi adminUserApi;
+
+    @Mock
+    private SupplierMapper supplierMapper;
+
+    @Mock
+    private SampleAnalysisSupplierQuoteMapper sampleAnalysisSupplierQuoteMapper;
+
+    @Mock
+    private SecurityFrameworkService securityFrameworkService;
 
     @InjectMocks
     private SampleAnalysisServiceImpl sampleAnalysisService;
@@ -84,6 +127,10 @@ class SampleAnalysisServiceImplTest {
         // 初始化 MyBatis-Plus TableInfo，以便在无 Spring 环境下解析 SFunction 列名
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), SampleAnalysisDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SampleAnalysisYarnArrangeDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SampleAnalysisYarnSpecDO.class);
 
         // 设置安全上下文（默认模拟登录用户 ID=10L，昵称="测试业务员"）
         setLoginUser(10L, "测试业务员");
@@ -555,4 +602,666 @@ class SampleAnalysisServiceImplTest {
         }
     }
 
+    // ==================== 8. 三角排列画板（stitch_arrange）闭环与校验 ====================
+
+    @Test
+    @DisplayName("画板透传：合法画板数据（4行×4列五态符号）创建成功落库，不影响米长计算")
+    void create_validStitchArrange_persistsSuccessfullyAndDoesNotAffectCalculations() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("针织色织布");
+        reqVO.setWidth(new BigDecimal("150"));
+        reqVO.setWeight(new BigDecimal("200"));
+
+        List<List<String>> data = List.of(
+                List.of("v", "-", "+", "="),
+                List.of("", "v", "", "-"),
+                List.of("+", "+", "=", "="),
+                List.of("", "", "", "")
+        );
+        SampleAnalysisStitchArrangeVO stitchArrange = SampleAnalysisStitchArrangeVO.builder()
+                .columns(4)
+                .rows(4)
+                .data(data)
+                .build();
+        reqVO.setStitchArrange(stitchArrange);
+
+        when(sampleAnalysisMapper.selectListByNoPrefixIncludingDeleted(PREFIX)).thenReturn(Collections.emptyList());
+        when(sampleAnalysisMapper.selectByNoIncludingDeleted(any())).thenReturn(null);
+
+        Long id = sampleAnalysisService.createSampleAnalysis(reqVO);
+
+        ArgumentCaptor<SampleAnalysisDO> captor = ArgumentCaptor.forClass(SampleAnalysisDO.class);
+        verify(sampleAnalysisMapper).insert(captor.capture());
+        SampleAnalysisDO inserted = captor.getValue();
+
+        assertNotNull(inserted.getStitchArrange());
+        assertEquals(4, inserted.getStitchArrange().getRows());
+        assertEquals(4, inserted.getStitchArrange().getColumns());
+        assertEquals(data, inserted.getStitchArrange().getData());
+        // 米长依旧是纯函数计算，不受画板任何影响
+        assertEquals(new BigDecimal("3.33"), inserted.getMeterLength());
+    }
+
+    @Test
+    @DisplayName("画板还原：查询详情完整还原行列数与符号矩阵")
+    void get_validStitchArrange_restoresSuccessfully() {
+        SampleAnalysisDO sampleDO = new SampleAnalysisDO();
+        sampleDO.setId(100L);
+        sampleDO.setProductName("双面网眼布");
+        sampleDO.setSampleAnalysisNo("SA20260001");
+
+        List<List<String>> data = List.of(
+                List.of("v", "v"),
+                List.of("-", "-"),
+                List.of("+", "+"),
+                List.of("=", "=")
+        );
+        SampleAnalysisStitchArrangeVO arrange = SampleAnalysisStitchArrangeVO.builder()
+                .columns(2)
+                .rows(4)
+                .data(data)
+                .build();
+        sampleDO.setStitchArrange(arrange);
+
+        when(sampleAnalysisMapper.selectById(100L)).thenReturn(sampleDO);
+
+        SampleAnalysisRespVO resp = sampleAnalysisService.getSampleAnalysis(100L);
+        assertNotNull(resp.getStitchArrange());
+        assertEquals(4, resp.getStitchArrange().getRows());
+        assertEquals(2, resp.getStitchArrange().getColumns());
+        assertEquals(data, resp.getStitchArrange().getData());
+    }
+
+    @Test
+    @DisplayName("画板校验：rows 非 4 抛出 1_030_018_005 异常")
+    void create_invalidStitchArrange_rowsNotFour_throwsException() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("测试布");
+
+        // rows = 3
+        SampleAnalysisStitchArrangeVO arrange = SampleAnalysisStitchArrangeVO.builder()
+                .columns(2)
+                .rows(3)
+                .data(List.of(List.of("v", "-"), List.of("v", "-"), List.of("v", "-")))
+                .build();
+        reqVO.setStitchArrange(arrange);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> sampleAnalysisService.createSampleAnalysis(reqVO));
+        assertEquals(SAMPLE_ANALYSIS_STITCH_ARRANGE_INVALID.getCode(), ex.getCode());
+        verify(sampleAnalysisMapper, never()).insert(any(SampleAnalysisDO.class));
+    }
+
+    @Test
+    @DisplayName("画板校验：data 维数与 columns 不符抛出 1_030_018_005 异常")
+    void create_invalidStitchArrange_dimensionsMismatch_throwsException() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("测试布");
+
+        // columns 为 4，但某一行只有 3 列
+        SampleAnalysisStitchArrangeVO arrange = SampleAnalysisStitchArrangeVO.builder()
+                .columns(4)
+                .rows(4)
+                .data(List.of(
+                        List.of("v", "-", "+", "="),
+                        List.of("v", "-", "+"), // 缺少1列
+                        List.of("v", "-", "+", "="),
+                        List.of("v", "-", "+", "=")
+                ))
+                .build();
+        reqVO.setStitchArrange(arrange);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> sampleAnalysisService.createSampleAnalysis(reqVO));
+        assertEquals(SAMPLE_ANALYSIS_STITCH_ARRANGE_INVALID.getCode(), ex.getCode());
+        verify(sampleAnalysisMapper, never()).insert(any(SampleAnalysisDO.class));
+    }
+
+    @Test
+    @DisplayName("画板校验：包含非五态符号抛出 1_030_018_005 异常")
+    void create_invalidStitchArrange_invalidSymbol_throwsException() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("测试布");
+
+        // 出现非法符号 "x"
+        SampleAnalysisStitchArrangeVO arrange = SampleAnalysisStitchArrangeVO.builder()
+                .columns(2)
+                .rows(4)
+                .data(List.of(
+                        List.of("v", "x"),
+                        List.of("-", "+"),
+                        List.of("=", ""),
+                        List.of("", "")
+                ))
+                .build();
+        reqVO.setStitchArrange(arrange);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> sampleAnalysisService.createSampleAnalysis(reqVO));
+        assertEquals(SAMPLE_ANALYSIS_STITCH_ARRANGE_INVALID.getCode(), ex.getCode());
+        verify(sampleAnalysisMapper, never()).insert(any(SampleAnalysisDO.class));
+    }
+
+    @Test
+    @DisplayName("画板校验：更新时非法画板数据同样抛出 1_030_018_005 异常")
+    void update_invalidStitchArrange_throwsException() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setId(100L);
+        reqVO.setProductName("测试更新");
+
+        SampleAnalysisStitchArrangeVO arrange = SampleAnalysisStitchArrangeVO.builder()
+                .columns(2)
+                .rows(4)
+                .data(List.of(
+                        List.of("v", "INVALID"),
+                        List.of("-", "+"),
+                        List.of("=", ""),
+                        List.of("", "")
+                ))
+                .build();
+        reqVO.setStitchArrange(arrange);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> sampleAnalysisService.updateSampleAnalysis(reqVO));
+        assertEquals(SAMPLE_ANALYSIS_STITCH_ARRANGE_INVALID.getCode(), ex.getCode());
+        verify(sampleAnalysisMapper, never()).updateById(any(SampleAnalysisDO.class));
+    }
+
+    // ==================== 9. 收费统计三值口径与筛选 ====================
+
+    @Test
+    @DisplayName("收费统计：无筛选时统计未付金额、已付金额、任务总数，对外报价不参与求和")
+    void getPaymentStats_noFilter_calculatesUnpaidPaidAndTotalCorrectly() {
+        SampleAnalysisDO r1 = new SampleAnalysisDO();
+        r1.setId(1L);
+        r1.setIsPaid(false);
+        r1.setUnitPrice(new BigDecimal("30.00"));
+        r1.setQuotedPrice(new BigDecimal("100.00")); // 对外报价应被忽略
+
+        SampleAnalysisDO r2 = new SampleAnalysisDO();
+        r2.setId(2L);
+        r2.setIsPaid(false);
+        r2.setUnitPrice(new BigDecimal("50.00"));
+        r2.setQuotedPrice(new BigDecimal("200.00"));
+
+        SampleAnalysisDO r3 = new SampleAnalysisDO();
+        r3.setId(3L);
+        r3.setIsPaid(true);
+        r3.setUnitPrice(new BigDecimal("40.00"));
+        r3.setQuotedPrice(new BigDecimal("300.00"));
+
+        when(sampleAnalysisMapper.selectList(any())).thenReturn(List.of(r1, r2, r3));
+
+        SampleAnalysisPageReqVO reqVO = new SampleAnalysisPageReqVO();
+        SampleAnalysisPaymentStatsRespVO stats = sampleAnalysisService.getSampleAnalysisPaymentStats(reqVO);
+
+        assertNotNull(stats);
+        assertEquals(new BigDecimal("80.00"), stats.getUnpaidAmount());
+        assertEquals(new BigDecimal("40.00"), stats.getPaidAmount());
+        assertEquals(3L, stats.getTotalCount());
+    }
+
+    @Test
+    @DisplayName("收费统计：筛选未付款时仅统计未付款记录，已付金额为0")
+    void getPaymentStats_filterUnpaid_paidAmountIsZero() {
+        SampleAnalysisDO r1 = new SampleAnalysisDO();
+        r1.setId(1L);
+        r1.setIsPaid(false);
+        r1.setUnitPrice(new BigDecimal("30.00"));
+
+        SampleAnalysisDO r2 = new SampleAnalysisDO();
+        r2.setId(2L);
+        r2.setIsPaid(false);
+        r2.setUnitPrice(new BigDecimal("50.00"));
+
+        when(sampleAnalysisMapper.selectList(any())).thenReturn(List.of(r1, r2));
+
+        SampleAnalysisPageReqVO reqVO = new SampleAnalysisPageReqVO();
+        reqVO.setIsPaid(false);
+        SampleAnalysisPaymentStatsRespVO stats = sampleAnalysisService.getSampleAnalysisPaymentStats(reqVO);
+
+        assertNotNull(stats);
+        assertEquals(new BigDecimal("80.00"), stats.getUnpaidAmount());
+        assertEquals(BigDecimal.ZERO, stats.getPaidAmount());
+        assertEquals(2L, stats.getTotalCount());
+    }
+
+    @Test
+    @DisplayName("收费统计：筛选已付款时仅统计已付款记录，未付金额为0")
+    void getPaymentStats_filterPaid_unpaidAmountIsZero() {
+        SampleAnalysisDO r3 = new SampleAnalysisDO();
+        r3.setId(3L);
+        r3.setIsPaid(true);
+        r3.setUnitPrice(new BigDecimal("40.00"));
+
+        when(sampleAnalysisMapper.selectList(any())).thenReturn(List.of(r3));
+
+        SampleAnalysisPageReqVO reqVO = new SampleAnalysisPageReqVO();
+        reqVO.setIsPaid(true);
+        SampleAnalysisPaymentStatsRespVO stats = sampleAnalysisService.getSampleAnalysisPaymentStats(reqVO);
+
+        assertNotNull(stats);
+        assertEquals(BigDecimal.ZERO, stats.getUnpaidAmount());
+        assertEquals(new BigDecimal("40.00"), stats.getPaidAmount());
+        assertEquals(1L, stats.getTotalCount());
+    }
+
+    @Test
+    @DisplayName("收费统计：单价修改后重新统计随之变化")
+    void getPaymentStats_afterUnitPriceUpdate_statsReflectsNewPrice() {
+        SampleAnalysisDO r1 = new SampleAnalysisDO();
+        r1.setId(1L);
+        r1.setIsPaid(false);
+        r1.setUnitPrice(new BigDecimal("30.00"));
+
+        when(sampleAnalysisMapper.selectList(any())).thenReturn(List.of(r1));
+
+        SampleAnalysisPaymentStatsRespVO stats1 = sampleAnalysisService.getSampleAnalysisPaymentStats(new SampleAnalysisPageReqVO());
+        assertEquals(new BigDecimal("30.00"), stats1.getUnpaidAmount());
+
+        // 修改单价为 60.00
+        r1.setUnitPrice(new BigDecimal("60.00"));
+
+        SampleAnalysisPaymentStatsRespVO stats2 = sampleAnalysisService.getSampleAnalysisPaymentStats(new SampleAnalysisPageReqVO());
+        assertEquals(new BigDecimal("60.00"), stats2.getUnpaidAmount());
+    }
+
+    // ==================== 10. 样品照片（photos）闭环与校验 ====================
+
+    @Test
+    @DisplayName("照片校验：创建时上传 9 张照片合法，保序落库")
+    void create_ninePhotos_success() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("双面布");
+        List<String> photos = new ArrayList<>();
+        for (int i = 1; i <= 9; i++) {
+            photos.add("http://test.com/photo_" + i + ".png");
+        }
+        reqVO.setPhotos(photos);
+
+        when(sampleAnalysisMapper.selectListByNoPrefixIncludingDeleted(any())).thenReturn(Collections.emptyList());
+
+        Long id = sampleAnalysisService.createSampleAnalysis(reqVO);
+        assertNull(id); // mapper.insert mock
+
+        ArgumentCaptor<SampleAnalysisDO> captor = ArgumentCaptor.forClass(SampleAnalysisDO.class);
+        verify(sampleAnalysisMapper).insert(captor.capture());
+        SampleAnalysisDO inserted = captor.getValue();
+        assertNotNull(inserted.getPhotos());
+        assertEquals(9, inserted.getPhotos().size());
+        for (int i = 0; i < 9; i++) {
+            assertEquals("http://test.com/photo_" + (i + 1) + ".png", inserted.getPhotos().get(i));
+        }
+    }
+
+    @Test
+    @DisplayName("照片校验：创建时上传 10 张照片报错抛 1_030_018_006")
+    void create_tenPhotos_throwsPhotoCountExceed() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setProductName("双面布");
+        List<String> photos = new ArrayList<>();
+        for (int i = 1; i <= 10; i++) {
+            photos.add("http://test.com/photo_" + i + ".png");
+        }
+        reqVO.setPhotos(photos);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> sampleAnalysisService.createSampleAnalysis(reqVO));
+        assertEquals(SAMPLE_ANALYSIS_PHOTO_COUNT_EXCEED.getCode(), ex.getCode());
+        verify(sampleAnalysisMapper, never()).insert(any(SampleAnalysisDO.class));
+    }
+
+    @Test
+    @DisplayName("照片校验：更新时超过 9 张照片报错抛 1_030_018_006")
+    void update_tenPhotos_throwsPhotoCountExceed() {
+        SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
+        reqVO.setId(100L);
+        reqVO.setProductName("罗纹布");
+        List<String> photos = new ArrayList<>();
+        for (int i = 1; i <= 10; i++) {
+            photos.add("http://test.com/photo_" + i + ".png");
+        }
+        reqVO.setPhotos(photos);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> sampleAnalysisService.updateSampleAnalysis(reqVO));
+        assertEquals(SAMPLE_ANALYSIS_PHOTO_COUNT_EXCEED.getCode(), ex.getCode());
+        verify(sampleAnalysisMapper, never()).updateById(any(SampleAnalysisDO.class));
+    }
+
+    @Test
+    @DisplayName("照片删除：删除照片后数组正确收缩并保序落库")
+    void update_shrinkPhotos_success() {
+        SampleAnalysisDO exist = new SampleAnalysisDO();
+        exist.setId(200L);
+        exist.setSampleAnalysisNo(PREFIX + "0001");
+        exist.setProductName("卫衣布");
+        exist.setPhotos(List.of("http://test.com/1.jpg", "http://test.com/2.jpg", "http://test.com/3.jpg"));
+
+        when(sampleAnalysisMapper.selectById(200L)).thenReturn(exist);
+
+        // 模拟删除了第 2 张照片，剩余第 1、3 张
+        SampleAnalysisSaveReqVO updateReq = new SampleAnalysisSaveReqVO();
+        updateReq.setId(200L);
+        updateReq.setProductName("卫衣布");
+        updateReq.setPhotos(List.of("http://test.com/1.jpg", "http://test.com/3.jpg"));
+
+        sampleAnalysisService.updateSampleAnalysis(updateReq);
+
+        ArgumentCaptor<SampleAnalysisDO> captor = ArgumentCaptor.forClass(SampleAnalysisDO.class);
+        verify(sampleAnalysisMapper).updateById(captor.capture());
+        SampleAnalysisDO updated = captor.getValue();
+        assertNotNull(updated.getPhotos());
+        assertEquals(2, updated.getPhotos().size());
+        assertEquals("http://test.com/1.jpg", updated.getPhotos().get(0));
+        assertEquals("http://test.com/3.jpg", updated.getPhotos().get(1));
+    }
+
+    @Test
+    @DisplayName("列表查询载荷优化：列表行只带 firstPhotoUrl，photos 数组置空避免载荷膨胀")
+    void getSampleAnalysisPage_photosShrunkOnlyFirstPhotoUrl() {
+        SampleAnalysisDO r1 = new SampleAnalysisDO();
+        r1.setId(1L);
+        r1.setProductName("无照片布");
+        r1.setPhotos(null);
+
+        SampleAnalysisDO r2 = new SampleAnalysisDO();
+        r2.setId(2L);
+        r2.setProductName("单照片布");
+        r2.setPhotos(List.of("http://test.com/first.jpg"));
+
+        SampleAnalysisDO r3 = new SampleAnalysisDO();
+        r3.setId(3L);
+        r3.setProductName("多照片布");
+        r3.setPhotos(List.of("http://test.com/p1.jpg", "http://test.com/p2.jpg", "http://test.com/p3.jpg"));
+
+        PageResult<SampleAnalysisDO> pageDO = new PageResult<>(List.of(r1, r2, r3), 3L);
+        when(sampleAnalysisMapper.selectPage(any(SampleAnalysisPageReqVO.class), any())).thenReturn(pageDO);
+
+        PageResult<SampleAnalysisRespVO> pageResp = sampleAnalysisService.getSampleAnalysisPage(new SampleAnalysisPageReqVO());
+
+        assertNotNull(pageResp);
+        assertEquals(3, pageResp.getList().size());
+
+        // 行 1: 无照片 -> firstPhotoUrl 为 null，photos 为 null
+        SampleAnalysisRespVO item1 = pageResp.getList().get(0);
+        assertNull(item1.getFirstPhotoUrl());
+        assertNull(item1.getPhotos());
+
+        // 行 2: 1 张照片 -> firstPhotoUrl 为 http://test.com/first.jpg，photos 为 null
+        SampleAnalysisRespVO item2 = pageResp.getList().get(1);
+        assertEquals("http://test.com/first.jpg", item2.getFirstPhotoUrl());
+        assertNull(item2.getPhotos());
+
+        // 行 3: 3 张照片 -> firstPhotoUrl 为 http://test.com/p1.jpg，photos 为 null（不传递全部 URL 列表）
+        SampleAnalysisRespVO item3 = pageResp.getList().get(2);
+        assertEquals("http://test.com/p1.jpg", item3.getFirstPhotoUrl());
+        assertNull(item3.getPhotos());
+    }
+
+    // ==================== 绕纱行子表（ADR-0036 票04） ====================
+
+    @Test
+    @DisplayName("创建样品分析：携带绕纱行（含四字段全空行），正确落库并建立主子关联")
+    void createSampleAnalysis_withYarnArranges_success() {
+        SampleAnalysisSaveReqVO req = new SampleAnalysisSaveReqVO();
+        req.setProductName("全棉汗布");
+
+        SampleAnalysisYarnArrangeSaveReqVO arrange1 = new SampleAnalysisYarnArrangeSaveReqVO();
+        arrange1.setCode("1");
+        arrange1.setDraftText("25.1cm/1 花宽");
+        arrange1.setBorderStatus("第一路对针");
+        arrange1.setDescription("开幅线");
+
+        // 四字段全空行也能保存
+        SampleAnalysisYarnArrangeSaveReqVO arrange2 = new SampleAnalysisYarnArrangeSaveReqVO();
+        arrange2.setCode("");
+        arrange2.setDraftText(null);
+        arrange2.setBorderStatus("");
+        arrange2.setDescription(null);
+
+        req.setYarnArranges(List.of(arrange1, arrange2));
+
+        doAnswer(invocation -> {
+            SampleAnalysisDO arg = invocation.getArgument(0);
+            arg.setId(1001L);
+            return 1;
+        }).when(sampleAnalysisMapper).insert(any(SampleAnalysisDO.class));
+
+        Long id = sampleAnalysisService.createSampleAnalysis(req);
+        assertEquals(1001L, id);
+
+        ArgumentCaptor<SampleAnalysisYarnArrangeDO> arrangeCaptor =
+                ArgumentCaptor.forClass(SampleAnalysisYarnArrangeDO.class);
+        verify(sampleAnalysisYarnArrangeMapper, times(2)).insert(arrangeCaptor.capture());
+
+        List<SampleAnalysisYarnArrangeDO> inserted = arrangeCaptor.getAllValues();
+        assertEquals(2, inserted.size());
+
+        SampleAnalysisYarnArrangeDO row1 = inserted.get(0);
+        assertEquals(1001L, row1.getSampleAnalysisId());
+        assertNull(row1.getId());
+        assertEquals("1", row1.getCode());
+        assertEquals("25.1cm/1 花宽", row1.getDraftText());
+        assertEquals("第一路对针", row1.getBorderStatus());
+        assertEquals("开幅线", row1.getDescription());
+
+        SampleAnalysisYarnArrangeDO row2 = inserted.get(1);
+        assertEquals(1001L, row2.getSampleAnalysisId());
+        assertNull(row2.getId());
+        assertEquals("", row2.getCode());
+        assertNull(row2.getDraftText());
+    }
+
+    @Test
+    @DisplayName("获取样品分析详情：返回绕纱行列表并保持排序")
+    void getSampleAnalysis_withYarnArranges_success() {
+        SampleAnalysisDO sampleDO = new SampleAnalysisDO();
+        sampleDO.setId(1001L);
+        sampleDO.setProductName("全棉汗布");
+        when(sampleAnalysisMapper.selectById(1001L)).thenReturn(sampleDO);
+
+        SampleAnalysisYarnArrangeDO r1 = new SampleAnalysisYarnArrangeDO();
+        r1.setId(10L);
+        r1.setSampleAnalysisId(1001L);
+        r1.setCode("1");
+        r1.setDraftText("25.1cm");
+
+        SampleAnalysisYarnArrangeDO r2 = new SampleAnalysisYarnArrangeDO();
+        r2.setId(11L);
+        r2.setSampleAnalysisId(1001L);
+        r2.setCode("2");
+        r2.setDraftText("30.0cm");
+
+        when(sampleAnalysisYarnArrangeMapper.selectListBySampleAnalysisId(1001L))
+                .thenReturn(List.of(r1, r2));
+
+        SampleAnalysisRespVO resp = sampleAnalysisService.getSampleAnalysis(1001L);
+        assertNotNull(resp);
+        assertNotNull(resp.getYarnArranges());
+        assertEquals(2, resp.getYarnArranges().size());
+        assertEquals(10L, resp.getYarnArranges().get(0).getId());
+        assertEquals("1", resp.getYarnArranges().get(0).getCode());
+        assertEquals(11L, resp.getYarnArranges().get(1).getId());
+        assertEquals("2", resp.getYarnArranges().get(1).getCode());
+    }
+
+    @Test
+    @DisplayName("更新样品分析：差异保存绕纱行（增/改/删差集正确分流）")
+    void updateSampleAnalysis_diffSaveYarnArranges_success() {
+        SampleAnalysisDO exist = new SampleAnalysisDO();
+        exist.setId(1001L);
+        exist.setProductName("全棉汗布");
+        exist.setSampleAnalysisNo("SA20260001");
+        when(sampleAnalysisMapper.selectById(1001L)).thenReturn(exist);
+
+        // 库内存量 2 行：id=101L, id=102L
+        SampleAnalysisYarnArrangeDO db1 = new SampleAnalysisYarnArrangeDO();
+        db1.setId(101L);
+        db1.setSampleAnalysisId(1001L);
+        db1.setCode("1");
+        db1.setDescription("原描述1");
+
+        SampleAnalysisYarnArrangeDO db2 = new SampleAnalysisYarnArrangeDO();
+        db2.setId(102L);
+        db2.setSampleAnalysisId(1001L);
+        db2.setCode("2");
+        db2.setDescription("原描述2");
+
+        when(sampleAnalysisYarnArrangeMapper.selectListBySampleAnalysisId(1001L))
+                .thenReturn(List.of(db1, db2));
+
+        // 提交：更新 101L，新增无 ID 行，删除 102L（未出现在请求中）
+        SampleAnalysisSaveReqVO updateReq = new SampleAnalysisSaveReqVO();
+        updateReq.setId(1001L);
+        updateReq.setProductName("全棉汗布修改");
+
+        SampleAnalysisYarnArrangeSaveReqVO toUpdateRow = new SampleAnalysisYarnArrangeSaveReqVO();
+        toUpdateRow.setId(101L);
+        toUpdateRow.setCode("1");
+        toUpdateRow.setDescription("新描述1");
+
+        SampleAnalysisYarnArrangeSaveReqVO toInsertRow = new SampleAnalysisYarnArrangeSaveReqVO();
+        toInsertRow.setCode("3");
+        toInsertRow.setDescription("新增第3路");
+
+        updateReq.setYarnArranges(List.of(toUpdateRow, toInsertRow));
+
+        sampleAnalysisService.updateSampleAnalysis(updateReq);
+
+        // 验证删除 102L
+        verify(sampleAnalysisYarnArrangeMapper).deleteByIds(Set.of(102L));
+
+        // 验证更新 101L
+        ArgumentCaptor<SampleAnalysisYarnArrangeDO> updateCaptor =
+                ArgumentCaptor.forClass(SampleAnalysisYarnArrangeDO.class);
+        verify(sampleAnalysisYarnArrangeMapper).updateById(updateCaptor.capture());
+        SampleAnalysisYarnArrangeDO updated = updateCaptor.getValue();
+        assertEquals(101L, updated.getId());
+        assertEquals(1001L, updated.getSampleAnalysisId());
+        assertEquals("新描述1", updated.getDescription());
+
+        // 验证新增第3路
+        ArgumentCaptor<SampleAnalysisYarnArrangeDO> insertCaptor =
+                ArgumentCaptor.forClass(SampleAnalysisYarnArrangeDO.class);
+        verify(sampleAnalysisYarnArrangeMapper).insert(insertCaptor.capture());
+        SampleAnalysisYarnArrangeDO inserted = insertCaptor.getValue();
+        assertNull(inserted.getId());
+        assertEquals(1001L, inserted.getSampleAnalysisId());
+        assertEquals("3", inserted.getCode());
+        assertEquals("新增第3路", inserted.getDescription());
+    }
+
+    @Test
+    @DisplayName("更新样品分析：提交不属于本样品的绕纱行 ID 抛出异常拦截")
+    void updateSampleAnalysis_yarnArranges_invalidId_throwsException() {
+        SampleAnalysisDO exist = new SampleAnalysisDO();
+        exist.setId(1001L);
+        exist.setProductName("全棉汗布");
+        exist.setSampleAnalysisNo("SA20260001");
+        when(sampleAnalysisMapper.selectById(1001L)).thenReturn(exist);
+
+        // 库内只有 id=101L
+        SampleAnalysisYarnArrangeDO db1 = new SampleAnalysisYarnArrangeDO();
+        db1.setId(101L);
+        db1.setSampleAnalysisId(1001L);
+        when(sampleAnalysisYarnArrangeMapper.selectListBySampleAnalysisId(1001L))
+                .thenReturn(List.of(db1));
+
+        SampleAnalysisSaveReqVO updateReq = new SampleAnalysisSaveReqVO();
+        updateReq.setId(1001L);
+        updateReq.setProductName("全棉汗布");
+
+        // 提交跨单 id=999L
+        SampleAnalysisYarnArrangeSaveReqVO illegalRow = new SampleAnalysisYarnArrangeSaveReqVO();
+        illegalRow.setId(999L);
+        illegalRow.setCode("X");
+        updateReq.setYarnArranges(List.of(illegalRow));
+
+        assertThrows(ServiceException.class, () -> sampleAnalysisService.updateSampleAnalysis(updateReq));
+    }
+
+    @Test
+    @DisplayName("删除样品分析：级联逻辑删除绕纱行")
+    void deleteSampleAnalysis_cascadeSoftDeletesYarnArranges() {
+        SampleAnalysisDO exist = new SampleAnalysisDO();
+        exist.setId(1001L);
+        exist.setProductName("全棉汗布");
+        when(sampleAnalysisMapper.selectById(1001L)).thenReturn(exist);
+
+        sampleAnalysisService.deleteSampleAnalysis(1001L);
+
+        // 验证主表被删除
+        verify(sampleAnalysisMapper).deleteById(1001L);
+        // 验证绕纱行被级联删除
+        verify(sampleAnalysisYarnArrangeMapper).deleteBySampleAnalysisId(1001L);
+    }
+
+
+    // ==================== 11. 收费标记与权限守卫 ====================
+
+
+
+
+    @Test
+    @DisplayName("收费标记：无 pay 权限调用抛出 AccessDeniedException，且不执行任何更新")
+    void updatePayment_withoutPermission_throwsAccessDeniedException() {
+        when(securityFrameworkService.hasPermission("lunaerp:sample:sample-analysis:pay")).thenReturn(false);
+
+        SampleAnalysisPaymentReqVO reqVO = new SampleAnalysisPaymentReqVO(List.of(1L, 2L), true);
+
+        assertThrows(AccessDeniedException.class, () -> sampleAnalysisService.updateSampleAnalysisPayment(reqVO));
+        verify(sampleAnalysisMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("收费标记：单条标记已付款成功且仅更新所选 id")
+    void updatePayment_singleRecord_successAndOnlyAffectsTargetId() {
+        when(securityFrameworkService.hasPermission("lunaerp:sample:sample-analysis:pay")).thenReturn(true);
+
+        SampleAnalysisDO r1 = new SampleAnalysisDO();
+        r1.setId(101L);
+        when(sampleAnalysisMapper.selectBatchIds(any())).thenReturn(List.of(r1));
+
+        SampleAnalysisPaymentReqVO reqVO = new SampleAnalysisPaymentReqVO(List.of(101L), true);
+        sampleAnalysisService.updateSampleAnalysisPayment(reqVO);
+
+        ArgumentCaptor<LambdaUpdateWrapper<SampleAnalysisDO>> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(sampleAnalysisMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<SampleAnalysisDO> updateWrapper = captor.getValue();
+        assertNotNull(updateWrapper);
+    }
+
+    @Test
+    @DisplayName("收费标记：多选批量标记未付款成功且仅更新所选 id 列表")
+    void updatePayment_batchRecords_successAndOnlyAffectsTargetIds() {
+        when(securityFrameworkService.hasPermission("lunaerp:sample:sample-analysis:pay")).thenReturn(true);
+
+        SampleAnalysisDO r1 = new SampleAnalysisDO();
+        r1.setId(101L);
+        SampleAnalysisDO r2 = new SampleAnalysisDO();
+        r2.setId(102L);
+        when(sampleAnalysisMapper.selectBatchIds(any())).thenReturn(List.of(r1, r2));
+
+        SampleAnalysisPaymentReqVO reqVO = new SampleAnalysisPaymentReqVO(List.of(101L, 102L), false);
+        sampleAnalysisService.updateSampleAnalysisPayment(reqVO);
+
+        ArgumentCaptor<LambdaUpdateWrapper<SampleAnalysisDO>> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(sampleAnalysisMapper).update(isNull(), captor.capture());
+        assertNotNull(captor.getValue());
+    }
+
+    @Test
+    @DisplayName("收费标记：目标记录不存在时抛出 1_030_018_000 且不更新")
+    void updatePayment_recordNotExists_throwsSampleAnalysisNotExists() {
+        when(securityFrameworkService.hasPermission("lunaerp:sample:sample-analysis:pay")).thenReturn(true);
+
+        // 请求 2 个 id，只查出 1 条记录
+        SampleAnalysisDO r1 = new SampleAnalysisDO();
+        r1.setId(101L);
+        when(sampleAnalysisMapper.selectBatchIds(any())).thenReturn(List.of(r1));
+
+        SampleAnalysisPaymentReqVO reqVO = new SampleAnalysisPaymentReqVO(List.of(101L, 999L), true);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> sampleAnalysisService.updateSampleAnalysisPayment(reqVO));
+        assertEquals(SAMPLE_ANALYSIS_NOT_EXISTS.getCode(), ex.getCode());
+        verify(sampleAnalysisMapper, never()).update(any(), any());
+    }
+
 }
+
+

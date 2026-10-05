@@ -2,6 +2,8 @@ package com.luna.lunasrv.module.lunaerp.service.sample.sampleanalysis;
 
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisPaymentReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisPaymentStatsRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.sample.sampleanalysis.vo.SampleAnalysisSaveReqVO;
 import jakarta.validation.Valid;
@@ -58,4 +60,20 @@ public interface SampleAnalysisService {
      */
     String getNextSampleAnalysisNo();
 
+    /**
+     * 获得样品分析付款统计（未付金额/已付金额/任务总数）
+     *
+     * @param reqVO 查询条件（与分页同筛选口径）
+     * @return 统计结果
+     */
+    SampleAnalysisPaymentStatsRespVO getSampleAnalysisPaymentStats(SampleAnalysisPageReqVO reqVO);
+
+    /**
+     * 更新样品分析付款状态（单条与批量共用）
+     *
+     * @param reqVO 付款更新请求
+     */
+    void updateSampleAnalysisPayment(@Valid SampleAnalysisPaymentReqVO reqVO);
+
 }
+

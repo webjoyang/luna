@@ -17,6 +17,8 @@ public interface SampleErrorCodeConstants {
     ErrorCode SAMPLE_ANALYSIS_REF_NOT_EXISTS = new ErrorCode(1_030_018_002, "关联引用不存在");
     ErrorCode SAMPLE_ANALYSIS_LOSS_RATE_INVALID = new ErrorCode(1_030_018_003, "损耗率取值非法（必须 ≥ 0 且 < 100）");
     ErrorCode SAMPLE_ANALYSIS_PRODUCT_NAME_EMPTY = new ErrorCode(1_030_018_004, "产品名称不能为空");
-    ErrorCode SAMPLE_ANALYSIS_YARN_SPEC_NOT_EXISTS = new ErrorCode(1_030_018_100, "纱线规格不存在或已停用");
+    ErrorCode SAMPLE_ANALYSIS_STITCH_ARRANGE_INVALID = new ErrorCode(1_030_018_005, "三角排列画板数据非法：{}");
+    ErrorCode SAMPLE_ANALYSIS_PHOTO_COUNT_EXCEED = new ErrorCode(1_030_018_006, "样品照片最多上传 9 张");
+    ErrorCode SAMPLE_ANALYSIS_YARN_SPEC_NOT_EXISTS = new ErrorCode(1_030_018_100, "纱线规格不存在");
 
 }
