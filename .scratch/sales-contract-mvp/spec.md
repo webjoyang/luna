@@ -254,7 +254,7 @@ Prior art：`CustomerServiceImplTest` / `CustomerContactServiceImplTest`（同�
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 已新增"业务管理：销售合同"术语分区：销售合同、合同明细、贸易类型、订单属性、合同状态、业务员、客户名称快照、合同编号；并更新模块落点、字典、错误码段位表
+- [GLOSSARY.md](../../docs/contexts/business/GLOSSARY.md) — 已新增"业务管理：销售合同"术语分区：销售合同、合同明细、贸易类型、订单属性、合同状态、业务员、客户名称快照、合同编号；并更新模块落点、字典、错误码段位表
 - [ADR-0003](../../docs/adr/0003-sales-contract-item-aggregate-persistence.md) — 明细聚合整体保存、不设独立 Controller（与 ADR-0002 联系人刻意相反）
 - [ADR-0004](../../docs/adr/0004-sales-contract-no-uniqueness-includes-deleted.md) — 编号全量唯一、软删不释放、取号含已删除行（与 product 部分唯一索引刻意相反）
 - [ADR-0001](../../docs/adr/0001-lunaerp-elmui-frontend-split.md)、[ADR-0002](../../docs/adr/0002-customer-contact-independent-controller.md) — 前置背景

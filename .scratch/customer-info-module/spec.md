@@ -260,7 +260,7 @@ lunaerp 段位全表：`1-030-001-xxx` 产品 / `1-030-002-xxx` 胚布品种（`
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 项目术语表（中文），收录 Customer / CustomerContact / CustomerWorkspace / Status / shortName / 模块落点 / 租户 / 软删除 / 字典 / 错误码 等术语
+- [GLOSSARY.md](../../docs/contexts/baseinfo/GLOSSARY.md) — 项目术语表（中文），收录 Customer / CustomerContact / CustomerWorkspace / Status / shortName / 模块落点 / 租户 / 软删除 / 字典 / 错误码 等术语
 - [docs/adr/0001-lunaerp-elmui-frontend-split.md](../../docs/adr/0001-lunaerp-elmui-frontend-split.md) — 前端 lunaerp-elmui 目录拆分决策
 - [docs/adr/0002-customer-contact-independent-controller.md](../../docs/adr/0002-customer-contact-independent-controller.md) — 联系人独立 Controller 决策
 

@@ -1,7 +1,7 @@
 # 样品管理域术语表（sample）
 
 本文件是 Luna ERP **样品管理域（sample）**的权威术语表，收录样品分析及未来样品系列其他对象的领域概念。
-仓库领域文档总入口见根目录 `CONTEXT-MAP.md`；跨域平台约定（租户、软删除、前后端模块约定、错误码段位总表）见 `docs/contexts/shared/CONTEXT.md`。
+仓库领域文档总入口见根目录 `GLOSSARY-MAP.md`；跨域平台约定（租户、软删除、前后端模块约定、错误码段位总表）见 `docs/contexts/shared/GLOSSARY.md`。
 当对话或代码中含糊使用某个词时，以本文件为准。
 
 ## 样品管理：样品分析

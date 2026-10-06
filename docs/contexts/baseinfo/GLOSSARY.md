@@ -1,7 +1,7 @@
 # 基本信息域术语表（baseinfo）
 
 本文件是 Luna ERP **基本信息域（baseinfo）**的权威术语表，收录客户、供应商、产品三类核心主数据的领域概念。
-仓库领域文档总入口见根目录 `CONTEXT-MAP.md`；跨域平台约定（租户、软删除、前后端模块约定、错误码段位总表）见 `docs/contexts/shared/CONTEXT.md`。
+仓库领域文档总入口见根目录 `GLOSSARY-MAP.md`；跨域平台约定（租户、软删除、前后端模块约定、错误码段位总表）见 `docs/contexts/shared/GLOSSARY.md`。
 当对话或代码中含糊使用某个词时，以本文件为准。
 
 ## 客户与联系人
@@ -68,7 +68,7 @@ _避免_：产量（output）、花型号（patternNo）、临时编号（tempCo
 - 前端视图：`luna-ui/src/views/lunaerp-elmui/baseinfo/customer/`
 - 前端 API：`luna-ui/src/api/lunaerp-elmui/baseinfo/customer/`
 
-（`lunaerp-elmui` 临时 UI 区的定义与前后端包结构总约定见 `docs/contexts/shared/CONTEXT.md`，详见 ADR-0001。）
+（`lunaerp-elmui` 临时 UI 区的定义与前后端包结构总约定见 `docs/contexts/shared/GLOSSARY.md`，详见 ADR-0001。）
 
 产品信息落 `baseinfo` 子包（与客户/供应商同层）：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.baseinfo.product`；前端视图 `luna-ui/src/views/lunaerp/baseinfo/product/`、前端 API `luna-ui/src/api/lunaerp/baseinfo/product/`。URL 前缀 `/lunaerp/baseinfo/product`，权限码前缀 `lunaerp:baseinfo:product:`，错误码段 `1-030-001-xxx`。建表 SQL：`luna-srv/sql/postgresql/lunaerp-baseinfo-product.sql`。纱线规格两级下拉数据源来自生产管理域的纱线档案（`lunaerp_production_yarn_type` + `lunaerp_production_yarn_spec`，ADR-0011），跨域只读引用。详见 ADR-0035。
 
@@ -87,7 +87,7 @@ _避免_：产量（output）、花型号（patternNo）、临时编号（tempCo
 
 ## 错误码
 
-错误码段位总表与新模块取段规则见 `docs/contexts/shared/CONTEXT.md`。本域占用段位：
+错误码段位总表与新模块取段规则见 `docs/contexts/shared/GLOSSARY.md`。本域占用段位：
 
 - `1-030-001-xxx` 产品
 - `1-030-002-xxx` 胚布品种（`GreigeErrorCodeConstants`，随产品模块迁移先行占用）

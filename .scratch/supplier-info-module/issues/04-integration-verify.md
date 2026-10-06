@@ -16,7 +16,7 @@
 - [x] 回归-销售合同：新建/编辑合同时选择客户，客户名称快照回填与展示不变
 - [x] 后端 lunaerp 模块全量 mvn test 通过（含新增 2 个与修订的 2 个测试类）；前端 typecheck 与生产 build 通过
 - [ ] 部署脚本在空库、已安装客户模块的存量库上各完整重跑一次均成功（菜单/字典不重复、列迁移不报错、数据不丢失）
-- [x] CONTEXT.md/ADR-0005 与最终实现一致（编号规则、错误码、字典 value、菜单/字典 ID、Tab 名称），如有落地偏差已回改文档
+- [x] GLOSSARY.md/ADR-0005 与最终实现一致（编号规则、错误码、字典 value、菜单/字典 ID、Tab 名称），如有落地偏差已回改文档
 
 ## Comments
 
@@ -35,7 +35,7 @@
   - 菜单：10050 供应商信息、10051–10053 增改删；10060 联系人隐藏节点、10061–10063 增改删；权限码 `lunaerp:baseinfo:supplier:{query|create|update|delete}` 与 `lunaerp:baseinfo:supplier-contact:{query|create|update|delete}` 与 Controller `@PreAuthorize` 逐一对应（供应商 7 端点、联系人 5 端点）。
   - DO 字段：Supplier 9 字段 + TenantBaseDO，SupplierContact 7 字段 + TenantBaseDO；联系人 `supplierId` 逻辑关联无外键、`isPrimary` 无唯一约束。
   - 前端：列表页搜索 + 类型/状态下拉 + 7 列 + v-hasPermi；工作台 6 Tab（基础档案/联系人激活，入库/付款/关联品种/位置分布 PlaceholderTab 显示"开发中"）；基础档案含编号预览按钮；联系人 Tab 内联表格 + 弹窗单条增删改 + 主联系人开关；路由 `supplier/workspace` 与 `supplier/workspace/:id` 已登记。
-  - CONTEXT.md 与 ADR-0005 已覆盖编号规则、错误码段、字典 18 项、Tab 名称、companyName 统一命名，与最终实现一致，无需回改。
+  - GLOSSARY.md 与 ADR-0005 已覆盖编号规则、错误码段、字典 18 项、Tab 名称、companyName 统一命名，与最终实现一致，无需回改。
 - 回归核查（静态 + 单测，dev 库因列未迁移无法运行时回放）：
   - 客户：CustomerMapper search 命中 `company_name`；CustomerServiceImpl shortName 回填走 `getCompanyName()`；前端客户 API/列表/基础档案/工作台全部 `companyName`；CustomerServiceImplTest 9 例、CustomerContactServiceImplTest 14 例通过。
   - 销售合同：SalesContractServiceImpl 两处 `setClientName(customer.getCompanyName())` 快照（仅取值入口改名，clientName 字段不变）；前端合同编辑页选择器 `:label="item.companyName"`、快照回填 `formData.clientName = customer?.companyName`；SalesContractServiceImplTest 29 例通过。

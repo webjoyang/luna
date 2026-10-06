@@ -28,4 +28,4 @@
 - 遗留风险（转给工单 04/05）：
   - **可空字段清不掉**：`updateProduct` 走 `updateById`，MyBatis-Plus 默认策略跳过 null 字段。前端把梭织参数/加工费清空后若提交 null，库里旧值会残留。这是 ProductDO 既有局限（remark/color 等同理），本次未单独给新字段加 `@TableField(updateStrategy = FieldStrategy.ALWAYS)` 以保持 DO 内一致；前端表单需以空串提交，或后续统一给 ProductDO 可空字段补 ALWAYS。
   - **前后端需同批上线**：线上前端仍在提交/读取 output/patternNo/tempCode/conversionRate（`luna-ui/src/api/lunaerp/baseinfo/product/index.ts`、`ProductEditModal.vue`）。Jackson 默认关闭 FAIL_ON_UNKNOWN_PROPERTIES，提交不会 500 但字段静默丢弃，读取侧得到 undefined，需工单 04 同步清理。
-  - 工作区另有未提交改动（CONTEXT.md 产品章节 + 纱线材质 seed 移除相关的 YarnTypeDO/lunaerp-production-yarn-master.sql/.scratch/review_diff.txt），与本工单无关，未纳入本次提交。
+  - 工作区另有未提交改动（GLOSSARY.md 产品章节 + 纱线材质 seed 移除相关的 YarnTypeDO/lunaerp-production-yarn-master.sql/.scratch/review_diff.txt），与本工单无关，未纳入本次提交。

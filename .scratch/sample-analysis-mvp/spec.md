@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 
-> 术语以 [docs/contexts/sample/CONTEXT.md](../../docs/contexts/sample/CONTEXT.md) 为权威，架构取舍见 [ADR-0036](../../docs/adr/0036-sample-analysis-non-document-record-hybrid-storage.md)。
+> 术语以 [docs/contexts/sample/GLOSSARY.md](../../docs/contexts/sample/GLOSSARY.md) 为权威，架构取舍见 [ADR-0036](../../docs/adr/0036-sample-analysis-non-document-record-hybrid-storage.md)。
 
 ## Problem Statement
 
@@ -228,4 +228,4 @@ Status: ready-for-agent
 - 供应商报价行不做旧系统"供应商必须 ACTIVE"守卫。
 - 照片排序 MVP 按上传顺序；若拖拽排序实现成本高，允许退化为"删除后保持剩余顺序 + 新上传追加末尾"。
 - 工作台打开方式（菜单驱动路由 + query id 的独立页，或列表页内抽屉）实施时对齐 lunaerp-elmui 当时最新模块先例（纱线采购单/检验单模式），不改变本 spec 的行为契约。
-- 领域词汇（样品分析、绕纱行、三角排列画板、月结收费等）以 sample 域 CONTEXT.md 为准，实现中避免重新发明近义词。
+- 领域词汇（样品分析、绕纱行、三角排列画板、月结收费等）以 sample 域 GLOSSARY.md 为准，实现中避免重新发明近义词。

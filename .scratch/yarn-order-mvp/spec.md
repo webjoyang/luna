@@ -638,7 +638,7 @@ Prior art：`CustomerServiceImplTest` / `SupplierServiceImplTest` / `SalesContra
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 已新增"生产管理：纱线采购"术语分区：纱线材质/纱线规格/纱线配比BOM/纱线采购单/纱线采购明细/纱线采购单号/纱线采购单状态/测算口径/入库来源；并更新模块边界（4 个子包）、字典段位（2230）、错误码段位表（1-030-008/009）
+- [GLOSSARY.md](../../docs/contexts/production/GLOSSARY.md) — 已新增"生产管理：纱线采购"术语分区：纱线材质/纱线规格/纱线配比BOM/纱线采购单/纱线采购明细/纱线采购单号/纱线采购单状态/测算口径/入库来源；并更新模块边界（4 个子包）、字典段位（2230）、错误码段位表（1-030-008/009）
 - [ADR-0010](../../docs/adr/0010-yarn-order-state-and-calculation.md) — 纱线采购单状态四态 + 测算口径百分比+乘法公式 + 后端测算接口
 - [ADR-0011](../../docs/adr/0011-yarn-recipe-bom-independent-table.md) — 配比独立 yarn_recipe_bom 表 + 废弃产品档案 yarn_specs + 胚布单加 product_id
 - [ADR-0012](../../docs/adr/0012-yarn-stock-ledger-no-location.md) — （已于 2026-09-21 废弃 deprecated）通用 StockLedger 流水台账

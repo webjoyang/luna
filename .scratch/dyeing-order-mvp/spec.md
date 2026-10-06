@@ -194,7 +194,7 @@ Status: ready-for-agent
 - `1_030_007_001` — DYEING_ORDER_STATUS_NOT_ALLOWED（当前状态不允许该操作）
 - `1_030_007_002` — DYEING_ORDER_REFERENCE_NOT_FOUND（关联的{}不存在或不可用）
 
-在 lunaerp 模块 ErrorCodeConstants 追加。段位全表已更新于 CONTEXT.md。
+在 lunaerp 模块 ErrorCodeConstants 追加。段位全表已更新于 GLOSSARY.md。
 
 ### 字典（1 个）
 
@@ -275,7 +275,7 @@ Prior art：`CustomerServiceImplTest` / `SupplierServiceImplTest` / `SalesContra
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 已新增"生产管理：染色单"术语分区：染色单、染色颜色明细、染色技术规格与色牢度、承染方、染色单状态；并更新错误码段位表
+- [GLOSSARY.md](../../docs/contexts/production/GLOSSARY.md) — 已新增"生产管理：染色单"术语分区：染色单、染色颜色明细、染色技术规格与色牢度、承染方、染色单状态；并更新错误码段位表
 - [ADR-0008](../../docs/adr/0008-dyeing-order-draft-state.md) — 染色单多 DRAFT 草稿态（与合同/胚布单三态刻意不一致）
 - [ADR-0009](../../docs/adr/0009-dyeing-order-no-number.md) — 染色单无业务编号（与合同/胚布单/供应商都有编号刻意不一致）
 - [ADR-0003](../../docs/adr/0003-sales-contract-item-aggregate-persistence.md) — 明细聚合整体保存模式（颜色明细沿用）

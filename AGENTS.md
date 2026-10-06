@@ -2,15 +2,15 @@
 
 ### Issue tracker
 
-Issues are tracked as markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+问题（issue）以 Markdown 文件形式跟踪在 `.scratch/<feature>/` 下。见 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 
-Five canonical roles mapped to repo labels: `needs-triage`→`bug:triage`, `needs-info`→`needs-info`, `ready-for-agent`→`ready-for-agent`, `ready-for-human`→`dev:todo`, `wontfix`→`wontfix`. See `docs/agents/triage-labels.md`.
+五个标准角色映射到仓库标签：`needs-triage`→`bug:triage`、`needs-info`→`needs-info`、`ready-for-agent`→`ready-for-agent`、`ready-for-human`→`dev:todo`、`wontfix`→`wontfix`。见 `docs/agents/triage-labels.md`。
 
 ### Domain docs
 
-Multi-context layout: root `CONTEXT-MAP.md` routes to per-context `CONTEXT.md` files under `docs/contexts/` (shared + baseinfo/business/production/stock); ADRs stay globally numbered in `docs/adr/`. See `docs/agents/domain.md`.
+多上下文布局：根目录 `GLOSSARY-MAP.md` 路由到 `docs/contexts/` 下各上下文的 `GLOSSARY.md`（shared + baseinfo/business/production/stock/sample）；ADR 在 `docs/adr/` 全局连续编号。见 `docs/agents/domain.md`。
 
 ### 以上文档请尽量用中文编写
 

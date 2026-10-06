@@ -188,7 +188,7 @@ ProductionProgressView {
   }
   shipment: {         // 出货环节
     shippedKg         // 已发货量（SHIPMENT_OUT 流水 join 发货单取合同）
-    unshippedKg       // 合同未发量（demandKg - shippedKg，CONTEXT.md ContractUnshippedQuantity 同口径）
+    unshippedKg       // 合同未发量（demandKg - shippedKg，GLOSSARY.md ContractUnshippedQuantity 同口径）
     shipmentCount     // 发货单数
   }
   alerts: string[]    // 预警（见 4.4）
