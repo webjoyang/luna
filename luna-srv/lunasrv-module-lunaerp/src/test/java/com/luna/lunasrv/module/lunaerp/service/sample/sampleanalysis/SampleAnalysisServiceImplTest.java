@@ -73,14 +73,14 @@ import static org.mockito.Mockito.*;
  * 2. 跨年重置：跨年后流水从 1 重新计数
  * 3. 扩位支持：超过 9999 自然扩位至 10000
  * 4. 手填合法值可用
- * 5. 手填撞号抛 1_030_018_001（含与已删除记录撞号）
+ * 5. 手填撞号抛 1_030_040_001（含与已删除记录撞号）
  * 6. 软删占号：软删行号码不释放、自动取号跳过已被软删占用的编号
  * 7. 预览编号不占号：多次预览返回相同编号，无 DB 写入
  * 8. 米长计算：正常输入 150/200 -> 3.33（四舍五入保留2位）
  * 9. 米长异常：门幅/克重为空、0、负数时计算结果为 null
- * 10. 关联客户校验与快照：选客户快照档案公司名、客户不存在抛 1_030_018_002、允许纯手填客户名
+ * 10. 关联客户校验与快照：选客户快照档案公司名、客户不存在抛 1_030_040_002、允许纯手填客户名
  * 11. 登记人快照：创建时写入登录用户快照，更新时不变更
- * 12. 删除为逻辑删除，删除不存在记录抛 1_030_018_000
+ * 12. 删除为逻辑删除，删除不存在记录抛 1_030_040_000
  * 13. 分页与关键字模糊搜索（覆盖 sample_analysis_no, client_name, product_name, client_style_no, composition）
  * 14. 租户隔离代表用例：不同租户取号互相独立
  * 15. 绕纱行子表：聚合保存、四字段全空保存、差异保存（增改删）、级联软删
@@ -281,7 +281,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("手填撞号（与已有未删除记录撞号）抛 1_030_018_001")
+    @DisplayName("手填撞号（与已有未删除记录撞号）抛 1_030_040_001")
     void create_manualNumber_collisionActive_throws001() {
         String manualNo = PREFIX + "0001";
         SampleAnalysisDO active = new SampleAnalysisDO();
@@ -300,7 +300,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("手填撞号（与已删除记录撞号）同样抛 1_030_018_001")
+    @DisplayName("手填撞号（与已删除记录撞号）同样抛 1_030_040_001")
     void create_manualNumber_collisionSoftDeleted_throws001() {
         String manualNo = PREFIX + "0001";
         SampleAnalysisDO softDeleted = new SampleAnalysisDO();
@@ -416,7 +416,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("选客户档案：客户不存在时抛 1_030_018_002")
+    @DisplayName("选客户档案：客户不存在时抛 1_030_040_002")
     void customer_notExists_throws002() {
         when(customerMapper.selectById(999L)).thenReturn(null);
 
@@ -507,7 +507,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("删除：不存在时抛 1_030_018_000")
+    @DisplayName("删除：不存在时抛 1_030_040_000")
     void delete_notExists_throws000() {
         when(sampleAnalysisMapper.selectById(999L)).thenReturn(null);
 
@@ -679,7 +679,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("画板校验：rows 非 4 抛出 1_030_018_005 异常")
+    @DisplayName("画板校验：rows 非 4 抛出 1_030_040_005 异常")
     void create_invalidStitchArrange_rowsNotFour_throwsException() {
         SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
         reqVO.setProductName("测试布");
@@ -698,7 +698,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("画板校验：data 维数与 columns 不符抛出 1_030_018_005 异常")
+    @DisplayName("画板校验：data 维数与 columns 不符抛出 1_030_040_005 异常")
     void create_invalidStitchArrange_dimensionsMismatch_throwsException() {
         SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
         reqVO.setProductName("测试布");
@@ -722,7 +722,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("画板校验：包含非五态符号抛出 1_030_018_005 异常")
+    @DisplayName("画板校验：包含非五态符号抛出 1_030_040_005 异常")
     void create_invalidStitchArrange_invalidSymbol_throwsException() {
         SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
         reqVO.setProductName("测试布");
@@ -746,7 +746,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("画板校验：更新时非法画板数据同样抛出 1_030_018_005 异常")
+    @DisplayName("画板校验：更新时非法画板数据同样抛出 1_030_040_005 异常")
     void update_invalidStitchArrange_throwsException() {
         SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
         reqVO.setId(100L);
@@ -897,7 +897,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("照片校验：创建时上传 10 张照片报错抛 1_030_018_006")
+    @DisplayName("照片校验：创建时上传 10 张照片报错抛 1_030_040_006")
     void create_tenPhotos_throwsPhotoCountExceed() {
         SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
         reqVO.setProductName("双面布");
@@ -913,7 +913,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("照片校验：更新时超过 9 张照片报错抛 1_030_018_006")
+    @DisplayName("照片校验：更新时超过 9 张照片报错抛 1_030_040_006")
     void update_tenPhotos_throwsPhotoCountExceed() {
         SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
         reqVO.setId(100L);
@@ -1226,7 +1226,7 @@ class SampleAnalysisServiceImplTest {
     // ==================== 12. 供应商报价登记与对外报价闭环（Issue 06） ====================
 
     @Test
-    @DisplayName("供应商报价：supplierId 存在但供应商档案不存在时抛出 1_030_018_002")
+    @DisplayName("供应商报价：supplierId 存在但供应商档案不存在时抛出 1_030_040_002")
     void create_supplierNotExists_throwsSampleAnalysisRefNotExists() {
         SampleAnalysisSaveReqVO reqVO = new SampleAnalysisSaveReqVO();
         reqVO.setProductName("测试布");
@@ -1553,7 +1553,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("损耗率校验：损耗率非法边界（100、-1）抛出 1_030_018_003 异常")
+    @DisplayName("损耗率校验：损耗率非法边界（100、-1）抛出 1_030_040_003 异常")
     void save_lossRateInvalid_throwsException() {
         // 1. lossRate = 100
         SampleAnalysisSaveReqVO req1 = new SampleAnalysisSaveReqVO();
@@ -1625,7 +1625,7 @@ class SampleAnalysisServiceImplTest {
     }
 
     @Test
-    @DisplayName("收费标记：目标记录不存在时抛出 1_030_018_000 且不更新")
+    @DisplayName("收费标记：目标记录不存在时抛出 1_030_040_000 且不更新")
     void updatePayment_recordNotExists_throwsSampleAnalysisNotExists() {
         when(securityFrameworkService.hasPermission("lunaerp:sample:sample-analysis:pay")).thenReturn(true);
 

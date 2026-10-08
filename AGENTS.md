@@ -10,7 +10,7 @@
 
 ### Domain docs
 
-多上下文布局：根目录 `GLOSSARY-MAP.md` 路由到 `docs/contexts/` 下各上下文的 `GLOSSARY.md`（shared + baseinfo/business/production/stock/sample）；ADR 在 `docs/adr/` 全局连续编号。见 `docs/agents/domain.md`。
+多上下文布局：根目录 `GLOSSARY-MAP.md` 路由到 `docs/contexts/` 下各上下文的 `GLOSSARY.md`（shared + baseinfo/business/production/stock/sample/finance）；ADR 在 `docs/adr/` 全局连续编号。见 `docs/agents/domain.md`。
 
 ### 以上文档请尽量用中文编写
 

@@ -14,6 +14,7 @@
    - `production` —— 胚布/染色/纱线/检验/质检确认/织造/进度
    - `stock` —— 入库、仓库/库位、库存台账/余额
    - `sample` —— 样品分析（来样分析、工艺反推、成本报价、月结收费）
+   - `finance` —— 财务（经营账：资金账户/分录账、对账、收付款、报销、工资、发票；ADR-0037）
 4. **`docs/adr/`**：阅读与你即将改动的区域相关的 ADR。
 
 若以上文件不存在，**静默继续**。不要提示文件缺失，也不要建议预先创建。`/domain-modeling` 技能（经由 `/grill-with-docs`、`/improve-codebase-architecture` 调用）会在术语或决策真正落定时按需创建它们。
@@ -33,8 +34,9 @@
 │       ├── business/GLOSSARY.md
 │       ├── production/GLOSSARY.md
 │       ├── stock/GLOSSARY.md
-│       └── sample/GLOSSARY.md
-├── luna-srv/                              ← 后端：lunaerp 模块，分包 baseinfo/business/production/stock
+│       ├── sample/GLOSSARY.md
+│       └── finance/GLOSSARY.md
+├── luna-srv/                              ← 后端：lunaerp 模块，分包 baseinfo/business/production/stock/sample/finance
 └── luna-ui/                               ← 前端
 ```
 

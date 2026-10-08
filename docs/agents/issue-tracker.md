@@ -18,6 +18,13 @@ Create a new file under `.scratch/<feature-slug>/` (creating the directory if ne
 
 Read the file at the referenced path. The user will normally pass the path or the issue number directly.
 
+## Implementation order (`.scratch/_order.md`)
+
+- One line per feature that has a `spec.md`: `- [ ] NN，<feature-slug>，[<slug>/spec.md](<slug>/spec.md)`
+- On creating a new spec, insert the line at the dependency-correct position and renumber sequentially. Numbers are ordering, not identity; the slug is identity — reference a feature by its slug, never by its number.
+- The checkbox is to be checked manually.
+- Spec-less directories (wayfinder maps, one-off fix tickets) are not listed.
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.

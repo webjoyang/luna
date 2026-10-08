@@ -354,7 +354,7 @@ public class SampleAnalysisServiceImpl implements SampleAnalysisService {
 
     /**
      * 校验客户并解析客户名称快照：
-     * customerId 存在时档案必须存在（抛 1_030_018_002），若未传 clientName 则以档案公司名兜底快照；
+     * customerId 存在时档案必须存在（抛 1_030_040_002），若未传 clientName 则以档案公司名兜底快照；
      * customerId 为空时直接返回手填的 clientName。
      */
     private String validateCustomerAndResolveClientName(Long customerId, String clientName) {

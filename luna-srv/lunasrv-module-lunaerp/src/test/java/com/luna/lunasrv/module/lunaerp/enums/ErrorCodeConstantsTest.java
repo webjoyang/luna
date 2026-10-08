@@ -36,28 +36,28 @@ public class ErrorCodeConstantsTest {
 
     @Test
     void testSampleAnalysisErrorCodes() {
-        assertEquals(1_030_018_000, SampleErrorCodeConstants.SAMPLE_ANALYSIS_NOT_EXISTS.getCode());
+        assertEquals(1_030_040_000, SampleErrorCodeConstants.SAMPLE_ANALYSIS_NOT_EXISTS.getCode());
         assertEquals("样品分析不存在", SampleErrorCodeConstants.SAMPLE_ANALYSIS_NOT_EXISTS.getMsg());
 
-        assertEquals(1_030_018_001, SampleErrorCodeConstants.SAMPLE_ANALYSIS_NO_DUPLICATE.getCode());
+        assertEquals(1_030_040_001, SampleErrorCodeConstants.SAMPLE_ANALYSIS_NO_DUPLICATE.getCode());
         assertTrue(SampleErrorCodeConstants.SAMPLE_ANALYSIS_NO_DUPLICATE.getMsg().contains("样品编号"));
 
-        assertEquals(1_030_018_002, SampleErrorCodeConstants.SAMPLE_ANALYSIS_REF_NOT_EXISTS.getCode());
+        assertEquals(1_030_040_002, SampleErrorCodeConstants.SAMPLE_ANALYSIS_REF_NOT_EXISTS.getCode());
         assertEquals("关联引用不存在", SampleErrorCodeConstants.SAMPLE_ANALYSIS_REF_NOT_EXISTS.getMsg());
 
-        assertEquals(1_030_018_003, SampleErrorCodeConstants.SAMPLE_ANALYSIS_LOSS_RATE_INVALID.getCode());
+        assertEquals(1_030_040_003, SampleErrorCodeConstants.SAMPLE_ANALYSIS_LOSS_RATE_INVALID.getCode());
         assertTrue(SampleErrorCodeConstants.SAMPLE_ANALYSIS_LOSS_RATE_INVALID.getMsg().contains("损耗率"));
 
-        assertEquals(1_030_018_004, SampleErrorCodeConstants.SAMPLE_ANALYSIS_PRODUCT_NAME_EMPTY.getCode());
+        assertEquals(1_030_040_004, SampleErrorCodeConstants.SAMPLE_ANALYSIS_PRODUCT_NAME_EMPTY.getCode());
         assertEquals("产品名称不能为空", SampleErrorCodeConstants.SAMPLE_ANALYSIS_PRODUCT_NAME_EMPTY.getMsg());
 
-        assertEquals(1_030_018_005, SampleErrorCodeConstants.SAMPLE_ANALYSIS_STITCH_ARRANGE_INVALID.getCode());
+        assertEquals(1_030_040_005, SampleErrorCodeConstants.SAMPLE_ANALYSIS_STITCH_ARRANGE_INVALID.getCode());
         assertTrue(SampleErrorCodeConstants.SAMPLE_ANALYSIS_STITCH_ARRANGE_INVALID.getMsg().contains("三角排列画板"));
 
-        assertEquals(1_030_018_006, SampleErrorCodeConstants.SAMPLE_ANALYSIS_PHOTO_COUNT_EXCEED.getCode());
+        assertEquals(1_030_040_006, SampleErrorCodeConstants.SAMPLE_ANALYSIS_PHOTO_COUNT_EXCEED.getCode());
         assertEquals("样品照片最多上传 9 张", SampleErrorCodeConstants.SAMPLE_ANALYSIS_PHOTO_COUNT_EXCEED.getMsg());
 
-        assertEquals(1_030_018_100, SampleErrorCodeConstants.SAMPLE_ANALYSIS_YARN_SPEC_NOT_EXISTS.getCode());
+        assertEquals(1_030_040_100, SampleErrorCodeConstants.SAMPLE_ANALYSIS_YARN_SPEC_NOT_EXISTS.getCode());
         assertTrue(SampleErrorCodeConstants.SAMPLE_ANALYSIS_YARN_SPEC_NOT_EXISTS.getMsg().contains("纱线规格"));
     }
 }

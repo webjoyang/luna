@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>出口单证 — resync 与状态机逻辑原型</title>
+<style>
+  /* 一份可双击运行的单文件原型。逻辑在下方 Logic 模块，页面只是壳。 */
+  :root {
+    --bg:#fafaf7; --panel:#ffffff; --ink:#1d1d1f; --muted:#6b6b6f;
+    --line:#e6e3dc; --accent:#0b6b53; --accent-soft:#e3f1ec;
+    --warn:#b86b00; --warn-soft:#fbe6c4; --err:#a02020; --err-soft:#f6d7d7;
+    --ok:#0b6b53; --ok-soft:#e3f1ec;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  }
+  header { padding:20px 28px 0; max-width:1180px; margin:0 auto; }
+  h1 { margin:0 0 4px; font-size:22px; letter-spacing:-.01em; }
+  h1 .tag { display:inline-block; vertical-align:middle; font-size:11px; font-weight:600; color:var(--accent);
+    background:var(--accent-soft); border-radius:4px; padding:2px 8px; margin-left:8px; letter-spacing:.04em; }
+  .subtitle { color:var(--muted); font-size:13px; margin:0; }
+  main { max-width:1180px; margin:0 auto; padding:20px 28px 80px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px 22px; margin:14px 0; }
+  h2 { margin:0 0 12px; font-size:15px; font-weight:600; color:var(--ink); }
+  h2 .hint { font-weight:400; color:var(--muted); font-size:12px; margin-left:8px; }
+  .intro p { margin:0 0 8px; font-size:13.5px; }
+  .intro ul { margin:4px 0 0; padding-left:22px; color:var(--ink); font-size:13.5px; }
+  .intro li { margin-bottom:4px; }
+  .intro code, .state code, .log code { font-family:var(--mono); font-size:12px; background:#f1efe9; padding:1px 5px; border-radius:3px; }
+
+  /* State panel */
+  .state-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .state-block { border:1px solid var(--line); border-radius:8px; padding:12px 14px; background:#fbfaf6; }
+  .state-block h3 { margin:0 0 8px; font-size:13px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+  .kv { display:grid; grid-template-columns:130px 1fr; gap:4px 12px; font-size:13px; }
+  .kv dt { color:var(--muted); }
+  .kv dd { margin:0; font-family:var(--mono); font-size:12.5px; word-break:break-all; }
+  .kv dd.empty { color:#bdbdbd; font-style:italic; }
+  .kv dd.changed { background:#fff3bf; border-radius:3px; padding:0 4px; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; letter-spacing:.04em; }
+  .badge.DRAFT { background:#eef3f8; color:#3a5a8c; }
+  .badge.FINALIZED { background:var(--accent-soft); color:var(--accent); }
+  .badge.DELETED { background:#eee; color:#777; text-decoration:line-through; }
+  .badge.MANUAL { background:#f1efe9; color:#777; }
+  .badge.CONTRACT, .badge.SHIPMENT { background:#eef3f8; color:#3a5a8c; }
+  table.items { width:100%; border-collapse:collapse; font-size:12px; }
+  table.items th, table.items td { padding:5px 7px; border-bottom:1px solid var(--line); text-align:left; }
+  table.items th { color:var(--muted); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  table.items td.num { text-align:right; font-family:var(--mono); }
+  .pl-preview { font-size:13px; }
+  .pl-preview .row { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dashed var(--line); }
+  .pl-preview .row.total { font-weight:600; border-bottom-style:solid; color:var(--accent); }
+
+  /* Actions */
+  .actions-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; }
+  button.act { padding:9px 12px; font-size:13px; font-family:inherit; background:#fff; color:var(--ink);
+    border:1px solid var(--line); border-radius:6px; cursor:pointer; text-align:left; transition:all .12s; }
+  button.act:hover:not(:disabled) { border-color:var(--accent); background:var(--accent-soft); }
+  button.act:disabled { opacity:.4; cursor:not-allowed; }
+  button.act .k { display:block; font-weight:600; font-size:13px; }
+  button.act .d { display:block; font-size:11px; color:var(--muted); margin-top:2px; }
+  button.act.danger { border-color:#e0c0c0; }
+  button.act.danger:hover:not(:disabled) { background:var(--err-soft); border-color:var(--err); }
+  button.act.primary { border-color:#a8c9be; }
+  button.act.primary:hover:not(:disabled) { background:var(--accent-soft); border-color:var(--accent); }
+
+  /* Editor dialog (inline) */
+  .editor { margin-top:12px; padding:12px; border:1px dashed var(--line); border-radius:8px; background:#fbfaf6; font-size:13px; }
+  .editor label { display:block; margin:6px 0 2px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .editor select, .editor input { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:5px; background:#fff; width:100%; }
+  .editor .row2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .editor .submit { margin-top:10px; }
+
+  /* Walkthroughs */
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:14px; flex-wrap:wrap; }
+  .tab { padding:8px 14px; font-size:13px; background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; color:var(--muted); }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+  .scenario { font-size:13.5px; }
+  .scenario p { margin:0 0 10px; }
+  .scenario .watch { background:var(--warn-soft); border-left:3px solid var(--warn); padding:8px 12px; margin:10px 0; border-radius:0 4px 4px 0; font-size:13px; }
+  .steps { list-style:none; padding:0; margin:14px 0 0; counter-reset:step; }
+  .steps li { padding:8px 12px 8px 44px; position:relative; border-left:2px solid var(--line); margin-left:8px; min-height:34px; }
+  .steps li::before { counter-increment:step; content:counter(step); position:absolute; left:0; top:7px;
+    width:26px; height:26px; border-radius:50%; background:#fff; border:1px solid var(--line);
+    color:var(--muted); font-size:12px; font-weight:600; display:flex; align-items:center; justify-content:center; }
+  .steps li.current::before { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .steps li.done { opacity:.55; }
+  .steps li.done::before { background:var(--accent-soft); color:var(--accent); border-color:var(--accent); }
+  .steps li .stxt { display:block; font-size:13px; }
+  .steps li .sbtn { margin-top:6px; }
+  .steps li button { font:inherit; padding:4px 10px; font-size:12px; background:#fff;
+    border:1px solid var(--line); border-radius:5px; cursor:pointer; }
+  .steps li button:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+  .steps li button:disabled { opacity:.4; cursor:not-allowed; }
+  .reset-btn { margin-bottom:10px; }
+
+  /* Log */
+  .log { font-family:var(--mono); font-size:12px; max-height:260px; overflow:auto;
+    background:#1d1d1f; color:#e6e3dc; padding:12px; border-radius:6px; line-height:1.5; }
+  .log .ok { color:#7fd1a8; }
+  .log .err { color:#ff8a8a; }
+  .log .warn { color:#ffc873; }
+  .log .mut { color:#8a8a8a; }
+  .log .ts { color:#8a8a8a; }
+  .log-empty { color:#8a8a8a; font-style:italic; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>出口单证 — resync 与状态机逻辑原型 <span class="tag">PROTOTYPE · 抛弃式</span></h1>
+  <p class="subtitle">单文件、双击运行。验证 20 号 ticket grilling 定稿的 resync / 状态机 / 字段映射优先级是否成立。</p>
+</header>
+
+<main>
+
+  <section class="intro">
+    <h2>原型在回答什么问题 <span class="hint">三句话</span></h2>
+    <p>出口单证套（<code>ED</code> 单证套号 + 共享抬头 + 三单 <code>pi_meta/ci_meta/pl_meta</code> JSON + 货物明细行）的两态状态机 + <b>resync 只填空不覆盖</b>逻辑 + 字段映射优先级（<code>发货单 &gt; 合同 &gt; 卖方配置</code>）是否成立。重点验证三类纸上难推理的边界：</p>
+    <ul>
+      <li><b>resync 三层只填空</b>：抬头 / 明细行 / meta 三层都"当前为空才补、已编辑永不覆盖"，跨层并发填充顺序与优先级是否正确；</li>
+      <li><b>守卫矩阵</b>：<code>DRAFT/FINALIZED</code> 两态 + <code>finalize</code>（守卫明细非空）/ <code>revoke</code> / <code>resync</code>（仅 DRAFT 且 <code>source≠MANUAL</code>）/ <code>delete</code>（仅 DRAFT，FINALIZED 须先 revoke）在奇怪操作序列下是否漏边；</li>
+      <li><b>多源优先级</b>：从合同带出 / 从发货单带出 / resync 时同一字段在 发货单 &gt; 合同 &gt; 卖方配置 三源下取值是否一致。</li>
+    </ul>
+    <p style="color:var(--muted);font-size:12px;margin-top:8px">数据为内存态，全部 mock。下方"逻辑模块"代码可被原样 lift 进真实后端 service。<b>非生产</b>——无持久化、无错误处理、无校验外的安全检查。</p>
+  </section>
+
+  <section class="state">
+    <h2>当前单证套状态 <span class="hint">每次操作后重新渲染</span></h2>
+    <div id="state-panel"><div style="color:var(--muted)">尚未初始化。点击右侧"新建空白"或下方任一场景"重置并开始"。</div></div>
+  </section>
+
+  <section class="actions">
+    <h2>自由操作 <span class="hint">任意顺序点击 — 看边角是否成立</span></h2>
+    <div class="actions-grid">
+      <button class="act" data-act="createManual"><span class="k">新建空白</span><span class="d">DRAFT · source=MANUAL · 卖方从配置带出</span></button>
+      <button class="act" data-act="createFromContract"><span class="k">从合同生成</span><span class="d">SC20260001 (EXPORT) · 带出 4 条款+英文名址+行快照</span></button>
+      <button class="act" data-act="createFromShipment"><span class="k">从发货单生成</span><span class="d">SH20260001 · 卷清单 Σ 净重 · 实发客户名优先</span></button>
+      <button class="act primary" data-act="resync"><span class="k">重新同步 resync</span><span class="d">仅 DRAFT 且 source≠MANUAL · 只填空</span></button>
+      <button class="act primary" data-act="finalize"><span class="k">定稿 finalize</span><span class="d">DRAFT→FINALIZED · 守卫明细非空</span></button>
+      <button class="act" data-act="revoke"><span class="k">回退 revoke</span><span class="d">FINALIZED→DRAFT</span></button>
+      <button class="act danger" data-act="del"><span class="k">删除（软删进回收站）</span><span class="d">仅 DRAFT · FINALIZED 须先 revoke</span></button>
+      <button class="act" data-act="restore"><span class="k">恢复（回收站）</span><span class="d">仅 DELETED 可恢复</span></button>
+      <button class="act" data-act="reset"><span class="k">重置（清空）</span><span class="d">回到未初始化</span></button>
+    </div>
+
+    <div class="editor" id="editor">
+      <h2 style="margin-top:0">手动编辑字段 <span class="hint">用来模拟"已编辑值"，验证 resync 不覆盖</span></h2>
+      <div class="row2">
+        <div>
+          <label>抬头字段</label>
+          <select id="ed-hdr-key">
+            <option value="buyerName">buyer_name 买方英文名</option>
+            <option value="buyerAddress">buyer_address 买方英文地址</option>
+            <option value="buyerBankInfo">buyer_bank_info 买方银行</option>
+            <option value="incoterm">incoterm 贸易术语</option>
+            <option value="portOfLoading">port_of_loading 起运港</option>
+            <option value="portOfDischarge">port_of_discharge 目的港</option>
+            <option value="paymentTerm">payment_term 付款方式</option>
+            <option value="shippingMark">shipping_mark 唛头</option>
+            <option value="sellerName">seller_name 卖方名</option>
+            <option value="countryOfDest">country_of_dest 目的国</option>
+            <option value="transportMode">transport_mode 运输方式</option>
+            <option value="remarks">remarks 备注</option>
+          </select>
+        </div>
+        <div>
+          <label>新值（留空=清空该字段）</label>
+          <input id="ed-hdr-val" type="text" placeholder="如：CUSTOM EDITED BUYER">
+        </div>
+      </div>
+      <div class="row2" style="margin-top:8px">
+        <div>
+          <label>明细行号</label>
+          <select id="ed-line-no"></select>
+        </div>
+        <div>
+          <label>明细字段</label>
+          <select id="ed-line-key">
+            <option value="nameEn">name_en 英文品名</option>
+            <option value="hsCode">hs_code HS 编码</option>
+            <option value="grossWeight">gross_weight 毛重</option>
+            <option value="packages">packages 箱数</option>
+            <option value="volume">volume 体积 CBM</option>
+            <option value="netWeight">net_weight 净重</option>
+          </select>
+        </div>
+      </div>
+      <div class="row2" style="margin-top:8px">
+        <div>
+          <label>明细新值</label>
+          <input id="ed-line-val" type="text" placeholder="如：12.5">
+        </div>
+        <div>
+          <label>meta 类型 / 字段</label>
+          <div style="display:flex;gap:6px">
+            <select id="ed-meta-type" style="flex:1">
+              <option value="piMeta">pi_meta</option>
+              <option value="ciMeta">ci_meta</option>
+              <option value="plMeta">pl_meta</option>
+            </select>
+            <select id="ed-meta-key" style="flex:1">
+              <option value="validUntil">validUntil</option>
+              <option value="shipmentDate">shipmentDate</option>
+              <option value="depositPct">depositPct</option>
+              <option value="bankName">bankName</option>
+              <option value="notes">notes</option>
+              <option value="lcNo">lcNo</option>
+              <option value="originDeclaration">originDeclaration</option>
+              <option value="totalPackages">totalPackages (PL 手填汇总)</option>
+              <option value="totalNetWeight">totalNetWeight (PL 手填汇总)</option>
+              <option value="totalGrossWeight">totalGrossWeight (PL 手填汇总)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="row2" style="margin-top:8px">
+        <div>
+          <label>meta 新值</label>
+          <input id="ed-meta-val" type="text" placeholder="如：100">
+        </div>
+        <div style="display:flex;align-items:end;gap:6px">
+          <button class="act" id="ed-hdr-submit" style="flex:1"><span class="k">改抬头</span></button>
+          <button class="act" id="ed-line-submit" style="flex:1"><span class="k">改明细</span></button>
+          <button class="act" id="ed-meta-submit" style="flex:1"><span class="k">改 meta</span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>引导场景 <span class="hint">每个场景重置到已知初始态，按序点击 — 边角案例</span></h2>
+    <div class="tabs" id="scenario-tabs"></div>
+    <div id="scenario-body"></div>
+  </section>
+
+  <section>
+    <h2>操作日志 <span class="hint">每次动作 + 结果（错误码带段位 1-030-033）</span></h2>
+    <div class="log" id="log"><div class="log-empty">尚无动作。</div></div>
+  </section>
+
+</main>
+
+<script>
+/* ============================================================================
+ * 纯逻辑模块 — 无 DOM 引用，可原样 lift 进后端 service
+ * 段位 1-030-033 · 分区 000 单证套 / 100 明细 / 200 卖方配置
+ * ========================================================================== */
+const Logic = (function () {
+
+  // ===== Mock 源数据（模拟已落地模块的快照） =====
+  const SELLER = {
+    sellerName:  'Luna Textile Export Co., Ltd.',
+    sellerAddress: 'No.456 Industry Park, Shanghai, China',
+    bankName:    'Bank of China Shanghai Branch',
+    bankAccount: '4567890123456789',
+    bankSwift:   'BKCHCNBJ',
+    bankAddress: 'No.1 Bund, Shanghai',
+  };
+
+  // 销售合同（EXPORT，已带 grilling 定稿的 4 个外贸条款列）
+  const CONTRACT = {
+    id: 1, no: 'SC20260001', tradeType: 'EXPORT', currency: 'USD',
+    incoterm: 'CIF', portOfLoading: 'Shanghai', portOfDischarge: 'Hamburg', paymentTerm: 'TT',
+    customerId: 100,
+    customerName:   '杭州纺织有限公司',                       // 中文快照
+    customerNameEn: 'Hangzhou Textile Co., Ltd.',            // 客户档案 name_en 带到合同
+    customerAddressEn: 'No.123 Wenhua Rd, Hangzhou, China', // 客户档案 address_en 带到合同
+    items: [
+      { lineNo:1, productName:'全棉布 32S',     composition:'100% Cotton',         width:'160cm', quantity:1000, unit:'M', unitPrice:3.5, amount:3500 },
+      { lineNo:2, productName:'涤棉布 T/C 65/35', composition:'65% Polyester 35% Cotton', width:'150cm', quantity:2000, unit:'M', unitPrice:2.8, amount:5600 },
+    ],
+  };
+
+  // 发货单（卷清单逐卷实称重量；实发客户名与合同英文略不同 — 验证优先级）
+  const SHIPMENT = {
+    id: 200, no: 'SH20260001', contractNo: 'SC20260001',
+    customerId: 100,
+    customerName: 'Hangzhou Textile Co Ltd',    // 实发客户名（无逗号，与合同英文不同 — 优先级 test）
+    items: [
+      { lineNo:1, productName:'全棉布 32S',       color:'Black', quantity:950,  unit:'M', unitPrice:3.5, amount:3325,
+        rolls:[{weight:12.3},{weight:11.8}] },   // 净重 Σ = 24.1
+      { lineNo:2, productName:'涤棉布 T/C 65/35', color:'White', quantity:2000, unit:'M', unitPrice:2.8, amount:5600,
+        rolls:[{weight:25.0},{weight:24.8}] },   // 净重 Σ = 49.8
+    ],
+  };
+
+  // ===== 状态工厂 =====
+  function initialState() {
+    return {
+      docNo: null,
+      status: null,        // null | 'DRAFT' | 'FINALIZED' | 'DELETED'
+      sourceType: null,    // null | 'MANUAL' | 'CONTRACT' | 'SHIPMENT'
+      contractId: null, contractNo: null,
+      shipmentId: null, shipmentNo: null,
+      customerId: null, customerName: null,
+      // 共享抬头（doc 头）
+      sellerName: null, sellerAddress: null, sellerBankInfo: null,
+      buyerName: null, buyerAddress: null, buyerBankInfo: null,
+      incoterm: null, portOfLoading: null, portOfDischarge: null,
+      countryOfDest: null, transportMode: null, paymentTerm: null,
+      currency: null, shippingMark: null, remarks: null,
+      // 三单专属 meta（前端 TS 约束、后端透传）
+      piMeta: { piNo:null, validUntil:null, shipmentDate:null, depositPct:null, commissionPct:null,
+                partialShipment:null, transshipment:null,
+                bankName:null, bankAccount:null, bankSwift:null, bankAddress:null, notes:null },
+      ciMeta: { ciNo:null, invoiceDate:null, lcNo:null, contractRef:null, originDeclaration:null },
+      plMeta: { plNo:null, plDate:null, totalPackages:null, totalNetWeight:null, totalGrossWeight:null, remark:null },
+      items: [],          // { lineNo, nameCn, nameEn, hsCode, spec, quantity, unit, unitPrice, amount, netWeight, grossWeight, packages, volume, origin, remark }
+      log: [],            // { ts, kind, action, msg }
+      changedPaths: new Set(),
+    };
+  }
+
+  // ===== 工具 =====
+  const ERR = {
+    NOT_EXISTS:        { code:'1-030-033-000', name:'EXPORT_DOC_NOT_EXISTS' },
+    NO_DUPLICATE:      { code:'1-030-033-001', name:'EXPORT_DOC_NO_DUPLICATE' },
+    STATUS_NOT_ALLOW: { code:'1-030-033-002', name:'EXPORT_DOC_STATUS_NOT_ALLOW' },
+    REFERENCE_NOT_FOUND: { code:'1-030-033-003', name:'EXPORT_DOC_REFERENCE_NOT_FOUND' },
+    ITEM_EMPTY:       { code:'1-030-033-004', name:'EXPORT_DOC_ITEM_EMPTY' },
+    CONTRACT_NOT_EXPORT: { code:'1-030-033-005', name:'EXPORT_DOC_CONTRACT_NOT_EXPORT' },
+    SOURCE_REQUIRED:  { code:'1-030-033-006', name:'EXPORT_DOC_SOURCE_REQUIRED' },
+    ITEM_INVALID_ID:  { code:'1-030-033-101', name:'EXPORT_DOC_ITEM_INVALID_ID' },
+    SELLER_SAVE_FAILED: { code:'1-030-033-200', name:'EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED' },
+  };
+
+  function log(s, kind, action, msg) {
+    s.log.unshift({ ts:new Date().toLocaleTimeString('zh-CN',{hour12:false}), kind, action, msg });
+    if (s.log.length > 60) s.log.pop();
+  }
+  function mark(s, paths) { paths.forEach(p => s.changedPaths.add(p)); }
+  function resetMarks(s) { s.changedPaths = new Set(); }
+  function isEmpty(v){ return v===null||v===undefined||v===''||(typeof v==='number'&&Number.isNaN(v)); }
+  function val(v){ return isEmpty(v) ? null : v; }
+  function bankInfoStr(c){
+    const parts=[c.bankName, c.bankAccount && ('A/C: '+c.bankAccount), c.bankSwift && ('SWIFT: '+c.bankSwift), c.bankAddress].filter(Boolean);
+    return parts.length ? parts.join(' / ') : null;
+  }
+  function lineAmount(it){ const q=Number(it.quantity)||0, p=Number(it.unitPrice)||0; return Math.round(q*p*100)/100; }
+
+  // ===== 创建：手工 =====
+  function createManual(s) {
+    Object.assign(s, initialState(), {
+      docNo: nextDocNo(),
+      status:'DRAFT', sourceType:'MANUAL',
+      sellerName: SELLER.sellerName, sellerAddress: SELLER.sellerAddress, sellerBankInfo: bankInfoStr(SELLER),
+      currency:'USD',
+    });
+    s.log = []; resetMarks(s);
+    mark(s, ['docNo','status','sourceType','sellerName','sellerAddress','sellerBankInfo','currency']);
+    log(s,'ok','createManual', '已新建空白单证套 '+s.docNo+'（卖方从租户配置带出）');
+    return s;
+  }
+
+  // ===== 创建：从合同 =====
+  function createFromContract(s, contract=CONTRACT, seller=SELLER) {
+    if (contract.tradeType !== 'EXPORT') {
+      log(s,'err','createFromContract', ERR.CONTRACT_NOT_EXPORT.code+' EXPORT_DOC_CONTRACT_NOT_EXPORT — 合同 '+contract.no+' trade_type≠EXPORT');
+      return s;  // 不改状态
+    }
+    const items = contract.items.map(it => ({
+      lineNo: it.lineNo,
+      nameCn: it.productName, nameEn: null,           // 英文名/HS 留空手填（G5 缺口）
+      hsCode: null,
+      spec: [it.composition, it.width].filter(Boolean).join(' / ') || null,
+      quantity: it.quantity, unit: it.unit,
+      unitPrice: it.unitPrice, amount: it.amount,
+      netWeight: null, grossWeight: null,            // 合同 weight 是克重 GSM，绝不当净重；毛重/箱数/体积留空手填
+      packages: null, volume: null, origin: 'CHINA', remark: null,
+    }));
+    Object.assign(s, initialState(), {
+      docNo: nextDocNo(),
+      status:'DRAFT', sourceType:'CONTRACT',
+      contractId: contract.id, contractNo: contract.no,
+      customerId: contract.customerId, customerName: contract.customerName,
+      sellerName: seller.sellerName, sellerAddress: seller.sellerAddress, sellerBankInfo: bankInfoStr(seller),
+      buyerName: contract.customerNameEn,                              // 客户档案 name_en 经合同带到单证
+      buyerAddress: contract.customerAddressEn,
+      buyerBankInfo: null,                                             // 随单变化，不回补
+      incoterm: contract.incoterm, portOfLoading: contract.portOfLoading,
+      portOfDischarge: contract.portOfDischarge, paymentTerm: contract.paymentTerm,
+      currency: contract.currency,
+      items,
+    });
+    s.piMeta.bankName = seller.bankName; s.piMeta.bankAccount = seller.bankAccount;
+    s.piMeta.bankSwift = seller.bankSwift; s.piMeta.bankAddress = seller.bankAddress;
+    s.ciMeta.contractRef = contract.no; s.ciMeta.originDeclaration = 'COUNTRY OF ORIGIN: CHINA';
+    s.log = []; resetMarks(s);
+    mark(s, ['docNo','status','sourceType','contractId','contractNo','customerId','customerName','sellerName','sellerAddress','sellerBankInfo','buyerName','buyerAddress','incoterm','portOfLoading','portOfDischarge','paymentTerm','currency','items','piMeta','ciMeta']);
+    log(s,'ok','createFromContract', '从合同 '+contract.no+' 生成 '+s.docNo+'：4 条款列+英文名址+2 行快照；netWeight/grossWeight/packages/volume 留空手填');
+    return s;
+  }
+
+  // ===== 创建：从发货单 =====
+  function createFromShipment(s, ship=SHIPMENT, contract=CONTRACT, seller=SELLER) {
+    // 联动合同条款（发货单本身无 incoterm 等字段，但合同有）
+    const items = ship.items.map((it,idx) => {
+      const srcLine = contract.items.find(c => c.lineNo === it.lineNo) || contract.items[idx];
+      const netWeight = it.rolls.reduce((sum,r)=> sum + (Number(r.weight)||0), 0);
+      return {
+        lineNo: it.lineNo,
+        nameCn: it.productName, nameEn: null,
+        hsCode: null,
+        spec: [srcLine && srcLine.composition, srcLine && srcLine.width, it.color && ('Color: '+it.color)].filter(Boolean).join(' / ') || null,
+        quantity: it.quantity, unit: it.unit,
+        unitPrice: it.unitPrice, amount: it.amount,
+        netWeight: Math.round(netWeight*100)/100,  // 卷清单 Σ 实称重量，比老系统行级 actualWeight 更细
+        grossWeight: null, packages: null, volume: null, origin:'CHINA', remark: null,
+      };
+    });
+    Object.assign(s, initialState(), {
+      docNo: nextDocNo(),
+      status:'DRAFT', sourceType:'SHIPMENT',
+      shipmentId: ship.id, shipmentNo: ship.no,
+      contractId: contract.id, contractNo: ship.contractNo,
+      customerId: ship.customerId, customerName: ship.customerName,
+      sellerName: seller.sellerName, sellerAddress: seller.sellerAddress, sellerBankInfo: bankInfoStr(seller),
+      buyerName: ship.customerName,                 // 实发客户名优先于合同抬头
+      buyerAddress: contract.customerAddressEn,    // 发货单无英文地址，回退合同经客户的 address_en
+      buyerBankInfo: null,
+      incoterm: contract.incoterm, portOfLoading: contract.portOfLoading,
+      portOfDischarge: contract.portOfDischarge, paymentTerm: contract.paymentTerm,
+      currency: contract.currency,
+      items,
+    });
+    s.piMeta.bankName = seller.bankName; s.piMeta.bankAccount = seller.bankAccount;
+    s.piMeta.bankSwift = seller.bankSwift; s.piMeta.bankAddress = seller.bankAddress;
+    s.ciMeta.contractRef = ship.contractNo; s.ciMeta.originDeclaration = 'COUNTRY OF ORIGIN: CHINA';
+    s.log = []; resetMarks(s);
+    mark(s, ['docNo','status','sourceType','shipmentId','shipmentNo','contractId','contractNo','customerId','customerName','sellerName','sellerAddress','sellerBankInfo','buyerName','buyerAddress','incoterm','portOfLoading','portOfDischarge','paymentTerm','currency','items','piMeta','ciMeta']);
+    log(s,'ok','createFromShipment', '从发货单 '+ship.no+' 生成 '+s.docNo+'：netWeight=卷清单 Σ（24.1/49.8）；buyerName 取实发客户名"'+ship.customerName+'"（≠合同英文"'+contract.customerNameEn+'"，优先级 test）');
+    return s;
+  }
+
+  // ===== resync：只填空、永不覆盖；优先级 发货单 > 合同 > 卖方配置 =====
+  function resync(s, contract=CONTRACT, ship=SHIPMENT, seller=SELLER) {
+    resetMarks(s);
+    if (s.status == null) { log(s,'err','resync', ERR.NOT_EXISTS.code+' EXPORT_DOC_NOT_EXISTS'); return s; }
+    if (s.status === 'DELETED') { log(s,'err','resync', ERR.NOT_EXISTS.code+' EXPORT_DOC_NOT_EXISTS（已软删）'); return s; }
+    if (s.status !== 'DRAFT')  { log(s,'err','resync', ERR.STATUS_NOT_ALLOW.code+' EXPORT_DOC_STATUS_NOT_ALLOW — 仅 DRAFT 可同步'); return s; }
+    if (s.sourceType === 'MANUAL' || !s.sourceType) {
+      log(s,'err','resync', ERR.SOURCE_REQUIRED.code+' EXPORT_DOC_SOURCE_REQUIRED — 手工新建的单证套没有来源单据');
+      return s;
+    }
+    // 按来源确定可用源（CONTRACT 只能用 contract+seller；SHIPMENT 三源皆可用）
+    const sources = [];
+    if (s.sourceType === 'SHIPMENT') sources.push({ kind:'发货单', line:ship.items, header:ship });
+    if (s.sourceType === 'SHIPMENT' || s.sourceType === 'CONTRACT') sources.push({ kind:'合同', line:contract.items, header:contract });
+    sources.push({ kind:'卖方配置', line:[], header:seller });
+
+    let filledCount = 0;
+
+    // ---- 抬头层只填空 ----
+    const hdrMap = [
+      ['buyerName',      () => sources.find(src => src.header.customerName      && src.kind!=='卖方配置')?.header.customerName      ?? null],
+      ['buyerAddress',   () => sources.find(src => src.header.customerAddressEn && src.kind!=='卖方配置')?.header.customerAddressEn ?? null],
+      ['contractNo',     () => sources.find(src => src.header.no || src.header.contractNo)?.header.no ?? sources.find(src=>src.header.contractNo)?.header.contractNo ?? null],
+      ['incoterm',       () => sources.find(src => src.header.incoterm)?.header.incoterm       ?? null],
+      ['portOfLoading',  () => sources.find(src => src.header.portOfLoading)?.header.portOfLoading  ?? null],
+      ['portOfDischarge',() => sources.find(src => src.header.portOfDischarge)?.header.portOfDischarge ?? null],
+      ['paymentTerm',    () => sources.find(src => src.header.paymentTerm)?.header.paymentTerm ?? null],
+      ['currency',       () => sources.find(src => src.header.currency)?.header.currency       ?? null],
+      // 卖方信息只从卖方配置取（与 from-* 创建时一致：仅创建时带出，resync 也只填空、不回写）
+      ['sellerName',     () => seller.sellerName],
+      ['sellerAddress',  () => seller.sellerAddress],
+      ['sellerBankInfo', () => bankInfoStr(seller)],
+    ];
+    hdrMap.forEach(([k, getter]) => {
+      if (isEmpty(s[k])) {
+        const v = val(getter());
+        if (!isEmpty(v)) { s[k] = v; mark(s,[k]); filledCount++; }
+      }
+    });
+
+    // ---- meta 层只填空（pi_meta 银行字段从卖方配置补空、ci_meta 合同引用/原产地补空）----
+    const metaMap = [
+      ['piMeta','bankName',     seller.bankName],
+      ['piMeta','bankAccount',  seller.bankAccount],
+      ['piMeta','bankSwift',    seller.bankSwift],
+      ['piMeta','bankAddress',  seller.bankAddress],
+      ['ciMeta','contractRef',   s.contractNo],
+      ['ciMeta','originDeclaration','COUNTRY OF ORIGIN: CHINA'],
+    ];
+    metaMap.forEach(([m,k,v]) => {
+      if (isEmpty(s[m][k]) && !isEmpty(v)) { s[m][k] = v; mark(s,[m+'.'+k]); filledCount++; }
+    });
+
+    // ---- 明细层只填空（按 lineNo 匹配源行；不新增行、不删行）----
+    s.items.forEach(docItem => {
+      // 优先级 发货单 > 合同（source=SHIPMENT 时两者皆查；source=CONTRACT 时只查合同）
+      const srcLine = sources.map(src => ({ src, line: src.line.find(l => l.lineNo === docItem.lineNo) }))
+                             .find(x => x.line);
+      if (!srcLine) return;
+      const L = srcLine.line, srcKind = srcLine.src.kind;
+      // name_en / hsCode 永远不来自源（G5 缺口）— 只在源里有但 doc 没有时填；这里源里都没有，所以跳过
+      // spec：合同 composition+width，发货 color 拼接
+      if (isEmpty(docItem.spec)) {
+        let v = null;
+        if (srcKind === '发货单') {
+          const cLine = contract.items.find(c => c.lineNo === docItem.lineNo);
+          v = [cLine && cLine.composition, cLine && cLine.width, L.color && ('Color: '+L.color)].filter(Boolean).join(' / ') || null;
+        } else if (srcKind === '合同') {
+          v = [L.composition, L.width].filter(Boolean).join(' / ') || null;
+        }
+        if (!isEmpty(v)) { docItem.spec = v; mark(s,['items['+docItem.lineNo+'].spec']); filledCount++; }
+      }
+      if (isEmpty(docItem.quantity) && !isEmpty(L.quantity)) { docItem.quantity = L.quantity; mark(s,['items['+docItem.lineNo+'].quantity']); filledCount++; }
+      if (isEmpty(docItem.unit)    && !isEmpty(L.unit))     { docItem.unit = L.unit;       mark(s,['items['+docItem.lineNo+'].unit']);     filledCount++; }
+      if (isEmpty(docItem.unitPrice)&&!isEmpty(L.unitPrice)){ docItem.unitPrice = L.unitPrice; mark(s,['items['+docItem.lineNo+'].unitPrice']); filledCount++; }
+      if (isEmpty(docItem.amount))  { const a = lineAmount(docItem); if(a!=null){ docItem.amount=a; mark(s,['items['+docItem.lineNo+'].amount']); filledCount++; } }
+      // 净重：发货单卷清单 Σ 优先；合同无（合同 weight 是 GSM 不当净重）
+      if (isEmpty(docItem.netWeight) && srcKind === '发货单' && L.rolls && L.rolls.length) {
+        const w = L.rolls.reduce((sum,r)=> sum + (Number(r.weight)||0), 0);
+        docItem.netWeight = Math.round(w*100)/100; mark(s,['items['+docItem.lineNo+'].netWeight']); filledCount++;
+      }
+    });
+
+    log(s,'ok','resync', '已完成重新同步：补了 '+filledCount+' 个空字段，未覆盖任何已编辑值（priority 发货单>合同>卖方配置，三层只填空）');
+    return s;
+  }
+
+  // ===== finalize / revoke =====
+  function finalize(s) {
+    resetMarks(s);
+    if (!s.status) { log(s,'err','finalize', ERR.NOT_EXISTS.code); return s; }
+    if (s.status === 'DELETED') { log(s,'err','finalize', ERR.NOT_EXISTS.code+'（已软删）'); return s; }
+    if (s.status !== 'DRAFT') { log(s,'err','finalize', ERR.STATUS_NOT_ALLOW.code+' EXPORT_DOC_STATUS_NOT_ALLOW — 已是 FINALIZED'); return s; }
+    if (!s.items.length) { log(s,'err','finalize', ERR.ITEM_EMPTY.code+' EXPORT_DOC_ITEM_EMPTY — 定稿失败：单证套没有货物明细'); return s; }
+    s.status = 'FINALIZED'; mark(s,['status']);
+    log(s,'ok','finalize', 'DRAFT→FINALIZED：编辑/删除/重新同步 已锁；打印仍可（PI 草稿常需先发客户确认定金）');
+    return s;
+  }
+  function revoke(s) {
+    resetMarks(s);
+    if (!s.status) { log(s,'err','revoke', ERR.NOT_EXISTS.code); return s; }
+    if (s.status !== 'FINALIZED') { log(s,'err','revoke', ERR.STATUS_NOT_ALLOW.code+' EXPORT_DOC_STATUS_NOT_ALLOW — 仅 FINALIZED 可回退'); return s; }
+    s.status = 'DRAFT'; mark(s,['status']);
+    log(s,'ok','revoke', 'FINALIZED→DRAFT：编辑/删除/重新同步 已恢复（条件 UPDATE 防并发）');
+    return s;
+  }
+
+  // ===== 软删 / 恢复（仅 DRAFT 进回收站） =====
+  function softDelete(s) {
+    resetMarks(s);
+    if (!s.status) { log(s,'err','delete', ERR.NOT_EXISTS.code); return s; }
+    if (s.status === 'FINALIZED') { log(s,'err','delete', ERR.STATUS_NOT_ALLOW.code+' EXPORT_DOC_STATUS_NOT_ALLOW — FINALIZED 须先 revoke 再删'); return s; }
+    if (s.status === 'DELETED') { log(s,'err','delete', '已在回收站'); return s; }
+    s.status = 'DELETED'; mark(s,['status']);
+    log(s,'ok','delete', '软删 + 级联软删 items 进回收站（bizType=EXPORT_DOC，仅 DRAFT 进站）');
+    return s;
+  }
+  function restore(s) {
+    resetMarks(s);
+    if (s.status !== 'DELETED') { log(s,'err','restore', '仅 DELETED 可恢复'); return s; }
+    s.status = 'DRAFT'; mark(s,['status']);
+    log(s,'ok','restore', '回收站级联恢复 items（不补账 — 本模块无库存/账务副作用）');
+    return s;
+  }
+
+  // ===== 手动编辑（用来制造"已编辑值"） =====
+  function editHeader(s, key, value) {
+    resetMarks(s);
+    if (s.status !== 'DRAFT') { log(s,'err','editHeader', ERR.STATUS_NOT_ALLOW.code+' EXPORT_DOC_STATUS_NOT_ALLOW — 仅 DRAFT 可编辑'); return s; }
+    s[key] = isEmpty(value) ? null : value;
+    mark(s,[key]);
+    log(s,'ok','editHeader', key+' = '+(isEmpty(value)?'(空)':JSON.stringify(value))+(isEmpty(value)?'（已清空，resync 可补回）':'（已编辑值，resync 不覆盖）'));
+    return s;
+  }
+  function editItem(s, lineNo, key, value) {
+    resetMarks(s);
+    if (s.status !== 'DRAFT') { log(s,'err','editItem', ERR.STATUS_NOT_ALLOW.code+' EXPORT_DOC_STATUS_NOT_ALLOW — 仅 DRAFT 可编辑'); return s; }
+    const it = s.items.find(x => x.lineNo === Number(lineNo));
+    if (!it) { log(s,'err','editItem', ERR.ITEM_INVALID_ID.code+' EXPORT_DOC_ITEM_INVALID_ID — 行 '+lineNo+' 不属于本单证套'); return s; }
+    it[key] = isEmpty(value) ? null : (key==='grossWeight'||key==='packages'||key==='volume'||key==='netWeight' ? Number(value) : value);
+    if (key==='quantity'||key==='unitPrice') it.amount = lineAmount(it);
+    mark(s,['items['+lineNo+'].'+key]);
+    log(s,'ok','editItem', 'items['+lineNo+'].'+key+' = '+(isEmpty(value)?'(空)':value)+(isEmpty(value)?'（已清空，resync 可补）':'（已编辑，resync 不覆盖）'));
+    return s;
+  }
+  function editMeta(s, metaType, key, value) {
+    resetMarks(s);
+    if (s.status !== 'DRAFT') { log(s,'err','editMeta', ERR.STATUS_NOT_ALLOW.code+' EXPORT_DOC_STATUS_NOT_ALLOW — 仅 DRAFT 可编辑'); return s; }
+    if (!s[metaType]) return s;
+    s[metaType][key] = isEmpty(value) ? null :
+      (['depositPct','commissionPct','totalPackages','totalNetWeight','totalGrossWeight'].includes(key) ? Number(value) : value);
+    mark(s,[metaType+'.'+key]);
+    log(s,'ok','editMeta', metaType+'.'+key+' = '+(isEmpty(value)?'(空)':value));
+    return s;
+  }
+
+  // ===== PL TOTAL 计算：meta 手填优先、空则服务端按行求和（尾箱凑整惯例） =====
+  function plTotals(s) {
+    const sum = (field) => s.items.reduce((sum,it)=> sum + (Number(it[field])||0), 0);
+    const sumPackages = Math.round(sum('packages'));
+    const sumNet = Math.round(sum('netWeight')*100)/100;
+    const sumGross = Math.round(sum('grossWeight')*100)/100;
+    return {
+      totalPackages:    !isEmpty(s.plMeta.totalPackages)    ? s.plMeta.totalPackages    : (sumPackages||0),
+      totalNetWeight:   !isEmpty(s.plMeta.totalNetWeight)   ? s.plMeta.totalNetWeight   : (sumNet||0),
+      totalGrossWeight: !isEmpty(s.plMeta.totalGrossWeight) ? s.plMeta.totalGrossWeight : (sumGross||0),
+      fromMeta: {
+        totalPackages:    !isEmpty(s.plMeta.totalPackages),
+        totalNetWeight:   !isEmpty(s.plMeta.totalNetWeight),
+        totalGrossWeight: !isEmpty(s.plMeta.totalGrossWeight),
+      },
+    };
+  }
+
+  // ===== 取号 ED{年}{4 位流水}（含软删行不释放，ADR-0004 max+1 + 撞号重试） =====
+  let seq = 1;
+  function nextDocNo() {
+    const y = new Date().getFullYear();
+    const n = String(seq++).padStart(4,'0');
+    return 'ED'+y+n;
+  }
+
+  return {
+    SELLER, CONTRACT, SHIPMENT, ERR,
+    initialState, createManual, createFromContract, createFromShipment,
+    resync, finalize, revoke, softDelete, restore,
+    editHeader, editItem, editMeta, plTotals,
+  };
+})();
+
+/* ============================================================================
+ * 页面壳 — 渲染状态、接按钮；无业务逻辑
+ * ========================================================================== */
+const App = (function () {
+  let state = Logic.initialState();
+  let currentScenario = null;
+  let stepCursor = 0;
+
+  // ---------- 渲染 ----------
+  const $state = document.getElementById('state-panel');
+  const $log = document.getElementById('log');
+  const $tabs = document.getElementById('scenario-tabs');
+  const $body = document.getElementById('scenario-body');
+
+  function fmt(v) {
+    if (v === null || v === undefined) return { text:'— 空 —', cls:'empty' };
+    if (typeof v === 'number') return { text:String(v), cls:'' };
+    if (typeof v === 'string') return { text:v, cls:'' };
+    return { text: JSON.stringify(v), cls:'' };
+  }
+  function kv($dl, label, value, path) {
+    const f = fmt(value);
+    const dt = document.createElement('dt'); dt.textContent = label;
+    const dd = document.createElement('dd'); dd.textContent = f.text; dd.className = f.cls;
+    if (path && state.changedPaths.has(path)) dd.classList.add('changed');
+    $dl.appendChild(dt); $dl.appendChild(dd);
+  }
+
+  function renderState() {
+    if (!state.status) {
+      $state.innerHTML = '<div style="color:var(--muted)">尚未初始化。点击下方"新建空白"或任一场景"重置并开始"。</div>';
+      return;
+    }
+    const statusBadge = '<span class="badge '+state.status+'">'+state.status+'</span>';
+    const sourceBadge = state.sourceType ? ' <span class="badge '+state.sourceType+'">source='+state.sourceType+'</span>' : '';
+
+    const hdr = document.createElement('dl'); hdr.className='kv';
+    kv(hdr,'单证套号 doc_no', state.docNo, 'docNo');
+    kv(hdr,'状态 status',  state.status==='DELETED'?'DELETED':state.status, 'status');
+    kv(hdr,'来源 source',   state.sourceType, 'sourceType');
+    kv(hdr,'contract',       state.contractNo, 'contractNo');
+    kv(hdr,'shipment',       state.shipmentNo, 'shipmentNo');
+    kv(hdr,'customer',       state.customerName, 'customerName');
+    kv(hdr,'seller_name',    state.sellerName, 'sellerName');
+    kv(hdr,'seller_address', state.sellerAddress, 'sellerAddress');
+    kv(hdr,'seller_bank_info',state.sellerBankInfo,'sellerBankInfo');
+    kv(hdr,'buyer_name',     state.buyerName, 'buyerName');
+    kv(hdr,'buyer_address',  state.buyerAddress, 'buyerAddress');
+    kv(hdr,'buyer_bank_info',state.buyerBankInfo,'buyerBankInfo');
+    kv(hdr,'incoterm',       state.incoterm, 'incoterm');
+    kv(hdr,'port_of_loading',state.portOfLoading,'portOfLoading');
+    kv(hdr,'port_of_discharge',state.portOfDischarge,'portOfDischarge');
+    kv(hdr,'payment_term',   state.paymentTerm,'paymentTerm');
+    kv(hdr,'currency',       state.currency,'currency');
+    kv(hdr,'shipping_mark',  state.shippingMark,'shippingMark');
+
+    // 三 meta
+    const meta = document.createElement('dl'); meta.className='kv';
+    ['piMeta','ciMeta','plMeta'].forEach(m => {
+      Object.entries(state[m]).forEach(([k,v]) => kv(meta, m+'.'+k, v, m+'.'+k));
+    });
+
+    // 明细表
+    const itemsHtml = state.items.length
+      ? '<table class="items"><thead><tr><th>#</th><th>nameCn</th><th>nameEn</th><th>hsCode</th><th>spec</th><th>qty</th><th>unit</th><th>unitPrice</th><th>amount</th><th>N.W.</th><th>G.W.</th><th>pkgs</th><th>CBM</th></tr></thead><tbody>'
+        + state.items.map(it => '<tr>'
+          + '<td>'+it.lineNo+'</td>'
+          + '<td>'+it.nameCn+'</td>'
+          + '<td>'+(it.nameEn||'<span style="color:#bdbdbd">—</span>')+'</td>'
+          + '<td>'+(it.hsCode||'<span style="color:#bdbdbd">—</span>')+'</td>'
+          + '<td>'+(it.spec||'<span style="color:#bdbdbd">—</span>')+'</td>'
+          + '<td class="num">'+(it.quantity??'—')+'</td>'
+          + '<td>'+(it.unit||'—')+'</td>'
+          + '<td class="num">'+(it.unitPrice??'—')+'</td>'
+          + '<td class="num">'+(it.amount??'—')+'</td>'
+          + '<td class="num">'+(it.netWeight??'—')+'</td>'
+          + '<td class="num">'+(it.grossWeight??'—')+'</td>'
+          + '<td class="num">'+(it.packages??'—')+'</td>'
+          + '<td class="num">'+(it.volume??'—')+'</td>'
+          + '</tr>').join('')
+        + '</tbody></table>'
+      : '<div style="color:var(--muted);font-size:13px">无明细行 — finalize 将被 EXPORT_DOC_ITEM_EMPTY 守卫拒绝</div>';
+
+    // PL TOTAL 预览
+    const pl = Logic.plTotals(state);
+    const plPreview = '<div class="pl-preview" style="margin-top:10px">'
+      + '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">PL TOTAL 行预览（meta 手填优先 / 空则按行求和）</div>'
+      + '<div class="row"><span>totalPackages</span><span>'+pl.totalPackages+(pl.fromMeta.totalPackages?' <span style="color:var(--accent);font-size:11px">[meta]</span>':' <span style="color:var(--muted);font-size:11px">[Σ items]</span>')+'</span></div>'
+      + '<div class="row"><span>totalNetWeight</span><span>'+pl.totalNetWeight+(pl.fromMeta.totalNetWeight?' <span style="color:var(--accent);font-size:11px">[meta]</span>':' <span style="color:var(--muted);font-size:11px">[Σ items]</span>')+'</span></div>'
+      + '<div class="row total"><span>totalGrossWeight</span><span>'+pl.totalGrossWeight+(pl.fromMeta.totalGrossWeight?' <span style="color:var(--accent);font-size:11px">[meta]</span>':' <span style="color:var(--muted);font-size:11px">[Σ items]</span>')+'</span></div>'
+      + '</div>';
+
+    $state.innerHTML =
+      '<div style="margin-bottom:6px">'+statusBadge+sourceBadge+'</div>'
+      + '<div class="state-grid">'
+        + '<div class="state-block"><h3>共享抬头</h3>'+hdr.outerHTML+'</div>'
+        + '<div class="state-block"><h3>三单 meta（前端 TS 约束 / 后端透传）</h3>'+meta.outerHTML+'</div>'
+      + '</div>'
+      + '<div class="state-block" style="margin-top:14px"><h3>货物明细行（三单共享）</h3>'+itemsHtml+plPreview+'</div>';
+
+    refreshLineSelect();
+    refreshActionButtons();
+  }
+
+  function renderLog() {
+    if (!state.log.length) { $log.innerHTML = '<div class="log-empty">尚无动作。</div>'; return; }
+    $log.innerHTML = state.log.map(e =>
+      '<div><span class="ts">['+e.ts+']</span> <span class="'+e.kind+'">'+e.kind.toUpperCase()+'</span> <span class="mut">'+e.action+'</span> '+e.msg+'</div>'
+    ).join('');
+  }
+
+  function refreshLineSelect() {
+    const sel = document.getElementById('ed-line-no');
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = state.items.length
+      ? state.items.map(it => '<option value="'+it.lineNo+'">行 '+it.lineNo+' — '+(it.nameCn||'?')+'</option>').join('')
+      : '<option value="">（无明细行）</option>';
+    if (cur && state.items.find(i=>String(i.lineNo)===cur)) sel.value = cur;
+  }
+
+  function refreshActionButtons() {
+    const isDraft = state.status === 'DRAFT';
+    const isFin   = state.status === 'FINALIZED';
+    const isDel   = state.status === 'DELETED';
+    const noInit  = !state.status;
+    document.querySelectorAll('button[data-act]').forEach(b => {
+      const a = b.dataset.act;
+      let disabled = false;
+      if (a==='resync')    disabled = noInit || isFin || isDel || state.sourceType==='MANUAL';
+      if (a==='finalize')  disabled = noInit || isFin || isDel;
+      if (a==='revoke')    disabled = noInit || !isFin;
+      if (a==='del')       disabled = noInit || isDel || (!isDraft);
+      if (a==='restore')   disabled = !isDel;
+      b.disabled = disabled;
+    });
+  }
+
+  // ---------- 派发动作 ----------
+  function dispatch(name, ...args) {
+    switch (name) {
+      case 'createManual':     state = Logic.createManual(Logic.initialState()); break;
+      case 'createFromContract':state = Logic.createFromContract(Logic.initialState()); break;
+      case 'createFromShipment':state = Logic.createFromShipment(Logic.initialState()); break;
+      case 'resync':           Logic.resync(state); break;
+      case 'finalize':         Logic.finalize(state); break;
+      case 'revoke':           Logic.revoke(state); break;
+      case 'del':              Logic.softDelete(state); break;
+      case 'restore':          Logic.restore(state); break;
+      case 'reset':            state = Logic.initialState(); currentScenario=null; stepCursor=0; renderScenarios(); break;
+    }
+    renderState(); renderLog();
+    if (currentScenario) renderScenarioSteps();
+  }
+
+  // ---------- 自由操作按钮 ----------
+  document.querySelectorAll('button[data-act]').forEach(b => {
+    b.addEventListener('click', () => {
+      currentScenario = null; stepCursor = 0; renderScenarios();  // 自由操作退出场景高亮
+      dispatch(b.dataset.act);
+    });
+  });
+
+  // ---------- 手动编辑按钮 ----------
+  document.getElementById('ed-hdr-submit').addEventListener('click', () => {
+    Logic.editHeader(state, document.getElementById('ed-hdr-key').value, document.getElementById('ed-hdr-val').value);
+    renderState(); renderLog();
+  });
+  document.getElementById('ed-line-submit').addEventListener('click', () => {
+    Logic.editItem(state, document.getElementById('ed-line-no').value, document.getElementById('ed-line-key').value, document.getElementById('ed-line-val').value);
+    renderState(); renderLog();
+  });
+  document.getElementById('ed-meta-submit').addEventListener('click', () => {
+    Logic.editMeta(state, document.getElementById('ed-meta-type').value, document.getElementById('ed-meta-key').value, document.getElementById('ed-meta-val').value);
+    renderState(); renderLog();
+  });
+
+  // ---------- 引导场景 ----------
+  const SCENARIOS = [
+    {
+      key:'happy', name:'① Happy path',
+      desc:'从外销合同生成单证套 → 手动补毛重/箱数（resync 不会覆盖）→ 定稿 → 回退 → 重新打印。验证 finalize 守卫、定稿后可打印、revoke 回退。',
+      setup: () => dispatch('createFromContract'),
+      watch:'定稿需有明细；从合同带出的明细已有 2 行，应直接通过。回退后所有写操作恢复。',
+      steps: [
+        { label:'从合同生成',           act:'createFromContract' },
+        { label:'手填行1 毛重=25.5',     custom:'editItem', args:[1,'grossWeight','25.5'] },
+        { label:'手填行1 箱数=2',        custom:'editItem', args:[1,'packages','2'] },
+        { label:'定稿',                 act:'finalize' },
+        { label:'回退',                 act:'revoke' },
+      ],
+    },
+    {
+      key:'resync-keep', name:'② resync 只填空不覆盖',
+      desc:'从合同生成 → 手改 buyer_name 为 "EDITED BUYER" → resync → buyer_name 应保持 EDITED 不被合同覆盖；再清空 incoterm → resync → incoterm 应从合同补回 CIF。',
+      setup: () => dispatch('createFromContract'),
+      watch:'resync 三层都"只填空"：已编辑值不覆盖，被清空的字段会从源补回。priority 发货单>合同>卖方配置。',
+      steps: [
+        { label:'从合同生成',           act:'createFromContract' },
+        { label:'手改 buyer_name=EDITED BUYER', custom:'editHeader', args:['buyerName','EDITED BUYER'] },
+        { label:'resync（buyer_name 不应被覆盖）', act:'resync' },
+        { label:'清空 incoterm',         custom:'editHeader', args:['incoterm',''] },
+        { label:'resync（incoterm 应补回 CIF）', act:'resync' },
+      ],
+    },
+    {
+      key:'resync-manual', name:'③ resync MANUAL 拒绝',
+      desc:'手工新建空白单证套（source=MANUAL）→ resync → 应报 EXPORT_DOC_SOURCE_REQUIRED。验证"手工新建无来源单据"的守卫。',
+      setup: () => dispatch('createManual'),
+      watch:'source=MANUAL 时 resync 按钮置灰，强行调用报错。须先用 from-* 重建或保持手工补录。',
+      steps: [
+        { label:'新建空白',      act:'createManual' },
+        { label:'resync（应报 SOURCE_REQUIRED）', act:'resync' },
+      ],
+    },
+    {
+      key:'resync-finalized', name:'④ resync FINALIZED 拒绝',
+      desc:'从合同生成 → 定稿 → resync → 应报 EXPORT_DOC_STATUS_NOT_ALLOW。验证定稿后 resync 也锁。',
+      setup: () => dispatch('createFromContract'),
+      watch:'FINALIZED 状态所有写端点（update/resync/delete/finalize）都被锁；只有 revoke、restore 不可用，print 仍可。',
+      steps: [
+        { label:'从合同生成',  act:'createFromContract' },
+        { label:'定稿',        act:'finalize' },
+        { label:'resync（应报 STATUS_NOT_ALLOW）', act:'resync' },
+      ],
+    },
+    {
+      key:'finalize-empty', name:'⑤ finalize 空明细拒绝',
+      desc:'手工新建空白（无明细）→ finalize → 应报 EXPORT_DOC_ITEM_EMPTY。验证 finalize 守卫明细非空（对齐 SHIPMENT_AUDIT_NO_ITEMS 惯例）。',
+      setup: () => dispatch('createManual'),
+      watch:'空白单证套 items.length=0，finalize 必须拒绝。从合同/发货单生成的天然有明细，不会触发。',
+      steps: [
+        { label:'新建空白',                       act:'createManual' },
+        { label:'finalize（应报 ITEM_EMPTY）',     act:'finalize' },
+      ],
+    },
+    {
+      key:'priority', name:'⑥ 优先级 发货单>合同>卖方配置',
+      desc:'从发货单生成（shipment.customerName ≠ contract.customerNameEn）→ buyer_name 应取发货单的"'+Logic.SHIPMENT.customerName+'"而非合同的"'+Logic.CONTRACT.customerNameEn+'"。验证多源优先级在创建时即生效。',
+      setup: () => dispatch('createFromShipment'),
+      watch:'从发货单生成时 buyer_name 已优先取实发客户名；resync 不会改变已填值（即使合同里有不同值）。这是老系统"实发优先于合同抬头"惯例。',
+      steps: [
+        { label:'从发货单生成（buyer_name 应为实发客户名）', act:'createFromShipment' },
+        { label:'查看 buyer_name 与合同 customerNameEn 不同', act:null, note:'当前状态面板 buyer_name 应为 "'+Logic.SHIPMENT.customerName+'"，而非合同的 "'+Logic.CONTRACT.customerNameEn+'"' },
+        { label:'resync（buyer_name 不应被合同覆盖）', act:'resync' },
+      ],
+    },
+    {
+      key:'pl-meta-priority', name:'⑦ PL 汇总 手填优先',
+      desc:'从合同生成 → 给行1 箱数=2、行2 箱数=4（按行求和=6）→ 手填 plMeta.totalPackages=100 → PL TOTAL 应显示 100 而非 6。验证尾箱凑整惯例：手填优先、空则求和。',
+      setup: () => dispatch('createFromContract'),
+      watch:'实务中尾箱凑整（如 200 箱凑 199 实+1 标牌）需要手填汇总覆盖求和；PL TOTAL 行的 meta 优先逻辑必须有测试。',
+      steps: [
+        { label:'从合同生成',                act:'createFromContract' },
+        { label:'手填行1 箱数=2',            custom:'editItem', args:[1,'packages','2'] },
+        { label:'手填行2 箱数=4',            custom:'editItem', args:[2,'packages','4'] },
+        { label:'查看 PL TOTAL.totalPackages=6 [Σ items]', act:null, note:'当前 PL 预览应显示 totalPackages=6，标注 [Σ items]' },
+        { label:'手填 plMeta.totalPackages=100', custom:'editMeta', args:['plMeta','totalPackages','100'] },
+        { label:'查看 PL TOTAL.totalPackages=100 [meta]', act:null, note:'PL 预览应显示 totalPackages=100，标注 [meta]（手填优先）' },
+      ],
+    },
+    {
+      key:'delete-finalized', name:'⑧ FINALIZED 删除须先 revoke',
+      desc:'从合同生成 → 定稿 → 删除 → 应报 STATUS_NOT_ALLOW；回退 → 删除 → 进回收站；恢复 → 回到 DRAFT。验证回收站仅收 DRAFT 的边界。',
+      setup: () => dispatch('createFromContract'),
+      watch:'FINALIZED 不可直接删（防止误删已发出的单证）；须先 revoke 回 DRAFT。回收站 bizType=EXPORT_DOC 仅收 DRAFT，恢复级联 items。',
+      steps: [
+        { label:'从合同生成',                act:'createFromContract' },
+        { label:'定稿',                      act:'finalize' },
+        { label:'删除（应报 STATUS_NOT_ALLOW）', act:'del' },
+        { label:'回退 revoke',               act:'revoke' },
+        { label:'删除（应进回收站 DELETED）', act:'del' },
+        { label:'恢复（回 DRAFT）',          act:'restore' },
+      ],
+    },
+  ];
+
+  function renderScenarios() {
+    $tabs.innerHTML = SCENARIOS.map(s =>
+      '<button class="tab'+(currentScenario===s.key?' active':'')+'" data-tab="'+s.key+'">'+s.name+'</button>'
+    ).join('');
+    if (!currentScenario) { $body.innerHTML = '<div style="color:var(--muted);font-size:13px">点击上方任一场景标签开始引导。</div>'; return; }
+    renderScenarioSteps();
+  }
+  $tabs.addEventListener('click', e => {
+    const t = e.target.closest('[data-tab]'); if (!t) return;
+    currentScenario = t.dataset.tab;
+    stepCursor = 0;
+    const sc = SCENARIOS.find(s => s.key === currentScenario);
+    sc.setup();   // 重置到已知初始态
+    renderScenarios();
+  });
+
+  function renderScenarioSteps() {
+    const sc = SCENARIOS.find(s => s.key === currentScenario);
+    if (!sc) { $body.innerHTML=''; return; }
+    const steps = sc.steps.map((st, i) => {
+      const cls = i < stepCursor ? 'done' : (i === stepCursor ? 'current' : '');
+      const note = st.note ? '<span style="color:var(--muted);font-size:12px;display:block;margin-top:4px">'+st.note+'</span>' : '';
+      const btn = st.act || st.custom
+        ? '<button data-step="'+i+'" '+(i!==stepCursor?'disabled':'')+'>'+(st.label)+'</button>'
+        : '<span style="font-size:12px;color:var(--muted)">（观察步骤 — 无动作）</span>';
+      return '<li class="'+cls+'"><span class="stxt">'+st.label+(note?note:'')+'</span><div class="sbtn">'+btn+'</div></li>';
+    }).join('');
+    $body.innerHTML =
+      '<div class="scenario">'
+      + '<p>'+sc.desc+'</p>'
+      + '<div class="watch"><b>观察点：</b>'+sc.watch+'</div>'
+      + '<button class="act reset-btn" id="sc-reset"><span class="k">↺ 重置并重新开始此场景</span></button>'
+      + '<ol class="steps">'+steps+'</ol>'
+      + '</div>';
+    const r = document.getElementById('sc-reset'); if (r) r.addEventListener('click', () => { stepCursor=0; sc.setup(); renderScenarios(); });
+    $body.querySelectorAll('button[data-step]').forEach(b => {
+      b.addEventListener('click', () => {
+        const i = Number(b.dataset.step);
+        const st = sc.steps[i];
+        if (st.act) dispatch(st.act);
+        else if (st.custom) {
+          const [a, ...args] = st.args;
+          if (a==='editHeader') Logic.editHeader(state, ...args);
+          else if (a==='editItem') Logic.editItem(state, ...args);
+          else if (a==='editMeta') Logic.editMeta(state, ...args);
+          renderState(); renderLog();
+        }
+        stepCursor = i + 1;
+        renderScenarios();
+      });
+    });
+  }
+
+  // ---------- 首屏 ----------
+  renderState(); renderLog(); renderScenarios();
+
+  return { dispatch };
+})();
+</script>
+</body>
+</html>

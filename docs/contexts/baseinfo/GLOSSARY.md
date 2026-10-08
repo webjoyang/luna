@@ -47,8 +47,8 @@ _避免_：code、supplierCode（旧字段名）。
 
 - **基础信息**：产品编号（code，租户内唯一）、品名（name）、类别（type，字典 `PRODUCT_CATEGORY` 下拉，存 dict value + label 冗余）、供应商样号（supplierCode）、成分（composition）、备注（remark）、产品标签、对外展示/首页推荐。
 - **技术规格**：门幅（widthCm，CM）、克重（weightGsm，g/m²）、颜色（color）、工艺（craftType）、机型（machineType）、布种（fabric_type，字典 `FABRIC_TYPE` 下拉，存 dict value + label 冗余）、胚布品种（greigeTypeId，关联胚布品种表）、标准米长（standardLength）、梭织参数（5 个独立列：woven_total_ends 总经根数 / woven_reed_no 筘号 / woven_warp_density 经密 / woven_weft_density 纬密 / woven_loom_weft_density 上机纬密）。
-- **纱线规格**（yarnSpecs，JSON 字符串数组）：织物结构双 Tab（fabric_construction: KNIT 针织 / WOVEN 梭织）；梭织下分简易估算（woven_calculation_mode: SIMPLE）与经纬精算（PROFESSIONAL）。每行含纱线规格 ID（yarnSpecId，两级下拉从纱线档案选择，存 id + name 冗余）、单价、比例、损耗率等字段，列随模式动态变化。
-- **成本结构明细**（costItems，JSON 字符串数组）：成本项表格（供应商 id+name 冗余 / 工序 / 单价 / 损耗率）+ 加工费设置（7 个独立列：knit_processing_fee_per_kg 针织加工费 / weaving_fee_per_meter 织造费 / other_processing_fee_per_meter 其他加工费 / greige_weight_gsm 坯布克重 / greige_width_cm 坯布门幅 / fabric_construction / woven_calculation_mode）+ 包装费（packaging_fee）+ 税率（tax_rate）+ 成本汇总展示。计算逻辑从旧系统 `product-yarn-cost.ts` 迁移（ADR-0035）。
+- **纱线规格**（yarnSpecs，JSON 字符串数组）：织物结构双 Tab（fabric_construction: KNIT 针织 / WOVEN 梭织）；梭织下分简易估算（woven_calculation_mode: SIMPLE）与经纬精算（PROFESSIONAL）。每行含纱线规格 ID（yarnSpecId，两级下拉从纱线档案选择，存 id + name 冗余）、单价、比例、损耗率等字段，列随模式动态变化。**ADR-0039 起冻结**：配比与测算参数的权威源收敛为生产域 `yarn_recipe_bom_item`（补齐损耗/方向/密度/织缩/每米用量五列），本 JSON 列保留不写（沿用 ADR-0011 废弃结论），前端编辑改走 BOM 数据源。
+- **成本结构明细**（costItems，JSON 字符串数组）：成本项表格（供应商 id+name 冗余 / 工序 / 单价 / 损耗率）+ 加工费设置（7 个独立列：knit_processing_fee_per_kg 针织加工费 / weaving_fee_per_meter 织造费 / other_processing_fee_per_meter 其他加工费 / greige_weight_gsm 坯布克重 / greige_width_cm 坯布门幅 / fabric_construction / woven_calculation_mode）+ 包装费（packaging_fee）+ 税率（tax_rate）+ 成本汇总展示。计算逻辑从旧系统 `product-yarn-cost.ts` 迁移（ADR-0035）；**ADR-0039 修订算价位置**：三模式公式权威实现移至后端 `CostCardPricingCalculator`，本分区汇总改为调用业务域 `/lunaerp/business/cost-card/trial` 不落库试算展示，加工费/包装费/税率列继续作为成本卡选品时的费用行预填来源。前端 `product-yarn-cost.ts` 保留供参考与双端对照，不再是权威路径。
 _避免_：产量（output）、花型号（patternNo）、临时编号（tempCode）、算长系数（conversionRate）——已删除（ADR-0035）。旧系统将这些与梭织参数存于 extensionData JSON，新系统改用独立列。
 
 ## 状态与生命周期
@@ -58,6 +58,9 @@ _避免_：产量（output）、花型号（patternNo）、临时编号（tempCo
 
 **客户简称 (shortName)**：
 客户与供应商共用的展示缩写。用户未填时由后端自动用 `companyName` 回填。列表展示优先用 `shortName || companyName`。
+
+**默认毛利率 (defaultMarginRate)**：
+客户档案上的可空字段（`default_margin_rate`，ADR-0039）。新建报价单选客户后自动带出为各行目标毛利率；为空时回退全局缺省 15%。仅作报价预填默认值，不构成协议价、不约束成交流程；一期不建客户协议价表。
 
 ## 模块边界
 

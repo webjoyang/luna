@@ -14,6 +14,7 @@
 | **production** 生产管理 | 胚布单（含发染记录）、染色单、纱线材质/规格/配比BOM/采购、检验单、质检确认、织造执行（织造单/机台任务/布票/织机/领纱/IoT）、进度反馈、生产进度聚合视图 | [docs/contexts/production/GLOSSARY.md](docs/contexts/production/GLOSSARY.md) |
 | **stock** 库存管理 | 入库单（含明细/库位分配）、仓库、库位、库存台账/流水、库存余额 | [docs/contexts/stock/GLOSSARY.md](docs/contexts/stock/GLOSSARY.md) |
 | **sample** 样品管理 | 样品分析（来样分析记录/针织工艺反推/成本报价/月结收费） | [docs/contexts/sample/GLOSSARY.md](docs/contexts/sample/GLOSSARY.md) |
+| **finance** 财务 | 经营账：资金账户/经营分录账、客户对账、供应商对账、收付款与核销、报销、工资、发票申请、汇率主档（不做借贷会计；ADR-0037） | [docs/contexts/finance/GLOSSARY.md](docs/contexts/finance/GLOSSARY.md) |
 
 ## ADR（架构决策记录）
 
@@ -27,4 +28,5 @@
 - **库存流水（stock）**是全域过账的共同落点：发货（business）写 `SHIPMENT_OUT*`；领纱发纱、发染（production）写 `YARN_OUT*` / `PROCESS_OUT*`；入库（stock）写 `STOCK_IN*`。
 - **供应商（baseinfo）**被各域作为外部承制方引用：承织坯布厂、承染方、承检方均存供应商 ID + 名称快照。
 - **样品分析（sample）**是只读消费方：ID + 名称快照引用客户、供应商（baseinfo）与纱线规格（production），零回写、零联动；样品分析自身是无状态机、无下游单据的分析记录（ADR-0036）。
+- **经营分录账（finance）**是资金侧唯一 append-only 账本：收付款/报销/工资发放/退货冲减等一切资金与往来动作只追加分录、红冲冲销、永不重建；客户/供应商对账（finance）分别取数于发货（business）与入库（stock），只快照不回写业务单据（ADR-0037）。
 - 字典 ID、错误码段位按域分配：明细见各域文件，全局段位总表见 shared。

@@ -79,7 +79,7 @@ _避免_：stitchArrange（旧字段名在对话中可接受，正式列名为�
 
 ## 模块边界
 
-样品分析落新建的 `sample` 顶级子包（与 baseinfo/business/production/stock 平级），后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.sample.sampleanalysis[.yarnspec|.yarnarrange|.supplierquote]`（主表一个 Controller，三个子表仅 DO/Mapper/Service 内部协作、无独立 Controller）；前端视图 `luna-ui/src/views/lunaerp-elmui/sample/sample-analysis/`（列表 index + workspace 工作台三 Tab）、前端 API 镜像于 `luna-ui/src/api/lunaerp-elmui/sample/sample-analysis/`。URL 前缀 `/lunaerp/sample/sample-analysis`，权限码前缀 `lunaerp:sample:sample-analysis:`，五个动作：`query`（菜单承载）/ `create` / `update` / `delete` / `pay`（单条与批量付款切换）；错误码段 `1-030-018-xxx`。菜单新建 **10600 样品管理**顶级目录（sort 104，path `/sample`）：**10610 样品分析**菜单 + 10611 创建 / 10612 修改 / 10613 删除 / 10614 收费四个按钮位。建表 SQL：`luna-srv/sql/postgresql/lunaerp-sample-analysis.sql`（1 主表 + 3 子表 + 4 字典 + 菜单，可重复执行）。
+样品分析落新建的 `sample` 顶级子包（与 baseinfo/business/production/stock 平级），后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.sample.sampleanalysis[.yarnspec|.yarnarrange|.supplierquote]`（主表一个 Controller，三个子表仅 DO/Mapper/Service 内部协作、无独立 Controller）；前端视图 `luna-ui/src/views/lunaerp-elmui/sample/sample-analysis/`（列表 index + workspace 工作台三 Tab）、前端 API 镜像于 `luna-ui/src/api/lunaerp-elmui/sample/sample-analysis/`。URL 前缀 `/lunaerp/sample/sample-analysis`，权限码前缀 `lunaerp:sample:sample-analysis:`，五个动作：`query`（菜单承载）/ `create` / `update` / `delete` / `pay`（单条与批量付款切换）；错误码段 `1-030-040-xxx`（2026-10 自 018 段迁入避让发染记录重号，见 shared GLOSSARY 历史避让记录）。菜单新建 **10600 样品管理**顶级目录（sort 104，path `/sample`）：**10610 样品分析**菜单 + 10611 创建 / 10612 修改 / 10613 删除 / 10614 收费四个按钮位。建表 SQL：`luna-srv/sql/postgresql/lunaerp-sample-analysis.sql`（1 主表 + 3 子表 + 4 字典 + 菜单，可重复执行）。
 
 样品分析是**消费方**：只读引用客户档案（baseinfo）、供应商档案（baseinfo）、纱线材质/规格档案（production），一律 ID 逻辑关联 + 名称快照、零回写、零联动；删除客户/供应商/纱线规格不级联、不硬阻止（历史分析以快照留存）。
 
@@ -98,7 +98,7 @@ _避免_：stitchArrange（旧字段名在对话中可接受，正式列名为�
 
 ## 错误码
 
-`1-030-018-xxx` 样品分析（主表 + 三个聚合子表共用）：
+`1-030-040-xxx` 样品分析（主表 + 三个聚合子表共用）：
 
 - 000 样品分析不存在
 - 001 样品编号重复
