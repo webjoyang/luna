@@ -17,8 +17,9 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-017-xxx 段（进度反馈：反馈缸与反馈记录共用）
  *                  与 1-030-018-xxx 段（发染记录）
  *                  与 1-030-019-xxx 段（生产进度查询，只读预留）
+ *                  与 1-030-031-xxx 段（商业地基通用件：回收站 000–099、Excel 导入 100–199，见 CommonErrorCodeConstants）
  */
-public interface ErrorCodeConstants {
+public interface ErrorCodeConstants extends CommonErrorCodeConstants {
 
     // ========== 产品模块 1-030-001-000 ==========
     ErrorCode PRODUCT_NOT_EXISTS = new ErrorCode(1_030_001_000, "产品不存在");
