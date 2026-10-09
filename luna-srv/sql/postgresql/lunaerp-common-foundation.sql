@@ -68,4 +68,49 @@ INSERT INTO infra_config (
     'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0
 );
 
+-- 6. 回收站菜单与权限（id 10900，挂芋道系统管理目录 parent_id=1，path: recycle-bin）
+-- 按钮权限：query(10901) / restore(10902) / purge(10903)
+DELETE FROM system_menu WHERE id IN (10900, 10901, 10902, 10903)
+   OR permission IN ('lunaerp:common:recycle:query', 'lunaerp:common:recycle:restore', 'lunaerp:common:recycle:purge');
+
+INSERT INTO system_menu (
+    id, name, permission, type, sort, parent_id, path, icon, component, component_name,
+    status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted
+) VALUES (
+    10900, '回收站', '', 2, 95, 1, 'recycle-bin', 'ep:delete', 'lunaerp/common/recycle/index', 'LunaerpRecycleBin',
+    0, '1', '1', '1', 'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0
+);
+
+INSERT INTO system_menu (
+    id, name, permission, type, sort, parent_id, path, icon, component, component_name,
+    status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted
+) VALUES (
+    10901, '回收站查询', 'lunaerp:common:recycle:query', 3, 1, 10900, '', '#', '', NULL,
+    0, '1', '1', '1', 'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0
+);
+
+INSERT INTO system_menu (
+    id, name, permission, type, sort, parent_id, path, icon, component, component_name,
+    status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted
+) VALUES (
+    10902, '回收站恢复', 'lunaerp:common:recycle:restore', 3, 2, 10900, '', '#', '', NULL,
+    0, '1', '1', '1', 'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0
+);
+
+INSERT INTO system_menu (
+    id, name, permission, type, sort, parent_id, path, icon, component, component_name,
+    status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted
+) VALUES (
+    10903, '回收站彻底删除', 'lunaerp:common:recycle:purge', 3, 3, 10900, '', '#', '', NULL,
+    0, '1', '1', '1', 'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0
+);
+
+DELETE FROM system_role_menu WHERE menu_id IN (10900, 10901, 10902, 10903);
+INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+FROM system_role r
+CROSS JOIN (SELECT 10900 AS id UNION ALL SELECT 10901 UNION ALL SELECT 10902 UNION ALL SELECT 10903) m
+WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)
+ON CONFLICT DO NOTHING;
+
 COMMIT;

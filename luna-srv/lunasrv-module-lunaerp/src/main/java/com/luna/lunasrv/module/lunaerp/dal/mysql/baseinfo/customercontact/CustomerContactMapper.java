@@ -6,6 +6,9 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.customercontact.vo.CustomerContactPageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customercontact.CustomerContactDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.time.LocalDateTime;
 
 /**
  * 基本信息-客户联系人表 Mapper
@@ -33,5 +36,28 @@ public interface CustomerContactMapper extends BaseMapperX<CustomerContactDO> {
         wrapper.orderByDesc(CustomerContactDO::getCreateTime);
         return selectPage(reqVO, wrapper);
     }
+
+    /**
+     * 级联恢复客户联系人（手写 XML：显式 UPDATE ... SET deleted = 0 WHERE customer_id = #{customerId} AND deleted = 1 AND tenant_id = #{tenantId}）
+     *
+     * @param customerId 客户ID
+     * @param tenantId 租户ID
+     * @param updater 更新人
+     * @param updateTime 更新时间
+     * @return 影响行数
+     */
+    int restoreContactsByCustomerId(@Param("customerId") Long customerId,
+                                    @Param("tenantId") Long tenantId,
+                                    @Param("updater") String updater,
+                                    @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底删除客户联系人（手写 XML：显式 DELETE WHERE customer_id = #{customerId} AND tenant_id = #{tenantId}）
+     *
+     * @param customerId 客户ID
+     * @param tenantId 租户ID
+     * @return 影响行数
+     */
+    int purgeContactsByCustomerId(@Param("customerId") Long customerId, @Param("tenantId") Long tenantId);
 
 }

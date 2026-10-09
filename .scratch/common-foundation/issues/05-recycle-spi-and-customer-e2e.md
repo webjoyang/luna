@@ -4,17 +4,17 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `RecycleBinHandler` SPI 接口（getBizType / pageDeleted / validateRestore / restore / hasActiveReference / purge）落在 `common/recycle` 子包
-- [ ] `RecycleBinHandlerRegistry` 启动收集所有 Bean，按 bizType 路由；未注册类型调接口报 1_030_031_000
-- [ ] `RecycleItemRespVO`（bizType/bizId/displayName/deletedBy/deletedTime）/ `RecyclePageReqVO`（bizType 必填）
-- [ ] Controller 3 端点：`GET /lunaerp/common/recycle/page`（query）/ `PUT .../restore`（body: bizType,bizId）/ `DELETE .../purge`（bizType,bizId），权限码 `lunaerp:common:recycle:query/restore/purge`
-- [ ] CUSTOMER handler 落在客户业务包（含联系人级联复活）；查询/复活/物理删除 Mapper 走手写 XML（显式 `deleted=1 AND tenant_id=?`）
-- [ ] 恢复规则：主数据恢复后 `status=INACTIVE`；级联子表父→子批量 `deleted=0`；引用阻断（报 002 按依赖链列出需先恢复对象名称）；幂等（仅 `deleted=1` 可恢复，否则报 001）
-- [ ] 彻底删除：独立权限码 + `hasActiveReference` 引用守卫（报 003）；不做自动清空、不做批量彻底删除（一期逐条）
-- [ ] CUSTOMER handler Service 方法显式 `@DataPermission(enable=false)`（租户条件照加）
-- [ ] 恢复/彻底删除加 `@LogRecord`
-- [ ] 菜单 SQL：系统管理→回收站（id 10900，path `recycle-bin`，挂芋道系统管理目录，随系统管理模块开通不参与模块套餐网关判定）+ 3 按钮权限码（可重复执行）
-- [ ] 前端 `views/lunaerp/common/recycle/index.vue` 按 bizType 分 tab，列：名称/单号、删除人、删除时间，操作：恢复/彻底删除；api 客户端 `api/lunaerp/common/recycle/index.ts`
-- [ ] 测试：恢复（含级联/引用阻断/幂等）、彻底删除引用守卫、并发条件更新 SQL 带 `deleted=1 AND tenant_id=?` 影响行数 0 即报错、租户隔离、横向越权（他租户 bizId）必测
+- [x] `RecycleBinHandler` SPI 接口（getBizType / pageDeleted / validateRestore / restore / hasActiveReference / purge）落在 `common/recycle` 子包
+- [x] `RecycleBinHandlerRegistry` 启动收集所有 Bean，按 bizType 路由；未注册类型调接口报 1_030_031_000
+- [x] `RecycleItemRespVO`（bizType/bizId/displayName/deletedBy/deletedTime）/ `RecyclePageReqVO`（bizType 必填）
+- [x] Controller 3 端点：`GET /lunaerp/common/recycle/page`（query）/ `PUT .../restore`（body: bizType,bizId）/ `DELETE .../purge`（bizType,bizId），权限码 `lunaerp:common:recycle:query/restore/purge`
+- [x] CUSTOMER handler 落在客户业务包（含联系人级联复活）；查询/复活/物理删除 Mapper 走手写 XML（显式 `deleted=1 AND tenant_id=?`）
+- [x] 恢复规则：主数据恢复后 `status=INACTIVE`；级联子表父→子批量 `deleted=0`；引用阻断（报 002 按依赖链列出需先恢复对象名称）；幂等（仅 `deleted=1` 可恢复，否则报 001）
+- [x] 彻底删除：独立权限码 + `hasActiveReference` 引用守卫（报 003）；不做自动清空、不做批量彻底删除（一期逐条）
+- [x] CUSTOMER handler Service 方法显式 `@DataPermission(enable=false)`（租户条件照加）
+- [x] 恢复/彻底删除加 `@LogRecord`
+- [x] 菜单 SQL：系统管理→回收站（id 10900，path `recycle-bin`，挂芋道系统管理目录，随系统管理模块开通不参与模块套餐网关判定）+ 3 按钮权限码（可重复执行）
+- [x] 前端 `views/lunaerp/common/recycle/index.vue` 按 bizType 分 tab，列：名称/单号、删除人、删除时间，操作：恢复/彻底删除；api 客户端 `api/lunaerp/common/recycle/index.ts`
+- [x] 测试：恢复（含级联/引用阻断/幂等）、彻底删除引用守卫、并发条件更新 SQL 带 `deleted=1 AND tenant_id=?` 影响行数 0 即报错、租户隔离、横向越权（他租户 bizId）必测

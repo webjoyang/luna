@@ -1,11 +1,16 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.customer.vo.CustomerPageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.time.LocalDateTime;
 
 /**
  * 基本信息-客户表 Mapper
@@ -42,5 +47,55 @@ public interface CustomerMapper extends BaseMapperX<CustomerDO> {
         wrapper.orderByDesc(CustomerDO::getCreateTime);
         return selectPage(reqVO, wrapper);
     }
+
+    /**
+     * 分页查询已软删客户（手写 XML：显式 WHERE deleted = 1 AND tenant_id = #{tenantId}）
+     *
+     * @param page 分页参数
+     * @param tenantId 租户ID
+     * @return 分页结果
+     */
+    IPage<RecycleItemRespVO> selectRecyclePage(IPage<?> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的客户记录（手写 XML：显式 WHERE id = #{id} AND deleted = 1 AND tenant_id = #{tenantId}）
+     *
+     * @param id 客户ID
+     * @param tenantId 租户ID
+     * @return 客户DO
+     */
+    CustomerDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复客户（手写 XML：显式 UPDATE ... SET deleted=0, status='INACTIVE' WHERE id = #{id} AND deleted = 1 AND tenant_id = #{tenantId}）
+     *
+     * @param id 客户ID
+     * @param tenantId 租户ID
+     * @param updater 更新人
+     * @param updateTime 更新时间
+     * @return 影响行数（1 成功，0 失败/不存在/已被恢复）
+     */
+    int restoreCustomer(@Param("id") Long id,
+                        @Param("tenantId") Long tenantId,
+                        @Param("updater") String updater,
+                        @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底删除客户（物理删除，手写 XML：显式 DELETE WHERE id = #{id} AND deleted = 1 AND tenant_id = #{tenantId}）
+     *
+     * @param id 客户ID
+     * @param tenantId 租户ID
+     * @return 影响行数（1 成功，0 失败/不存在）
+     */
+    int purgeCustomer(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 检查客户是否存在活跃业务引用（deleted=0）
+     *
+     * @param customerId 客户ID
+     * @param tenantId 租户ID
+     * @return 引用数量
+     */
+    Long selectActiveReferenceCount(@Param("customerId") Long customerId, @Param("tenantId") Long tenantId);
 
 }
