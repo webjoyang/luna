@@ -20,7 +20,7 @@
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
-      width="820px"
+      :width="dialogWidth"
       append-to-body
       destroy-on-close
       class="print-preview-dialog"
@@ -42,7 +42,6 @@
 
       <!-- 纸张预览与打印外壳 -->
       <PrintPaper
-        ref="printPaperRef"
         :paper="currentTemplate?.paper || 'A4'"
         :title="currentTemplate?.name || '打印预览'"
         :loading="dataLoading"
@@ -66,12 +65,12 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { PropType } from 'vue'
 import { ElMessage } from 'element-plus'
 import PrintPaper from './PrintPaper.vue'
 import { usePrintHtml } from '../composables/usePrintHtml'
-import { getTemplatesByBizType, getTemplate } from '../registry'
+import { getTemplatesByBizType } from '../registry'
 import type { PrintTemplateReg } from '../registry'
 
 defineOptions({ name: 'PrintDispatcher' })
@@ -140,7 +139,6 @@ const { printElement } = usePrintHtml()
 const dialogVisible = ref(false)
 const dataLoading = ref(false)
 const printing = ref(false)
-const printPaperRef = ref<InstanceType<typeof PrintPaper> | null>(null)
 
 const activeBizId = ref<string | number | null>(null)
 const activeBizIds = ref<(string | number)[]>([])
@@ -172,7 +170,13 @@ const hasData = computed(() => {
 })
 
 const dialogTitle = computed(() => {
-  return `${currentTemplate.value?.name || '统一打印'} - 打印预览`
+  const docNo = singlePrintData.value?.shipmentNo || singlePrintData.value?.code || ''
+  const suffix = docNo ? ` - ${docNo}` : ''
+  return `${currentTemplate.value?.name || '统一打印'}${suffix} - 打印预览`
+})
+
+const dialogWidth = computed(() => {
+  return currentTemplate.value?.paper === 'A4' ? '920px' : '820px'
 })
 
 // 加载打印数据
@@ -232,7 +236,8 @@ const handleExecutePrint = async (printAreaEl: HTMLElement | null) => {
 
     await printElement(printAreaEl, {
       title: currentTemplate.value?.name || '打印',
-      pageStyle
+      pageStyle,
+      customCss: currentTemplate.value?.customCss || ''
     })
     emit('printed')
   } catch (err) {

@@ -1,6 +1,10 @@
 import type { Component } from 'vue'
 import { getWeavingTicketPrintData } from '@/api/lunaerp-elmui/production/weaving-ticket'
 import WeavingTicketLabel from '@/views/lunaerp-elmui/production/weaving-order/components/print/WeavingTicketLabel.vue'
+import { getShipmentPrintData } from '@/api/lunaerp-elmui/business/shipment'
+import ShipmentDoc from '@/views/lunaerp-elmui/business/shipment/components/print/ShipmentDoc.vue'
+import PackingList from '@/views/lunaerp-elmui/business/shipment/components/print/PackingList.vue'
+import { shipmentPrintCss } from '@/views/lunaerp-elmui/business/shipment/components/print/print-styles'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -20,6 +24,8 @@ export interface PrintTemplateReg {
   component: Component
   /** 后端 print-data 取数 API */
   fetchApi: (bizId: string | number) => Promise<any>
+  /** 模板特定打印 CSS（注入独立打印 iframe） */
+  customCss?: string
 }
 
 /**
@@ -34,6 +40,26 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
     permission: 'lunaerp:production:weaving-ticket:print',
     component: WeavingTicketLabel,
     fetchApi: (bizId: string | number) => getWeavingTicketPrintData(bizId)
+  },
+  {
+    bizType: 'SHIPMENT',
+    templateCode: 'SHIPMENT_DOC',
+    name: '随货发货单',
+    paper: 'A4',
+    permission: 'lunaerp:business:shipment:print',
+    component: ShipmentDoc,
+    fetchApi: (bizId: string | number) => getShipmentPrintData(bizId),
+    customCss: shipmentPrintCss
+  },
+  {
+    bizType: 'SHIPMENT',
+    templateCode: 'PACKING_LIST',
+    name: '装箱清单（码单）',
+    paper: 'A4',
+    permission: 'lunaerp:business:shipment:print',
+    component: PackingList,
+    fetchApi: (bizId: string | number) => getShipmentPrintData(bizId),
+    customCss: shipmentPrintCss
   }
 ]
 

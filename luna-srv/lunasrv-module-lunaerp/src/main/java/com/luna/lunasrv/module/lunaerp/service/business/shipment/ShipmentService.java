@@ -3,6 +3,7 @@ package com.luna.lunasrv.module.lunaerp.service.business.shipment;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPrintRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentUpdateSignReqVO;
@@ -92,5 +93,13 @@ public interface ShipmentService {
      * @param reqVO 签收登记参数
      */
     void updateShipmentSign(@Valid ShipmentUpdateSignReqVO reqVO);
+
+    /**
+     * 获得发货单/装箱清单独立打印数据（豁免脱敏）
+     *
+     * @param id 发货单ID
+     * @return 打印数据VO
+     */
+    ShipmentPrintRespVO getShipmentPrintData(Long id);
 
 }

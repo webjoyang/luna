@@ -57,4 +57,15 @@ INSERT INTO infra_config (
     'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0
 );
 
+-- 5. infra_config 参数配置种子：luna.portal.base-url（客户门户前端基准URL，发货单二维码签收用，默认空）
+DELETE FROM infra_config WHERE config_key = 'luna.portal.base-url';
+INSERT INTO infra_config (
+    id, category, type, name, config_key, value, visible, remark,
+    creator, create_time, updater, update_time, deleted
+) VALUES (
+    101, 'biz', 2, '客户门户基准地址', 'luna.portal.base-url', '', '1',
+    '客户门户前端基准URL，发货单二维码签收用，14号前可空，不阻断发货单打印仅二维码提示',
+    'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0
+);
+
 COMMIT;

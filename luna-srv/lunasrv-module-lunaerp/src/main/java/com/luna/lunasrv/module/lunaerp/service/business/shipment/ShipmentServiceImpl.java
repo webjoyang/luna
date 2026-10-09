@@ -33,6 +33,10 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMa
 import com.luna.lunasrv.module.lunaerp.service.stock.stockledger.StockLedgerService;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPrintRespVO;
+import com.mzt.logapi.context.LogRecordContext;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -42,6 +46,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Function;
@@ -168,6 +173,9 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Resource
     private SecurityFrameworkService securityFrameworkService;
+
+    @Resource
+    private ConfigApi configApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -970,6 +978,105 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         wrapper.orderByDesc(ShipmentDO::getShippingDate).orderByDesc(ShipmentDO::getId);
         return wrapper;
+    }
+
+    @Override
+    @LogRecord(type = "打印", subType = "发货单", bizNo = "{{#id}}", success = "打印了发货单 {{#no}}")
+    public ShipmentPrintRespVO getShipmentPrintData(Long id) {
+        // 1. 校验单据存在
+        ShipmentDO shipment = validateShipmentExists(id);
+
+        // 2. 留痕上下文
+        LogRecordContext.putVariable("no", shipment.getShipmentNo());
+        LogRecordContext.putVariable("id", shipment.getId());
+
+        // 3. 客户门户基准URL与二维码（14号前可空，不阻断发货单打印，仅二维码提示）
+        String qrUrl = null;
+        String baseUrl = configApi != null ? configApi.getConfigValueByKey("luna.portal.base-url") : null;
+        if (StringUtils.hasText(baseUrl)) {
+            String cleanBaseUrl = baseUrl.trim().replaceAll("/+$", "");
+            qrUrl = cleanBaseUrl + "/portal/shipment?no=" + shipment.getShipmentNo();
+        }
+
+        // 4. 查询明细与卷清单（独立 VO 豁免脱敏）
+        List<ShipmentItemDO> itemDOList = shipmentItemMapper.selectListByShipmentId(id);
+        List<ShipmentPrintRespVO.ItemVO> printItems = new ArrayList<>();
+
+        if (CollUtil.isNotEmpty(itemDOList)) {
+            List<ShipmentRollDO> rollDOList = shipmentRollMapper.selectListByShipmentId(id);
+            Map<Long, List<ShipmentRollDO>> rollsByItemId = CollUtil.isEmpty(rollDOList)
+                    ? Collections.emptyMap()
+                    : rollDOList.stream().collect(Collectors.groupingBy(ShipmentRollDO::getShipmentItemId));
+
+            for (ShipmentItemDO itemDO : itemDOList) {
+                List<ShipmentRollDO> itemRolls = rollsByItemId.getOrDefault(itemDO.getId(), Collections.emptyList());
+                List<ShipmentPrintRespVO.RollVO> printRolls = new ArrayList<>();
+                for (ShipmentRollDO rollDO : itemRolls) {
+                    printRolls.add(ShipmentPrintRespVO.RollVO.builder()
+                            .id(rollDO.getId())
+                            .shipmentId(rollDO.getShipmentId())
+                            .shipmentItemId(rollDO.getShipmentItemId())
+                            .rollNo(rollDO.getRollNo())
+                            .weight(rollDO.getWeight())
+                            .lengthM(rollDO.getLengthM())
+                            .remark(rollDO.getRemark())
+                            .build());
+                }
+
+                printItems.add(ShipmentPrintRespVO.ItemVO.builder()
+                        .id(itemDO.getId())
+                        .shipmentId(itemDO.getShipmentId())
+                        .productId(itemDO.getProductId())
+                        .productCode(itemDO.getProductCode())
+                        .productName(itemDO.getProductName())
+                        .customerColorNo(itemDO.getCustomerColorNo())
+                        .colorName(itemDO.getColorName())
+                        .vatNo(itemDO.getVatNo())
+                        .quantity(itemDO.getQuantity())
+                        .pieces(itemDO.getPieces())
+                        .unit(itemDO.getUnit())
+                        .unitPrice(itemDO.getUnitPrice())
+                        .amount(itemDO.getAmount())
+                        .remark(itemDO.getRemark())
+                        .rolls(printRolls)
+                        .build());
+            }
+        }
+
+        // 5. 组装发货单独立打印 VO
+        return ShipmentPrintRespVO.builder()
+                .id(shipment.getId())
+                .shipmentNo(shipment.getShipmentNo())
+                .status(shipment.getStatus())
+                .customerId(shipment.getCustomerId())
+                .customerName(shipment.getCustomerName())
+                .salesContractId(shipment.getSalesContractId())
+                .contractNo(shipment.getContractNo())
+                .warehouseId(shipment.getWarehouseId())
+                .warehouseName(shipment.getWarehouseName())
+                .shippingAddress(shipment.getShippingAddress())
+                .receiveAddress(shipment.getReceiveAddress())
+                .carrier(shipment.getCarrier())
+                .trackingNumber(shipment.getTrackingNumber())
+                .shippingDate(shipment.getShippingDate())
+                .expectedDeliveryDate(shipment.getExpectedDeliveryDate())
+                .freightFee(shipment.getFreightFee())
+                .totalAmount(shipment.getTotalAmount())
+                .totalPieces(shipment.getTotalPieces())
+                .salespersonUserId(shipment.getSalespersonUserId())
+                .salespersonName(shipment.getSalespersonName())
+                .currency(shipment.getCurrency())
+                .signStatus(shipment.getSignStatus())
+                .signedByName(shipment.getSignedByName())
+                .signedAt(shipment.getSignedAt())
+                .signRemark(shipment.getSignRemark())
+                .remark(shipment.getRemark())
+                .creator(shipment.getCreator())
+                .createTime(shipment.getCreateTime())
+                .qrUrl(qrUrl)
+                .printTime(LocalDateTime.now())
+                .items(printItems)
+                .build();
     }
 
 }

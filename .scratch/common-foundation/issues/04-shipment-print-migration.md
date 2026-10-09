@@ -4,11 +4,11 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `PrintShipmentDialog.vue` 两套版式拆为 `SHIPMENT_DOC` / `PACKING_LIST` 两个模板组件，落在 `business/shipment/components/print/`，注册到同一 `registry.ts`
-- [ ] 打印内核替换为 03 号公共 `usePrintHtml` composable，版式与行为不变（肉眼核对预览/送打印机一致）
-- [ ] 后端 `GET /lunaerp/business/shipment/{id}/print-data`（权限 `lunaerp:business:shipment:print`，沿用现有权限码）返回打印 VO（豁免脱敏），方法上加 `@LogRecord(type="打印", success="打印了发货单 {{#no}}")`
-- [ ] infra_config 种子 `luna.portal.base-url` 默认空（14 号前可空，不阻断发货单打印，仅二维码提示）
-- [ ] 发货单二维码编码 `{luna.portal.base-url}/portal/shipment?no={发货单号}`（W0 只印，链接可暂不通，14 号接签收页）
-- [ ] 测试：发货单/装箱清单打印行为/版式与迁移前一致；二维码码格式冻结；打印留痕
+- [x] `PrintShipmentDialog.vue` 两套版式拆为 `SHIPMENT_DOC` / `PACKING_LIST` 两个模板组件，落在 `business/shipment/components/print/`，注册到同一 `registry.ts`
+- [x] 打印内核替换为 03 号公共 `usePrintHtml` composable，版式与行为不变（肉眼核对预览/送打印机一致）
+- [x] 后端 `GET /lunaerp/business/shipment/{id}/print-data`（权限 `lunaerp:business:shipment:print`，沿用现有权限码）返回打印 VO（豁免脱敏），方法上加 `@LogRecord(type="打印", success="打印了发货单 {{#no}}")`
+- [x] infra_config 种子 `luna.portal.base-url` 默认空（14 号前可空，不阻断发货单打印，仅二维码提示）
+- [x] 发货单二维码编码 `{luna.portal.base-url}/portal/shipment?no={发货单号}`（W0 只印，链接可暂不通，14 号接签收页）
+- [x] 测试：发货单/装箱清单打印行为/版式与迁移前一致；二维码码格式冻结；打印留痕

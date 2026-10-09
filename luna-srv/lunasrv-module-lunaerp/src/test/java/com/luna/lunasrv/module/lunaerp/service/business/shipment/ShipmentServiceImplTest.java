@@ -25,6 +25,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
 import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMapper;
@@ -98,6 +99,9 @@ class ShipmentServiceImplTest {
 
     @Mock
     private SecurityFrameworkService securityFrameworkService;
+
+    @Mock
+    private ConfigApi configApi;
 
     @InjectMocks
     private ShipmentServiceImpl shipmentService;
@@ -1941,6 +1945,118 @@ class ShipmentServiceImplTest {
 
         // 规范明确要求：拒签只登记状态，不自动红冲库存，退货由人执行取消
         verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
+    }
+
+    // ==================== 发货单/装箱清单独立打印数据测试（Issue 04） ====================
+
+    @Test
+    @DisplayName("打印数据：单据不存在抛 1_030_016_000")
+    void testPrintData_shipmentNotExists() {
+        when(shipmentMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                shipmentService.getShipmentPrintData(999L));
+        assertEquals(SHIPMENT_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("打印数据：luna.portal.base-url 未配置或为空时不阻断发货单打印，qrUrl 为 null")
+    void testPrintData_portalBaseUrlEmpty_success() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setShipmentNo("SH-20260927-001");
+        shipment.setStatus("COMPLETED");
+        shipment.setCustomerName("广州某某服饰有限公司");
+        shipment.setTotalAmount(new BigDecimal("5000.00"));
+        shipment.setFreightFee(new BigDecimal("150.00"));
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+        when(configApi.getConfigValueByKey("luna.portal.base-url")).thenReturn(null);
+
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(Collections.emptyList());
+
+        ShipmentPrintRespVO printVO = shipmentService.getShipmentPrintData(10L);
+
+        assertNotNull(printVO);
+        assertEquals(10L, printVO.getId());
+        assertEquals("SH-20260927-001", printVO.getShipmentNo());
+        assertEquals("广州某某服饰有限公司", printVO.getCustomerName());
+        assertNull(printVO.getQrUrl(), "未配置门户地址时 qrUrl 应为 null，且不抛异常阻断打印");
+        assertNotNull(printVO.getPrintTime());
+    }
+
+    @Test
+    @DisplayName("打印数据：luna.portal.base-url 配置后正确拼装二维码并带出嵌套明细及卷清单")
+    void testPrintData_portalBaseUrlConfigured_success() {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(10L);
+        shipment.setShipmentNo("SH-20260927-001");
+        shipment.setStatus("COMPLETED");
+        shipment.setCustomerId(100L);
+        shipment.setCustomerName("广州某某服饰有限公司");
+        shipment.setContractNo("CH20260001");
+        shipment.setWarehouseName("柯桥成品一号仓");
+        shipment.setShippingAddress("浙江省绍兴市柯桥区XX路1号");
+        shipment.setReceiveAddress("广东省广州市海珠区中大纺织城");
+        shipment.setCarrier("顺丰速运");
+        shipment.setTrackingNumber("SF123456789");
+        shipment.setShippingDate(LocalDate.of(2026, 9, 27));
+        shipment.setFreightFee(new BigDecimal("150.00"));
+        shipment.setTotalAmount(new BigDecimal("5000.00"));
+        shipment.setTotalPieces(2);
+        shipment.setSalespersonName("张业务");
+        shipment.setCreator("admin");
+        when(shipmentMapper.selectById(10L)).thenReturn(shipment);
+
+        // 包含末尾斜杠，需做规范化
+        when(configApi.getConfigValueByKey("luna.portal.base-url")).thenReturn("https://portal.lunaerp.com///");
+
+        // 准备明细与卷清单
+        ShipmentItemDO item1 = new ShipmentItemDO();
+        item1.setId(101L);
+        item1.setShipmentId(10L);
+        item1.setProductName("纯棉斜纹");
+        item1.setProductCode("PRD-001");
+        item1.setCustomerColorNo("WH-01");
+        item1.setColorName("本白");
+        item1.setVatNo("LOT-202609-01");
+        item1.setQuantity(new BigDecimal("100.00"));
+        item1.setPieces(2);
+        item1.setUnit("KG");
+        item1.setUnitPrice(new BigDecimal("25.00"));
+        item1.setAmount(new BigDecimal("2500.00"));
+        when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(Collections.singletonList(item1));
+
+        ShipmentRollDO roll1 = new ShipmentRollDO();
+        roll1.setId(1001L);
+        roll1.setShipmentId(10L);
+        roll1.setShipmentItemId(101L);
+        roll1.setRollNo("ROLL-001");
+        roll1.setWeight(new BigDecimal("50.00"));
+        roll1.setLengthM(new BigDecimal("100.00"));
+        when(shipmentRollMapper.selectListByShipmentId(10L)).thenReturn(Collections.singletonList(roll1));
+
+        // Act
+        ShipmentPrintRespVO printVO = shipmentService.getShipmentPrintData(10L);
+
+        // Assert
+        assertNotNull(printVO);
+        assertEquals(10L, printVO.getId());
+        assertEquals("SH-20260927-001", printVO.getShipmentNo());
+        assertEquals("https://portal.lunaerp.com/portal/shipment?no=SH-20260927-001", printVO.getQrUrl());
+        assertEquals(new BigDecimal("5000.00"), printVO.getTotalAmount());
+        assertEquals(new BigDecimal("150.00"), printVO.getFreightFee());
+        assertEquals(1, printVO.getItems().size());
+
+        ShipmentPrintRespVO.ItemVO itemVO = printVO.getItems().get(0);
+        assertEquals(101L, itemVO.getId());
+        assertEquals("纯棉斜纹", itemVO.getProductName());
+        assertEquals(new BigDecimal("25.00"), itemVO.getUnitPrice());
+        assertEquals(new BigDecimal("2500.00"), itemVO.getAmount());
+        assertEquals(1, itemVO.getRolls().size());
+
+        ShipmentPrintRespVO.RollVO rollVO = itemVO.getRolls().get(0);
+        assertEquals("ROLL-001", rollVO.getRollNo());
+        assertEquals(new BigDecimal("50.00"), rollVO.getWeight());
     }
 }
 

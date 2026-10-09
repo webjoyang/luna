@@ -8,8 +8,19 @@ vi.mock('@/views/lunaerp-elmui/production/weaving-order/components/print/Weaving
   default: { name: 'WeavingTicketLabel' }
 }))
 
+vi.mock('@/api/lunaerp-elmui/business/shipment', () => ({
+  getShipmentPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp-elmui/business/shipment/components/print/ShipmentDoc.vue', () => ({
+  default: { name: 'ShipmentDoc' }
+}))
+
+vi.mock('@/views/lunaerp-elmui/business/shipment/components/print/PackingList.vue', () => ({
+  default: { name: 'PackingList' }
+}))
+
 import {
-  printTemplateRegistry,
   getTemplatesByBizType,
   getTemplate,
   registerPrintTemplate,
@@ -26,6 +37,25 @@ describe('Print Template Registry', () => {
     expect(labelTemplate?.paper).toBe('LABEL-100x60')
     expect(labelTemplate?.permission).toBe('lunaerp:production:weaving-ticket:print')
     expect(typeof labelTemplate?.fetchApi).toBe('function')
+  })
+
+  it('should have SHIPMENT_DOC and PACKING_LIST statically registered for SHIPMENT', () => {
+    const shipmentTemplates = getTemplatesByBizType('SHIPMENT')
+    expect(shipmentTemplates).toHaveLength(2)
+
+    const docTemplate = shipmentTemplates.find((t) => t.templateCode === 'SHIPMENT_DOC')
+    expect(docTemplate).toBeDefined()
+    expect(docTemplate?.name).toBe('随货发货单')
+    expect(docTemplate?.paper).toBe('A4')
+    expect(docTemplate?.permission).toBe('lunaerp:business:shipment:print')
+    expect(typeof docTemplate?.fetchApi).toBe('function')
+
+    const packingTemplate = shipmentTemplates.find((t) => t.templateCode === 'PACKING_LIST')
+    expect(packingTemplate).toBeDefined()
+    expect(packingTemplate?.name).toBe('装箱清单（码单）')
+    expect(packingTemplate?.paper).toBe('A4')
+    expect(packingTemplate?.permission).toBe('lunaerp:business:shipment:print')
+    expect(typeof packingTemplate?.fetchApi).toBe('function')
   })
 
   it('getTemplate should return default or specific template', () => {

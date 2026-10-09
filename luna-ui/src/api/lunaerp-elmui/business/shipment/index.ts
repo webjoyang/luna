@@ -148,4 +148,17 @@ export const getShipmentItemsFromContract = (contractId: number) => {
   })
 }
 
+// 发货单/装箱清单独立打印 VO（豁免脱敏）
+export interface ShipmentPrintVO extends ShipmentVO {
+  qrUrl?: string
+  printTime?: string
+}
+
+// 获得发货单/装箱清单独立打印数据
+export const getShipmentPrintData = (id: string | number) => {
+  return request.get<ShipmentPrintVO>({
+    url: `/lunaerp/business/shipment/${id}/print-data`
+  })
+}
+
 
