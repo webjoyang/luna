@@ -23,6 +23,18 @@ export const CACHE_KEY = {
 }
 
 export const useCache = (type: CacheType = 'localStorage') => {
+  if (typeof window === 'undefined') {
+    const memory = new Map<string, any>()
+    return {
+      wsCache: {
+        get: (k: string) => memory.get(k),
+        set: (k: string, v: any) => memory.set(k, v),
+        delete: (k: string) => memory.delete(k),
+        clear: () => memory.clear()
+      } as unknown as WebStorageCache
+    }
+  }
+
   const wsCache: WebStorageCache = new WebStorageCache({
     storage: type
   })

@@ -396,14 +396,15 @@ COMMIT;
 -- @formatter:off
 BEGIN;
 
-DELETE FROM system_dict_type WHERE id IN (2270, 2271, 2272, 2273, 2274, 2275)
+DELETE FROM system_dict_type WHERE id IN (2270, 2271, 2272, 2273, 2274, 2275, 2276)
    OR type IN (
        'lunaerp_approval_biz_type',
        'lunaerp_approval_node_type',
        'lunaerp_approval_approver_type',
        'lunaerp_approval_instance_status',
        'lunaerp_approval_task_action',
-       'lunaerp_approval_record_action'
+       'lunaerp_approval_record_action',
+       'lunaerp_approval_config_status'
    );
 
 DELETE FROM system_dict_data WHERE dict_type IN (
@@ -412,9 +413,10 @@ DELETE FROM system_dict_data WHERE dict_type IN (
        'lunaerp_approval_approver_type',
        'lunaerp_approval_instance_status',
        'lunaerp_approval_task_action',
-       'lunaerp_approval_record_action'
+       'lunaerp_approval_record_action',
+       'lunaerp_approval_config_status'
    )
-   OR id BETWEEN 3801 AND 3825;
+   OR id BETWEEN 3801 AND 3827;
 
 -- 8.1 字典类型：单据类型
 INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time)
@@ -495,6 +497,15 @@ INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_t
 VALUES (3824, 4, '转交', 'TRANSFER', 'lunaerp_approval_record_action', 0, 'warning', '', NULL, 'admin', '2026-10-09 00:00:00', '1', '2026-10-09 00:00:00', '0');
 INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted)
 VALUES (3825, 5, '撤回', 'WITHDRAW', 'lunaerp_approval_record_action', 0, 'info', '', NULL, 'admin', '2026-10-09 00:00:00', '1', '2026-10-09 00:00:00', '0');
+
+-- 8.7 字典类型：流程配置状态
+INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time)
+VALUES (2276, '审批流程配置状态', 'lunaerp_approval_config_status', 0, 'LunaERP 审批引擎-流程配置状态', 'admin', '2026-10-09 00:00:00', '1', '2026-10-09 00:00:00', '0', NULL);
+
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted)
+VALUES (3826, 1, '启用', 'ENABLED', 'lunaerp_approval_config_status', 0, 'success', '', NULL, 'admin', '2026-10-09 00:00:00', '1', '2026-10-09 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted)
+VALUES (3827, 2, '停用', 'DISABLED', 'lunaerp_approval_config_status', 0, 'danger', '', NULL, 'admin', '2026-10-09 00:00:00', '1', '2026-10-09 00:00:00', '0');
 
 COMMIT;
 -- @formatter:on

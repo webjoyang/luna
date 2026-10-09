@@ -32,8 +32,56 @@ export interface BooleanDictDataType extends DictDataType {
   value: boolean
 }
 
+const defaultApprovalDicts: Record<string, DictDataType[]> = {
+  lunaerp_approval_biz_type: [
+    { dictType: 'lunaerp_approval_biz_type', label: '销售合同', value: 'sales_contract', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_biz_type', label: '付款申请', value: 'payment', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_biz_type', label: '费用报销', value: 'expense', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_approval_biz_type', label: '工资单', value: 'payroll', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_approval_biz_type', label: '销售退货', value: 'sales_return', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_approval_node_type: [
+    { dictType: 'lunaerp_approval_node_type', label: '逐级审批', value: 'SEQUENTIAL', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_node_type', label: '或签', value: 'OR_SIGN', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_approval_node_type', label: '会签', value: 'AND_SIGN', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_approval_approver_type: [
+    { dictType: 'lunaerp_approval_approver_type', label: '指定用户', value: 'USER', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_approver_type', label: '指定岗位', value: 'POST', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_approval_approver_type', label: '指定角色', value: 'ROLE', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_approval_approver_type', label: '部门负责人', value: 'DEPT_LEADER', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_approver_type', label: '提交人直属上级', value: 'SUBMITTER_LEADER', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_approval_config_status: [
+    { dictType: 'lunaerp_approval_config_status', label: '启用', value: 'ENABLED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_config_status', label: '停用', value: 'DISABLED', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_approval_instance_status: [
+    { dictType: 'lunaerp_approval_instance_status', label: '审批中', value: 'APPROVING', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_instance_status', label: '已通过', value: 'APPROVED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_instance_status', label: '已驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_approval_instance_status', label: '已撤回', value: 'CANCELLED', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_approval_task_action: [
+    { dictType: 'lunaerp_approval_task_action', label: '通过', value: 'DONE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_task_action', label: '驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_approval_task_action', label: '转交', value: 'TRANSFERRED', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_approval_record_action: [
+    { dictType: 'lunaerp_approval_record_action', label: '提交审批', value: 'SUBMIT', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_record_action', label: '通过', value: 'APPROVE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_record_action', label: '驳回', value: 'REJECT', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_approval_record_action', label: '转交', value: 'TRANSFER', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_approval_record_action', label: '撤回', value: 'WITHDRAW', colorType: 'info', cssClass: '' }
+  ]
+}
+
 export const getDictOptions = (dictType: string) => {
-  return dictStore.getDictByType(dictType) || []
+  const options = dictStore.getDictByType(dictType)
+  if (options && options.length > 0) {
+    return options
+  }
+  return defaultApprovalDicts[dictType] || []
 }
 
 export const getIntDictOptions = (dictType: string): NumberDictDataType[] => {
@@ -512,5 +560,14 @@ export enum DICT_TYPE {
   LUNAERP_SAMPLE_PROCESS = 'lunaerp_sample_process', // 工序
   LUNAERP_SAMPLE_DYEING_PROCESS = 'lunaerp_sample_dyeing_process', // 双染工艺
   LUNAERP_SAMPLE_MACHINE_TYPE = 'lunaerp_sample_machine_type', // 机型
-  LUNAERP_SAMPLE_SPIN_METHOD = 'lunaerp_sample_spin_method' // 纺法
+  LUNAERP_SAMPLE_SPIN_METHOD = 'lunaerp_sample_spin_method', // 纺法
+
+  // ========== LunaERP - 审批引擎模块 ==========
+  LUNAERP_APPROVAL_CONFIG_STATUS = 'lunaerp_approval_config_status', // 审批流程配置状态（ENABLED/DISABLED）
+  LUNAERP_APPROVAL_BIZ_TYPE = 'lunaerp_approval_biz_type', // 审批单据类型
+  LUNAERP_APPROVAL_NODE_TYPE = 'lunaerp_approval_node_type', // 审批节点类型
+  LUNAERP_APPROVAL_APPROVER_TYPE = 'lunaerp_approval_approver_type', // 审批人来源
+  LUNAERP_APPROVAL_INSTANCE_STATUS = 'lunaerp_approval_instance_status', // 审批实例状态
+  LUNAERP_APPROVAL_TASK_ACTION = 'lunaerp_approval_task_action', // 审批任务动作
+  LUNAERP_APPROVAL_RECORD_ACTION = 'lunaerp_approval_record_action' // 审批记录动作
 }

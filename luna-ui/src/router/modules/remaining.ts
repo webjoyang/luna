@@ -130,6 +130,17 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           noCache: true
         }
+      },
+      {
+        path: 'config',
+        component: () => import('@/views/approval/config/index.vue'),
+        name: 'ApprovalConfig',
+        meta: {
+          title: '审批链配置',
+          canTo: true,
+          hidden: true,
+          noCache: true
+        }
       }
     ]
   },
