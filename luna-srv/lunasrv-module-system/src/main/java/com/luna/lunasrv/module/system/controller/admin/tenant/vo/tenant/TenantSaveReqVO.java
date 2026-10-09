@@ -38,8 +38,7 @@ public class TenantSaveReqVO {
     @Schema(description = "绑定域名数组", example = "https://www.iocoder.cn")
     private List<String> websites;
 
-    @Schema(description = "租户套餐编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
-    @NotNull(message = "租户套餐编号不能为空")
+    @Schema(description = "租户套餐编号，为空时默认绑定核心包套餐", requiredMode = Schema.RequiredMode.NOT_REQUIRED, example = "100")
     private Long packageId;
 
     @Schema(description = "过期时间", requiredMode = Schema.RequiredMode.REQUIRED)

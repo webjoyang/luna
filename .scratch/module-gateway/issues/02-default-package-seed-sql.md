@@ -6,10 +6,10 @@
 
 **Blocked by:** None（可立即开始；`menuIds` 仅存 ID，悬挂菜单由运行时过滤）
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] 「核心包」套餐入库 `system_tenant_package`，`menuIds` 含全部 9 项（基础信息 / 销售 / 生产 / 库存 / 样品 / 财务 / 审批中心 / 系统管理 / 首页）
-- [ ] 种子脚本幂等可重复执行（事务内 UPSERT）
-- [ ] 套餐管理页（`views/system/tenantPackage/index.vue`）列表可见「核心包」
-- [ ] 套餐菜单树勾选回显 9 个一级目录，已落地菜单正常显示，未落地者（10700/10800 未落地时）被自动过滤不报错
-- [ ] 新租户默认绑定核心包（`system_tenant.package_id` 指向核心包 id）
+- [x] 「核心包」套餐入库 `system_tenant_package`，`menuIds` 含全部 9 项（基础信息 / 销售 / 生产 / 库存 / 样品 / 财务 / 审批中心 / 系统管理 / 首页）
+- [x] 种子脚本幂等可重复执行（事务内 UPSERT）
+- [x] 套餐管理页（`views/system/tenantPackage/index.vue`）列表可见「核心包」
+- [x] 套餐菜单树勾选回显 9 个一级目录，已落地菜单正常显示，未落地者（10700/10800 未落地时）被自动过滤不报错
+- [x] 新租户默认绑定核心包（`system_tenant.package_id` 指向核心包 id）

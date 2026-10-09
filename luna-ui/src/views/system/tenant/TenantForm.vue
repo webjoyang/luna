@@ -137,6 +137,11 @@ const open = async (type: string, id?: number) => {
   }
   // 加载套餐列表
   packageList.value = await TenantPackageApi.getTenantPackageList()
+  // 新增租户时默认绑定「核心包」套餐
+  if (type === 'create' && !formData.value.packageId) {
+    const corePkg = packageList.value.find((pkg) => pkg.name === '核心包')
+    formData.value.packageId = corePkg ? corePkg.id : 100
+  }
 }
 defineExpose({ open }) // 提供 open 方法，用于打开弹窗
 

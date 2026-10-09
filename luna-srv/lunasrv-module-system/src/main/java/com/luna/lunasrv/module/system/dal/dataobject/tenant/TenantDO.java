@@ -35,6 +35,11 @@ public class TenantDO extends BaseDO {
     public static final Long PACKAGE_ID_SYSTEM = 0L;
 
     /**
+     * 套餐编号 - 核心包（系统默认商业化套餐）
+     */
+    public static final Long PACKAGE_ID_CORE = 100L;
+
+    /**
      * 租户编号，自增
      */
     private Long id;

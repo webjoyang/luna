@@ -98,6 +98,10 @@ public class TenantServiceImpl implements TenantService {
     @DSTransactional // 多数据源，使用 @DSTransactional 保证本地事务，以及数据源的切换
     @DataPermission(enable = false) // 参见 https://gitee.com/zhijiantianya/ruoyi-vue-pro/pulls/1154 说明
     public Long createTenant(TenantSaveReqVO createReqVO) {
+        // 若未指定套餐，默认绑定核心包套餐（ID: 100）
+        if (createReqVO.getPackageId() == null) {
+            createReqVO.setPackageId(TenantDO.PACKAGE_ID_CORE);
+        }
         // 校验租户名称是否重复
         validTenantNameDuplicate(createReqVO.getName(), null);
         // 校验租户域名是否重复
@@ -148,6 +152,9 @@ public class TenantServiceImpl implements TenantService {
         validTenantNameDuplicate(updateReqVO.getName(), updateReqVO.getId());
         // 校验租户域名是否重复
         validTenantWebsiteDuplicate(updateReqVO.getWebsites(), updateReqVO.getId());
+        if (updateReqVO.getPackageId() == null) {
+            updateReqVO.setPackageId(tenant.getPackageId());
+        }
         // 校验套餐被禁用
         TenantPackageDO tenantPackage = tenantPackageService.validTenantPackage(updateReqVO.getPackageId());
 
