@@ -113,6 +113,27 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/approval',
+    component: Layout,
+    name: 'ApprovalCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'todo',
+        component: () => import('@/views/approval/todo/index.vue'),
+        name: 'ApprovalTodo',
+        meta: {
+          title: '待我审批',
+          canTo: true,
+          hidden: true,
+          noCache: true
+        }
+      }
+    ]
+  },
+  {
     path: '/dict',
     component: Layout,
     name: 'dict',

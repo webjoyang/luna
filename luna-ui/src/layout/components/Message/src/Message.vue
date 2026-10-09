@@ -1,8 +1,12 @@
 <script lang="ts" setup>
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import { formatDate } from '@/utils/formatTime'
 import * as NotifyMessageApi from '@/api/system/notify/message'
 import { useUserStoreWithOut } from '@/store/modules/user'
 import { propTypes } from '@/utils/propTypes'
+import { parseNotifyParams, getNotifyJumpRoute } from '@/utils/notifyRoute'
+import MyNotifyMessageDetail from '@/views/system/notify/my/MyNotifyMessageDetail.vue'
 
 defineOptions({ name: 'Message' })
 
@@ -15,6 +19,7 @@ const userStore = useUserStoreWithOut()
 const activeName = ref('notice')
 const unreadCount = ref(0) // 未读消息数量
 const list = ref<any[]>([]) // 消息列表
+const detailRef = ref()
 let unreadCountTimer: ReturnType<typeof setInterval> | undefined
 
 // 获得消息列表
@@ -29,6 +34,26 @@ const getUnreadCount = async () => {
   NotifyMessageApi.getUnreadNotifyMessageCount().then((data) => {
     unreadCount.value = data
   })
+}
+
+// 点击单条消息：按 bizType 路由跳转，无路由约定则展示详情
+const handleMessageClick = async (item: any) => {
+  if (!item.readStatus && item.id) {
+    try {
+      await NotifyMessageApi.updateNotifyMessageRead([item.id])
+      item.readStatus = true
+    } catch (e) {
+      console.error('标记站内信已读失败', e)
+    }
+  }
+
+  const params = parseNotifyParams(item.templateParams)
+  const jumpRoute = getNotifyJumpRoute(params)
+  if (jumpRoute) {
+    push(jumpRoute)
+  } else {
+    detailRef.value?.open(item)
+  }
 }
 
 // 跳转我的站内信
@@ -74,7 +99,7 @@ onBeforeUnmount(() => {
         <ElTabPane label="我的站内信" name="notice">
           <el-scrollbar class="message-list">
             <template v-for="item in list" :key="item.id">
-              <div class="message-item">
+              <div class="message-item cursor-pointer" @click="handleMessageClick(item)">
                 <img alt="" class="message-icon" src="@/assets/imgs/avatar.gif" />
                 <div class="message-content">
                   <span class="message-title">
@@ -96,6 +121,9 @@ onBeforeUnmount(() => {
         </el-button>
       </div>
     </ElPopover>
+
+    <!-- 详情弹窗：无路由约定时展示 -->
+    <MyNotifyMessageDetail ref="detailRef" />
   </div>
 </template>
 <style lang="scss" scoped>
@@ -132,8 +160,15 @@ onBeforeUnmount(() => {
   .message-item {
     display: flex;
     align-items: center;
-    padding: 20px 0;
+    padding: 15px 10px;
     border-bottom: 1px solid var(--el-border-color-light);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+
+    &:hover {
+      background-color: var(--el-fill-color-light);
+    }
 
     &:last-child {
       border: none;

@@ -113,4 +113,43 @@ CROSS JOIN (SELECT 10900 AS id UNION ALL SELECT 10901 UNION ALL SELECT 10902 UNI
 WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)
 ON CONFLICT DO NOTHING;
 
+-- 7. 审批类站内信模板种子（system_notify_template，ON CONFLICT (code) 可重复执行）
+-- W0 实装 3 个：LUNA_APPROVAL_TODO（各审批人）、LUNA_APPROVAL_APPROVED（发起人）、LUNA_APPROVAL_REJECTED（发起人，含意见）
+CREATE UNIQUE INDEX IF NOT EXISTS uk_system_notify_template_code ON system_notify_template (code);
+
+INSERT INTO system_notify_template (
+    id, name, code, nickname, content, type, params, status, remark,
+    creator, create_time, updater, update_time, deleted
+) VALUES
+(
+    2001, '审批待办通知', 'LUNA_APPROVAL_TODO', '系统通知',
+    '您有新的审批待办：{bizName} 单号 {bizNo}，提交人 {submitterName}',
+    2, '["bizName", "bizNo", "submitterName"]', 0, '单据流转到达审批节点，通知该节点各审批人（会签每人一条）',
+    'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0
+),
+(
+    2002, '审批通过通知', 'LUNA_APPROVAL_APPROVED', '系统通知',
+    '您的审批已通过：{bizName} 单号 {bizNo}',
+    2, '["bizName", "bizNo"]', 0, '审批实例终态通过，通知提交人',
+    'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0
+),
+(
+    2003, '审批驳回通知', 'LUNA_APPROVAL_REJECTED', '系统通知',
+    '您的审批被驳回：{bizName} 单号 {bizNo}，驳回意见：{reason}',
+    2, '["bizName", "bizNo", "reason"]', 0, '审批实例终态驳回，通知提交人（附带驳回意见）',
+    'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0
+)
+ON CONFLICT (code) DO UPDATE SET
+    name = EXCLUDED.name,
+    nickname = EXCLUDED.nickname,
+    content = EXCLUDED.content,
+    type = EXCLUDED.type,
+    params = EXCLUDED.params,
+    status = EXCLUDED.status,
+    remark = EXCLUDED.remark,
+    updater = EXCLUDED.updater,
+    update_time = EXCLUDED.update_time,
+    deleted = 0;
+
 COMMIT;
+
