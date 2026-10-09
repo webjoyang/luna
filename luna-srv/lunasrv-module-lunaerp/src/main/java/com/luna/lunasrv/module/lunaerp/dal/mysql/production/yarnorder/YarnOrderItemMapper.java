@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -19,6 +20,22 @@ import java.util.stream.Collectors;
  */
 @Mapper
 public interface YarnOrderItemMapper extends BaseMapperX<YarnOrderItemDO> {
+
+    /**
+     * 查询已删除采购单下的明细（用于回收站恢复前主数据引用校验）
+     */
+    List<YarnOrderItemDO> selectDeletedListByOrderId(@Param("orderId") Long orderId, @Param("tenantId") Long tenantId);
+
+    /**
+     * 级联恢复采购明细（手写 XML：显式 SET deleted=0 WHERE order_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByOrderId(@Param("orderId") Long orderId, @Param("tenantId") Long tenantId,
+                         @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除采购明细（手写 XML：显式 DELETE WHERE order_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByOrderId(@Param("orderId") Long orderId, @Param("tenantId") Long tenantId);
 
     default List<YarnOrderItemDO> selectListByOrderId(Long orderId) {
         return selectList(new LambdaQueryWrapperX<YarnOrderItemDO>()

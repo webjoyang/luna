@@ -72,6 +72,26 @@ public class RecycleBinHandlerRegistryTest {
     }
 
     @Test
+    public void testRegisterAllTwelveHandlers() {
+        List<String> bizTypes = List.of(
+                "CUSTOMER", "SUPPLIER", "PRODUCT", "YARN_TYPE", "YARN_SPEC",
+                "SALES_CONTRACT", "GREIGE_ORDER", "DYEING_ORDER",
+                "YARN_PURCHASE_ORDER", "STOCK_IN", "WEAVING_ORDER", "SHIPMENT"
+        );
+        List<RecycleBinHandler> handlers = bizTypes.stream().map(type -> {
+            RecycleBinHandler handler = mock(RecycleBinHandler.class);
+            when(handler.getBizType()).thenReturn(type);
+            return handler;
+        }).toList();
+
+        RecycleBinHandlerRegistry registry = new RecycleBinHandlerRegistry(handlers);
+        assertEquals(12, registry.getAllHandlers().size());
+        for (String type : bizTypes) {
+            assertEquals(type, registry.getHandler(type).getBizType());
+        }
+    }
+
+    @Test
     public void testNullHandlersList() {
         RecycleBinHandlerRegistry registry = new RecycleBinHandlerRegistry(null);
         assertTrue(registry.getAllHandlers().isEmpty());

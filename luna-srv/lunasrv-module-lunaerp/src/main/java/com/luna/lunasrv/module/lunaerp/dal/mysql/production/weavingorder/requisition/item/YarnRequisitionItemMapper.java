@@ -6,7 +6,9 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.requisition.item.vo.YarnRequisitionItemPageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.item.YarnRequisitionItemDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
@@ -17,6 +19,17 @@ import java.util.List;
  */
 @Mapper
 public interface YarnRequisitionItemMapper extends BaseMapperX<YarnRequisitionItemDO> {
+
+    /**
+     * 级联恢复领纱明细（手写 XML：显式 SET deleted=0 WHERE requisition_id IN (...) AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByWeavingOrderId(@Param("weavingOrderId") Long weavingOrderId, @Param("tenantId") Long tenantId,
+                                @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除领纱明细（手写 XML：显式 DELETE WHERE requisition_id IN (...) AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByWeavingOrderId(@Param("weavingOrderId") Long weavingOrderId, @Param("tenantId") Long tenantId);
 
     /**
      * 查询指定领纱单下所有有效明细

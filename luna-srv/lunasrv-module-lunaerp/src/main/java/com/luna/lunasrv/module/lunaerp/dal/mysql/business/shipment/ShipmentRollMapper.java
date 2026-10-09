@@ -5,7 +5,9 @@ import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -17,6 +19,17 @@ import java.util.List;
  */
 @Mapper
 public interface ShipmentRollMapper extends BaseMapperX<ShipmentRollDO> {
+
+    /**
+     * 级联恢复发货卷清单（手写 XML：显式 SET deleted=0 WHERE shipment_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByShipmentId(@Param("shipmentId") Long shipmentId, @Param("tenantId") Long tenantId,
+                            @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除发货卷清单（手写 XML：显式 DELETE WHERE shipment_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByShipmentId(@Param("shipmentId") Long shipmentId, @Param("tenantId") Long tenantId);
 
     /**
      * 按发货单ID查询卷清单列表

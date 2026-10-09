@@ -1,7 +1,9 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -9,6 +11,7 @@ import org.apache.ibatis.annotations.Select;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -18,6 +21,32 @@ import java.util.List;
  */
 @Mapper
 public interface SalesContractMapper extends BaseMapperX<SalesContractDO> {
+
+    /**
+     * 回收站分页查询已软删草稿销售合同（手写 XML：显式 WHERE deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}）
+     */
+    IPage<RecycleItemRespVO> selectRecyclePage(IPage<RecycleItemRespVO> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的草稿销售合同
+     */
+    SalesContractDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿销售合同（并发条件更新带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int restoreSalesContract(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                             @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底删除草稿销售合同（物理删除带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int purgeSalesContract(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 检查销售合同是否存在活跃业务引用（deleted=0 且 tenant_id=?）
+     */
+    Long selectActiveReferenceCount(@Param("salesContractId") Long salesContractId, @Param("tenantId") Long tenantId);
 
     /**
      * 按编号前缀查询合同，【包含已逻辑删除的行】。

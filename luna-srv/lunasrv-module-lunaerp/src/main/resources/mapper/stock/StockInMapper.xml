@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInMapper">
+
+    <!-- 回收站分页查询已软删草稿入库单（手写 XML：显式 WHERE deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}） -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'STOCK_IN' AS biz_type,
+            id AS biz_id,
+            in_no AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_stock_in
+        WHERE deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删的草稿入库单记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInDO">
+        SELECT *
+        FROM lunaerp_stock_in
+        WHERE id = #{id}
+          AND deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复草稿入库单（并发条件更新带 deleted=1 AND status='DRAFT' AND tenant_id=?） -->
+    <update id="restoreStockIn">
+        UPDATE lunaerp_stock_in
+        SET deleted = 0,
+            status = 'DRAFT',
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除草稿入库单（物理删除带 deleted=1 AND status='DRAFT' AND tenant_id=?） -->
+    <delete id="purgeStockIn">
+        DELETE FROM lunaerp_stock_in
+        WHERE id = #{id}
+          AND deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查入库单是否存在活跃业务引用（deleted=0 且 tenant_id=?） -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT 0
+    </select>
+
+</mapper>

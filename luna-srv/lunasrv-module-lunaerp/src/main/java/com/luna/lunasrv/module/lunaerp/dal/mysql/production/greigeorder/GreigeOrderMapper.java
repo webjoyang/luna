@@ -1,12 +1,15 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -18,6 +21,32 @@ import java.util.List;
  */
 @Mapper
 public interface GreigeOrderMapper extends BaseMapperX<GreigeOrderDO> {
+
+    /**
+     * 回收站分页查询已软删草稿胚布单（手写 XML：显式 WHERE deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}）
+     */
+    IPage<RecycleItemRespVO> selectRecyclePage(IPage<RecycleItemRespVO> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的草稿胚布单
+     */
+    GreigeOrderDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿胚布单（并发条件更新带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int restoreGreigeOrder(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                           @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底删除草稿胚布单（物理删除带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int purgeGreigeOrder(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 检查胚布单是否存在活跃业务引用（deleted=0 且 tenant_id=?）
+     */
+    Long selectActiveReferenceCount(@Param("greigeOrderId") Long greigeOrderId, @Param("tenantId") Long tenantId);
 
     /**
      * 按单号前缀查询胚布单，【包含已逻辑删除的行】。

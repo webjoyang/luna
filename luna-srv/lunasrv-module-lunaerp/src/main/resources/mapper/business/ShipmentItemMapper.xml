@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper">
+
+    <!-- 查询已删除发货单下的明细（用于回收站恢复前主数据引用校验） -->
+    <select id="selectDeletedListByShipmentId" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO">
+        SELECT *
+        FROM lunaerp_business_shipment_item
+        WHERE shipment_id = #{shipmentId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 级联恢复发货明细（显式 SET deleted=0 WHERE shipment_id=? AND deleted=1 AND tenant_id=?） -->
+    <update id="restoreByShipmentId">
+        UPDATE lunaerp_business_shipment_item
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE shipment_id = #{shipmentId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除发货明细（显式 DELETE WHERE shipment_id=? AND deleted=1 AND tenant_id=?） -->
+    <delete id="purgeByShipmentId">
+        DELETE FROM lunaerp_business_shipment_item
+        WHERE shipment_id = #{shipmentId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

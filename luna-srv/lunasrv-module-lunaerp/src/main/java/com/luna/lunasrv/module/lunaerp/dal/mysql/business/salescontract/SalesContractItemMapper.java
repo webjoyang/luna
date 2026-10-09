@@ -4,7 +4,9 @@ import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -19,6 +21,17 @@ import java.util.List;
  */
 @Mapper
 public interface SalesContractItemMapper extends BaseMapperX<SalesContractItemDO> {
+
+    /**
+     * 级联恢复合同明细（手写 XML：显式 SET deleted=0 WHERE contract_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByContractId(@Param("contractId") Long contractId, @Param("tenantId") Long tenantId,
+                            @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除合同明细（手写 XML：显式 DELETE WHERE contract_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByContractId(@Param("contractId") Long contractId, @Param("tenantId") Long tenantId);
 
     /**
      * 按合同ID查询全部明细（按 line_no 升序）。

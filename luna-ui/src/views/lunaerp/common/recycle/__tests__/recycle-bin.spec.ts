@@ -37,6 +37,27 @@ describe('Recycle Bin Master Data Tabs and API', () => {
     expect(yarnSpec?.label).toBe('纱线规格')
   })
 
+  it('should include all 7 draft document bizTypes in RECYCLE_BIZ_TYPES', () => {
+    const values = RECYCLE_BIZ_TYPES.map((t) => t.value)
+    expect(values).toContain('SALES_CONTRACT')
+    expect(values).toContain('GREIGE_ORDER')
+    expect(values).toContain('DYEING_ORDER')
+    expect(values).toContain('YARN_PURCHASE_ORDER')
+    expect(values).toContain('STOCK_IN')
+    expect(values).toContain('WEAVING_ORDER')
+    expect(values).toContain('SHIPMENT')
+
+    expect(RECYCLE_BIZ_TYPES.find((t) => t.value === 'SALES_CONTRACT')?.label).toBe('销售合同')
+    expect(RECYCLE_BIZ_TYPES.find((t) => t.value === 'GREIGE_ORDER')?.label).toBe('胚布单')
+    expect(RECYCLE_BIZ_TYPES.find((t) => t.value === 'DYEING_ORDER')?.label).toBe('染色单')
+    expect(RECYCLE_BIZ_TYPES.find((t) => t.value === 'YARN_PURCHASE_ORDER')?.label).toBe('纱线采购单')
+    expect(RECYCLE_BIZ_TYPES.find((t) => t.value === 'STOCK_IN')?.label).toBe('入库单')
+    expect(RECYCLE_BIZ_TYPES.find((t) => t.value === 'WEAVING_ORDER')?.label).toBe('织造单')
+    expect(RECYCLE_BIZ_TYPES.find((t) => t.value === 'SHIPMENT')?.label).toBe('发货单')
+
+    expect(RECYCLE_BIZ_TYPES).toHaveLength(12)
+  })
+
   it('getRecyclePage should call /lunaerp/common/recycle/page with params', async () => {
     const params = { bizType: 'SUPPLIER', pageNo: 1, pageSize: 10 }
     await getRecyclePage(params)

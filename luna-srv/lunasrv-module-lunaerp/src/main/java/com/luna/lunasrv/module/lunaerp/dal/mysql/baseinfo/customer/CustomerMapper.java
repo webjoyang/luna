@@ -11,6 +11,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 基本信息-客户表 Mapper
@@ -46,6 +47,25 @@ public interface CustomerMapper extends BaseMapperX<CustomerDO> {
         }
         wrapper.orderByDesc(CustomerDO::getCreateTime);
         return selectPage(reqVO, wrapper);
+    }
+
+    /**
+     * 按企业名称查询有效客户（当前租户且未删除）
+     */
+    default CustomerDO selectByCompanyName(String companyName) {
+        return selectOne(new LambdaQueryWrapperX<CustomerDO>()
+                .eq(CustomerDO::getCompanyName, companyName));
+    }
+
+    /**
+     * 按企业名称列表批量查询有效客户（当前租户且未删除）
+     */
+    default List<CustomerDO> selectListByCompanyNames(java.util.Collection<String> companyNames) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(companyNames)) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<CustomerDO>()
+                .in(CustomerDO::getCompanyName, companyNames));
     }
 
     /**
