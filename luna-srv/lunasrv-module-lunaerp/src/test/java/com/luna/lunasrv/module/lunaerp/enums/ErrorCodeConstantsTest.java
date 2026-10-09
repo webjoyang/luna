@@ -101,5 +101,43 @@ public class ErrorCodeConstantsTest {
         assertEquals(1_030_015_117, ErrorCodeConstants.WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY.getCode());
         assertTrue(ErrorCodeConstants.WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY.getMsg().contains("luna.h5.base-url"));
     }
+
+    @Test
+    void testApprovalErrorCodes() {
+        assertEquals(1_030_030_000, ApprovalErrorCodeConstants.APPROVAL_CONFIG_NOT_EXISTS.getCode());
+        assertEquals("审批流程不存在", ApprovalErrorCodeConstants.APPROVAL_CONFIG_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_030_001, ApprovalErrorCodeConstants.APPROVAL_CONFIG_NOT_ENABLED.getCode());
+        assertEquals("该单据类型无启用的审批流程", ApprovalErrorCodeConstants.APPROVAL_CONFIG_NOT_ENABLED.getMsg());
+
+        assertEquals(1_030_030_002, ApprovalErrorCodeConstants.APPROVAL_INSTANCE_NOT_EXISTS.getCode());
+        assertEquals("审批实例不存在", ApprovalErrorCodeConstants.APPROVAL_INSTANCE_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_030_003, ApprovalErrorCodeConstants.APPROVAL_TASK_NOT_EXISTS.getCode());
+        assertEquals("审批任务不存在", ApprovalErrorCodeConstants.APPROVAL_TASK_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_030_004, ApprovalErrorCodeConstants.APPROVAL_INSTANCE_STATUS_ERROR.getCode());
+        assertEquals("当前状态不允许该操作", ApprovalErrorCodeConstants.APPROVAL_INSTANCE_STATUS_ERROR.getMsg());
+
+        assertEquals(1_030_030_005, ApprovalErrorCodeConstants.APPROVAL_NO_PERMISSION.getCode());
+        assertEquals("非当前审批人无权操作", ApprovalErrorCodeConstants.APPROVAL_NO_PERMISSION.getMsg());
+
+        assertEquals(1_030_030_006, ApprovalErrorCodeConstants.APPROVAL_REJECT_COMMENT_EMPTY.getCode());
+        assertEquals("驳回意见不能为空", ApprovalErrorCodeConstants.APPROVAL_REJECT_COMMENT_EMPTY.getMsg());
+
+        assertEquals(1_030_030_007, ApprovalErrorCodeConstants.APPROVAL_CONFIG_BIZ_TYPE_ALREADY_ENABLED.getCode());
+        assertEquals("该单据类型已有启用流程，请先停用", ApprovalErrorCodeConstants.APPROVAL_CONFIG_BIZ_TYPE_ALREADY_ENABLED.getMsg());
+
+        assertEquals(1_030_030_008, ApprovalErrorCodeConstants.APPROVAL_CONFIG_HAS_ACTIVE_INSTANCE.getCode());
+        assertEquals("流程已被引用，无法删除", ApprovalErrorCodeConstants.APPROVAL_CONFIG_HAS_ACTIVE_INSTANCE.getMsg());
+
+        assertEquals(1_030_030_009, ApprovalErrorCodeConstants.APPROVAL_TRANSFER_TO_SELF_NOT_ALLOWED.getCode());
+        assertEquals("转交接收人不能是自己", ApprovalErrorCodeConstants.APPROVAL_TRANSFER_TO_SELF_NOT_ALLOWED.getMsg());
+
+        // 验证 ErrorCodeConstants 继承了所有 ApprovalErrorCodeConstants 错误码
+        assertEquals(ApprovalErrorCodeConstants.APPROVAL_CONFIG_NOT_EXISTS, ErrorCodeConstants.APPROVAL_CONFIG_NOT_EXISTS);
+        assertEquals(ApprovalErrorCodeConstants.APPROVAL_CONFIG_BIZ_TYPE_ALREADY_ENABLED, ErrorCodeConstants.APPROVAL_CONFIG_BIZ_TYPE_ALREADY_ENABLED);
+        assertEquals(ApprovalErrorCodeConstants.APPROVAL_CONFIG_HAS_ACTIVE_INSTANCE, ErrorCodeConstants.APPROVAL_CONFIG_HAS_ACTIVE_INSTANCE);
+    }
 }
 
