@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.luna.lunasrv.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SUPPLIER_NO_DUPLICATE;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SUPPLIER_NOT_EXISTS;
@@ -66,6 +67,7 @@ public class SupplierServiceImpl implements SupplierService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSupplier(SupplierSaveReqVO createReqVO) {
+        validateSupplierNotMasked(createReqVO);
         SupplierDO supplier = BeanUtils.toBean(createReqVO, SupplierDO.class);
         // 1. 编号：手填查重（含已删除行，撞号直接报错不顺延）；留空自动生成（撞号有限次顺延重试）
         if (StringUtils.hasText(supplier.getSupplierNo())) {
@@ -103,6 +105,7 @@ public class SupplierServiceImpl implements SupplierService {
     public void updateSupplier(SupplierSaveReqVO updateReqVO) {
         // 校验存在
         validateSupplierExists(updateReqVO.getId());
+        validateSupplierNotMasked(updateReqVO);
         SupplierDO updateObj = BeanUtils.toBean(updateReqVO, SupplierDO.class);
         // 编号变更时查重（排除自身，含已删除行）
         if (StringUtils.hasText(updateObj.getSupplierNo())) {
@@ -248,6 +251,15 @@ public class SupplierServiceImpl implements SupplierService {
         SupplierDO exist = supplierMapper.selectBySupplierNoIncludingDeleted(supplierNo);
         if (exist != null && !exist.getId().equals(excludeId)) {
             throw exception(SUPPLIER_NO_DUPLICATE);
+        }
+    }
+
+    /**
+     * 校验联系电话不含脱敏字符，写接口不接受脱敏值入库
+     */
+    private void validateSupplierNotMasked(SupplierSaveReqVO reqVO) {
+        if (reqVO != null && reqVO.getPhone() != null && reqVO.getPhone().contains("*")) {
+            throw exception(BAD_REQUEST, "联系电话不能包含脱敏字符");
         }
     }
 

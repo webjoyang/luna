@@ -1,5 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo;
 
+import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -39,6 +41,7 @@ public class YarnSpecCascadeOptionVO {
         private String standardName;
 
         @Schema(description = "参考单价", example = "25.5000")
+        @Sensitive(seePermission = "lunaerp:sensitive:amount", type = SensitiveType.AMOUNT)
         private BigDecimal refPrice;
 
         @Schema(description = "纺纱工艺", example = "环锭纺")

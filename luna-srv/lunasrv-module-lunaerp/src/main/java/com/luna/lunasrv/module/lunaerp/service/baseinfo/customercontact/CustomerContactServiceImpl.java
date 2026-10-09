@@ -11,6 +11,7 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import static com.luna.lunasrv.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.CUSTOMER_CONTACT_NOT_EXISTS;
 
@@ -30,6 +31,7 @@ public class CustomerContactServiceImpl implements CustomerContactService {
 
     @Override
     public Long createCustomerContact(CustomerContactSaveReqVO createReqVO) {
+        validateCustomerContactNotMasked(createReqVO);
         CustomerContactDO contact = BeanUtils.toBean(createReqVO, CustomerContactDO.class);
         customerContactMapper.insert(contact);
         return contact.getId();
@@ -40,6 +42,7 @@ public class CustomerContactServiceImpl implements CustomerContactService {
     public void updateCustomerContact(CustomerContactSaveReqVO updateReqVO) {
         // 校验存在
         validateCustomerContactExists(updateReqVO.getId());
+        validateCustomerContactNotMasked(updateReqVO);
         // 更新
         CustomerContactDO updateObj = BeanUtils.toBean(updateReqVO, CustomerContactDO.class);
         customerContactMapper.updateById(updateObj);
@@ -77,6 +80,24 @@ public class CustomerContactServiceImpl implements CustomerContactService {
     private void validateCustomerContactExists(Long id) {
         if (id == null || customerContactMapper.selectById(id) == null) {
             throw exception(CUSTOMER_CONTACT_NOT_EXISTS);
+        }
+    }
+
+    /**
+     * 校验联系人字段不含脱敏占位符，写接口不接受脱敏值入库
+     */
+    private void validateCustomerContactNotMasked(CustomerContactSaveReqVO reqVO) {
+        if (reqVO == null) {
+            return;
+        }
+        if (reqVO.getName() != null && reqVO.getName().contains("*")) {
+            throw exception(BAD_REQUEST, "联系人姓名不能包含脱敏字符");
+        }
+        if (reqVO.getPhone() != null && reqVO.getPhone().contains("*")) {
+            throw exception(BAD_REQUEST, "联系电话不能包含脱敏字符");
+        }
+        if (reqVO.getEmail() != null && reqVO.getEmail().contains("*")) {
+            throw exception(BAD_REQUEST, "邮箱不能包含脱敏字符");
         }
     }
 

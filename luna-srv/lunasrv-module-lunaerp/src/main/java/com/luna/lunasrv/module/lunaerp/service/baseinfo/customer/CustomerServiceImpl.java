@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 import java.util.Collections;
 import java.util.List;
 
+import static com.luna.lunasrv.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 
@@ -41,6 +42,7 @@ public class CustomerServiceImpl implements CustomerService {
 
     @Override
     public Long createCustomer(CustomerSaveReqVO createReqVO) {
+        validateCustomerNotMasked(createReqVO);
         CustomerDO customer = BeanUtils.toBean(createReqVO, CustomerDO.class);
         // shortName 为空时用 companyName 回填
         backfillShortName(customer);
@@ -72,6 +74,7 @@ public class CustomerServiceImpl implements CustomerService {
     public void updateCustomer(CustomerSaveReqVO updateReqVO) {
         // 校验存在
         validateCustomerExists(updateReqVO.getId());
+        validateCustomerNotMasked(updateReqVO);
         // 更新（shortName 为空时用 companyName 回填，与创建一致）
         CustomerDO updateObj = BeanUtils.toBean(updateReqVO, CustomerDO.class);
         backfillShortName(updateObj);
@@ -133,6 +136,15 @@ public class CustomerServiceImpl implements CustomerService {
         }
         // 2. 逻辑删除（deleted=1）
         customerMapper.deleteByIds(ids);
+    }
+
+    /**
+     * 校验联系电话不含脱敏字符，写接口不接受脱敏值入库
+     */
+    private void validateCustomerNotMasked(CustomerSaveReqVO reqVO) {
+        if (reqVO != null && reqVO.getPhone() != null && reqVO.getPhone().contains("*")) {
+            throw exception(BAD_REQUEST, "联系电话不能包含脱敏字符");
+        }
     }
 
 }

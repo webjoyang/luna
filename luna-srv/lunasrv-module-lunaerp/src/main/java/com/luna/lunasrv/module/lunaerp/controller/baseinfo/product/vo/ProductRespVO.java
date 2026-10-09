@@ -1,5 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo;
 
+import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -118,24 +120,30 @@ public class ProductRespVO {
     private BigDecimal greigeWidthCm;
 
     @Schema(description = "针织加工费（元/KG）")
+    @Sensitive(seePermission = "lunaerp:sensitive:amount", type = SensitiveType.AMOUNT)
     private BigDecimal knitProcessingFeePerKg;
 
     @Schema(description = "织造费（元/M）")
+    @Sensitive(seePermission = "lunaerp:sensitive:amount", type = SensitiveType.AMOUNT)
     private BigDecimal weavingFeePerMeter;
 
     @Schema(description = "其他加工费（元/M）")
+    @Sensitive(seePermission = "lunaerp:sensitive:amount", type = SensitiveType.AMOUNT)
     private BigDecimal otherProcessingFeePerMeter;
 
     @Schema(description = "包装费")
+    @Sensitive(seePermission = "lunaerp:sensitive:amount", type = SensitiveType.AMOUNT)
     private BigDecimal packagingFee;
 
     @Schema(description = "税率")
     private BigDecimal taxRate;
 
     @Schema(description = "成本项明细（JSON 原文）")
+    @Sensitive(seePermission = "lunaerp:sensitive:amount", type = SensitiveType.AMOUNT)
     private String costItems;
 
     @Schema(description = "汇总成本价")
+    @Sensitive(seePermission = "lunaerp:sensitive:amount", type = SensitiveType.AMOUNT)
     private BigDecimal costPrice;
 
     @Schema(description = "成本状态（MISSING 缺失 / FILLED 已填写）")

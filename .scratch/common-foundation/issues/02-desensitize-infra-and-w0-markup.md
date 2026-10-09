@@ -4,12 +4,12 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `@Sensitive` 注解 + `SensitiveType` 枚举（6 类型）落在 `common/desensitize` 子包
-- [ ] AMOUNT handler：无权限序列化 `"****"`，有权限 BigDecimal 正常序列化
-- [ ] Jackson 条件序列化器：调用 `SecurityFrameworkService.hasPermission(seePermission)`，无登录上下文（定时任务/MQ）按脱敏处理
-- [ ] 两个权限位 `lunaerp:sensitive:amount`、`lunaerp:sensitive:contact` 以 type=3（按钮，无页面）菜单注册到系统管理目录 SQL（可重复执行）
-- [ ] 现有 VO 标注清单全部落标：纱线规格 refPrice（RespVO/导出 VO）=AMOUNT；产品成本/价格类字段（含 costItems 内单价同标）=AMOUNT；客户/供应商联系人 RespVO 姓名=CHINESE_NAME、手机=MOBILE、座机=FIXED_PHONE、银行账号=BANK_CARD、邮箱=EMAIL；主体上联系电话/银行信息按对应类型
-- [ ] 越权测试：构造有/无两类权限用户，对列表/详情/导出分别断言；写接口不接受 `"****"` 入库（更新以 ID 为准不依赖脱敏字段回传）
-- [ ] 默认授予建议在角色管理可勾选：amount 授租户管理员/财务/老板，contact 授业务员/销售主管/管理员
+- [x] `@Sensitive` 注解 + `SensitiveType` 枚举（6 类型）落在 `common/desensitize` 子包
+- [x] AMOUNT handler：无权限序列化 `"****"`，有权限 BigDecimal 正常序列化
+- [x] Jackson 条件序列化器：调用 `SecurityFrameworkService.hasPermission(seePermission)`，无登录上下文（定时任务/MQ）按脱敏处理
+- [x] 两个权限位 `lunaerp:sensitive:amount`、`lunaerp:sensitive:contact` 以 type=3（按钮，无页面）菜单注册到系统管理目录 SQL（可重复执行）
+- [x] 现有 VO 标注清单全部落标：纱线规格 refPrice（RespVO/导出 VO）=AMOUNT；产品成本/价格类字段（含 costItems 内单价同标）=AMOUNT；客户/供应商联系人 RespVO 姓名=CHINESE_NAME、手机=MOBILE、座机=FIXED_PHONE、银行账号=BANK_CARD、邮箱=EMAIL；主体上联系电话/银行信息按对应类型
+- [x] 越权测试：构造有/无两类权限用户，对列表/详情/导出分别断言；写接口不接受 `"****"` 入库（更新以 ID 为准不依赖脱敏字段回传）
+- [x] 默认授予建议在角色管理可勾选：amount 授租户管理员/财务/老板，contact 授业务员/销售主管/管理员

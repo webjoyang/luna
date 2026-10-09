@@ -34,6 +34,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.luna.lunasrv.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PRODUCT_CODE_DUPLICATE;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
@@ -132,6 +133,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createProduct(ProductSaveReqVO createReqVO) {
+        validateProductNotMasked(createReqVO);
         // 校验同租户未删除产品编号唯一
         validateCodeUnique(null, createReqVO.getCode());
         // 插入产品
@@ -154,6 +156,7 @@ public class ProductServiceImpl implements ProductService {
     public void updateProduct(ProductSaveReqVO updateReqVO) {
         // 校验存在
         validateProductExists(updateReqVO.getId());
+        validateProductNotMasked(updateReqVO);
         // 校验编号唯一（排除自身）
         validateCodeUnique(updateReqVO.getId(), updateReqVO.getCode());
         // 更新主表
@@ -449,6 +452,15 @@ public class ProductServiceImpl implements ProductService {
             product.setTags(tagMap.getOrDefault(product.getId(), Collections.emptyList()));
             // TODO 供应商模块迁移后接入：按 supplierId 查询供应商公司名称
             product.setSupplierCompany(null);
+        }
+    }
+
+    /**
+     * 校验产品字段不含脱敏占位符，写接口不接受脱敏值入库
+     */
+    private void validateProductNotMasked(ProductSaveReqVO reqVO) {
+        if (reqVO != null && reqVO.getCostItems() != null && reqVO.getCostItems().contains("****")) {
+            throw exception(BAD_REQUEST, "成本项明细不能包含脱敏占位符");
         }
     }
 
