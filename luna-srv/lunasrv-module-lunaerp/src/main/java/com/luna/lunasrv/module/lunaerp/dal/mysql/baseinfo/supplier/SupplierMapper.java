@@ -1,14 +1,17 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierPageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -81,5 +84,33 @@ public interface SupplierMapper extends BaseMapperX<SupplierDO> {
             + "remark, status, creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_baseinfo_supplier WHERE supplier_no = #{supplierNo} LIMIT 1")
     SupplierDO selectBySupplierNoIncludingDeleted(@Param("supplierNo") String supplierNo);
+
+    /**
+     * 分页查询已软删供应商（手写 XML：显式 WHERE deleted = 1 AND tenant_id = #{tenantId}）
+     */
+    IPage<RecycleItemRespVO> selectRecyclePage(IPage<?> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的供应商记录
+     */
+    SupplierDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复供应商（并发条件更新带 deleted=1 AND tenant_id=?）
+     */
+    int restoreSupplier(@Param("id") Long id,
+                        @Param("tenantId") Long tenantId,
+                        @Param("updater") String updater,
+                        @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底删除供应商（物理删除带 deleted=1 AND tenant_id=?）
+     */
+    int purgeSupplier(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 检查供应商是否存在活跃业务引用（deleted=0 且 tenant_id=?）
+     */
+    Long selectActiveReferenceCount(@Param("supplierId") Long supplierId, @Param("tenantId") Long tenantId);
 
 }

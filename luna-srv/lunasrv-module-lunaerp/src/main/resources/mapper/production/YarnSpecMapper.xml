@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper">
+
+    <!-- 回收站分页查询已软删纱线规格（手写 XML：显式 WHERE deleted = 1 AND tenant_id = #{tenantId}） -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'YARN_SPEC' AS biz_type,
+            id AS biz_id,
+            spec_name AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_production_yarn_spec
+        WHERE deleted = 1
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删的纱线规格记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnspec.YarnSpecDO">
+        SELECT *
+        FROM lunaerp_production_yarn_spec
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复纱线规格（并发条件更新带 deleted=1 AND tenant_id=?） -->
+    <update id="restoreYarnSpec">
+        UPDATE lunaerp_production_yarn_spec
+        SET deleted = 0,
+            status = 'INACTIVE',
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除纱线规格（物理删除带 deleted=1 AND tenant_id=?） -->
+    <delete id="purgeYarnSpec">
+        DELETE FROM lunaerp_production_yarn_spec
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查纱线规格是否存在活跃业务引用（deleted=0 且 tenant_id=?） -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT (
+            (SELECT COUNT(1) FROM lunaerp_production_yarn_requisition_item WHERE yarn_spec_id = #{yarnSpecId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_production_yarn_order_item WHERE yarn_spec_id = #{yarnSpecId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_production_yarn_recipe_bom_item WHERE yarn_spec_id = #{yarnSpecId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_sample_analysis_yarn_spec WHERE yarn_spec_id = #{yarnSpecId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_stock_in_item WHERE yarn_spec_id = #{yarnSpecId} AND deleted = 0 AND tenant_id = #{tenantId})
+        )
+    </select>
+
+</mapper>

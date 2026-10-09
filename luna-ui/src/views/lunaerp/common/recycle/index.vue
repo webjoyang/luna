@@ -65,29 +65,20 @@
 
 <script lang="ts" setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { dateFormatter } from '@/utils/formatTime'
 import * as RecycleApi from '@/api/lunaerp/common/recycle'
+import { RECYCLE_BIZ_TYPES } from '@/api/lunaerp/common/recycle'
 import type { RecycleItemRespVO } from '@/api/lunaerp/common/recycle'
 
 defineOptions({ name: 'LunaerpRecycleBin' })
 
 const message = ElMessage
+const route = useRoute()
+const router = useRouter()
 
-const bizTypes = [
-  { label: '客户档案', value: 'CUSTOMER' },
-  { label: '供应商档案', value: 'SUPPLIER' },
-  { label: '产品档案', value: 'PRODUCT' },
-  { label: '纱线材质', value: 'YARN_TYPE' },
-  { label: '纱线规格', value: 'YARN_SPEC' },
-  { label: '销售合同', value: 'SALES_CONTRACT' },
-  { label: '胚布单', value: 'GREIGE_ORDER' },
-  { label: '染色单', value: 'DYEING_ORDER' },
-  { label: '纱线采购单', value: 'YARN_PURCHASE_ORDER' },
-  { label: '入库单', value: 'STOCK_IN' },
-  { label: '织造单', value: 'WEAVING_ORDER' },
-  { label: '发货单', value: 'SHIPMENT' }
-]
+const bizTypes = RECYCLE_BIZ_TYPES
 
 const activeBizType = ref('CUSTOMER')
 const loading = ref(false)
@@ -120,6 +111,9 @@ const getList = async () => {
 const handleTabChange = (name: string | number) => {
   activeBizType.value = String(name)
   queryParams.pageNo = 1
+  if (router && route) {
+    router.replace({ query: { ...route.query, bizType: String(name) } })
+  }
   getList()
 }
 
@@ -170,6 +164,9 @@ const handlePurge = async (row: RecycleItemRespVO) => {
 
 /** 初始化 */
 onMounted(() => {
+  if (route?.query?.bizType && bizTypes.some((b) => b.value === route.query.bizType)) {
+    activeBizType.value = String(route.query.bizType)
+  }
   getList()
 })
 </script>

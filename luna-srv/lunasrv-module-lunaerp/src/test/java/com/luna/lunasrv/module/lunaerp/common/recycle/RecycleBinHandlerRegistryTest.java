@@ -48,6 +48,30 @@ public class RecycleBinHandlerRegistryTest {
     }
 
     @Test
+    public void testRegisterAllMasterDataHandlers() {
+        RecycleBinHandler customer = mock(RecycleBinHandler.class);
+        when(customer.getBizType()).thenReturn("CUSTOMER");
+        RecycleBinHandler supplier = mock(RecycleBinHandler.class);
+        when(supplier.getBizType()).thenReturn("SUPPLIER");
+        RecycleBinHandler product = mock(RecycleBinHandler.class);
+        when(product.getBizType()).thenReturn("PRODUCT");
+        RecycleBinHandler yarnType = mock(RecycleBinHandler.class);
+        when(yarnType.getBizType()).thenReturn("YARN_TYPE");
+        RecycleBinHandler yarnSpec = mock(RecycleBinHandler.class);
+        when(yarnSpec.getBizType()).thenReturn("YARN_SPEC");
+
+        RecycleBinHandlerRegistry registry = new RecycleBinHandlerRegistry(
+                List.of(customer, supplier, product, yarnType, yarnSpec));
+
+        assertEquals(5, registry.getAllHandlers().size());
+        assertEquals("CUSTOMER", registry.getHandler("CUSTOMER").getBizType());
+        assertEquals("SUPPLIER", registry.getHandler("SUPPLIER").getBizType());
+        assertEquals("PRODUCT", registry.getHandler("PRODUCT").getBizType());
+        assertEquals("YARN_TYPE", registry.getHandler("YARN_TYPE").getBizType());
+        assertEquals("YARN_SPEC", registry.getHandler("YARN_SPEC").getBizType());
+    }
+
+    @Test
     public void testNullHandlersList() {
         RecycleBinHandlerRegistry registry = new RecycleBinHandlerRegistry(null);
         assertTrue(registry.getAllHandlers().isEmpty());

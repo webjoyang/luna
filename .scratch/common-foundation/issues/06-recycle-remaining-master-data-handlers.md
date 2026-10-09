@@ -4,12 +4,12 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] SUPPLIER handler（含供应商联系人级联复活）
-- [ ] PRODUCT handler（含标签等子表级联复活）
-- [ ] YARN_TYPE handler（有规格引用时阻断删除/提示）
-- [ ] YARN_SPEC handler（恢复时若其 YARN_TYPE 仍在回收站报 002，先父后子）
-- [ ] 4 个 handler 均走手写 XML（显式 `deleted=1 AND tenant_id`）、恢复 INACTIVE、引用阻断、幂等、`@DataPermission(enable=false)`、`@LogRecord`
-- [ ] 前端回收站页新增 4 个 tab（bizType 维护在前端路由表）
-- [ ] 测试：各 handler 恢复/彻底删除/引用守卫；纱线规格→纱线材质父子依赖阻断；并发条件更新；租户隔离；横向越权
+- [x] SUPPLIER handler（含供应商联系人级联复活）
+- [x] PRODUCT handler（含标签等子表级联复活）
+- [x] YARN_TYPE handler（有规格引用时阻断删除/提示）
+- [x] YARN_SPEC handler（恢复时若其 YARN_TYPE 仍在回收站报 002，先父后子）
+- [x] 4 个 handler 均走手写 XML（显式 `deleted=1 AND tenant_id`）、恢复 INACTIVE、引用阻断、幂等、`@DataPermission(enable=false)`、`@LogRecord`
+- [x] 前端回收站页新增 4 个 tab（bizType 维护在前端路由表）
+- [x] 测试：各 handler 恢复/彻底删除/引用守卫；纱线规格→纱线材质父子依赖阻断；并发条件更新；租户隔离；横向越权

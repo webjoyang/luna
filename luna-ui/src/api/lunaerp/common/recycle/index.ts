@@ -9,6 +9,22 @@ export interface RecycleItemRespVO {
   deletedTime?: string | Date
 }
 
+/** 回收站支持的业务类型字典定义 */
+export const RECYCLE_BIZ_TYPES = [
+  { label: '客户档案', value: 'CUSTOMER' },
+  { label: '供应商档案', value: 'SUPPLIER' },
+  { label: '产品档案', value: 'PRODUCT' },
+  { label: '纱线材质', value: 'YARN_TYPE' },
+  { label: '纱线规格', value: 'YARN_SPEC' },
+  { label: '销售合同', value: 'SALES_CONTRACT' },
+  { label: '胚布单', value: 'GREIGE_ORDER' },
+  { label: '染色单', value: 'DYEING_ORDER' },
+  { label: '纱线采购单', value: 'YARN_PURCHASE_ORDER' },
+  { label: '入库单', value: 'STOCK_IN' },
+  { label: '织造单', value: 'WEAVING_ORDER' },
+  { label: '发货单', value: 'SHIPMENT' }
+] as const
+
 /** 回收站分页 Request VO */
 export interface RecyclePageReqVO extends PageParam {
   bizType: string
