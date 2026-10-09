@@ -43,6 +43,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
+import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -144,39 +147,42 @@ public class ProductionProgressQueryServiceImpl implements ProductionProgressQue
     // ==================== 对外接口 ====================
 
     @Override
+    @DataPermission(enable = false)
     public PageResult<ProductionProgressPageItemRespVO> getProductionProgressPage(ProductionProgressPageReqVO reqVO) {
-        LocalDate today = todayProvider.get();
-        boolean includeCancelled = Boolean.TRUE.equals(reqVO.getIncludeCancelled());
+        return DataPermissionUtils.executeIgnore(() -> {
+            LocalDate today = todayProvider.get();
+            boolean includeCancelled = Boolean.TRUE.equals(reqVO.getIncludeCancelled());
 
-        // 1. 候选合同（Mapper 下推硬过滤）+ 内存双重防御过滤（软删/状态/交期/关键字）
-        List<SalesContractDO> candidates = salesContractMapper.selectListForProgress(
-                reqVO.getKeyword(), reqVO.getDeliveryDateStart(), reqVO.getDeliveryDateEnd(),
-                reqVO.getStatus(), includeCancelled);
-        List<SalesContractDO> contracts = filterContracts(candidates, reqVO, includeCancelled);
-        if (CollUtil.isEmpty(contracts)) {
-            return PageResult.empty();
-        }
+            // 1. 候选合同（Mapper 下推硬过滤）+ 内存双重防御过滤（软删/状态/交期/关键字）
+            List<SalesContractDO> candidates = salesContractMapper.selectListForProgress(
+                    reqVO.getKeyword(), reqVO.getDeliveryDateStart(), reqVO.getDeliveryDateEnd(),
+                    reqVO.getStatus(), includeCancelled);
+            List<SalesContractDO> contracts = filterContracts(candidates, reqVO, includeCancelled);
+            if (CollUtil.isEmpty(contracts)) {
+                return PageResult.empty();
+            }
 
-        // 2. 排序：交期升序、无交期排最后，同期按合同ID升序（稳定）
-        contracts.sort(Comparator
-                .comparing(SalesContractDO::getDeliveryDate, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(SalesContractDO::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+            // 2. 排序：交期升序、无交期排最后，同期按合同ID升序（稳定）
+            contracts.sort(Comparator
+                    .comparing(SalesContractDO::getDeliveryDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(SalesContractDO::getId, Comparator.nullsLast(Comparator.naturalOrder())));
 
-        // 3. 批量聚合全部候选（预警需聚合后才能判定，故先聚合再按 alertOnly 过滤、最后切片分页）
-        Map<Long, ContractAggregate> aggMap = aggregate(contracts, today);
+            // 3. 批量聚合全部候选（预警需聚合后才能判定，故先聚合再按 alertOnly 过滤、最后切片分页）
+            Map<Long, ContractAggregate> aggMap = aggregate(contracts, today);
 
-        // 4. 组装列表项（业务员姓名批量解析，避免 N+1）
-        List<ProductionProgressPageItemRespVO> items = buildPageItems(contracts, aggMap);
+            // 4. 组装列表项（业务员姓名批量解析，避免 N+1）
+            List<ProductionProgressPageItemRespVO> items = buildPageItems(contracts, aggMap);
 
-        // 5. 仅看有预警
-        if (Boolean.TRUE.equals(reqVO.getAlertOnly())) {
-            items = items.stream()
-                    .filter(i -> i.getAlertCount() != null && i.getAlertCount() > 0)
-                    .collect(Collectors.toList());
-        }
+            // 5. 仅看有预警
+            if (Boolean.TRUE.equals(reqVO.getAlertOnly())) {
+                items = items.stream()
+                        .filter(i -> i.getAlertCount() != null && i.getAlertCount() > 0)
+                        .collect(Collectors.toList());
+            }
 
-        // 6. 内存切片分页
-        return paginate(items, reqVO);
+            // 6. 内存切片分页
+            return paginate(items, reqVO);
+        });
     }
 
     @Override

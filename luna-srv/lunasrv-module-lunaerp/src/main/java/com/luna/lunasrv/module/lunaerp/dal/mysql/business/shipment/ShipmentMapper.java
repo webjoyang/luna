@@ -9,6 +9,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
+
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
@@ -74,6 +76,7 @@ public interface ShipmentMapper extends BaseMapperX<ShipmentDO> {
      * @param shipmentNo 发货单号
      * @return 发货单（含已删除行）
      */
+    @DataPermission(enable = false)
     @Select("SELECT id, shipment_no, status, customer_id, customer_name, sales_contract_id, contract_no, "
             + "warehouse_id, warehouse_name, shipping_address, receive_address, carrier, tracking_number, "
             + "shipping_date, expected_delivery_date, freight_fee, total_amount, total_pieces, "
@@ -88,6 +91,7 @@ public interface ShipmentMapper extends BaseMapperX<ShipmentDO> {
      * @param prefix 单号前缀（如 SH-20260927-）
      * @return 发货单列表（含已删除行）
      */
+    @DataPermission(enable = false)
     @Select("SELECT id, shipment_no, status, customer_id, customer_name, sales_contract_id, contract_no, "
             + "warehouse_id, warehouse_name, shipping_address, receive_address, carrier, tracking_number, "
             + "shipping_date, expected_delivery_date, freight_fee, total_amount, total_pieces, "
@@ -103,6 +107,7 @@ public interface ShipmentMapper extends BaseMapperX<ShipmentDO> {
      * @param status 发货单状态（如 COMPLETED）
      * @return 发货单列表
      */
+    @DataPermission(enable = false)
     default List<ShipmentDO> selectListByContractIdAndStatus(Long contractId, String status) {
         return selectList(new LambdaQueryWrapperX<ShipmentDO>()
                 .eq(ShipmentDO::getSalesContractId, contractId)

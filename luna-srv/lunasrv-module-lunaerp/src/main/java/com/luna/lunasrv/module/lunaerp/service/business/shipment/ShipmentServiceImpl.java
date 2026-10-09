@@ -43,6 +43,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
+import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -302,10 +305,22 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     @Override
+    @DataPermission(enable = false)
     public String getNextShipmentNo(LocalDate shippingDate) {
         // 只读预览、不占号：直接扫描同前缀单号（含已删除行，ADR-0029）
         LocalDate date = shippingDate != null ? shippingDate : LocalDate.now();
-        return generateShipmentNo(date);
+        return DataPermissionUtils.executeIgnore(() -> generateShipmentNo(date));
+    }
+
+    /**
+     * 合同未发量聚合：按合同ID与状态查询发货单列表（ADR-0046 / §5.2 第 3 项），
+     * 显式关闭数据权限，必须统计租户内全部 COMPLETED 发货，否则受限档会算虚假未发量导致超发。
+     */
+    @DataPermission(enable = false)
+    public List<ShipmentDO> selectListByContractIdAndStatus(Long contractId, String status) {
+        return DataPermissionUtils.executeIgnore(() ->
+                shipmentMapper.selectListByContractIdAndStatus(contractId, status)
+        );
     }
 
     @Override
@@ -326,7 +341,8 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // 3. 实时只读计算：按已生效出库的发货单（COMPLETED 态、即已过账写负流水）依产品/客户色号聚合已发数量
-        List<ShipmentDO> completedShipments = shipmentMapper.selectListByContractIdAndStatus(contractId, "COMPLETED");
+        // 必须关闭数据权限（ADR-0046 §5.2 第 3 项），跨归属统计租户内全部发货，防虚假未发量导致超发
+        List<ShipmentDO> completedShipments = selectListByContractIdAndStatus(contractId, "COMPLETED");
         Map<String, BigDecimal> shippedQtyByKey = new HashMap<>();
         if (CollUtil.isNotEmpty(completedShipments)) {
             List<Long> completedShipmentIds = completedShipments.stream()
@@ -579,67 +595,76 @@ public class ShipmentServiceImpl implements ShipmentService {
     /**
      * 校验单号租户内全量唯一（含已删除行，ADR-0029）
      */
+    @DataPermission(enable = false)
     private void validateShipmentNoUnique(Long excludeId, String shipmentNo) {
         if (!StringUtils.hasText(shipmentNo)) {
             return;
         }
-        ShipmentDO exist = shipmentMapper.selectByShipmentNoIncludingDeleted(shipmentNo);
-        if (exist != null && !exist.getId().equals(excludeId)) {
-            throw exception(SHIPMENT_NO_DUPLICATE, shipmentNo);
-        }
+        DataPermissionUtils.executeIgnore(() -> {
+            ShipmentDO exist = shipmentMapper.selectByShipmentNoIncludingDeleted(shipmentNo);
+            if (exist != null && !exist.getId().equals(excludeId)) {
+                throw exception(SHIPMENT_NO_DUPLICATE, shipmentNo);
+            }
+        });
     }
 
     /**
      * 自动取号（带顺延重试）
      */
+    @DataPermission(enable = false)
     private String generateShipmentNoWithRetry(LocalDate shippingDate) {
-        String lastCandidate = null;
-        for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
-            String candidate = generateShipmentNo(shippingDate);
-            lastCandidate = candidate;
-            if (shipmentMapper.selectByShipmentNoIncludingDeleted(candidate) == null) {
-                return candidate;
+        return DataPermissionUtils.executeIgnore(() -> {
+            String lastCandidate = null;
+            for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
+                String candidate = generateShipmentNo(shippingDate);
+                lastCandidate = candidate;
+                if (shipmentMapper.selectByShipmentNoIncludingDeleted(candidate) == null) {
+                    return candidate;
+                }
             }
-        }
-        throw exception(SHIPMENT_NO_DUPLICATE, lastCandidate);
+            throw exception(SHIPMENT_NO_DUPLICATE, lastCandidate);
+        });
     }
 
     /**
      * 生成单号：SH- + YYYYMMDD + - + 3位顺序号（超 999 自然扩位）
      */
+    @DataPermission(enable = false)
     private String generateShipmentNo(LocalDate shippingDate) {
-        LocalDate date = shippingDate != null ? shippingDate : LocalDate.now();
-        String prefix = ORDER_NO_PREFIX + date.format(DATE_FORMATTER) + "-";
-        List<ShipmentDO> candidates = shipmentMapper.selectListByShipmentNoPrefixIncludingDeleted(prefix);
+        return DataPermissionUtils.executeIgnore(() -> {
+            LocalDate date = shippingDate != null ? shippingDate : LocalDate.now();
+            String prefix = ORDER_NO_PREFIX + date.format(DATE_FORMATTER) + "-";
+            List<ShipmentDO> candidates = shipmentMapper.selectListByShipmentNoPrefixIncludingDeleted(prefix);
 
-        long maxNum = 0L;
-        int maxDigits = NO_MIN_DIGITS;
-        for (ShipmentDO candidate : candidates) {
-            String no = candidate.getShipmentNo();
-            if (no == null || no.length() <= prefix.length()) {
-                continue;
+            long maxNum = 0L;
+            int maxDigits = NO_MIN_DIGITS;
+            for (ShipmentDO candidate : candidates) {
+                String no = candidate.getShipmentNo();
+                if (no == null || no.length() <= prefix.length()) {
+                    continue;
+                }
+                String suffix = no.substring(prefix.length());
+                Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
+                if (!matcher.find()) {
+                    continue;
+                }
+                String digits = matcher.group();
+                long num;
+                try {
+                    num = Long.parseLong(digits);
+                } catch (NumberFormatException ignore) {
+                    continue;
+                }
+                if (num > maxNum) {
+                    maxNum = num;
+                    maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
+                }
             }
-            String suffix = no.substring(prefix.length());
-            Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
-            if (!matcher.find()) {
-                continue;
+            if (maxNum == 0L) {
+                return prefix + "001";
             }
-            String digits = matcher.group();
-            long num;
-            try {
-                num = Long.parseLong(digits);
-            } catch (NumberFormatException ignore) {
-                continue;
-            }
-            if (num > maxNum) {
-                maxNum = num;
-                maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
-            }
-        }
-        if (maxNum == 0L) {
-            return prefix + "001";
-        }
-        return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+            return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+        });
     }
 
     /**

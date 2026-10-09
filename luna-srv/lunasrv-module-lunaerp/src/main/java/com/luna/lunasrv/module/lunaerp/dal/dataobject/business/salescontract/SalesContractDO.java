@@ -58,6 +58,10 @@ public class SalesContractDO extends TenantBaseDO {
      */
     private Long salespersonUserId;
     /**
+     * 归属部门（数据范围 dept 列）
+     */
+    private Long deptId;
+    /**
      * 签订日期（必填，创建缺省当天）
      */
     private LocalDate signDate;

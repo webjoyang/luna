@@ -20,6 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
+import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -207,10 +210,11 @@ public class SalesContractServiceImpl implements SalesContractService {
     }
 
     @Override
+    @DataPermission(enable = false)
     public String getNextContractNo() {
         // 只读预览、不占号：直接复用自动取号的扫描结果（含已删除行，ADR-0004），
         // 不做撞号查重、不写库；无新建时多次调用返回相同值，保存后再次调用自然顺延
-        return generateContractNo();
+        return DataPermissionUtils.executeIgnore(this::generateContractNo);
     }
 
     // ==================== 私有方法 ====================
@@ -412,16 +416,19 @@ public class SalesContractServiceImpl implements SalesContractService {
      *
      * @return 生成的合同编号
      */
+    @DataPermission(enable = false)
     private String generateContractNoWithRetry() {
-        for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
-            String candidate = generateContractNo();
-            // 查重含已删除行（ADR-0004）；命中说明并发取号或历史数据占用，顺延重试
-            if (salesContractMapper.selectByContractNoIncludingDeleted(candidate) == null) {
-                return candidate;
+        return DataPermissionUtils.executeIgnore(() -> {
+            for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
+                String candidate = generateContractNo();
+                // 查重含已删除行（ADR-0004）；命中说明并发取号或历史数据占用，顺延重试
+                if (salesContractMapper.selectByContractNoIncludingDeleted(candidate) == null) {
+                    return candidate;
+                }
             }
-        }
-        // 连续撞号放弃取号，提示用户手填，避免无限循环
-        throw exception(SALES_CONTRACT_NO_DUPLICATE);
+            // 连续撞号放弃取号，提示用户手填，避免无限循环
+            throw exception(SALES_CONTRACT_NO_DUPLICATE);
+        });
     }
 
     /**
@@ -429,52 +436,58 @@ public class SalesContractServiceImpl implements SalesContractService {
      * 扫描当前租户同前缀的全部合同（含已删除行，ADR-0004），按前缀后的数字部分取 max + 1，
      * 字符串排序会取错最大值（如 CH9 > CH10）。
      */
+    @DataPermission(enable = false)
     private String generateContractNo() {
-        String prefix = CONTRACT_NO_PREFIX + LocalDate.now().getYear();
-        List<SalesContractDO> candidates = salesContractMapper.selectListByContractNoPrefixIncludingDeleted(prefix);
-        long maxNum = 0L;
-        int maxDigits = NO_MIN_DIGITS;
-        for (SalesContractDO candidate : candidates) {
-            String no = candidate.getContractNo();
-            if (no == null || no.length() <= prefix.length()) {
-                continue;
+        return DataPermissionUtils.executeIgnore(() -> {
+            String prefix = CONTRACT_NO_PREFIX + LocalDate.now().getYear();
+            List<SalesContractDO> candidates = salesContractMapper.selectListByContractNoPrefixIncludingDeleted(prefix);
+            long maxNum = 0L;
+            int maxDigits = NO_MIN_DIGITS;
+            for (SalesContractDO candidate : candidates) {
+                String no = candidate.getContractNo();
+                if (no == null || no.length() <= prefix.length()) {
+                    continue;
+                }
+                String suffix = no.substring(prefix.length());
+                Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
+                if (!matcher.find()) {
+                    continue;
+                }
+                String digits = matcher.group();
+                long num;
+                try {
+                    num = Long.parseLong(digits);
+                } catch (NumberFormatException ignore) {
+                    // 手填的超长/异常数字后缀不参与取号比较，避免取号被单条脏数据打断
+                    continue;
+                }
+                if (num > maxNum) {
+                    maxNum = num;
+                    maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
+                }
             }
-            String suffix = no.substring(prefix.length());
-            Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
-            if (!matcher.find()) {
-                continue;
+            if (maxNum == 0L) {
+                return prefix + "0001";
             }
-            String digits = matcher.group();
-            long num;
-            try {
-                num = Long.parseLong(digits);
-            } catch (NumberFormatException ignore) {
-                // 手填的超长/异常数字后缀不参与取号比较，避免取号被单条脏数据打断
-                continue;
-            }
-            if (num > maxNum) {
-                maxNum = num;
-                maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
-            }
-        }
-        if (maxNum == 0L) {
-            return prefix + "0001";
-        }
-        return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+            return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+        });
     }
 
     /**
      * 校验合同编号未被占用（排除 excludeId 自身），扫描范围含已删除行（ADR-0004）：
      * 手填撞号（无论目标是否已删除）一律报 SALES_CONTRACT_NO_DUPLICATE，不顺延。
      */
+    @DataPermission(enable = false)
     private void validateContractNoUnique(Long excludeId, String contractNo) {
         if (!StringUtils.hasText(contractNo)) {
             return;
         }
-        SalesContractDO exist = salesContractMapper.selectByContractNoIncludingDeleted(contractNo);
-        if (exist != null && !exist.getId().equals(excludeId)) {
-            throw exception(SALES_CONTRACT_NO_DUPLICATE);
-        }
+        DataPermissionUtils.executeIgnore(() -> {
+            SalesContractDO exist = salesContractMapper.selectByContractNoIncludingDeleted(contractNo);
+            if (exist != null && !exist.getId().equals(excludeId)) {
+                throw exception(SALES_CONTRACT_NO_DUPLICATE);
+            }
+        });
     }
 
     /**

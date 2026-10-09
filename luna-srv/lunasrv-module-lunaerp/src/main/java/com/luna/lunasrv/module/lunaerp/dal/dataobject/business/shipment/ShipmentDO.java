@@ -112,6 +112,11 @@ public class ShipmentDO extends TenantBaseDO {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long salespersonUserId;
     /**
+     * 归属部门（数据范围 dept 列）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long deptId;
+    /**
      * 业务员姓名快照
      */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)

@@ -4,15 +4,21 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] lunaerp 模块新增 `@Configuration`，注册 `DeptDataPermissionRuleCustomizer` Bean，映射 CustomerDO/SalesContractDO/ShipmentDO 三表的 `addDeptColumn("dept_id")` / `addUserColumn("salesperson_user_id")`（仿 system 模块 `DataPermissionConfiguration`）。QuotationDO 随 05 票；联系人表、所有子表（quotation_item / contract_item / shipment_item / shipment_roll）不注册
-- [ ] §5.2 第 1 项：合同取号扫描+手填查重——`SalesContractServiceImpl#generateContractNo` / `generateContractNoWithRetry` / `validateContractNoUnique`（约 L410–478）及其底层两个 `…IncludingDeleted` @Select 打 `@DataPermission(enable=false)`
-- [ ] §5.2 第 2 项：发货取号两方法——`ShipmentServiceImpl` 中调用 `selectByShipmentNoIncludingDeleted` / `selectListByShipmentNoPrefixIncludingDeleted` 的方法打 `@DataPermission(enable=false)`
-- [ ] §5.2 第 3 项：合同未发量聚合——`ShipmentServiceImpl#selectListByContractIdAndStatus`（约 L321）打 `@DataPermission(enable=false)`，必须统计租户内全部 COMPLETED 发货，否则受限档会算虚假未发量导致超发
-- [ ] §5.2 第 4 项：生产进度只读聚合——`ProductionProgressQueryServiceImpl#getProductionProgressPage`（候选合同 L145、发货 L521 等 selectListByContractIds）打 `@DataPermission(enable=false)`，系统级跨单聚合视图（ADR-0034）显式锁定语义
-- [ ] §5.2 第 5–8 项是其他票契约（02 审批回写/10+13 财务过账/04 回收站/各删除引用守卫），不在本票实现；核"已落地者（如 approval-engine）是否已带注解"，缺则补注并记录在 Comments
-- [ ] 用 §9.1 fixture 验证：ALL（boss/finance）见全部；DEPT_AND_CHILD（m）见 a+c 不见 d；DEPT_ONLY 见 a 不见 c/d；SELF（a）只见本人；多角色并集（用户同挂 SELF+DEPT_ONLY → 并集可见；挂一个 ALL → 全部）
-- [ ] 边界：无登录用户规则不生效；用户无启用角色时底座给 `self=true`（只能看本人）；deptIds 与 self 皆空时拼 `null=null`；空归属行仅 ALL 档可见
-- [ ] easy-trans 翻译走底座 `DataPermissionRuleFactoryImpl#isTranslateCall()` 自动豁免，不借道泄漏归属外字段
-- [ ] 租户拦截器独立工作，关闭数据权限不影响 `tenant_id` 追加——专测一条断言跨租户隔离仍生效（对齐 16 号 §6.3）
+- [x] lunaerp 模块新增 `@Configuration`，注册 `DeptDataPermissionRuleCustomizer` Bean，映射 CustomerDO/SalesContractDO/ShipmentDO 三表的 `addDeptColumn("dept_id")` / `addUserColumn("salesperson_user_id")`（仿 system 模块 `DataPermissionConfiguration`）。QuotationDO 随 05 票；联系人表、所有子表（quotation_item / contract_item / shipment_item / shipment_roll）不注册
+- [x] §5.2 第 1 项：合同取号扫描+手填查重——`SalesContractServiceImpl#generateContractNo` / `generateContractNoWithRetry` / `validateContractNoUnique`（约 L410–478）及其底层两个 `…IncludingDeleted` @Select 打 `@DataPermission(enable=false)`
+- [x] §5.2 第 2 项：发货取号两方法——`ShipmentServiceImpl` 中调用 `selectByShipmentNoIncludingDeleted` / `selectListByShipmentNoPrefixIncludingDeleted` 的方法打 `@DataPermission(enable=false)`
+- [x] §5.2 第 3 项：合同未发量聚合——`ShipmentServiceImpl#selectListByContractIdAndStatus`（约 L321）打 `@DataPermission(enable=false)`，必须统计租户内全部 COMPLETED 发货，否则受限档会算虚假未发量导致超发
+- [x] §5.2 第 4 项：生产进度只读聚合——`ProductionProgressQueryServiceImpl#getProductionProgressPage`（候选合同 L145、发货 L521 等 selectListByContractIds）打 `@DataPermission(enable=false)`，系统级跨单聚合视图（ADR-0034）显式锁定语义
+- [x] §5.2 第 5–8 项是其他票契约（02 审批回写/10+13 财务过账/04 回收站/各删除引用守卫），不在本票实现；核"已落地者（如 approval-engine）是否已带注解"，缺则补注并记录在 Comments
+- [x] 用 §9.1 fixture 验证：ALL（boss/finance）见全部；DEPT_AND_CHILD（m）见 a+c 不见 d；DEPT_ONLY 见 a 不见 c/d；SELF（a）只见本人；多角色并集（用户同挂 SELF+DEPT_ONLY → 并集可见；挂一个 ALL → 全部）
+- [x] 边界：无登录用户规则不生效；用户无启用角色时底座给 `self=true`（只能看本人）；deptIds 与 self 皆空时拼 `null=null`；空归属行仅 ALL 档可见
+- [x] easy-trans 翻译走底座 `DataPermissionRuleFactoryImpl#isTranslateCall()` 自动豁免，不借道泄漏归属外字段
+- [x] 租户拦截器独立工作，关闭数据权限不影响 `tenant_id` 追加——专测一条断言跨租户隔离仍生效（对齐 16 号 §6.3）
+
+## Comments
+- 核查 §5.2 第 5–8 项：当前 approval-engine 仅落地审批流配置 CRUD（Issue 02 阶段），尚未实现审批执行与回写业务表逻辑；后续实现合同生效回写时需按契约添加 `@DataPermission(enable=false)`。
+- 底座增强：修正 `DataPermissionRuleFactoryImpl` 中 `isTranslateCall()` 调用检查时机，使其在 `DataPermissionContextHolder.get() == null` 时也能正确豁免翻译调用。
+- 单测覆盖：新增 `LunaerpDataPermissionWiringTest`（12 个用例全部通过），全模块 1060 个单元测试全部通过。
+

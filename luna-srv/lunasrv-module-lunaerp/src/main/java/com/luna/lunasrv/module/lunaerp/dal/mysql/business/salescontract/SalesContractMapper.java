@@ -10,6 +10,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.springframework.util.StringUtils;
 
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -59,6 +60,7 @@ public interface SalesContractMapper extends BaseMapperX<SalesContractDO> {
      * @param prefix 编号前缀，如 CH2026
      * @return 合同列表（含已删除行）
      */
+    @DataPermission(enable = false)
     @Select("SELECT id, contract_no, customer_id, client_name, client_contact, client_address, client_contract_no, "
             + "salesperson_user_id, sign_date, delivery_date, unit, currency, trade_type, order_type, "
             + "total_quantity, total_amount, remarks, status, "
@@ -76,6 +78,7 @@ public interface SalesContractMapper extends BaseMapperX<SalesContractDO> {
      * @param contractNo 合同编号
      * @return 合同（含已删除行），不存在返回 null
      */
+    @DataPermission(enable = false)
     @Select("SELECT id, contract_no, customer_id, client_name, client_contact, client_address, client_contract_no, "
             + "salesperson_user_id, sign_date, delivery_date, unit, currency, trade_type, order_type, "
             + "total_quantity, total_amount, remarks, status, "
