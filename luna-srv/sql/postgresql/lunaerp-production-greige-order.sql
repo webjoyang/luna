@@ -177,8 +177,8 @@ BEGIN;
 
 DELETE FROM system_menu WHERE id IN (10200, 10210, 10211, 10212, 10213);
 
--- 目录：生产管理（parent_id=0 顶级，与基本信息 10000 / 业务管理 10100 平级）
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10200, '生产管理', '', 1, 102, 0, '/production', 'ep:set-up', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
+-- 目录：生产（parent_id=0 顶级，与基础信息 10000 / 销售 10100 平级）
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10200, '生产', '', 1, 102, 0, '/production', 'ep:set-up', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 -- 菜单：胚布单（query 权限挂在菜单本身，参照产品/客户菜单模式）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10210, '胚布单', 'lunaerp:production:greige-order:query', 2, 1, 10200, 'greige-order', 'ep:threads', 'lunaerp-elmui/production/greige-order/index', 'LunaerpElmuiProductionGreigeOrder', 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 -- 按钮：胚布单创建/修改/删除（02/03/05 票的后端端点与前端按钮使用）

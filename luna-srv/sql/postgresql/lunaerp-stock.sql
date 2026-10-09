@@ -418,8 +418,8 @@ BEGIN;
 
 DELETE FROM system_menu WHERE id IN (10300, 10310, 10311, 10312, 10313, 10314, 10320, 10330, 10331, 10332, 10333, 10334, 10335, 10336);
 
--- 目录：库存管理（parent_id=0 顶级目录）
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10300, '库存管理', '', 1, 103, 0, '/stock', 'ep:box', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-24 00:00:00', '1', '2026-09-24 00:00:00', '0');
+-- 目录：库存（parent_id=0 顶级目录）
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10300, '库存', '', 1, 103, 0, '/stock', 'ep:box', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-24 00:00:00', '1', '2026-09-24 00:00:00', '0');
 
 -- 菜单：入库管理（query 权限挂在菜单本身）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10310, '入库管理', 'lunaerp:stock:stock-in:query', 2, 1, 10300, 'stock-in', 'ep:box', 'lunaerp-elmui/stock/stock-in/index', 'LunaerpElmuiStockStockIn', 0, '1', '1', '1', 'admin', '2026-09-24 00:00:00', '1', '2026-09-24 00:00:00', '0');

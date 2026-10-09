@@ -405,8 +405,8 @@ BEGIN;
 
 DELETE FROM system_menu WHERE id IN (10000, 10010, 10011, 10012, 10013, 10014, 10020, 10021, 10022, 10023);
 
--- 目录：基本信息
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10000, '基本信息', '', 1, 100, 0, '/baseinfo', 'ep:folder-opened', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-13 00:00:00', '1', '2026-09-13 00:00:00', '0');
+-- 目录：基础信息
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10000, '基础信息', '', 1, 100, 0, '/baseinfo', 'ep:folder-opened', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-13 00:00:00', '1', '2026-09-13 00:00:00', '0');
 
 -- 菜单：产品信息
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10010, '产品信息', 'lunaerp:baseinfo:product:query', 2, 1, 10000, 'product', 'ep:goods', 'lunaerp/baseinfo/product/index', 'LunaerpBaseinfoProduct', 0, '1', '1', '1', 'admin', '2026-09-13 00:00:00', '1', '2026-09-13 00:00:00', '0');

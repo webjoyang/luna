@@ -9,19 +9,28 @@ import com.luna.lunasrv.module.system.service.permission.MenuService;
 import com.luna.lunasrv.module.system.service.permission.PermissionService;
 import com.luna.lunasrv.module.system.service.permission.RoleService;
 import com.luna.lunasrv.module.system.service.user.AdminUserService;
+import com.luna.lunasrv.framework.tenant.config.TenantProperties;
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.system.dal.dataobject.permission.RoleDO;
+import com.luna.lunasrv.module.system.enums.permission.RoleCodeEnum;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -142,5 +151,79 @@ class TenantServiceImplTest {
         assertEquals(889L, tenantId);
         assertEquals(explicitPackageId, reqVO.getPackageId());
         verify(tenantPackageService).validTenantPackage(explicitPackageId);
+    }
+
+    @Test
+    void testUpdateTenantRoleMenu_disableAndRestoreProductionModule() {
+        Long tenantId = 121L;
+
+        // 模拟租户角色：管理员 (tenant_admin) 与 普通操作员 (operator)
+        RoleDO adminRole = new RoleDO();
+        adminRole.setId(10L);
+        adminRole.setTenantId(tenantId);
+        adminRole.setCode(RoleCodeEnum.TENANT_ADMIN.getCode());
+
+        RoleDO operatorRole = new RoleDO();
+        operatorRole.setId(20L);
+        operatorRole.setTenantId(tenantId);
+        operatorRole.setCode("operator");
+
+        when(roleService.getRoleList()).thenReturn(List.of(adminRole, operatorRole));
+        // 操作员原本拥有基础信息(10000)与生产(10200)权限
+        when(permissionService.getRoleMenuListByRoleId(20L)).thenReturn(Set.of(10000L, 10200L));
+
+        // 场景 1：核心包停用「生产」模块，剩余菜单集不含 10200
+        Set<Long> menuIdsWithoutProduction = Set.of(1L, 10000L, 10100L);
+        tenantService.updateTenantRoleMenu(tenantId, menuIdsWithoutProduction);
+
+        // 校验：管理员直接赋值为套餐新菜单集（无 10200）
+        verify(permissionService).assignRoleMenu(10L, menuIdsWithoutProduction);
+        // 校验：普通角色取交集，生产(10200)被移除，仅剩 10000
+        verify(permissionService).assignRoleMenu(20L, Set.of(10000L));
+
+        // 场景 2：将「生产」重新加回核心包，菜单集恢复包含 10200
+        Set<Long> restoredMenuIds = Set.of(1L, 10000L, 10100L, 10200L);
+        tenantService.updateTenantRoleMenu(tenantId, restoredMenuIds);
+
+        // 校验：管理员权限恢复包含 10200
+        verify(permissionService).assignRoleMenu(10L, restoredMenuIds);
+    }
+
+    @Test
+    void testHandleTenantMenu_filterUnactivatedModuleMenus() {
+        Long tenantId = 121L;
+        Long packageId = 100L;
+
+        TenantProperties tenantProperties = new TenantProperties();
+        tenantProperties.setEnable(true);
+        ReflectionTestUtils.setField(tenantService, "tenantProperties", tenantProperties);
+
+        TenantDO tenant = TenantDO.builder().id(tenantId).packageId(packageId).build();
+        when(tenantMapper.selectById(tenantId)).thenReturn(tenant);
+
+        // 套餐中已停用生产模块，仅包含 1, 10000(基础信息), 10100(销售)
+        TenantPackageDO corePackageWithoutProduction = TenantPackageDO.builder()
+                .id(packageId)
+                .name("核心包")
+                .menuIds(Set.of(1L, 10000L, 10100L))
+                .build();
+        when(tenantPackageService.getTenantPackage(packageId)).thenReturn(corePackageWithoutProduction);
+
+        TenantContextHolder.setTenantId(tenantId);
+        try {
+            List<Long> currentCandidateMenus = new ArrayList<>(List.of(10000L, 10100L, 10200L, 10210L));
+            tenantService.handleTenantMenu(allowedMenuIds -> {
+                currentCandidateMenus.removeIf(mId -> !allowedMenuIds.contains(mId));
+            });
+
+            // 断言：未开通的生产模块（10200）及其子菜单（10210）被过滤
+            assertTrue(currentCandidateMenus.contains(10000L));
+            assertTrue(currentCandidateMenus.contains(10100L));
+            assertFalse(currentCandidateMenus.contains(10200L));
+            assertFalse(currentCandidateMenus.contains(10210L));
+            assertEquals(2, currentCandidateMenus.size());
+        } finally {
+            TenantContextHolder.clear();
+        }
     }
 }
