@@ -9,6 +9,7 @@ import { useDictStoreWithOut } from '@/store/modules/dict'
 import { useUserStoreWithOut } from '@/store/modules/user'
 import { usePermissionStoreWithOut } from '@/store/modules/permission'
 import { parseRouteLocation } from '@/utils/routeParams'
+import { isUnactivatedModuleRoute } from '@/utils/moduleGateway'
 
 const { start, done } = useNProgress()
 
@@ -56,13 +57,22 @@ router.beforeEach(async (to, from, next) => {
         // 修复跳转时不带参数的问题
         const redirect = typeof redirectPath === 'string' ? redirectPath : to.fullPath
         const redirectLocation = parseRouteLocation(redirect)
+        const targetPath = redirectLocation.path || to.path
+        if (isUnactivatedModuleRoute(targetPath, permissionStore.getAddRouters)) {
+          next({ path: '/index', replace: true })
+          return
+        }
         const nextData =
           to.fullPath === redirect
             ? { ...to, replace: true }
             : { ...redirectLocation, replace: true }
         next(nextData)
       } else {
-        next()
+        if (isUnactivatedModuleRoute(to.path, permissionStore.getAddRouters)) {
+          next({ path: '/index', replace: true })
+        } else {
+          next()
+        }
       }
     }
   } else {

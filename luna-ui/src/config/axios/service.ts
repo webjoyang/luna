@@ -13,9 +13,15 @@ import {
 } from '@/utils/auth'
 import errorCode from './errorCode'
 
-import { resetRouter } from '@/router'
+import router, { resetRouter } from '@/router'
 import { deleteUserCache } from '@/hooks/web/useCache'
 import { ApiEncrypt } from '@/utils/encrypt'
+import { usePermissionStoreWithOut } from '@/store/modules/permission'
+import {
+  determineForbiddenReason,
+  MSG_MODULE_NOT_ACTIVATED,
+  MSG_NO_OPERATION_PERMISSION
+} from '@/utils/moduleGateway'
 
 const tenantEnable = import.meta.env.VITE_APP_TENANT_ENABLE
 const { result_code, base_url, request_timeout } = config
@@ -196,6 +202,8 @@ service.interceptors.response.use(
           })
         })
       }
+    } else if (code === 403) {
+      return handleForbidden(config)
     } else if (code === 500) {
       ElMessage.error(t('sys.api.errMsg500'))
       return Promise.reject(new Error(msg))
@@ -228,6 +236,12 @@ service.interceptors.response.use(
   },
   (error: AxiosError) => {
     console.log('err' + error) // for debug
+    if (
+      error.response?.status === 403 ||
+      (error.response?.data as any)?.code === 403
+    ) {
+      return handleForbidden(error.config)
+    }
     let { message } = error
     const { t } = useI18n()
     if (message === 'Network Error') {
@@ -241,6 +255,29 @@ service.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+export const handleForbidden = (axiosConfig?: InternalAxiosRequestConfig | any) => {
+  const permissionStore = usePermissionStoreWithOut()
+  const currentRoute = router.currentRoute.value
+  const requestUrl = axiosConfig?.url
+
+  const reason = determineForbiddenReason({
+    currentRoute,
+    requestUrl,
+    addRouters: permissionStore.getAddRouters
+  })
+
+  if (reason === 'MODULE_NOT_ACTIVATED') {
+    ElMessage.error(MSG_MODULE_NOT_ACTIVATED)
+    if (currentRoute?.path !== '/index') {
+      router.push('/index')
+    }
+    return Promise.reject(new Error(MSG_MODULE_NOT_ACTIVATED))
+  } else {
+    ElMessage.error(MSG_NO_OPERATION_PERMISSION)
+    return Promise.reject(new Error(MSG_NO_OPERATION_PERMISSION))
+  }
+}
 
 const refreshToken = async () => {
   axios.defaults.headers.common['tenant-id'] = getTenantId()
