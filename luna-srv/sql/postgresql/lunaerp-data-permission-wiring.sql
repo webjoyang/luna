@@ -59,10 +59,10 @@ CREATE INDEX IF NOT EXISTS idx_lb_shipment_dp_user
 WITH fallback_owner AS (
     SELECT DISTINCT ON (u.tenant_id) u.tenant_id, u.id AS user_id
     FROM system_users u
-    LEFT JOIN system_user_role ur ON ur.user_id = u.id
+    LEFT JOIN system_user_role ur ON ur.user_id = u.id AND ur.deleted = 0
     LEFT JOIN system_role r ON r.id = ur.role_id AND r.deleted = 0 AND r.code = 'tenant_admin'
     WHERE u.deleted = 0
-    ORDER BY u.tenant_id, (r.code = 'tenant_admin') DESC, u.id
+    ORDER BY u.tenant_id, (r.code = 'tenant_admin') DESC NULLS LAST, u.id
 )
 UPDATE lunaerp_baseinfo_customer c
 SET salesperson_user_id = x.owner_id
@@ -87,9 +87,21 @@ SET dept_id = u.dept_id
 FROM system_users u
 WHERE c.dept_id IS NULL
   AND c.salesperson_user_id = u.id
+  AND u.deleted = 0
   AND u.dept_id IS NOT NULL;
 
--- 3.3 客户归属部门兜底：租户根部门
+-- 3.3 客户归属部门：creator 用户部门
+UPDATE lunaerp_baseinfo_customer c
+SET dept_id = su.dept_id
+FROM system_users su
+WHERE c.dept_id IS NULL
+  AND su.deleted = 0
+  AND su.tenant_id = c.tenant_id
+  AND c.creator ~ '^[0-9]+$'
+  AND su.id = NULLIF(c.creator, '')::int8
+  AND su.dept_id IS NOT NULL;
+
+-- 3.4 客户归属部门兜底：租户根部门
 WITH root_dept AS (
     SELECT DISTINCT ON (tenant_id) tenant_id, id AS dept_id
     FROM system_dept
@@ -103,7 +115,7 @@ WHERE c.dept_id IS NULL
   AND rd.tenant_id = c.tenant_id
   AND rd.dept_id IS NOT NULL;
 
--- 3.4 销售合同归属部门：已有归属业务员当前部门
+-- 3.5 销售合同归属部门：已有归属业务员当前部门
 UPDATE lunaerp_business_sales_contract t
 SET dept_id = u.dept_id
 FROM system_users u
@@ -112,7 +124,7 @@ WHERE t.dept_id IS NULL
   AND u.deleted = 0
   AND u.dept_id IS NOT NULL;
 
--- 3.5 销售合同归属部门：creator 用户部门
+-- 3.6 销售合同归属部门：creator 用户部门
 UPDATE lunaerp_business_sales_contract t
 SET dept_id = su.dept_id
 FROM system_users su
@@ -123,14 +135,14 @@ WHERE t.dept_id IS NULL
   AND su.id = NULLIF(t.creator, '')::int8
   AND su.dept_id IS NOT NULL;
 
--- 3.6 销售合同归属部门：租户兜底用户部门
+-- 3.7 销售合同归属部门：租户兜底用户部门
 WITH fallback_owner AS (
     SELECT DISTINCT ON (u.tenant_id) u.tenant_id, u.id AS user_id, u.dept_id
     FROM system_users u
-    LEFT JOIN system_user_role ur ON ur.user_id = u.id
+    LEFT JOIN system_user_role ur ON ur.user_id = u.id AND ur.deleted = 0
     LEFT JOIN system_role r ON r.id = ur.role_id AND r.deleted = 0 AND r.code = 'tenant_admin'
     WHERE u.deleted = 0
-    ORDER BY u.tenant_id, (r.code = 'tenant_admin') DESC, u.id
+    ORDER BY u.tenant_id, (r.code = 'tenant_admin') DESC NULLS LAST, u.id
 )
 UPDATE lunaerp_business_sales_contract t
 SET dept_id = fo.dept_id
@@ -139,7 +151,7 @@ WHERE t.dept_id IS NULL
   AND fo.tenant_id = t.tenant_id
   AND fo.dept_id IS NOT NULL;
 
--- 3.7 销售合同归属部门兜底：租户根部门
+-- 3.8 销售合同归属部门兜底：租户根部门
 WITH root_dept AS (
     SELECT DISTINCT ON (tenant_id) tenant_id, id AS dept_id
     FROM system_dept
@@ -153,7 +165,7 @@ WHERE t.dept_id IS NULL
   AND rd.tenant_id = t.tenant_id
   AND rd.dept_id IS NOT NULL;
 
--- 3.8 发货单归属部门：已有归属业务员当前部门
+-- 3.9 发货单归属部门：已有归属业务员当前部门
 UPDATE lunaerp_business_shipment t
 SET dept_id = u.dept_id
 FROM system_users u
@@ -162,7 +174,7 @@ WHERE t.dept_id IS NULL
   AND u.deleted = 0
   AND u.dept_id IS NOT NULL;
 
--- 3.9 发货单归属部门：creator 用户部门
+-- 3.10 发货单归属部门：creator 用户部门
 UPDATE lunaerp_business_shipment t
 SET dept_id = su.dept_id
 FROM system_users su
@@ -173,14 +185,14 @@ WHERE t.dept_id IS NULL
   AND su.id = NULLIF(t.creator, '')::int8
   AND su.dept_id IS NOT NULL;
 
--- 3.10 发货单归属部门：租户兜底用户部门
+-- 3.11 发货单归属部门：租户兜底用户部门
 WITH fallback_owner AS (
     SELECT DISTINCT ON (u.tenant_id) u.tenant_id, u.id AS user_id, u.dept_id
     FROM system_users u
-    LEFT JOIN system_user_role ur ON ur.user_id = u.id
+    LEFT JOIN system_user_role ur ON ur.user_id = u.id AND ur.deleted = 0
     LEFT JOIN system_role r ON r.id = ur.role_id AND r.deleted = 0 AND r.code = 'tenant_admin'
     WHERE u.deleted = 0
-    ORDER BY u.tenant_id, (r.code = 'tenant_admin') DESC, u.id
+    ORDER BY u.tenant_id, (r.code = 'tenant_admin') DESC NULLS LAST, u.id
 )
 UPDATE lunaerp_business_shipment t
 SET dept_id = fo.dept_id
@@ -189,7 +201,7 @@ WHERE t.dept_id IS NULL
   AND fo.tenant_id = t.tenant_id
   AND fo.dept_id IS NOT NULL;
 
--- 3.11 发货单归属部门兜底：租户根部门
+-- 3.12 发货单归属部门兜底：租户根部门
 WITH root_dept AS (
     SELECT DISTINCT ON (tenant_id) tenant_id, id AS dept_id
     FROM system_dept
@@ -203,7 +215,7 @@ WHERE t.dept_id IS NULL
   AND rd.tenant_id = t.tenant_id
   AND rd.dept_id IS NOT NULL;
 
--- 3.12 归属校正工具（默认注释，仅排障/补刷时整段手动执行：
+-- 3.13 归属校正工具（默认注释，仅排障/补刷时整段手动执行：
 --       按归属人当前部门全量重刷 4 表 dept_id，与调岗切面效果等价；
 --       非只填空，会覆盖既有值，执行前请确认）：
 -- UPDATE lunaerp_baseinfo_customer t SET dept_id = u.dept_id
