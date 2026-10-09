@@ -58,3 +58,20 @@ export const deleteSupplier = (id: number) => {
 export const deleteSupplierList = (ids: number[]) => {
   return request.delete({ url: '/lunaerp/baseinfo/supplier/delete-list', params: { ids: ids.join(',') } })
 }
+
+// 下载供应商导入模板
+export const downloadSupplierTemplate = () => {
+  return request.download({ url: '/lunaerp/baseinfo/supplier/import-template' })
+}
+
+// 导入供应商（二进制响应以捕获错误 Excel 流）
+export const importSupplier = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.postOriginal({
+    url: '/lunaerp/baseinfo/supplier/import',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob'
+  })
+}

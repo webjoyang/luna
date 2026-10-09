@@ -114,3 +114,21 @@ export const getYarnSpecCascadeOptions = (params?: { keyword?: string }) => {
     params
   })
 }
+
+// 下载纱线规格导入模板
+export const downloadYarnSpecTemplate = () => {
+  return request.download({ url: '/lunaerp/production/yarn-spec/import-template' })
+}
+
+// 导入纱线规格（二进制响应以捕获错误 Excel 流）
+export const importYarnSpec = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.postOriginal({
+    url: '/lunaerp/production/yarn-spec/import',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob'
+  })
+}
+

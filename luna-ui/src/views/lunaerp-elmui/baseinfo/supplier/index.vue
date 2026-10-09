@@ -57,6 +57,22 @@
         >
           <Icon icon="ep:delete" /> 批量删除
         </el-button>
+        <el-button
+          type="success"
+          plain
+          @click="handleDownloadTemplate"
+          v-hasPermi="['lunaerp:baseinfo:supplier:import']"
+        >
+          <Icon icon="ep:download" /> 下载模板
+        </el-button>
+        <el-button
+          type="primary"
+          plain
+          @click="handleImport"
+          v-hasPermi="['lunaerp:baseinfo:supplier:import']"
+        >
+          <Icon icon="ep:upload" /> 导入
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
@@ -147,12 +163,17 @@
       @pagination="getList"
     />
   </ContentWrap>
+
+  <!-- 导入弹窗 -->
+  <SupplierImportDialog ref="importDialogRef" @success="getList" />
 </template>
 
 <script lang="ts" setup>
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
+import download from '@/utils/download'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
+import SupplierImportDialog from './SupplierImportDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiBaseinfoSupplier' })
 
@@ -231,6 +252,23 @@ const handleDeleteBatch = async () => {
     message.success('删除成功')
     await getList()
   } catch {}
+}
+
+const importDialogRef = ref()
+
+/** 下载导入模板 */
+const handleDownloadTemplate = async () => {
+  try {
+    const res = await SupplierApi.downloadSupplierTemplate()
+    download.excel(res, '供应商导入模板.xlsx')
+  } catch (e) {
+    message.error('下载模板失败')
+  }
+}
+
+/** 打开导入弹窗 */
+const handleImport = () => {
+  importDialogRef.value?.open()
 }
 
 /** 初始化 */

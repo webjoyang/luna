@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 @Mapper
@@ -16,6 +17,16 @@ public interface ProductMapper extends BaseMapperX<ProductDO> {
 
     default ProductDO selectByCode(String code) {
         return selectOne(ProductDO::getCode, code);
+    }
+
+    /**
+     * 批量按产品编号查询在用产品列表
+     *
+     * @param codes 产品编号集合
+     * @return 产品列表
+     */
+    default List<ProductDO> selectListByCodes(Collection<String> codes) {
+        return selectList(ProductDO::getCode, codes);
     }
 
     /**

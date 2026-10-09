@@ -12,6 +12,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -84,6 +85,23 @@ public interface SupplierMapper extends BaseMapperX<SupplierDO> {
             + "remark, status, creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_baseinfo_supplier WHERE supplier_no = #{supplierNo} LIMIT 1")
     SupplierDO selectBySupplierNoIncludingDeleted(@Param("supplierNo") String supplierNo);
+
+    /**
+     * 批量按编号查询供应商，【包含已逻辑删除的行】。
+     *
+     * @param supplierNos 供应商编号集合
+     * @return 供应商列表（含已删除行）
+     */
+    @Select("<script>"
+            + "SELECT id, supplier_no, company_name, short_name, phone, address, supplier_type, machine_type, "
+            + "remark, status, creator, create_time, updater, update_time, deleted, tenant_id "
+            + "FROM lunaerp_baseinfo_supplier "
+            + "WHERE supplier_no IN "
+            + "<foreach item='item' collection='supplierNos' open='(' separator=',' close=')'>"
+            + "#{item}"
+            + "</foreach>"
+            + "</script>")
+    List<SupplierDO> selectListBySupplierNosIncludingDeleted(@Param("supplierNos") Collection<String> supplierNos);
 
     /**
      * 分页查询已软删供应商（手写 XML：显式 WHERE deleted = 1 AND tenant_id = #{tenantId}）

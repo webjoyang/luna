@@ -1,8 +1,13 @@
 package com.luna.lunasrv.module.lunaerp.service.baseinfo.supplier;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportHelper;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ImportRow;
+import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierImportVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierSaveReqVO;
@@ -12,12 +17,19 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -260,6 +272,101 @@ public class SupplierServiceImpl implements SupplierService {
     private void validateSupplierNotMasked(SupplierSaveReqVO reqVO) {
         if (reqVO != null && reqVO.getPhone() != null && reqVO.getPhone().contains("*")) {
             throw exception(BAD_REQUEST, "联系电话不能包含脱敏字符");
+        }
+    }
+
+    @Override
+    public List<SupplierImportVO> getImportTemplate() {
+        return Collections.singletonList(
+                SupplierImportVO.builder()
+                        .supplierNo("SUP20260001")
+                        .companyName("示例供应商A有限公司")
+                        .shortName("供应商A")
+                        .supplierType("YARN_MILL")
+                        .machineType("大圆机/针织机")
+                        .remark("标准供应商档案示例")
+                        .build()
+        );
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ExcelImportResult importSupplier(MultipartFile file) throws IOException {
+        return ExcelImportHelper.importExcel(
+                file,
+                SupplierImportVO.class,
+                this::validateSupplierImportRows,
+                validList -> {
+                    List<SupplierDO> doList = new ArrayList<>(validList.size());
+                    for (SupplierImportVO vo : validList) {
+                        SupplierDO supplier = BeanUtils.toBean(vo, SupplierDO.class);
+                        // 简称空则用企业名称回填
+                        backfillShortName(supplier);
+                        // 导入行 status 默认 ACTIVE
+                        supplier.setStatus(DEFAULT_STATUS);
+                        doList.add(supplier);
+                    }
+                    supplierMapper.insertBatch(doList);
+                }
+        );
+    }
+
+    /**
+     * 逐行校验供应商导入数据：
+     * 1. 供应商编号必填
+     * 2. 企业名称必填
+     * 3. 文件内供应商编号重复排查
+     * 4. 数据库内供应商编号查重（含已删除行，ADR-0005，撞号报错）
+     */
+    private void validateSupplierImportRows(List<ImportRow<SupplierImportVO>> rows) {
+        Set<String> seenSupplierNos = new HashSet<>();
+        Set<String> fileDuplicateSupplierNos = new HashSet<>();
+        List<String> querySupplierNos = new ArrayList<>();
+
+        for (ImportRow<SupplierImportVO> row : rows) {
+            SupplierImportVO vo = row.getData();
+            String no = vo.getSupplierNo() != null ? vo.getSupplierNo().trim() : "";
+            if (StrUtil.isBlank(no)) {
+                row.addError("供应商编号不能为空");
+            } else {
+                if (!seenSupplierNos.add(no)) {
+                    fileDuplicateSupplierNos.add(no);
+                }
+                querySupplierNos.add(no);
+            }
+
+            String companyName = vo.getCompanyName() != null ? vo.getCompanyName().trim() : "";
+            if (StrUtil.isBlank(companyName)) {
+                row.addError("企业名称不能为空");
+            }
+        }
+
+        // 标记文件中重复出现的供应商编号
+        if (!fileDuplicateSupplierNos.isEmpty()) {
+            for (ImportRow<SupplierImportVO> row : rows) {
+                String no = row.getData().getSupplierNo() != null ? row.getData().getSupplierNo().trim() : "";
+                if (fileDuplicateSupplierNos.contains(no)) {
+                    row.addError("供应商编号在文件中重复");
+                }
+            }
+        }
+
+        // 校验数据库中已存在的供应商编号（含软删行）
+        if (!querySupplierNos.isEmpty()) {
+            List<SupplierDO> existingSuppliers = supplierMapper.selectListBySupplierNosIncludingDeleted(querySupplierNos);
+            if (CollUtil.isNotEmpty(existingSuppliers)) {
+                Set<String> existingNos = existingSuppliers.stream()
+                        .map(SupplierDO::getSupplierNo)
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .collect(Collectors.toSet());
+                for (ImportRow<SupplierImportVO> row : rows) {
+                    String no = row.getData().getSupplierNo() != null ? row.getData().getSupplierNo().trim() : "";
+                    if (existingNos.contains(no)) {
+                        row.addError(SUPPLIER_NO_DUPLICATE.getMsg());
+                    }
+                }
+            }
         }
     }
 

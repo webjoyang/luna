@@ -476,6 +476,10 @@ export enum DICT_TYPE {
   // ========== LunaERP - 生产管理-纱线采购单模块 ==========
   LUNAERP_YARN_ORDER_STATUS = 'lunaerp_yarn_order_status', // 纱线采购单状态
 
+  // ========== LunaERP - 生产管理-纱线规格模块 ==========
+  LUNAERP_YARN_SPIN_METHOD = 'lunaerp_yarn_spin_method', // 纺纱方式
+  LUNAERP_YARN_LUSTER = 'lunaerp_yarn_luster', // 光泽
+
   // ========== LunaERP - 生产管理-检验单模块 ==========
   LUNAERP_INSPECTION_ORDER_STATUS = 'lunaerp_inspection_order_status', // 检验单状态
   LUNAERP_INSPECTION_PACKAGE_MODE = 'lunaerp_inspection_package_mode', // 包装模式（卷装/匹装）

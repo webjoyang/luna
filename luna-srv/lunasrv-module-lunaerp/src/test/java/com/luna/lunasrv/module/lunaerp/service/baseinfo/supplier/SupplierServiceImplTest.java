@@ -1,9 +1,12 @@
 package com.luna.lunasrv.module.lunaerp.service.baseinfo.supplier;
 
+import cn.idev.excel.FastExcelFactory;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult;
+import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierImportVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierSaveReqVO;
@@ -16,15 +19,22 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.mock.web.MockMultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -452,6 +462,111 @@ class SupplierServiceImplTest {
                 .thenReturn(Collections.singletonList(deletedMax));
 
         assertEquals(YEAR_PREFIX + "0008", supplierService.getNextSupplierNo());
+    }
+
+    // ==================== Excel 导入相关测试 ====================
+
+    private static final List<String> SUPPLIER_HEADERS = Arrays.asList(
+            "供应商编号", "企业名称", "简称", "供应商类型", "机型", "备注"
+    );
+
+    private byte[] createRawExcelBytes(List<String> headers, List<List<Object>> dataList) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        List<List<String>> headList = headers.stream()
+                .map(Collections::singletonList)
+                .toList();
+        FastExcelFactory.write(out)
+                .head(headList)
+                .sheet("供应商导入")
+                .doWrite(dataList);
+        return out.toByteArray();
+    }
+
+    @Test
+    void getImportTemplate_returnsSampleList() {
+        List<SupplierImportVO> template = supplierService.getImportTemplate();
+        assertNotNull(template);
+        assertEquals(1, template.size());
+        assertEquals("SUP20260001", template.get(0).getSupplierNo());
+        assertEquals("示例供应商A有限公司", template.get(0).getCompanyName());
+    }
+
+    @Test
+    void importSupplier_success_batchInsertsWithActiveStatusAndShortNameBackfill() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("SUP20260001", "绍兴第一印染", "第一印染", "", "染缸", "备注1"));
+        rows.add(Arrays.asList("SUP20260002", "杭州织造二厂", "", "", "大圆机", ""));
+
+        byte[] bytes = createRawExcelBytes(SUPPLIER_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "suppliers.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        when(supplierMapper.selectListBySupplierNosIncludingDeleted(any())).thenReturn(Collections.emptyList());
+
+        ExcelImportResult result = supplierService.importSupplier(file);
+
+        assertTrue(result.isSuccess());
+        assertEquals(2, result.getSuccessCount());
+        assertNull(result.getErrorStream());
+
+        ArgumentCaptor<List<SupplierDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(supplierMapper).insertBatch(captor.capture());
+        List<SupplierDO> inserted = captor.getValue();
+        assertEquals(2, inserted.size());
+
+        SupplierDO s1 = inserted.get(0);
+        assertEquals("SUP20260001", s1.getSupplierNo());
+        assertEquals("绍兴第一印染", s1.getCompanyName());
+        assertEquals("第一印染", s1.getShortName());
+        assertEquals("ACTIVE", s1.getStatus());
+
+        SupplierDO s2 = inserted.get(1);
+        assertEquals("SUP20260002", s2.getSupplierNo());
+        assertEquals("杭州织造二厂", s2.getCompanyName());
+        assertEquals("杭州织造二厂", s2.getShortName(), "简称为空时应由企业名称自动回填");
+        assertEquals("ACTIVE", s2.getStatus());
+    }
+
+    @Test
+    void importSupplier_fileDuplicate_generatesErrorExcelWithoutDbWrite() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("SUP20260001", "供应商A", "简称A", "", "", ""));
+        rows.add(Arrays.asList("SUP20260001", "供应商B", "简称B", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(SUPPLIER_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "duplicate.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        when(supplierMapper.selectListBySupplierNosIncludingDeleted(any())).thenReturn(Collections.emptyList());
+
+        ExcelImportResult result = supplierService.importSupplier(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(supplierMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void importSupplier_dbDuplicateIncludingDeleted_generatesErrorExcelWithoutDbWrite() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("SUP20260001", "已有供应商", "", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(SUPPLIER_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "db_duplicate.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        SupplierDO existing = new SupplierDO();
+        existing.setSupplierNo("SUP20260001");
+        existing.setDeleted(true); // 即使是已删除记录，撞号也应拦截
+        when(supplierMapper.selectListBySupplierNosIncludingDeleted(any())).thenReturn(Collections.singletonList(existing));
+
+        ExcelImportResult result = supplierService.importSupplier(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(supplierMapper, never()).insertBatch(anyList());
     }
 
 }

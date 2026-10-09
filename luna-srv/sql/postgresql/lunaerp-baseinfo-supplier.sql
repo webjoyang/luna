@@ -76,14 +76,15 @@ CREATE SEQUENCE IF NOT EXISTS lunaerp_baseinfo_supplier_seq;
 -- @formatter:off
 BEGIN;
 
-DELETE FROM system_menu WHERE id IN (10050, 10051, 10052, 10053);
+DELETE FROM system_menu WHERE id IN (10050, 10051, 10052, 10053, 10054);
 
 -- 菜单：供应商信息（parent_id=10000 基本信息，sort 取客户之后）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10050, '供应商信息', 'lunaerp:baseinfo:supplier:query', 2, 4, 10000, 'supplier', 'ep:shop', 'lunaerp-elmui/baseinfo/supplier/index', 'LunaerpElmuiBaseinfoSupplier', 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
--- 按钮：供应商创建/修改/删除（query 权限挂在菜单本身，按钮只放 create/update/delete）
+-- 按钮：供应商创建/修改/删除/导入（query 权限挂在菜单本身，按钮放 create/update/delete/import）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10051, '供应商创建', 'lunaerp:baseinfo:supplier:create', 3, 1, 10050, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10052, '供应商修改', 'lunaerp:baseinfo:supplier:update', 3, 2, 10050, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10053, '供应商删除', 'lunaerp:baseinfo:supplier:delete', 3, 3, 10050, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10054, '供应商导入', 'lunaerp:baseinfo:supplier:import', 3, 4, 10050, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 
 COMMIT;
 -- @formatter:on

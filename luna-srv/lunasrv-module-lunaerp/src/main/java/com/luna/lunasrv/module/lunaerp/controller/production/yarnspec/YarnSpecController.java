@@ -77,4 +77,29 @@ public class YarnSpecController {
         return success(yarnSpecService.getCascadeOptions(keyword));
     }
 
+    @GetMapping("/import-template")
+    @Operation(summary = "获得纱线规格导入模板")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:yarn-spec:import')")
+    public void importYarnSpecTemplate(jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        List<com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecImportVO> list = yarnSpecService.getImportTemplate();
+        com.luna.lunasrv.framework.excel.core.util.ExcelUtils.write(response, "纱线规格导入模板.xlsx", "纱线规格列表",
+                com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecImportVO.class, list);
+    }
+
+    @PostMapping(value = "/import", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "导入纱线规格")
+    @io.swagger.v3.oas.annotations.Parameters({
+            @Parameter(name = "file", description = "Excel 文件", required = true)
+    })
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:yarn-spec:import')")
+    public CommonResult<Integer> importYarnSpec(@RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+                                                jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult result = yarnSpecService.importYarnSpec(file);
+        if (result.hasError()) {
+            result.writeResponse(response, "纱线规格导入错误明细.xlsx");
+            return null;
+        }
+        return success(result.getSuccessCount());
+    }
+
 }

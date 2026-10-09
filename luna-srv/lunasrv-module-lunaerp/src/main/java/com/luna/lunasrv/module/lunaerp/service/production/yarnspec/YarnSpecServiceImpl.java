@@ -1,10 +1,17 @@
 package com.luna.lunasrv.module.lunaerp.service.production.yarnspec;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportHelper;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ImportRow;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveConstants;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecCascadeOptionVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecImportVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecSaveReqVO;
@@ -12,15 +19,21 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnspec.YarnSp
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarntype.YarnTypeDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarntype.YarnTypeMapper;
+import com.luna.lunasrv.module.lunaerp.enums.CommonErrorCodeConstants;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -43,6 +56,9 @@ public class YarnSpecServiceImpl implements YarnSpecService {
 
     @Resource
     private YarnTypeMapper yarnTypeMapper;
+
+    @Resource
+    private SecurityFrameworkService securityFrameworkService;
 
     @Override
     public Long createYarnSpec(YarnSpecSaveReqVO createReqVO) {
@@ -207,6 +223,145 @@ public class YarnSpecServiceImpl implements YarnSpecService {
         if (id == null || !existing.getId().equals(id)) {
             throw exception(YARN_SPEC_NAME_DUPLICATE, standardName);
         }
+    }
+
+    @Override
+    public List<YarnSpecImportVO> getImportTemplate() {
+        return Collections.singletonList(
+                YarnSpecImportVO.builder()
+                        .yarnTypeName("棉")
+                        .specName("32S 棉")
+                        .standardName("32S-COTTON")
+                        .spinMethod("环锭纺")
+                        .luster("半光")
+                        .refPrice(new BigDecimal("28.50"))
+                        .remark("标准纱线规格示例")
+                        .build()
+        );
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ExcelImportResult importYarnSpec(MultipartFile file) throws IOException {
+        boolean hasAmountPermission = securityFrameworkService != null
+                && securityFrameworkService.hasPermission(SensitiveConstants.PERMISSION_AMOUNT);
+
+        return ExcelImportHelper.importExcel(
+                file,
+                YarnSpecImportVO.class,
+                rows -> validateYarnSpecImportRows(rows, hasAmountPermission),
+                validList -> {
+                    Map<String, Long> activeTypeMap = queryActiveYarnTypeMap();
+                    List<YarnSpecDO> doList = new ArrayList<>(validList.size());
+                    for (YarnSpecImportVO vo : validList) {
+                        YarnSpecDO spec = BeanUtils.toBean(vo, YarnSpecDO.class);
+                        Long yarnTypeId = activeTypeMap.get(vo.getYarnTypeName().trim());
+                        spec.setYarnTypeId(yarnTypeId);
+                        spec.setStatus(DEFAULT_STATUS);
+                        doList.add(spec);
+                    }
+                    yarnSpecMapper.insertBatch(doList);
+                }
+        );
+    }
+
+    /**
+     * 逐行校验纱线规格导入数据：
+     * 1. 材质名称必填与启用状态存在性精确匹配
+     * 2. 规格名称必填
+     * 3. 标准名称必填
+     * 4. 参考单价受 lunaerp:sensitive:amount 管控（无权限按行报错 1_030_031_102；有权限则金额非负校验）
+     * 5. 文件内同材质标准名称重复排查
+     * 6. 数据库内同材质标准名称查重（含软删行，冲突报 1_030_008_003 规格已存在）
+     */
+    private void validateYarnSpecImportRows(List<ImportRow<YarnSpecImportVO>> rows, boolean hasAmountPermission) {
+        Map<String, Long> activeTypeMap = queryActiveYarnTypeMap();
+        Set<String> seenTypeAndStandardNames = new HashSet<>();
+        Set<String> fileDuplicateTypeAndStandardNames = new HashSet<>();
+
+        for (ImportRow<YarnSpecImportVO> row : rows) {
+            YarnSpecImportVO vo = row.getData();
+
+            // 材质名称必填与存在性校验
+            String typeName = vo.getYarnTypeName() != null ? vo.getYarnTypeName().trim() : "";
+            Long yarnTypeId = null;
+            if (StrUtil.isBlank(typeName)) {
+                row.addError("材质名称不能为空");
+            } else {
+                yarnTypeId = activeTypeMap.get(typeName);
+                if (yarnTypeId == null) {
+                    row.addError("未找到启用的纱线材质【" + typeName + "】");
+                }
+            }
+
+            // 规格名称必填
+            String specName = vo.getSpecName() != null ? vo.getSpecName().trim() : "";
+            if (StrUtil.isBlank(specName)) {
+                row.addError("规格名称不能为空");
+            }
+
+            // 标准名称必填
+            String standardName = vo.getStandardName() != null ? vo.getStandardName().trim() : "";
+            if (StrUtil.isBlank(standardName)) {
+                row.addError("标准名称不能为空");
+            } else if (yarnTypeId != null) {
+                String pairKey = yarnTypeId + "::" + standardName;
+                if (!seenTypeAndStandardNames.add(pairKey)) {
+                    fileDuplicateTypeAndStandardNames.add(pairKey);
+                }
+            }
+
+            // 参考单价敏感权限与非负金额校验
+            if (vo.getRefPrice() != null) {
+                if (!hasAmountPermission) {
+                    row.addError(StrUtil.format(CommonErrorCodeConstants.EXCEL_IMPORT_PERMISSION_DENIED.getMsg(),
+                            SensitiveConstants.PERMISSION_AMOUNT));
+                } else if (vo.getRefPrice().compareTo(BigDecimal.ZERO) < 0) {
+                    row.addError("参考价不能为负数");
+                }
+            }
+        }
+
+        // 文件内同材质标准名称重复
+        if (!fileDuplicateTypeAndStandardNames.isEmpty()) {
+            for (ImportRow<YarnSpecImportVO> row : rows) {
+                YarnSpecImportVO vo = row.getData();
+                String typeName = vo.getYarnTypeName() != null ? vo.getYarnTypeName().trim() : "";
+                String standardName = vo.getStandardName() != null ? vo.getStandardName().trim() : "";
+                Long yarnTypeId = activeTypeMap.get(typeName);
+                if (yarnTypeId != null && StrUtil.isNotBlank(standardName)) {
+                    String pairKey = yarnTypeId + "::" + standardName;
+                    if (fileDuplicateTypeAndStandardNames.contains(pairKey)) {
+                        row.addError("标准名称在文件中重复");
+                    }
+                }
+            }
+        }
+
+        // 数据库内冲突校验（租户+材质内唯一，含软删行，报 1_030_008_003 规格已存在）
+        for (ImportRow<YarnSpecImportVO> row : rows) {
+            YarnSpecImportVO vo = row.getData();
+            String typeName = vo.getYarnTypeName() != null ? vo.getYarnTypeName().trim() : "";
+            String standardName = vo.getStandardName() != null ? vo.getStandardName().trim() : "";
+            Long yarnTypeId = activeTypeMap.get(typeName);
+            if (yarnTypeId != null && StrUtil.isNotBlank(standardName)) {
+                YarnSpecDO existing = yarnSpecMapper.selectByYarnTypeIdAndStandardNameIncludingDeleted(yarnTypeId, standardName);
+                if (existing != null) {
+                    row.addError(StrUtil.format(YARN_SPEC_NAME_DUPLICATE.getMsg(), standardName));
+                }
+            }
+        }
+    }
+
+    private Map<String, Long> queryActiveYarnTypeMap() {
+        List<YarnTypeDO> typeList = yarnTypeMapper.selectList(
+                new LambdaQueryWrapperX<YarnTypeDO>().eq(YarnTypeDO::getStatus, "ACTIVE"));
+        if (CollUtil.isEmpty(typeList)) {
+            return Collections.emptyMap();
+        }
+        return typeList.stream()
+                .filter(t -> StrUtil.isNotBlank(t.getName()))
+                .collect(Collectors.toMap(t -> t.getName().trim(), YarnTypeDO::getId, (k1, k2) -> k1));
     }
 
 }

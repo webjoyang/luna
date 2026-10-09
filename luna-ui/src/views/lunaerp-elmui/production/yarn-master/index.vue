@@ -110,7 +110,23 @@
             </el-tag>
             <span v-else class="text-12px text-gray-400">请选择上方材质</span>
           </div>
-          <div>
+          <div class="flex items-center gap-2">
+            <el-button
+              type="success"
+              plain
+              @click="handleDownloadSpecTemplate"
+              v-hasPermi="['lunaerp:production:yarn-spec:import']"
+            >
+              <Icon icon="ep:download" class="mr-1" /> 下载模板
+            </el-button>
+            <el-button
+              type="primary"
+              plain
+              @click="handleImportSpec"
+              v-hasPermi="['lunaerp:production:yarn-spec:import']"
+            >
+              <Icon icon="ep:upload" class="mr-1" /> 导入规格
+            </el-button>
             <el-button
               type="primary"
               plain
@@ -330,6 +346,9 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 规格导入弹窗 -->
+    <YarnSpecImportDialog ref="specImportDialogRef" @success="handleSpecImportSuccess" />
   </el-container>
 </template>
 
@@ -337,6 +356,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { dateFormatter } from '@/utils/formatTime'
+import download from '@/utils/download'
 import {
   getYarnTypePage,
   createYarnType,
@@ -346,10 +366,12 @@ import {
   createYarnSpec,
   updateYarnSpec,
   deleteYarnSpec,
+  downloadYarnSpecTemplate,
   type YarnTypeVO,
   type YarnSpecVO,
   type YarnSpecPageParam
 } from '@/api/lunaerp-elmui/production/yarn-master'
+import YarnSpecImportDialog from './YarnSpecImportDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiProductionYarnMaster' })
 
@@ -598,6 +620,28 @@ const handleSpecDelete = async (row: YarnSpecVO) => {
   } catch {
     // 用户取消
   }
+}
+
+const specImportDialogRef = ref()
+
+/** 下载规格导入模板 */
+const handleDownloadSpecTemplate = async () => {
+  try {
+    const res = await downloadYarnSpecTemplate()
+    download.excel(res, '纱线规格导入模板.xlsx')
+  } catch (e) {
+    ElMessage.error('下载模板失败')
+  }
+}
+
+/** 打开规格导入弹窗 */
+const handleImportSpec = () => {
+  specImportDialogRef.value?.open()
+}
+
+/** 规格导入成功后刷新列表 */
+const handleSpecImportSuccess = async () => {
+  await getSpecList()
 }
 
 onMounted(async () => {

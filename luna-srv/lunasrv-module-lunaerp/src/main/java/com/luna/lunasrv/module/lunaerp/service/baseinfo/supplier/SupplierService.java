@@ -70,4 +70,20 @@ public interface SupplierService {
      */
     String getNextSupplierNo();
 
+    /**
+     * 获得供应商导入模板数据
+     *
+     * @return 模板数据
+     */
+    List<com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierImportVO> getImportTemplate();
+
+    /**
+     * 导入供应商
+     *
+     * @param file Excel 文件
+     * @return 导入结果
+     * @throws java.io.IOException 读取异常
+     */
+    com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult importSupplier(org.springframework.web.multipart.MultipartFile file) throws java.io.IOException;
+
 }

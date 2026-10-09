@@ -83,4 +83,29 @@ public class SupplierController {
         return success(true);
     }
 
+    @GetMapping("/import-template")
+    @Operation(summary = "获得供应商导入模板")
+    @PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:supplier:import')")
+    public void importSupplierTemplate(jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        List<com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierImportVO> list = supplierService.getImportTemplate();
+        com.luna.lunasrv.framework.excel.core.util.ExcelUtils.write(response, "供应商导入模板.xlsx", "供应商列表",
+                com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierImportVO.class, list);
+    }
+
+    @PostMapping(value = "/import", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "导入供应商档案")
+    @io.swagger.v3.oas.annotations.Parameters({
+            @Parameter(name = "file", description = "Excel 文件", required = true)
+    })
+    @PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:supplier:import')")
+    public CommonResult<Integer> importSupplier(@RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+                                                jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult result = supplierService.importSupplier(file);
+        if (result.hasError()) {
+            result.writeResponse(response, "供应商导入错误明细.xlsx");
+            return null;
+        }
+        return success(result.getSuccessCount());
+    }
+
 }

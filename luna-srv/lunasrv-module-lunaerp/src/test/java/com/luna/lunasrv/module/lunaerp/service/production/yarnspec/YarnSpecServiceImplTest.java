@@ -2,7 +2,11 @@ package com.luna.lunasrv.module.lunaerp.service.production.yarnspec;
 
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveConstants;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecCascadeOptionVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecImportVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecSaveReqVO;
@@ -10,22 +14,37 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnspec.YarnSp
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarntype.YarnTypeDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarntype.YarnTypeMapper;
+import cn.idev.excel.FastExcelFactory;
+import com.luna.lunasrv.framework.common.biz.system.dict.DictDataCommonApi;
+import com.luna.lunasrv.framework.common.biz.system.dict.dto.DictDataRespDTO;
+import com.luna.lunasrv.framework.dict.core.DictFrameworkUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.mock.web.MockMultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,17 +60,44 @@ class YarnSpecServiceImplTest {
     @Mock
     private YarnTypeMapper yarnTypeMapper;
 
+    @Mock
+    private SecurityFrameworkService securityFrameworkService;
+
     @InjectMocks
     private YarnSpecServiceImpl yarnSpecService;
+
+    private DictDataCommonApi dictDataApi;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        dictDataApi = org.mockito.Mockito.mock(DictDataCommonApi.class);
+        DictFrameworkUtils.init(dictDataApi);
+        DictFrameworkUtils.clearCache();
+
+        DictDataRespDTO d1 = new DictDataRespDTO();
+        d1.setDictType("lunaerp_yarn_spin_method");
+        d1.setLabel("环锭纺");
+        d1.setValue("RING_SPINNING");
+
+        DictDataRespDTO d2 = new DictDataRespDTO();
+        d2.setDictType("lunaerp_yarn_luster");
+        d2.setLabel("半光");
+        d2.setValue("SEMI_DULL");
+
+        when(dictDataApi.getDictDataList("lunaerp_yarn_spin_method")).thenReturn(Collections.singletonList(d1));
+        when(dictDataApi.getDictDataList("lunaerp_yarn_luster")).thenReturn(Collections.singletonList(d2));
+
         when(yarnSpecMapper.insert(any(YarnSpecDO.class))).thenAnswer(invocation -> {
             YarnSpecDO dobj = invocation.getArgument(0);
             dobj.setId(200L);
             return 1;
         });
+    }
+
+    @AfterEach
+    void tearDown() {
+        DictFrameworkUtils.clearCache();
     }
 
     @Test
@@ -282,5 +328,162 @@ class YarnSpecServiceImplTest {
         assertEquals("棉", optionsWithKeyword.get(0).getYarnTypeName());
         assertEquals(1, optionsWithKeyword.get(0).getSpecs().size());
         assertEquals("32S 棉", optionsWithKeyword.get(0).getSpecs().get(0).getSpecName());
+    }
+
+    // ==================== Excel 导入相关测试 ====================
+
+    private static final List<String> YARN_SPEC_HEADERS = Arrays.asList(
+            "材质名称", "规格名称", "标准名称", "纺纱工艺", "光泽", "参考单价", "备注"
+    );
+
+    private byte[] createRawExcelBytes(List<String> headers, List<List<Object>> dataList) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        List<List<String>> headList = headers.stream()
+                .map(Collections::singletonList)
+                .toList();
+        FastExcelFactory.write(out)
+                .head(headList)
+                .sheet("纱线规格导入")
+                .doWrite(dataList);
+        return out.toByteArray();
+    }
+
+    @Test
+    void getImportTemplate_returnsSampleList() {
+        List<YarnSpecImportVO> template = yarnSpecService.getImportTemplate();
+        assertNotNull(template);
+        assertEquals(1, template.size());
+        assertEquals("棉", template.get(0).getYarnTypeName());
+        assertEquals("32S 棉", template.get(0).getSpecName());
+        assertEquals("32S-COTTON", template.get(0).getStandardName());
+    }
+
+    @Test
+    void importYarnSpec_success_batchInsertsWithActiveStatus() throws IOException {
+        YarnTypeDO cottonType = new YarnTypeDO();
+        cottonType.setId(1L);
+        cottonType.setName("棉");
+        cottonType.setStatus("ACTIVE");
+        when(yarnTypeMapper.selectList(any())).thenReturn(Collections.singletonList(cottonType));
+        when(securityFrameworkService.hasPermission(SensitiveConstants.PERMISSION_AMOUNT)).thenReturn(true);
+        when(yarnSpecMapper.selectByYarnTypeIdAndStandardNameIncludingDeleted(eq(1L), anyString())).thenReturn(null);
+
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("棉", "32S 棉", "32S-COTTON", "环锭纺", "半光", 28.50, "备注1"));
+
+        byte[] bytes = createRawExcelBytes(YARN_SPEC_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "yarn_specs.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        ExcelImportResult result = yarnSpecService.importYarnSpec(file);
+
+        assertTrue(result.isSuccess());
+        assertEquals(1, result.getSuccessCount());
+        assertNull(result.getErrorStream());
+
+        ArgumentCaptor<List<YarnSpecDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(yarnSpecMapper).insertBatch(captor.capture());
+        List<YarnSpecDO> inserted = captor.getValue();
+        assertEquals(1, inserted.size());
+        assertEquals(1L, inserted.get(0).getYarnTypeId());
+        assertEquals("32S 棉", inserted.get(0).getSpecName());
+        assertEquals("32S-COTTON", inserted.get(0).getStandardName());
+        assertEquals("ACTIVE", inserted.get(0).getStatus());
+    }
+
+    @Test
+    void importYarnSpec_materialNotFound_generatesErrorExcelWithoutDbWrite() throws IOException {
+        when(yarnTypeMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("未知材质", "32S 棉", "32S-COTTON", "", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(YARN_SPEC_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "material_not_found.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        ExcelImportResult result = yarnSpecService.importYarnSpec(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(yarnSpecMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void importYarnSpec_standardNameDuplicateInDb_generatesErrorExcelWithoutDbWrite() throws IOException {
+        YarnTypeDO cottonType = new YarnTypeDO();
+        cottonType.setId(1L);
+        cottonType.setName("棉");
+        cottonType.setStatus("ACTIVE");
+        when(yarnTypeMapper.selectList(any())).thenReturn(Collections.singletonList(cottonType));
+
+        YarnSpecDO existing = new YarnSpecDO();
+        existing.setId(10L);
+        existing.setYarnTypeId(1L);
+        existing.setStandardName("32S-COTTON");
+        when(yarnSpecMapper.selectByYarnTypeIdAndStandardNameIncludingDeleted(1L, "32S-COTTON")).thenReturn(existing);
+
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("棉", "32S 棉", "32S-COTTON", "", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(YARN_SPEC_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "duplicate_standard.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        ExcelImportResult result = yarnSpecService.importYarnSpec(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(yarnSpecMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void importYarnSpec_sensitiveAmountWithoutPermission_generatesErrorExcelWithoutDbWrite() throws IOException {
+        YarnTypeDO cottonType = new YarnTypeDO();
+        cottonType.setId(1L);
+        cottonType.setName("棉");
+        cottonType.setStatus("ACTIVE");
+        when(yarnTypeMapper.selectList(any())).thenReturn(Collections.singletonList(cottonType));
+        when(securityFrameworkService.hasPermission(SensitiveConstants.PERMISSION_AMOUNT)).thenReturn(false);
+
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("棉", "32S 棉", "32S-COTTON", "", "", 28.50, ""));
+
+        byte[] bytes = createRawExcelBytes(YARN_SPEC_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "no_perm.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        ExcelImportResult result = yarnSpecService.importYarnSpec(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(yarnSpecMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void importYarnSpec_negativePrice_generatesErrorExcelWithoutDbWrite() throws IOException {
+        YarnTypeDO cottonType = new YarnTypeDO();
+        cottonType.setId(1L);
+        cottonType.setName("棉");
+        cottonType.setStatus("ACTIVE");
+        when(yarnTypeMapper.selectList(any())).thenReturn(Collections.singletonList(cottonType));
+        when(securityFrameworkService.hasPermission(SensitiveConstants.PERMISSION_AMOUNT)).thenReturn(true);
+
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("棉", "32S 棉", "32S-COTTON", "", "", -10.0, ""));
+
+        byte[] bytes = createRawExcelBytes(YARN_SPEC_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "neg_price.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        ExcelImportResult result = yarnSpecService.importYarnSpec(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(yarnSpecMapper, never()).insertBatch(anyList());
     }
 }

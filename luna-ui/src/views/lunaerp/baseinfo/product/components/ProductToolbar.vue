@@ -66,6 +66,24 @@
     <span class="toolbar-spacer" />
 
     <el-button
+      type="success"
+      plain
+      @click="emit('download-template')"
+      v-hasPermi="['lunaerp:baseinfo:product:import']"
+    >
+      <Icon icon="ep:download" class="mr-3px" />下载模板
+    </el-button>
+
+    <el-button
+      type="primary"
+      plain
+      @click="emit('import')"
+      v-hasPermi="['lunaerp:baseinfo:product:import']"
+    >
+      <Icon icon="ep:upload" class="mr-3px" />导入
+    </el-button>
+
+    <el-button
       type="primary"
       @click="emit('create')"
       v-hasPermi="['lunaerp:baseinfo:product:create']"
@@ -105,7 +123,9 @@ const emit = defineEmits([
   'update:viewMode',
   'search',
   'create',
-  'batch-delete'
+  'batch-delete',
+  'download-template',
+  'import'
 ])
 
 /** 回车/点按钮触发查询（回第 1 页由父组件处理） */
