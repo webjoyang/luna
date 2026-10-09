@@ -1,0 +1,70 @@
+import type { Component } from 'vue'
+import { getWeavingTicketPrintData } from '@/api/lunaerp-elmui/production/weaving-ticket'
+import WeavingTicketLabel from '@/views/lunaerp-elmui/production/weaving-order/components/print/WeavingTicketLabel.vue'
+
+/**
+ * 打印模板注册项接口（规范见 W0 spec）
+ */
+export interface PrintTemplateReg {
+  /** 业务对象类型，与回收站/消息的 bizType 同字典，如 WEAVING_TICKET, SHIPMENT */
+  bizType: string
+  /** 模板编码，如 WEAVING_TICKET_LABEL / SHIPMENT_DOC / PACKING_LIST */
+  templateCode: string
+  /** 版式名（切换与按钮文案） */
+  name: string
+  /** 纸张尺寸 */
+  paper: 'A4' | 'LABEL-100x60'
+  /** 权限码 */
+  permission: string
+  /** 模板组件 */
+  component: Component
+  /** 后端 print-data 取数 API */
+  fetchApi: (bizId: string | number) => Promise<any>
+}
+
+/**
+ * 静态模板注册表（不做自动发现、不做模板设计器）
+ */
+export const printTemplateRegistry: PrintTemplateReg[] = [
+  {
+    bizType: 'WEAVING_TICKET',
+    templateCode: 'WEAVING_TICKET_LABEL',
+    name: '布票标签 (100×60mm)',
+    paper: 'LABEL-100x60',
+    permission: 'lunaerp:production:weaving-ticket:print',
+    component: WeavingTicketLabel,
+    fetchApi: (bizId: string | number) => getWeavingTicketPrintData(bizId)
+  }
+]
+
+/**
+ * 动态注册模板（供后续模块追加）
+ */
+export function registerPrintTemplate(template: PrintTemplateReg) {
+  const existingIndex = printTemplateRegistry.findIndex(
+    (item) => item.bizType === template.bizType && item.templateCode === template.templateCode
+  )
+  if (existingIndex >= 0) {
+    printTemplateRegistry[existingIndex] = template
+  } else {
+    printTemplateRegistry.push(template)
+  }
+}
+
+/**
+ * 按 bizType 获取模板列表
+ */
+export function getTemplatesByBizType(bizType: string): PrintTemplateReg[] {
+  return printTemplateRegistry.filter((item) => item.bizType === bizType)
+}
+
+/**
+ * 获取指定模板（若未指定 templateCode 且只有单个模板，默认取首个）
+ */
+export function getTemplate(bizType: string, templateCode?: string): PrintTemplateReg | undefined {
+  const templates = getTemplatesByBizType(bizType)
+  if (templateCode) {
+    return templates.find((item) => item.templateCode === templateCode)
+  }
+  return templates[0]
+}

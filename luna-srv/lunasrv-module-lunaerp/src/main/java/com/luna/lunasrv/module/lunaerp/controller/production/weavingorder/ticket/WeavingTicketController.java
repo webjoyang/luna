@@ -19,7 +19,7 @@ import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
 @Tag(name = "生产管理 - 布票")
 @RestController
-@RequestMapping("/lunaerp/production/weaving-order-ticket")
+@RequestMapping({"/lunaerp/production/weaving-order-ticket", "/lunaerp/production/weaving-ticket"})
 @Validated
 public class WeavingTicketController {
 
@@ -86,6 +86,17 @@ public class WeavingTicketController {
     @PreAuthorize("@ss.hasPermission('lunaerp:production:weaving-order-ticket:query') or @ss.hasPermission('lunaerp:production:weaving-order:query')")
     public CommonResult<PageResult<WeavingTicketRespVO>> getTicketPage(@Validated WeavingTicketPageReqVO pageReqVO) {
         return success(weavingTicketService.getTicketPage(pageReqVO));
+    }
+
+    @GetMapping({"/{id}/print-data", "/print-data"})
+    @Operation(summary = "获得布票打印数据")
+    @Parameter(name = "id", description = "布票ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:weaving-ticket:print')")
+    public CommonResult<WeavingTicketPrintRespVO> getWeavingTicketPrintData(
+            @PathVariable(value = "id", required = false) Long pathId,
+            @RequestParam(value = "id", required = false) Long queryId) {
+        Long id = pathId != null ? pathId : queryId;
+        return success(weavingTicketService.getWeavingTicketPrintData(id));
     }
 
 }

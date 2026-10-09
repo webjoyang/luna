@@ -12,6 +12,9 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ti
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.WeavingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.color.GreigeOrderColorDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,6 +58,12 @@ class WeavingTicketServiceImplTest {
 
     @Mock
     private WeavingOrderMapper weavingOrderMapper;
+
+    @Mock
+    private ConfigApi configApi;
+
+    @Mock
+    private GreigeOrderColorMapper greigeOrderColorMapper;
 
     @InjectMocks
     private WeavingTicketServiceImpl weavingTicketService;
@@ -837,6 +846,83 @@ class WeavingTicketServiceImplTest {
         List<WeavingTicketDO> updatedList = captor.getAllValues();
         assertEquals("STOCKED", updatedList.get(0).getStatus());
         assertEquals("STOCKED", updatedList.get(1).getStatus());
+    }
+
+    // ==================== 打印数据测试（Issue 03） ====================
+
+    @Test
+    void testPrintData_ticketNotExists() {
+        when(weavingTicketMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                weavingTicketService.getWeavingTicketPrintData(999L));
+        assertEquals(WEAVING_TICKET_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void testPrintData_baseUrlMissing() {
+        WeavingTicketDO ticket = buildTicket(1L, "GENERATED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+        when(configApi.getConfigValueByKey("luna.h5.base-url")).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                weavingTicketService.getWeavingTicketPrintData(1L));
+        assertEquals(WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("luna.h5.base-url"));
+    }
+
+    @Test
+    void testPrintData_baseUrlEmpty() {
+        WeavingTicketDO ticket = buildTicket(1L, "GENERATED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+        when(configApi.getConfigValueByKey("luna.h5.base-url")).thenReturn("   ");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                weavingTicketService.getWeavingTicketPrintData(1L));
+        assertEquals(WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY.getCode(), ex.getCode());
+    }
+
+    @Test
+    void testPrintData_success() {
+        WeavingTicketDO ticket = buildTicket(1L, "GENERATED");
+        ticket.setMaterialBatchNo("YB20260901-01");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+        when(configApi.getConfigValueByKey("luna.h5.base-url")).thenReturn("https://h5.lunaerp.com/");
+
+        WeavingOrderDO order = new WeavingOrderDO();
+        order.setId(100L);
+        order.setCode("ZZ-PB0919001-01");
+        order.setProductName("40S全棉汗布");
+        order.setGreigeOrderId(50L);
+        when(weavingOrderMapper.selectById(100L)).thenReturn(order);
+
+        MachineTaskDO task = new MachineTaskDO();
+        task.setId(200L);
+        task.setCode("MT-ZZPB09190010101");
+        task.setLoomNo("LM20260001");
+        when(machineTaskMapper.selectById(200L)).thenReturn(task);
+
+        GreigeOrderColorDO color1 = new GreigeOrderColorDO();
+        color1.setColor("原白");
+        when(greigeOrderColorMapper.selectListByOrderId(50L)).thenReturn(Collections.singletonList(color1));
+
+        WeavingTicketPrintRespVO printVO = weavingTicketService.getWeavingTicketPrintData(1L);
+
+        assertNotNull(printVO);
+        assertEquals(1L, printVO.getId());
+        assertEquals("BT-MTZZPB09190010101-0001", printVO.getCode());
+        assertEquals("ZZ-PB0919001-01", printVO.getWeavingOrderCode());
+        assertEquals("MT-ZZPB09190010101", printVO.getMachineTaskCode());
+        assertEquals("LM20260001", printVO.getLoomNo());
+        assertEquals("40S全棉汗布", printVO.getProductName());
+        assertEquals("原白", printVO.getColor());
+        assertEquals(1, printVO.getPieceIndex());
+        assertEquals(new BigDecimal("25.00"), printVO.getQuantity());
+        assertEquals("KG", printVO.getUnit());
+        assertEquals("张三", printVO.getWorkerName());
+        assertEquals("YB20260901-01", printVO.getMaterialBatchNo());
+        assertEquals("https://h5.lunaerp.com/h5/scan/weaving-ticket?code=BT-MTZZPB09190010101-0001", printVO.getQrUrl());
+        assertNotNull(printVO.getPrintTime());
     }
 
     // ==================== 辅助方法 ====================

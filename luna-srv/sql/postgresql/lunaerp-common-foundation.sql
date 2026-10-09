@@ -27,6 +27,8 @@ INSERT INTO system_menu (
 ) VALUES (
     10951, '敏感数据-联系人查看', 'lunaerp:sensitive:contact', 3, 91, 1, '', '#', '', NULL,
     0, '1', '1', '1', 'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0
+);
+
 -- 3. 布票打印权限（挂在 10280 织造单下，type=3 按钮权限）
 DELETE FROM system_menu WHERE id = 10300 OR permission = 'lunaerp:production:weaving-ticket:print';
 INSERT INTO system_menu (

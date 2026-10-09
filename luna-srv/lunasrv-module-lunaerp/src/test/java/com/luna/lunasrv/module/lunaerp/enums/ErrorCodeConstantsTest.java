@@ -95,5 +95,11 @@ public class ErrorCodeConstantsTest {
         assertEquals(CommonErrorCodeConstants.EXCEL_IMPORT_FILE_EMPTY, ErrorCodeConstants.EXCEL_IMPORT_FILE_EMPTY);
         assertEquals(CommonErrorCodeConstants.EXCEL_IMPORT_PERMISSION_DENIED, ErrorCodeConstants.EXCEL_IMPORT_PERMISSION_DENIED);
     }
+
+    @Test
+    void testWeavingTicketPrintErrorCode() {
+        assertEquals(1_030_015_117, ErrorCodeConstants.WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY.getCode());
+        assertTrue(ErrorCodeConstants.WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY.getMsg().contains("luna.h5.base-url"));
+    }
 }
 

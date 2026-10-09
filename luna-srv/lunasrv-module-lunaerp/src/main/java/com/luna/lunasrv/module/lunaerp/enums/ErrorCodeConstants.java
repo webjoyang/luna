@@ -137,6 +137,7 @@ public interface ErrorCodeConstants extends CommonErrorCodeConstants {
     ErrorCode WEAVING_TICKET_EXCEED_PLANNED_QTY = new ErrorCode(1_030_015_114, "生成布票数量超过机台任务计划余量");
     ErrorCode WEAVING_TICKET_VOID_REASON_EMPTY = new ErrorCode(1_030_015_115, "作废原因不能为空");
     ErrorCode WEAVING_TICKET_CODE_DUPLICATE = new ErrorCode(1_030_015_116, "布票编号【{}】已存在");
+    ErrorCode WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY = new ErrorCode(1_030_015_117, "布票二维码基址未配置，请联系管理员配置【luna.h5.base-url】参数");
 
     // ========== 织造执行 - 领纱单与明细模块 1-030-015-300 ==========
     ErrorCode YARN_REQUISITION_NOT_EXISTS = new ErrorCode(1_030_015_300, "领纱单不存在");

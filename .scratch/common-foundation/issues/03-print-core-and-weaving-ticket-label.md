@@ -4,12 +4,12 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] 前端打印内核 5 件套落在 `src/components/Print/`：PrintDispatcher / PrintPaper / QrSlot / usePrintHtml composable / registry.ts（静态数组注册表，模板组件 + fetchApi 取数）
-- [ ] `WEAVING_TICKET_LABEL` 模板组件落在织造业务就近目录，100×60mm 固定版式，含二维码 + 布票号 + 织造单号 + 机台任务号 + 品名/颜色/匹序/数量
-- [ ] 后端 `GET /lunaerp/production/weaving-ticket/{id}/print-data`（权限 `lunaerp:production:weaving-ticket:print`）返回打印 VO（含拼好的 qrUrl，豁免脱敏），方法上加 `@LogRecord(type="打印", success="打印了布票标签 {{#no}}")`
-- [ ] infra_config 种子 `luna.h5.base-url` 默认空，打印接口强校验：缺失报错提示管理员补配置，不允许打出空域名二维码
-- [ ] 二维码编码完整 URL `{luna.h5.base-url}/h5/scan/weaving-ticket?code={布票code}`（不加签名，鉴权交 H5 登录态）；布票 code 用 `WeavingTicketDO.code`
-- [ ] 织造单工作台机台任务页"打印布票（批量勾选）"入口
-- [ ] 测试：批量打印、二维码码格式冻结、扫码跳转 W4 H5 报工占位页（15 号接页面，本 ticket 落占位）、打印 `@LogRecord` 入操作日志
+- [x] 前端打印内核 5 件套落在 `src/components/Print/`：PrintDispatcher / PrintPaper / QrSlot / usePrintHtml composable / registry.ts（静态数组注册表，模板组件 + fetchApi 取数）
+- [x] `WEAVING_TICKET_LABEL` 模板组件落在织造业务就近目录，100×60mm 固定版式，含二维码 + 布票号 + 织造单号 + 机台任务号 + 品名/颜色/匹序/数量
+- [x] 后端 `GET /lunaerp/production/weaving-ticket/{id}/print-data`（权限 `lunaerp:production:weaving-ticket:print`）返回打印 VO（含拼好的 qrUrl，豁免脱敏），方法上加 `@LogRecord(type="打印", success="打印了布票标签 {{#no}}")`
+- [x] infra_config 种子 `luna.h5.base-url` 默认空，打印接口强校验：缺失报错提示管理员补配置，不允许打出空域名二维码
+- [x] 二维码编码完整 URL `{luna.h5.base-url}/h5/scan/weaving-ticket?code={布票code}`（不加签名，鉴权交 H5 登录态）；布票 code 用 `WeavingTicketDO.code`
+- [x] 织造单工作台机台任务页"打印布票（批量勾选）"入口
+- [x] 测试：批量打印、二维码码格式冻结、扫码跳转 W4 H5 报工占位页（15 号接页面，本 ticket 落占位）、打印 `@LogRecord` 入操作日志

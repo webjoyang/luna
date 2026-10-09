@@ -118,3 +118,28 @@ export const getWeavingTicketByCode = (code: string) => {
 export const getWeavingTicketPage = (params: WeavingTicketPageParam) => {
   return request.get({ url: '/lunaerp/production/weaving-order-ticket/page', params })
 }
+
+// 布票打印标签 VO（独立 VO，豁免脱敏）
+export interface WeavingTicketPrintVO {
+  id: number
+  code: string // 布票编号
+  weavingOrderId?: number
+  weavingOrderCode?: string // 织造单号
+  machineTaskId?: number
+  machineTaskCode?: string // 机台任务号
+  loomNo?: string // 机台号
+  productName?: string // 品名
+  color?: string // 颜色
+  pieceIndex?: number // 匹序
+  quantity?: number // 数量/重量 KG
+  unit?: string // 单位
+  workerName?: string // 挡车工姓名
+  materialBatchNo?: string // 原料批号
+  qrUrl: string // 完整二维码 URL
+  printTime?: string
+}
+
+// 获得布票打印数据（独立 VO，豁免脱敏，含拼好的 qrUrl）
+export const getWeavingTicketPrintData = (id: number | string) => {
+  return request.get<WeavingTicketPrintVO>({ url: `/lunaerp/production/weaving-ticket/${id}/print-data` })
+}

@@ -51,8 +51,16 @@
         </template>
       </el-table-column>
       <el-table-column prop="haltReason" label="停机原因" min-width="140" show-overflow-tooltip />
-      <el-table-column label="操作" width="160" align="center" fixed="right">
+      <el-table-column label="操作" width="220" align="center" fixed="right">
         <template #default="{ row }">
+          <el-button
+            type="primary"
+            link
+            @click="handlePrintTaskTickets(row)"
+            v-hasPermi="['lunaerp:production:weaving-ticket:print']"
+          >
+            打印布票
+          </el-button>
           <template v-if="row.status === 'PENDING'">
             <el-button
               type="primary"
@@ -181,6 +189,12 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 统一打印分发器 -->
+    <PrintDispatcher
+      ref="printDispatcherRef"
+      biz-type="WEAVING_TICKET"
+    />
   </div>
 </template>
 
@@ -188,6 +202,8 @@
 import { ref, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
 import { DICT_TYPE } from '@/utils/dict'
+import { PrintDispatcher } from '@/components/Print'
+import { getWeavingTicketPage } from '@/api/lunaerp-elmui/production/weaving-ticket'
 import {
   MachineTaskVO,
   MachineTaskSaveReqVO,
@@ -403,6 +419,28 @@ const handleResumeTask = async (row: MachineTaskVO) => {
     emit('refresh-order')
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e?.message || '恢复操作失败')
+  }
+}
+
+const printDispatcherRef = ref<InstanceType<typeof PrintDispatcher> | null>(null)
+
+// 打印指定机台任务的全部布票
+const handlePrintTaskTickets = async (row: MachineTaskVO) => {
+  if (!row.id) return
+  try {
+    const res = await getWeavingTicketPage({
+      machineTaskId: row.id,
+      pageSize: 500
+    })
+    const tickets = res?.list || []
+    if (tickets.length === 0) {
+      ElMessage.warning(`机台任务【${row.code}】尚未生成布票`)
+      return
+    }
+    const bizIds = tickets.map((t: any) => t.id)
+    printDispatcherRef.value?.open({ bizIds })
+  } catch (err: any) {
+    ElMessage.error(err?.message || '获取布票数据失败')
   }
 }
 

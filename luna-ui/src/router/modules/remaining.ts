@@ -798,6 +798,16 @@ const remainingRouter: AppRouteRecordRaw[] = [
       }
     ]
   },
+  {
+    path: '/h5/scan/weaving-ticket',
+    component: () => import('@/views/h5/scan/weaving-ticket.vue'),
+    name: 'H5ScanWeavingTicket',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '布票扫码报工'
+    }
+  }
 ]
 
 export default remainingRouter

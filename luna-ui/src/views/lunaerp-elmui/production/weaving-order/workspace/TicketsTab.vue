@@ -90,6 +90,16 @@
         </span>
         <el-button
           type="primary"
+          size="small"
+          :disabled="selectedRows.length === 0"
+          @click="handleBatchPrint"
+          v-hasPermi="['lunaerp:production:weaving-ticket:print']"
+        >
+          <Icon icon="ep:printer" class="mr-1" />
+          打印布票（批量勾选）
+        </el-button>
+        <el-button
+          type="primary"
           plain
           size="small"
           :disabled="selectedRows.length === 0"
@@ -209,8 +219,17 @@
           <span v-else>-</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" align="center" fixed="right">
+      <el-table-column label="操作" width="240" align="center" fixed="right">
         <template #default="{ row }">
+          <!-- 打印：受权限控制 -->
+          <el-button
+            type="primary"
+            link
+            @click="handleSinglePrint(row)"
+            v-hasPermi="['lunaerp:production:weaving-ticket:print']"
+          >
+            打印
+          </el-button>
           <!-- 开工：允许 GENERATED / STARTED / EXCEPTION -->
           <el-button
             v-if="['GENERATED', 'STARTED', 'EXCEPTION'].includes(row.status)"
@@ -441,6 +460,12 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 统一打印分发器 -->
+    <PrintDispatcher
+      ref="printDispatcherRef"
+      biz-type="WEAVING_TICKET"
+    />
   </div>
 </template>
 
@@ -449,6 +474,7 @@ import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
 import dayjs from 'dayjs'
+import { PrintDispatcher } from '@/components/Print'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { handoffInspection } from '@/api/lunaerp-elmui/production/weaving-order'
 import {
@@ -588,8 +614,26 @@ const loadWorkers = async () => {
   }
 }
 
+const printDispatcherRef = ref<InstanceType<typeof PrintDispatcher> | null>(null)
+
 const handleSelectionChange = (rows: WeavingTicketVO[]) => {
   selectedRows.value = rows
+}
+
+// 批量打印布票标签
+const handleBatchPrint = () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先勾选需要打印的布票')
+    return
+  }
+  const bizIds = selectedRows.value.map((r) => r.id!).filter(Boolean)
+  printDispatcherRef.value?.open({ bizIds })
+}
+
+// 单张打印布票标签
+const handleSinglePrint = (row: WeavingTicketVO) => {
+  if (!row.id) return
+  printDispatcherRef.value?.open({ bizId: row.id })
 }
 
 const handleQuery = () => {
