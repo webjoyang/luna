@@ -46,6 +46,15 @@ public class CustomerSaveReqVO {
     @Schema(description = "备注")
     private String remark;
 
+    @Schema(description = "英文名称", example = "Hangzhou Weaving Co., Ltd.")
+    private String nameEn;
+
+    @Schema(description = "英文地址", example = "Yuhang District, Hangzhou, Zhejiang")
+    private String addressEn;
+
+    @Schema(description = "归属业务员", example = "1")
+    private Long salespersonUserId;
+
     @Schema(description = "状态（ACTIVE 启用 / INACTIVE 停用），创建缺省 ACTIVE", example = "ACTIVE")
     private String status;
 

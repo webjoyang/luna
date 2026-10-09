@@ -75,5 +75,21 @@ public class CustomerDO extends TenantBaseDO {
      * 状态（ACTIVE 启用 / INACTIVE 停用），创建缺省 ACTIVE
      */
     private String status;
+    /**
+     * 英文名称
+     */
+    private String nameEn;
+    /**
+     * 英文地址
+     */
+    private String addressEn;
+    /**
+     * 归属业务员（数据范围 user 列）
+     */
+    private Long salespersonUserId;
+    /**
+     * 归属部门（数据范围 dept 列）
+     */
+    private Long deptId;
 
 }

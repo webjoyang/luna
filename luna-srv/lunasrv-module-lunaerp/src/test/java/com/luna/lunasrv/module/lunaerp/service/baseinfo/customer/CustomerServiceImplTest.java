@@ -1,21 +1,34 @@
 package com.luna.lunasrv.module.lunaerp.service.baseinfo.customer;
 
+import cn.idev.excel.FastExcelFactory;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
+import com.luna.lunasrv.framework.security.core.LoginUser;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult;
+import com.luna.lunasrv.module.lunaerp.controller.baseinfo.customer.vo.CustomerImportVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.customer.vo.CustomerSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.system.api.user.AdminUserApi;
+import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
@@ -43,6 +56,9 @@ class CustomerServiceImplTest {
     @Mock
     private CustomerMapper customerMapper;
 
+    @Mock
+    private AdminUserApi adminUserApi;
+
     @InjectMocks
     private CustomerServiceImpl customerService;
 
@@ -53,12 +69,28 @@ class CustomerServiceImplTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        // 模拟当前登录用户 99L，归属部门 200L
+        LoginUser loginUser = new LoginUser();
+        loginUser.setId(99L);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(loginUser, null, Collections.emptyList()));
+
+        AdminUserRespDTO mockUser = new AdminUserRespDTO();
+        mockUser.setId(99L);
+        mockUser.setDeptId(200L);
+        when(adminUserApi.getUser(99L)).thenReturn(mockUser);
+
         // 模拟 insert 时回填主键（@KeySequence 在真实环境由 MyBatis-Plus 填充）
         when(customerMapper.insert(any(CustomerDO.class))).thenAnswer(invocation -> {
             CustomerDO dobj = invocation.getArgument(0);
             dobj.setId(1024L);
             return 1;
         });
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -79,6 +111,8 @@ class CustomerServiceImplTest {
         assertEquals(COMPANY_NAME, saved.getShortName(), "shortName 为空时应用 companyName 回填");
         assertEquals("ACTIVE", saved.getStatus(), "status 缺省应为 ACTIVE");
         assertEquals(CLIENT_TYPE, saved.getClientType());
+        assertEquals(99L, saved.getSalespersonUserId(), "缺省业务员应为当前登录用户");
+        assertEquals(200L, saved.getDeptId(), "缺省部门应为当前登录用户的部门");
     }
 
     @Test
@@ -207,6 +241,132 @@ class CustomerServiceImplTest {
             assertEquals("INACTIVE", statusUpdate.getStatus(), "批量删除时每条都应先置 INACTIVE");
         }
         verify(customerMapper).deleteByIds(Arrays.asList(1L, 2L, 3L));
+    }
+
+    private static final List<String> CUSTOMER_HEADERS = Arrays.asList(
+            "企业名称", "简称", "客户类型", "行业", "规模", "来源", "合作状态",
+            "统一社会信用代码", "英文名称", "英文地址", "备注"
+    );
+
+    private byte[] createRawExcelBytes(List<String> headers, List<List<Object>> dataList) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        List<List<String>> headList = headers.stream()
+                .map(Collections::singletonList)
+                .toList();
+        FastExcelFactory.write(out)
+                .head(headList)
+                .sheet("客户导入")
+                .doWrite(dataList);
+        return out.toByteArray();
+    }
+
+    @Test
+    void getImportTemplate_returnsSampleList() {
+        List<CustomerImportVO> template = customerService.getImportTemplate();
+        assertNotNull(template);
+        assertEquals(1, template.size());
+        assertEquals("示例客户A有限公司", template.get(0).getCompanyName());
+    }
+
+    @Test
+    void importCustomer_success_batchInsertsWithActiveStatusAndOwnerDept() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("杭州丝绸集团", "杭州丝绸", "", "", "", "", "", "91330100MA27XXXX01", "Silk Co", "Addr 1", "备注1"));
+        rows.add(Arrays.asList("桐乡印染纺织", "", "", "", "", "", "", "91330100MA27XXXX02", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(CUSTOMER_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "customers.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        when(customerMapper.selectListByCompanyNames(any())).thenReturn(Collections.emptyList());
+
+        ExcelImportResult result = customerService.importCustomer(file);
+
+        assertTrue(result.isSuccess());
+        assertEquals(2, result.getSuccessCount());
+        assertNull(result.getErrorStream());
+
+        ArgumentCaptor<List<CustomerDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(customerMapper).insertBatch(captor.capture());
+        List<CustomerDO> inserted = captor.getValue();
+        assertEquals(2, inserted.size());
+
+        CustomerDO c1 = inserted.get(0);
+        assertEquals("杭州丝绸集团", c1.getCompanyName());
+        assertEquals("杭州丝绸", c1.getShortName());
+        assertEquals("ACTIVE", c1.getStatus());
+        assertEquals(99L, c1.getSalespersonUserId());
+        assertEquals(200L, c1.getDeptId());
+        assertEquals("Silk Co", c1.getNameEn());
+        assertEquals("Addr 1", c1.getAddressEn());
+
+        CustomerDO c2 = inserted.get(1);
+        assertEquals("桐乡印染纺织", c2.getCompanyName());
+        assertEquals("桐乡印染纺织", c2.getShortName(), "简称为空时应由企业名称自动回填");
+        assertEquals("ACTIVE", c2.getStatus());
+        assertEquals(99L, c2.getSalespersonUserId());
+        assertEquals(200L, c2.getDeptId());
+    }
+
+    @Test
+    void importCustomer_fileDuplicate_generatesErrorExcelWithoutDbWrite() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("重复企业A", "简称A", "", "", "", "", "", "91330100MA27XXXX01", "", "", ""));
+        rows.add(Arrays.asList("重复企业A", "简称B", "", "", "", "", "", "91330100MA27XXXX02", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(CUSTOMER_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "duplicate.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        when(customerMapper.selectListByCompanyNames(any())).thenReturn(Collections.emptyList());
+
+        ExcelImportResult result = customerService.importCustomer(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(customerMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void importCustomer_dbDuplicate_generatesErrorExcelWithoutDbWrite() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("已有企业", "", "", "", "", "", "", "91330100MA27XXXX01", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(CUSTOMER_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "db_duplicate.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        CustomerDO existing = new CustomerDO();
+        existing.setCompanyName("已有企业");
+        when(customerMapper.selectListByCompanyNames(any())).thenReturn(Collections.singletonList(existing));
+
+        ExcelImportResult result = customerService.importCustomer(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(customerMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void importCustomer_creditCodeInvalid_generatesErrorExcelWithoutDbWrite() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        // 统一社会信用代码为 10 位，不满足 18 位格式
+        rows.add(Arrays.asList("某企业", "", "", "", "", "", "", "1234567890", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(CUSTOMER_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "invalid_code.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        when(customerMapper.selectListByCompanyNames(any())).thenReturn(Collections.emptyList());
+
+        ExcelImportResult result = customerService.importCustomer(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(customerMapper, never()).insertBatch(anyList());
     }
 
 }

@@ -66,6 +66,14 @@ public class ExcelImportResult {
         return hasError;
     }
 
+    public boolean isSuccess() {
+        return !hasError;
+    }
+
+    public byte[] getErrorStream() {
+        return errorExcelBytes;
+    }
+
     /**
      * 若存在错误，将错误 Excel 作为 attachment 流写入 HttpServletResponse
      *

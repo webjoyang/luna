@@ -55,3 +55,20 @@ export const deleteCustomer = (id: number) => {
 export const deleteCustomerList = (ids: number[]) => {
   return request.delete({ url: '/lunaerp/baseinfo/customer/delete-list', params: { ids: ids.join(',') } })
 }
+
+// 下载客户导入模板
+export const downloadCustomerTemplate = () => {
+  return request.download({ url: '/lunaerp/baseinfo/customer/import-template' })
+}
+
+// 导入客户档案（二进制响应以捕获错误 Excel 流）
+export const importCustomer = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.postOriginal({
+    url: '/lunaerp/baseinfo/customer/import',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob'
+  })
+}

@@ -59,4 +59,20 @@ public interface CustomerService {
      */
     void deleteCustomerList(List<Long> ids);
 
+    /**
+     * 获取客户导入模板示例数据
+     *
+     * @return 示例导入数据列表
+     */
+    List<com.luna.lunasrv.module.lunaerp.controller.baseinfo.customer.vo.CustomerImportVO> getImportTemplate();
+
+    /**
+     * 导入客户档案 Excel
+     *
+     * @param file 上传的 Excel 文件
+     * @return 导入处理结果
+     * @throws java.io.IOException IO 异常
+     */
+    com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult importCustomer(org.springframework.web.multipart.MultipartFile file) throws java.io.IOException;
+
 }

@@ -48,6 +48,18 @@ public class CustomerRespVO {
     @Schema(description = "备注")
     private String remark;
 
+    @Schema(description = "英文名称", example = "Hangzhou Weaving Co., Ltd.")
+    private String nameEn;
+
+    @Schema(description = "英文地址", example = "Yuhang District, Hangzhou, Zhejiang")
+    private String addressEn;
+
+    @Schema(description = "归属业务员")
+    private Long salespersonUserId;
+
+    @Schema(description = "归属部门")
+    private Long deptId;
+
     @Schema(description = "状态（ACTIVE 启用 / INACTIVE 停用）")
     private String status;
 

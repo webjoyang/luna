@@ -42,6 +42,22 @@
         >
           <Icon icon="ep:delete" /> 批量删除
         </el-button>
+        <el-button
+          type="success"
+          plain
+          @click="handleDownloadTemplate"
+          v-hasPermi="['lunaerp:baseinfo:customer:import']"
+        >
+          <Icon icon="ep:download" /> 下载模板
+        </el-button>
+        <el-button
+          type="primary"
+          plain
+          @click="handleImport"
+          v-hasPermi="['lunaerp:baseinfo:customer:import']"
+        >
+          <Icon icon="ep:upload" /> 导入
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
@@ -130,11 +146,16 @@
       @pagination="getList"
     />
   </ContentWrap>
+
+  <!-- 导入弹窗 -->
+  <CustomerImportDialog ref="importDialogRef" @success="getList" />
 </template>
 
 <script lang="ts" setup>
 import { dateFormatter } from '@/utils/formatTime'
 import { DICT_TYPE } from '@/utils/dict'
+import download from '@/utils/download'
+import CustomerImportDialog from './CustomerImportDialog.vue'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 
@@ -148,6 +169,7 @@ const total = ref(0)
 const list = ref<CustomerVO[]>([])
 const queryFormRef = ref()
 const checkedIds = ref<number[]>([])
+const importDialogRef = ref<InstanceType<typeof CustomerImportDialog>>()
 
 const queryParams = reactive({
   pageNo: 1,
@@ -214,6 +236,21 @@ const handleDeleteBatch = async () => {
     message.success('删除成功')
     await getList()
   } catch {}
+}
+
+/** 下载客户导入模板 */
+const handleDownloadTemplate = async () => {
+  try {
+    const res = await CustomerApi.downloadCustomerTemplate()
+    download.excel(res, '客户导入模板.xlsx')
+  } catch {
+    message.error('下载模板失败')
+  }
+}
+
+/** 打开导入弹窗 */
+const handleImport = () => {
+  importDialogRef.value?.open()
 }
 
 /** 初始化 */

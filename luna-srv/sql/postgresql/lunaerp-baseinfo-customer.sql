@@ -88,6 +88,20 @@ COMMENT ON COLUMN lunaerp_baseinfo_customer.update_time IS '更新时间';
 COMMENT ON COLUMN lunaerp_baseinfo_customer.deleted IS '是否删除';
 COMMENT ON COLUMN lunaerp_baseinfo_customer.tenant_id IS '租户编号';
 
+ALTER TABLE lunaerp_baseinfo_customer
+    ADD COLUMN IF NOT EXISTS name_en varchar(128) NULL;
+ALTER TABLE lunaerp_baseinfo_customer
+    ADD COLUMN IF NOT EXISTS address_en varchar(256) NULL;
+ALTER TABLE lunaerp_baseinfo_customer
+    ADD COLUMN IF NOT EXISTS salesperson_user_id int8 NULL;
+ALTER TABLE lunaerp_baseinfo_customer
+    ADD COLUMN IF NOT EXISTS dept_id int8 NULL;
+
+COMMENT ON COLUMN lunaerp_baseinfo_customer.name_en IS '英文名称';
+COMMENT ON COLUMN lunaerp_baseinfo_customer.address_en IS '英文地址';
+COMMENT ON COLUMN lunaerp_baseinfo_customer.salesperson_user_id IS '归属业务员（数据范围 user 列）；空=未归属，仅全部档可见';
+COMMENT ON COLUMN lunaerp_baseinfo_customer.dept_id IS '归属部门（数据范围 dept 列）；服务端按归属人当前部门推导';
+
 -- =============================================================================
 -- 2. 主键序列（MyBatis-Plus PostgreSQL INPUT 模式按 @KeySequence 取 nextval，可重复执行）
 -- =============================================================================
@@ -99,14 +113,15 @@ CREATE SEQUENCE IF NOT EXISTS lunaerp_baseinfo_customer_seq;
 -- @formatter:off
 BEGIN;
 
-DELETE FROM system_menu WHERE id IN (10030, 10031, 10032, 10033);
+DELETE FROM system_menu WHERE id IN (10030, 10031, 10032, 10033, 10034);
 
 -- 菜单：客户信息（parent_id=10000 基本信息）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10030, '客户信息', 'lunaerp:baseinfo:customer:query', 2, 3, 10000, 'customer', 'ep:office-building', 'lunaerp-elmui/baseinfo/customer/index', 'LunaerpElmuiBaseinfoCustomer', 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
--- 按钮：客户创建/修改/删除（参照产品菜单模式：query 权限挂在菜单本身，按钮只放 create/update/delete）
+-- 按钮：客户创建/修改/删除/导入（参照产品菜单模式：query 权限挂在菜单本身，按钮放 create/update/delete/import）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10031, '客户创建', 'lunaerp:baseinfo:customer:create', 3, 1, 10030, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10032, '客户修改', 'lunaerp:baseinfo:customer:update', 3, 2, 10030, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10033, '客户删除', 'lunaerp:baseinfo:customer:delete', 3, 3, 10030, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10034, '客户导入', 'lunaerp:baseinfo:customer:import', 3, 4, 10030, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
 
 COMMIT;
 -- @formatter:on
