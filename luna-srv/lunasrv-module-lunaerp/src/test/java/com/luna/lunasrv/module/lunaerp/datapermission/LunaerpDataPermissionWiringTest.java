@@ -698,4 +698,51 @@ public class LunaerpDataPermissionWiringTest {
         verify(ccMapper, never()).deleteById(any(Long.class));
     }
 
+    @Test
+    @DisplayName("16. §9.2 用例 9 自定义档四层收口：system assignRoleDataScope(dataScope=2) 拒绝并抛 1_002_002_006；DataScopeEnum.DEPT_CUSTOM 与计算分支保留；lunaerp 错误码段 1-030-041 保持空闲未被占用")
+    void testCustomScopeShutdownCase9() {
+        // 1. 验证枚举 DEPT_CUSTOM(2) 保留不删
+        assertEquals(2, com.luna.lunasrv.module.system.enums.permission.DataScopeEnum.DEPT_CUSTOM.getScope());
+        assertTrue(List.of(com.luna.lunasrv.module.system.enums.permission.DataScopeEnum.values())
+                .contains(com.luna.lunasrv.module.system.enums.permission.DataScopeEnum.DEPT_CUSTOM));
+
+        // 2. 验证错误码落入 system 角色段 1_002_002_006
+        assertEquals(1_002_002_006, com.luna.lunasrv.module.system.enums.ErrorCodeConstants.ROLE_DATA_SCOPE_CUSTOM_DISABLED.getCode());
+        assertEquals("数据范围【自定义部门】已停用，请选择全部/本部门及以下/本部门/本人",
+                com.luna.lunasrv.module.system.enums.ErrorCodeConstants.ROLE_DATA_SCOPE_CUSTOM_DISABLED.getMsg());
+
+        // 3. API / Service 直调 assignRoleDataScope(dataScope=2) 抛 1_002_002_006
+        com.luna.lunasrv.module.system.service.permission.RoleService mockRoleService =
+                Mockito.mock(com.luna.lunasrv.module.system.service.permission.RoleService.class);
+        com.luna.lunasrv.module.system.service.permission.PermissionServiceImpl permissionService =
+                new com.luna.lunasrv.module.system.service.permission.PermissionServiceImpl();
+        ReflectionTestUtils.setField(permissionService, "roleService", mockRoleService);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                permissionService.assignRoleDataScope(100L, 2, Set.of(1L, 2L)));
+        assertEquals(1_002_002_006, ex.getCode());
+        assertEquals("数据范围【自定义部门】已停用，请选择全部/本部门及以下/本部门/本人", ex.getMessage());
+        verify(mockRoleService, never()).updateRoleDataScope(any(), any(), any());
+
+        // 4. 合法 4 档正常放行调用底座
+        for (int scope : List.of(1, 4, 3, 5)) {
+            permissionService.assignRoleDataScope(100L, scope, Collections.emptySet());
+            verify(mockRoleService).updateRoleDataScope(100L, scope, Collections.emptySet());
+        }
+
+        // 5. 验证 lunaerp 段 1-030-041 保持空闲未被占用 (Q14)
+        for (java.lang.reflect.Field field : com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.class.getFields()) {
+            if (field.getType().equals(com.luna.lunasrv.framework.common.exception.ErrorCode.class)) {
+                try {
+                    com.luna.lunasrv.framework.common.exception.ErrorCode ec =
+                            (com.luna.lunasrv.framework.common.exception.ErrorCode) field.get(null);
+                    assertFalse(ec.getCode() >= 1_030_041_000 && ec.getCode() < 1_030_042_000,
+                            "lunaerp 1-030-041 段必须保持空闲不被占用，但发现: " + field.getName() + " -> " + ec.getCode());
+                } catch (IllegalAccessException e) {
+                    fail("反射访问异常: " + e.getMessage());
+                }
+            }
+        }
+    }
+
 }
