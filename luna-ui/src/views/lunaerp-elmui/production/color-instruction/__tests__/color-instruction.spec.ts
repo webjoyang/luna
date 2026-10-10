@@ -152,4 +152,65 @@ describe('Color Instruction (打色指示单) Foundation Tests', () => {
       params: { id: 101 }
     })
   })
+
+  it('should call getNextNo, createColorInstruction and deleteColorInstruction correctly (Issue 02)', async () => {
+    vi.mocked(request.get).mockResolvedValueOnce('DS20261010001' as any)
+    const nextNo = await ColorInstructionApi.getNextNo()
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/get-next-no'
+    })
+    expect(nextNo).toBe('DS20261010001')
+
+    const createPayload: Partial<ColorInstructionVO> = {
+      customerId: 1001,
+      productId: 2001,
+      instructionDate: '2026-10-10',
+      colors: [
+        {
+          customerColorNo: 'C01',
+          colorName: '中国红',
+          lightPrimary: 'D65',
+          copies: 1,
+          round: 1,
+          status: 'PENDING'
+        }
+      ]
+    }
+    vi.mocked(request.post).mockResolvedValueOnce(101 as any)
+    const newId = await ColorInstructionApi.createColorInstruction(createPayload)
+    expect(request.post).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/create',
+      data: createPayload
+    })
+    expect(newId).toBe(101)
+
+    vi.mocked(request.delete).mockResolvedValueOnce(true as any)
+    await ColorInstructionApi.deleteColorInstruction(101)
+    expect(request.delete).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/delete',
+      params: { id: 101 }
+    })
+  })
+
+  it('should correctly serialize and count samplePhotos in JSON array format', () => {
+    const formatPhotos = (urls: string[]) => {
+      return JSON.stringify(urls.map((url, idx) => ({ name: `样布照片_${idx + 1}`, url })))
+    }
+    const getPhotoCount = (photosStr?: string): number => {
+      if (!photosStr) return 0
+      try {
+        const parsed = JSON.parse(photosStr)
+        return Array.isArray(parsed) ? parsed.length : 0
+      } catch {
+        return photosStr.split(',').filter(Boolean).length
+      }
+    }
+
+    const testUrls = ['https://cdn.example.com/p1.jpg', 'https://cdn.example.com/p2.jpg']
+    const jsonStr = formatPhotos(testUrls)
+    expect(getPhotoCount(jsonStr)).toBe(2)
+    expect(getPhotoCount('')).toBe(0)
+    expect(getPhotoCount(undefined)).toBe(0)
+    expect(JSON.parse(jsonStr)[0].url).toBe('https://cdn.example.com/p1.jpg')
+  })
 })

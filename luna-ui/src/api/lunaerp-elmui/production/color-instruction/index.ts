@@ -93,6 +93,13 @@ export const getColorInstruction = (id: number) => {
 }
 
 /**
+ * 预览下一个打色单号
+ */
+export const getNextNo = () => {
+  return request.get({ url: '/lunaerp/production/color-instruction/get-next-no' })
+}
+
+/**
  * 创建打色指示单（预留骨架，后续票据落地）
  */
 export const createColorInstruction = (data: Partial<ColorInstructionVO>) => {

@@ -4,11 +4,14 @@ import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -37,6 +40,33 @@ public class ColorInstructionController {
     @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:query')")
     public CommonResult<ColorInstructionRespVO> getColorInstruction(@RequestParam("id") Long id) {
         return success(colorInstructionService.getColorInstruction(id));
+    }
+
+    @GetMapping("/get-next-no")
+    @Operation(summary = "预览下一个打色单号")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:query')")
+    public CommonResult<String> getNextNo() {
+        return success(colorInstructionService.getNextNo());
+    }
+
+    @PostMapping("/create")
+    @Operation(summary = "创建打色指示单")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:create')")
+    @LogRecord(type = "COLOR_INSTRUCTION", subType = "CREATE", bizNo = "{{#_ret.data}}",
+            success = "创建打色指示单【{{#_ret.data}}】")
+    public CommonResult<Long> createColorInstruction(@Valid @RequestBody ColorInstructionSaveReqVO createReqVO) {
+        return success(colorInstructionService.createColorInstruction(createReqVO));
+    }
+
+    @DeleteMapping("/delete")
+    @Operation(summary = "删除打色指示单")
+    @Parameter(name = "id", description = "打色指示单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:delete')")
+    @LogRecord(type = "COLOR_INSTRUCTION", subType = "DELETE", bizNo = "{{#id}}",
+            success = "删除打色指示单【{{#id}}】")
+    public CommonResult<Boolean> deleteColorInstruction(@RequestParam("id") Long id) {
+        colorInstructionService.deleteColorInstruction(id);
+        return success(true);
     }
 
 }

@@ -159,6 +159,7 @@
           <el-button
             link
             type="danger"
+            v-if="row.status === 'PENDING'"
             @click="handleDelete(row.id)"
             v-hasPermi="['lunaerp:production:color-instruction:delete']"
           >
