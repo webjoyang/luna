@@ -120,3 +120,25 @@ export const updateColorInstruction = (data: Partial<ColorInstructionVO>) => {
 export const deleteColorInstruction = (id: number) => {
   return request.delete({ url: '/lunaerp/production/color-instruction/delete', params: { id } })
 }
+
+/**
+ * 开始打色（PENDING -> IN_PROGRESS）
+ */
+export const startColorInstruction = (id: number) => {
+  return request.put({ url: '/lunaerp/production/color-instruction/start', data: { id } })
+}
+
+/**
+ * 通过打色颜色行（PENDING -> APPROVED）
+ */
+export const approveColorLine = (id: number) => {
+  return request.put({ url: '/lunaerp/production/color-instruction/color/approve', data: { id } })
+}
+
+/**
+ * 驳回重打打色颜色行（PENDING/APPROVED -> REJECTED 并克隆 round+1 新行）
+ */
+export const rejectRestrikeColorLine = (data: { id: number; rejectReason?: string }) => {
+  return request.put({ url: '/lunaerp/production/color-instruction/color/reject-restrike', data })
+}
+

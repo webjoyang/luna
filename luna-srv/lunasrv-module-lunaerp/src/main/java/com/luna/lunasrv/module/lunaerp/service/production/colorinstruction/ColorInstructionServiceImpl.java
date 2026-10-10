@@ -1,5 +1,6 @@
 package com.luna.lunasrv.module.lunaerp.service.production.colorinstruction;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -567,6 +568,179 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         colorInstructionMapper.deleteById(id);
         colorInstructionColorMapper.delete(new LambdaQueryWrapperX<ColorInstructionColorDO>()
                 .eq(ColorInstructionColorDO::getInstructionId, id));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void startColorInstruction(Long id) {
+        if (id == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        ColorInstructionDO instruction = colorInstructionMapper.selectById(id);
+        if (instruction == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        if (!"PENDING".equals(instruction.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOW);
+        }
+
+        // 条件更新 PENDING -> IN_PROGRESS，影响行数 0 抛 1_030_032_002
+        int rows = colorInstructionMapper.update(null, new LambdaUpdateWrapper<ColorInstructionDO>()
+                .eq(ColorInstructionDO::getId, id)
+                .eq(ColorInstructionDO::getStatus, "PENDING")
+                .set(ColorInstructionDO::getStatus, "IN_PROGRESS"));
+        if (rows == 0) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void approveColorLine(Long lineId) {
+        if (lineId == null) {
+            throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
+        }
+        ColorInstructionColorDO colorDO = colorInstructionColorMapper.selectById(lineId);
+        if (colorDO == null) {
+            throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
+        }
+        ColorInstructionDO parent = colorInstructionMapper.selectById(colorDO.getInstructionId());
+        if (parent == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        // 打色单须为 PENDING 或 IN_PROGRESS
+        if (!"PENDING".equals(parent.getStatus()) && !"IN_PROGRESS".equals(parent.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOW);
+        }
+        if (!"PENDING".equals(colorDO.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOW);
+        }
+
+        // 条件更新行状态 PENDING -> APPROVED
+        int rows = colorInstructionColorMapper.update(null, new LambdaUpdateWrapper<ColorInstructionColorDO>()
+                .eq(ColorInstructionColorDO::getId, lineId)
+                .eq(ColorInstructionColorDO::getStatus, "PENDING")
+                .set(ColorInstructionColorDO::getStatus, "APPROVED"));
+        if (rows == 0) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOW);
+        }
+
+        // 便利规则：若主单仍为 PENDING，同事务自动转为 IN_PROGRESS
+        if ("PENDING".equals(parent.getStatus())) {
+            colorInstructionMapper.update(null, new LambdaUpdateWrapper<ColorInstructionDO>()
+                    .eq(ColorInstructionDO::getId, parent.getId())
+                    .eq(ColorInstructionDO::getStatus, "PENDING")
+                    .set(ColorInstructionDO::getStatus, "IN_PROGRESS"));
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long rejectRestrikeColorLine(ColorInstructionColorRejectRestrikeReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
+        }
+        ColorInstructionColorDO colorDO = colorInstructionColorMapper.selectById(reqVO.getId());
+        if (colorDO == null) {
+            throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
+        }
+        ColorInstructionDO parent = colorInstructionMapper.selectById(colorDO.getInstructionId());
+        if (parent == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        // 打色单须为 PENDING 或 IN_PROGRESS
+        if (!"PENDING".equals(parent.getStatus()) && !"IN_PROGRESS".equals(parent.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOW);
+        }
+        // REJECTED 行不可再驳回重打，报 1_030_032_006
+        if ("REJECTED".equals(colorDO.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_COLOR_STATUS_NOT_ALLOW);
+        }
+        if (!"PENDING".equals(colorDO.getStatus()) && !"APPROVED".equals(colorDO.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_COLOR_STATUS_NOT_ALLOW);
+        }
+
+        // 条件更新旧行置 REJECTED 并记录 rejectReason
+        int rows = colorInstructionColorMapper.update(null, new LambdaUpdateWrapper<ColorInstructionColorDO>()
+                .eq(ColorInstructionColorDO::getId, colorDO.getId())
+                .in(ColorInstructionColorDO::getStatus, List.of("PENDING", "APPROVED"))
+                .set(ColorInstructionColorDO::getStatus, "REJECTED")
+                .set(ColorInstructionColorDO::getRejectReason, reqVO.getRejectReason()));
+        if (rows == 0) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOW);
+        }
+
+        // 克隆新行：继承 customerColorNo/colorName/factoryColorNo/colorHex/lightPrimary/lightSecondary/colorCardRef/copies/instructionId
+        // round = oldRow.round + 1，status = PENDING，samplePhotos 不继承！
+        int nextRound = (colorDO.getRound() != null ? colorDO.getRound() : 1) + 1;
+        ColorInstructionColorDO newRow = ColorInstructionColorDO.builder()
+                .instructionId(colorDO.getInstructionId())
+                .customerColorNo(colorDO.getCustomerColorNo())
+                .colorName(colorDO.getColorName())
+                .factoryColorNo(colorDO.getFactoryColorNo())
+                .colorHex(colorDO.getColorHex())
+                .lightPrimary(colorDO.getLightPrimary())
+                .lightSecondary(colorDO.getLightSecondary())
+                .colorCardRef(colorDO.getColorCardRef())
+                .copies(colorDO.getCopies())
+                .round(nextRound)
+                .status("PENDING")
+                .samplePhotos(null)
+                .rejectReason(null)
+                .remark(colorDO.getRemark())
+                .build();
+
+        // 便利规则：若主单仍为 PENDING，同事务自动转为 IN_PROGRESS
+        if ("PENDING".equals(parent.getStatus())) {
+            colorInstructionMapper.update(null, new LambdaUpdateWrapper<ColorInstructionDO>()
+                    .eq(ColorInstructionDO::getId, parent.getId())
+                    .eq(ColorInstructionDO::getStatus, "PENDING")
+                    .set(ColorInstructionDO::getStatus, "IN_PROGRESS"));
+        }
+
+        // 服务端重排 lineNo（同色号多轮相邻、最新轮在前）
+        List<ColorInstructionColorDO> existingColors = colorInstructionColorMapper.selectListByInstructionId(parent.getId());
+        List<ColorInstructionColorDO> allColors = new ArrayList<>();
+        if (CollectionUtils.isEmpty(existingColors)) {
+            colorDO.setStatus("REJECTED");
+            colorDO.setRejectReason(reqVO.getRejectReason());
+            allColors.add(colorDO);
+        } else {
+            allColors.addAll(existingColors);
+            boolean found = false;
+            for (ColorInstructionColorDO r : allColors) {
+                if (Objects.equals(r.getId(), colorDO.getId())) {
+                    r.setStatus("REJECTED");
+                    r.setRejectReason(reqVO.getRejectReason());
+                    found = true;
+                }
+            }
+            if (!found) {
+                colorDO.setStatus("REJECTED");
+                colorDO.setRejectReason(reqVO.getRejectReason());
+                allColors.add(colorDO);
+            }
+        }
+        allColors.add(newRow);
+
+        Map<Long, Integer> origLineNoMap = allColors.stream()
+                .filter(r -> r.getId() != null)
+                .collect(Collectors.toMap(ColorInstructionColorDO::getId, c -> c.getLineNo() != null ? c.getLineNo() : -1, (v1, v2) -> v1));
+
+        reorderLineNo(allColors);
+
+        colorInstructionColorMapper.insert(newRow);
+
+        for (ColorInstructionColorDO row : allColors) {
+            if (row.getId() != null) {
+                Integer origLineNo = origLineNoMap.get(row.getId());
+                if (origLineNo != null && !Objects.equals(row.getLineNo(), origLineNo)) {
+                    colorInstructionColorMapper.updateById(row);
+                }
+            }
+        }
+
+        return newRow.getId();
     }
 
     /**

@@ -944,4 +944,360 @@ class ColorInstructionServiceImplTest {
         verify(colorInstructionColorMapper, never()).deleteById(1L);
     }
 
+    // ==================== 04 票：行级动作与开始打色 ====================
+
+    @Test
+    void startColorInstruction_pending_success() {
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        assertDoesNotThrow(() -> colorInstructionService.startColorInstruction(101L));
+
+        ArgumentCaptor<Wrapper<ColorInstructionDO>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(colorInstructionMapper).update(isNull(), captor.capture());
+        assertTrue(captor.getValue().getSqlSet().contains("status"));
+        assertTrue(captor.getValue().getSqlSegment().contains("status ="));
+    }
+
+    @Test
+    void startColorInstruction_notExists_throws1030032000() {
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.startColorInstruction(999L));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IN_PROGRESS", "CONFIRMED", "IN_PRODUCTION", "VOID"})
+    void startColorInstruction_nonPending_throws1030032002(String status) {
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus(status);
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.startColorInstruction(101L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void startColorInstruction_concurrency_zeroRows_throws1030032002() {
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+        // 并发被其他事务抢先修改，条件更新影响行数为 0
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(0);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.startColorInstruction(101L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    void approveColorLine_pending_advancesRowAndAdvancesParentToInProgress() {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO colorDO = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("PENDING").build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(colorDO);
+        when(colorInstructionColorMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        assertDoesNotThrow(() -> colorInstructionService.approveColorLine(1L));
+
+        // 验证行状态 PENDING -> APPROVED
+        ArgumentCaptor<Wrapper<ColorInstructionColorDO>> colorCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(colorInstructionColorMapper).update(isNull(), colorCaptor.capture());
+        assertTrue(colorCaptor.getValue().getSqlSet().contains("status"));
+        assertTrue(colorCaptor.getValue().getSqlSegment().contains("status ="));
+
+        // 验证便利规则：主单仍为 PENDING 时自动转 IN_PROGRESS
+        ArgumentCaptor<Wrapper<ColorInstructionDO>> parentCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(colorInstructionMapper).update(isNull(), parentCaptor.capture());
+        assertTrue(parentCaptor.getValue().getSqlSet().contains("status"));
+        assertTrue(parentCaptor.getValue().getSqlSegment().contains("status ="));
+    }
+
+    @Test
+    void approveColorLine_parentInProgress_advancesRow_parentNotUpdated() {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO colorDO = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("PENDING").build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(colorDO);
+        when(colorInstructionColorMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        assertDoesNotThrow(() -> colorInstructionService.approveColorLine(1L));
+
+        verify(colorInstructionColorMapper).update(isNull(), any(Wrapper.class));
+        // 主单已在 IN_PROGRESS，无需重复更新
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"CONFIRMED", "IN_PRODUCTION", "VOID"})
+    void approveColorLine_parentTerminalOrConfirmed_throws1030032002(String parentStatus) {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus(parentStatus);
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO colorDO = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("PENDING").build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(colorDO);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.approveColorLine(1L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+        verify(colorInstructionColorMapper, never()).update(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"APPROVED", "REJECTED"})
+    void approveColorLine_rowNotPending_throws1030032002(String rowStatus) {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO colorDO = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status(rowStatus).build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(colorDO);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.approveColorLine(1L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+        verify(colorInstructionColorMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void approveColorLine_concurrency_zeroRows_throws1030032002() {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO colorDO = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("PENDING").build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(colorDO);
+        when(colorInstructionColorMapper.update(isNull(), any(Wrapper.class))).thenReturn(0);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.approveColorLine(1L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    void approveColorLine_notExists_throws1030032100() {
+        when(colorInstructionColorMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.approveColorLine(999L));
+        assertEquals(COLOR_INSTRUCTION_COLOR_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void rejectRestrikeColorLine_pending_success_clonesRoundPlusOne_noPhotos_convenienceRule() {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO oldRow = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("大红")
+                .factoryColorNo("F01").colorHex("#FF0000").lightPrimary("D65").lightSecondary("TL84")
+                .colorCardRef("Pantone 18-1662").copies(2).round(1).status("PENDING")
+                .samplePhotos("[{\"url\":\"http://test.com/photo.jpg\"}]").remark("第一轮备注").build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(oldRow);
+        when(colorInstructionColorMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        when(colorInstructionColorMapper.selectListByInstructionId(101L)).thenReturn(List.of(oldRow));
+
+        ColorInstructionColorRejectRestrikeReqVO reqVO = ColorInstructionColorRejectRestrikeReqVO.builder()
+                .id(1L)
+                .rejectReason("色光偏黄，需回调")
+                .build();
+
+        colorInstructionService.rejectRestrikeColorLine(reqVO);
+
+        // 验证旧行条件更新为 REJECTED 并记录 rejectReason
+        ArgumentCaptor<Wrapper<ColorInstructionColorDO>> updateCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(colorInstructionColorMapper).update(isNull(), updateCaptor.capture());
+        assertTrue(updateCaptor.getValue().getSqlSet().contains("status"));
+        assertTrue(updateCaptor.getValue().getSqlSet().contains("reject_reason"));
+        assertTrue(updateCaptor.getValue().getSqlSegment().contains("status IN"));
+
+        // 验证便利规则：主单转 IN_PROGRESS
+        verify(colorInstructionMapper).update(isNull(), any(Wrapper.class));
+
+        // 验证克隆新行：round=2, status=PENDING, samplePhotos=null（不继承！）, 继承属性
+        ArgumentCaptor<ColorInstructionColorDO> insertCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper).insert(insertCaptor.capture());
+        ColorInstructionColorDO cloned = insertCaptor.getValue();
+
+        assertNull(cloned.getId());
+        assertEquals(101L, cloned.getInstructionId());
+        assertEquals("C01", cloned.getCustomerColorNo());
+        assertEquals("大红", cloned.getColorName());
+        assertEquals("F01", cloned.getFactoryColorNo());
+        assertEquals("#FF0000", cloned.getColorHex());
+        assertEquals("D65", cloned.getLightPrimary());
+        assertEquals("TL84", cloned.getLightSecondary());
+        assertEquals("Pantone 18-1662", cloned.getColorCardRef());
+        assertEquals(2, cloned.getCopies());
+        assertEquals(2, cloned.getRound(), "轮次应为 round+1 (2)");
+        assertEquals("PENDING", cloned.getStatus(), "新行状态应为 PENDING");
+        assertNull(cloned.getSamplePhotos(), "样布照片绝不继承！");
+        assertNull(cloned.getRejectReason(), "新行驳回原因应为空");
+        assertEquals("第一轮备注", cloned.getRemark());
+        assertEquals(1, cloned.getLineNo(), "最新轮次排在前（lineNo=1）");
+    }
+
+    @Test
+    void rejectRestrikeColorLine_approved_success_clonesRoundPlusOne() {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO approvedRow = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("天蓝")
+                .round(2).status("APPROVED").lightPrimary("D65")
+                .samplePhotos("[{\"url\":\"http://test.com/photo2.jpg\"}]").build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(approvedRow);
+        when(colorInstructionColorMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        when(colorInstructionColorMapper.selectListByInstructionId(101L)).thenReturn(List.of(approvedRow));
+
+        ColorInstructionColorRejectRestrikeReqVO reqVO = ColorInstructionColorRejectRestrikeReqVO.builder()
+                .id(1L)
+                .rejectReason("客户口头推翻同意")
+                .build();
+
+        colorInstructionService.rejectRestrikeColorLine(reqVO);
+
+        ArgumentCaptor<ColorInstructionColorDO> insertCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper).insert(insertCaptor.capture());
+        ColorInstructionColorDO cloned = insertCaptor.getValue();
+
+        assertEquals(3, cloned.getRound(), "round 应从 2 递增为 3");
+        assertEquals("PENDING", cloned.getStatus());
+        assertNull(cloned.getSamplePhotos(), "照片不继承");
+    }
+
+    @Test
+    void rejectRestrikeColorLine_alreadyRejected_throws1030032006() {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO rejectedRow = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(2).customerColorNo("C01").colorName("天蓝")
+                .round(1).status("REJECTED").lightPrimary("D65").rejectReason("已驳回").build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(rejectedRow);
+
+        ColorInstructionColorRejectRestrikeReqVO reqVO = ColorInstructionColorRejectRestrikeReqVO.builder()
+                .id(1L)
+                .rejectReason("再次驳回")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.rejectRestrikeColorLine(reqVO));
+        assertEquals(COLOR_INSTRUCTION_COLOR_STATUS_NOT_ALLOW.getCode(), ex.getCode(),
+                "已 REJECTED 行不可再驳回重打，应抛 1_030_032_006");
+        verify(colorInstructionColorMapper, never()).insert(any(ColorInstructionColorDO.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"CONFIRMED", "IN_PRODUCTION", "VOID"})
+    void rejectRestrikeColorLine_parentTerminal_throws1030032002(String parentStatus) {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus(parentStatus);
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO row = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("天蓝")
+                .round(1).status("PENDING").lightPrimary("D65").build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(row);
+
+        ColorInstructionColorRejectRestrikeReqVO reqVO = ColorInstructionColorRejectRestrikeReqVO.builder()
+                .id(1L).rejectReason("驳回").build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.rejectRestrikeColorLine(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+        verify(colorInstructionColorMapper, never()).insert(any(ColorInstructionColorDO.class));
+    }
+
+    @Test
+    void rejectRestrikeColorLine_concurrency_zeroRows_throws1030032002() {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        ColorInstructionColorDO row = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("天蓝")
+                .round(1).status("PENDING").lightPrimary("D65").build();
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(row);
+        when(colorInstructionColorMapper.update(isNull(), any(Wrapper.class))).thenReturn(0);
+
+        ColorInstructionColorRejectRestrikeReqVO reqVO = ColorInstructionColorRejectRestrikeReqVO.builder()
+                .id(1L).rejectReason("并发驳回").build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.rejectRestrikeColorLine(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+        verify(colorInstructionColorMapper, never()).insert(any(ColorInstructionColorDO.class));
+    }
+
+    @Test
+    void rejectRestrikeColorLine_reordersLineNo_multiRoundAdjacentLatestFirst() {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        // 单据已有 C01 R1 (lineNo 1), C02 R1 (lineNo 2)
+        ColorInstructionColorDO c1_r1 = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("PENDING").lightPrimary("D65").build();
+        ColorInstructionColorDO c2_r1 = ColorInstructionColorDO.builder()
+                .id(2L).instructionId(101L).lineNo(2).customerColorNo("C02").colorName("蓝")
+                .round(1).status("PENDING").lightPrimary("D65").build();
+
+        when(colorInstructionColorMapper.selectById(1L)).thenReturn(c1_r1);
+        when(colorInstructionColorMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        when(colorInstructionColorMapper.selectListByInstructionId(101L)).thenReturn(List.of(c1_r1, c2_r1));
+
+        ColorInstructionColorRejectRestrikeReqVO reqVO = ColorInstructionColorRejectRestrikeReqVO.builder()
+                .id(1L).rejectReason("需要重打").build();
+
+        colorInstructionService.rejectRestrikeColorLine(reqVO);
+
+        // 验证新插入行 (C01 R2) lineNo = 1
+        ArgumentCaptor<ColorInstructionColorDO> insertCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper).insert(insertCaptor.capture());
+        ColorInstructionColorDO inserted = insertCaptor.getValue();
+        assertEquals("C01", inserted.getCustomerColorNo());
+        assertEquals(2, inserted.getRound());
+        assertEquals(1, inserted.getLineNo(), "C01 R2 最新轮次应为 lineNo 1");
+
+        // 验证存量行的 lineNo 更新：C01 R1 变成 lineNo 2, C02 R1 变成 lineNo 3
+        ArgumentCaptor<ColorInstructionColorDO> updateCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper, atLeastOnce()).updateById(updateCaptor.capture());
+
+        Map<Long, Integer> lineNoMap = new HashMap<>();
+        for (ColorInstructionColorDO c : updateCaptor.getAllValues()) {
+            lineNoMap.put(c.getId(), c.getLineNo());
+        }
+
+        assertEquals(2, lineNoMap.get(1L), "同色号相邻且次新轮次：C01 R1 应重排为 lineNo 2");
+        assertEquals(3, lineNoMap.get(2L), "后组颜色：C02 R1 应重排为 lineNo 3");
+    }
+
 }

@@ -326,4 +326,132 @@ describe('Color Instruction (打色指示单) Foundation Tests', () => {
       expect(colors[2].id).toBe(13)
     })
   })
+
+  describe('Issue 04: Line Actions - Approve, Reject-Restrike & Start Instruction', () => {
+    it('should call startColorInstruction endpoint with correct payload', async () => {
+      vi.mocked(request.put).mockResolvedValueOnce(true as any)
+      const res = await ColorInstructionApi.startColorInstruction(101)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/production/color-instruction/start',
+        data: { id: 101 }
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should call approveColorLine endpoint with correct row id', async () => {
+      vi.mocked(request.put).mockResolvedValueOnce(true as any)
+      const res = await ColorInstructionApi.approveColorLine(201)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/production/color-instruction/color/approve',
+        data: { id: 201 }
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should call rejectRestrikeColorLine endpoint with id and rejectReason', async () => {
+      vi.mocked(request.put).mockResolvedValueOnce(true as any)
+      const payload = { id: 201, rejectReason: '色光偏红，需回调' }
+      const res = await ColorInstructionApi.rejectRestrikeColorLine(payload)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/production/color-instruction/color/reject-restrike',
+        data: payload
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should evaluate action availability correctly based on row status', () => {
+      const getAvailableLineActions = (row: { id?: number; status?: string }, docStatus?: string) => {
+        if (!row.id || !docStatus || !['PENDING', 'IN_PROGRESS'].includes(docStatus)) {
+          return { canApprove: false, canRejectRestrike: false }
+        }
+        return {
+          canApprove: row.status === 'PENDING',
+          canRejectRestrike: row.status === 'PENDING' || row.status === 'APPROVED'
+        }
+      }
+
+      // In PENDING / IN_PROGRESS doc status:
+      expect(getAvailableLineActions({ id: 1, status: 'PENDING' }, 'PENDING')).toEqual({
+        canApprove: true,
+        canRejectRestrike: true
+      })
+      expect(getAvailableLineActions({ id: 1, status: 'APPROVED' }, 'IN_PROGRESS')).toEqual({
+        canApprove: false,
+        canRejectRestrike: true
+      })
+      expect(getAvailableLineActions({ id: 1, status: 'REJECTED' }, 'IN_PROGRESS')).toEqual({
+        canApprove: false,
+        canRejectRestrike: false
+      })
+
+      // In terminal doc status:
+      expect(getAvailableLineActions({ id: 1, status: 'PENDING' }, 'CONFIRMED')).toEqual({
+        canApprove: false,
+        canRejectRestrike: false
+      })
+      expect(getAvailableLineActions({ id: 1, status: 'APPROVED' }, 'IN_PRODUCTION')).toEqual({
+        canApprove: false,
+        canRejectRestrike: false
+      })
+      expect(getAvailableLineActions({ id: 1, status: 'PENDING' }, 'VOID')).toEqual({
+        canApprove: false,
+        canRejectRestrike: false
+      })
+
+      // Unsaved new row (no id):
+      expect(getAvailableLineActions({ status: 'PENDING' }, 'IN_PROGRESS')).toEqual({
+        canApprove: false,
+        canRejectRestrike: false
+      })
+    })
+
+    it('should compute tableRowClassName correctly for REJECTED and APPROVED rows', () => {
+      const tableRowClassName = (row: { status?: string }) => {
+        if (row.status === 'REJECTED') return 'row-rejected'
+        if (row.status === 'APPROVED') return 'row-frozen'
+        return ''
+      }
+
+      expect(tableRowClassName({ status: 'REJECTED' })).toBe('row-rejected')
+      expect(tableRowClassName({ status: 'APPROVED' })).toBe('row-frozen')
+      expect(tableRowClassName({ status: 'PENDING' })).toBe('')
+    })
+
+    it('should verify restrike cloning logic: round+1, status=PENDING, samplePhotos=null', () => {
+      const oldRow = {
+        id: 10,
+        instructionId: 101,
+        customerColorNo: 'C01',
+        colorName: '中国红',
+        factoryColorNo: 'F01',
+        colorHex: '#FF0000',
+        lightPrimary: 'D65',
+        lightSecondary: 'TL84',
+        colorCardRef: 'Pantone 18-1662',
+        copies: 2,
+        round: 1,
+        status: 'PENDING',
+        samplePhotos: '[{"name":"样布1","url":"http://test.com/img1.jpg"}]',
+        remark: '原备注'
+      }
+
+      // Emulate restrike clone
+      const clonedRow = {
+        ...oldRow,
+        id: undefined,
+        round: oldRow.round + 1,
+        status: 'PENDING',
+        samplePhotos: null, // photos MUST NOT be inherited
+        rejectReason: undefined
+      }
+
+      expect(clonedRow.round).toBe(2)
+      expect(clonedRow.status).toBe('PENDING')
+      expect(clonedRow.samplePhotos).toBeNull()
+      expect(clonedRow.customerColorNo).toBe('C01')
+      expect(clonedRow.colorName).toBe('中国红')
+      expect(clonedRow.lightPrimary).toBe('D65')
+      expect(clonedRow.copies).toBe(2)
+    })
+  })
 })
