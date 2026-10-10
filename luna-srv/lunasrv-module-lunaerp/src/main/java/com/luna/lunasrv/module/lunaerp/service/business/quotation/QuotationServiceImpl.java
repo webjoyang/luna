@@ -395,21 +395,31 @@ public class QuotationServiceImpl implements QuotationService {
             throw exception(QUOTATION_STATUS_NOT_ALLOWED);
         }
 
-        // 5. 复制为新草稿，version_no + 1
+        // 5. 复制为新草稿，version_no + 1，有效期重置为今天起/至空，保留成本快照
         QuotationDO newDraft = BeanUtils.toBean(existing, QuotationDO.class);
         newDraft.setId(null);
         newDraft.setVersionNo(existing.getVersionNo() + 1);
         newDraft.setStatus(DEFAULT_STATUS);
         newDraft.setQuotationDate(LocalDate.now());
         newDraft.setValidFrom(LocalDate.now());
-        quotationMapper.insert(newDraft);
+        newDraft.setValidTo(null);
+        newDraft.setRemarks("修订自 v" + existing.getVersionNo() + (StringUtils.hasText(existing.getRemarks()) ? " | " + existing.getRemarks() : ""));
 
-        // 6. 复制明细行
+        try {
+            quotationMapper.insert(newDraft);
+        } catch (Exception ex) {
+            log.warn("[reviseQuotation] 插入新版本草稿冲突: no={}, version={}", newDraft.getQuotationNo(), newDraft.getVersionNo(), ex);
+            throw exception(QUOTATION_DRAFT_EXISTS);
+        }
+
+        // 6. 复制明细行（保留成本快照并标记复制自 vN，可重新取价）
         List<QuotationItemDO> oldItems = quotationItemMapper.selectListByQuotationId(existing.getId());
         for (QuotationItemDO oldItem : oldItems) {
             QuotationItemDO newItem = BeanUtils.toBean(oldItem, QuotationItemDO.class);
             newItem.setId(null);
             newItem.setQuotationId(newDraft.getId());
+            String copyNote = "复制自 v" + existing.getVersionNo() + "，可重新取价";
+            newItem.setRemark(StringUtils.hasText(oldItem.getRemark()) ? oldItem.getRemark() + " (" + copyNote + ")" : copyNote);
             quotationItemMapper.insert(newItem);
         }
 

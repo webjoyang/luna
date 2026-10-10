@@ -41,12 +41,38 @@
           type="warning"
           :loading="revising"
           @click="handleRevise"
-          v-hasPermi="['lunaerp:business:quotation:create']"
+          v-hasPermi="['lunaerp:business:quotation:update']"
         >
           修订报价
         </el-button>
+        <el-button
+          v-if="formData.id"
+          type="info"
+          plain
+          @click="openVersionsDrawer"
+        >
+          历史版本
+        </el-button>
       </div>
     </div>
+
+    <!-- 状态横幅提醒 -->
+    <el-alert
+      v-if="formData.status === 'SUPERSEDED'"
+      title="当前版本已修订，处于只读归档状态。请点击右上角「历史版本」查看最新版本。"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="mb-20px"
+    />
+    <el-alert
+      v-if="formData.status === 'CANCELLED'"
+      title="当前报价单已取消，处于只读终态。"
+      type="error"
+      show-icon
+      :closable="false"
+      class="mb-20px"
+    />
 
     <!-- 1. 基本信息卡片 -->
     <el-card shadow="never" class="mb-20px" v-loading="loading">
@@ -474,6 +500,65 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 历史版本抽屉 -->
+    <el-drawer
+      v-model="versionsDrawerVisible"
+      :title="`报价单 [${formData.quotationNo}] 历史版本`"
+      size="720px"
+    >
+      <el-table :data="versionsList" stripe border v-loading="versionsLoading">
+        <el-table-column label="版本号" align="center" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.versionNo === formData.versionNo ? 'success' : 'info'" size="small">
+              v{{ row.versionNo }} {{ row.versionNo === formData.versionNo ? '(当前)' : '' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="报价日期" align="center" prop="quotationDate" width="120" />
+        <el-table-column label="状态" align="center" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.expired" type="info" effect="plain">已失效</el-tag>
+            <dict-tag
+              v-else
+              :type="DICT_TYPE.LUNAERP_QUOTATION_STATUS"
+              :value="row.status"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="总金额" align="right" min-width="120">
+          <template #default="{ row }">
+            <span class="font-mono">{{ formatCurrency(row.totalAmount, row.currency) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-if="hasAmountPerm"
+          label="整单毛利率"
+          align="right"
+          width="110"
+        >
+          <template #default="{ row }">
+            <span v-if="row.avgMarginRate != null" class="font-mono">
+              {{ (Number(row.avgMarginRate) * 100).toFixed(2) }}%
+            </span>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" align="center" width="100">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.id !== formData.id"
+              link
+              type="primary"
+              @click="handleSwitchVersion(row)"
+            >
+              切换查看
+            </el-button>
+            <span v-else class="text-xs text-gray-400">当前浏览</span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-drawer>
   </ContentWrap>
 </template>
 
@@ -560,7 +645,8 @@ const isReadOnly = computed(() => {
 
 const pageTitle = computed(() => {
   if (formData.id) {
-    return isReadOnly.value ? `报价单详情: ${formData.quotationNo}` : `编辑报价单: ${formData.quotationNo}`
+    const noDisplay = formData.versionNo ? `${formData.quotationNo}-v${formData.versionNo}` : formData.quotationNo
+    return isReadOnly.value ? `报价单详情: ${noDisplay}` : `编辑报价单: ${noDisplay}`
   }
   return '新建报价单'
 })
@@ -901,6 +987,26 @@ const loadDetail = async (id: number) => {
   } finally {
     loading.value = false
   }
+// 历史版本抽屉
+const versionsDrawerVisible = ref(false)
+const versionsLoading = ref(false)
+const versionsList = ref<QuotationVO[]>([])
+
+const openVersionsDrawer = async () => {
+  if (!formData.quotationNo) return
+  versionsDrawerVisible.value = true
+  versionsLoading.value = true
+  try {
+    versionsList.value = await QuotationApi.getQuotationVersions(formData.quotationNo)
+  } finally {
+    versionsLoading.value = false
+  }
+}
+
+const handleSwitchVersion = (row: QuotationVO) => {
+  versionsDrawerVisible.value = false
+  router.push(`/business/quotation/edit?id=${row.id}&readonly=${row.status !== 'DRAFT' ? 1 : 0}`)
+  loadDetail(row.id!)
 }
 
 onMounted(async () => {

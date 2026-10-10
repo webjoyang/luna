@@ -4,14 +4,14 @@
 
 **Blocked by:** 08（报价单骨架端到端）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Controller 加 `POST /revise?id=`（返新版本草稿 id）；权限复用 update
-- [ ] revise 守卫：仅「同号最大版本且 = CONFIRMED」可操作（`SELECT FOR UPDATE` 同号行或唯一索引串行化）；非最新版报 `1_030_034_103`
-- [ ] revise 同事务：旧版条件更新为 SUPERSEDED、插入 `version_no+1` 的 DRAFT（头行复制、有效期重置为今天起/至空、成本快照保留并标记「复制自 vN」）
-- [ ] 同号草稿冲突由部分唯一索引兜底，转 `1_030_034_104`
-- [ ] DRAFT 新版删除后该号止于 SUPERSEDED，不可「复活」旧版
-- [ ] SUPERSEDED/CANCELLED 版本不可编辑不可删除（API 层守卫报 `1_030_034_102`）
-- [ ] 前端列表/详情把编号展示为 `QT20260001-v2`；详情页加「同号版本历史」抽屉（按 `version_no` 倒序，只读）；修订/取消/删除按钮按状态版本权限启停
-- [ ] `QuotationServiceImplTest` 单测：revise 仅最新 CONFIRMED 可操作、旧版 SUPERSEDED、同号草稿冲突 104、DRAFT 删除后该号止于 SUPERSEDED、SUPERSEDED/CANCELLED 不可改删
-- [ ] 验收：v1 确认 → 修订出 v2 草稿 → 编辑确认 → 同号版本抽屉看到 v1（已修订只读）+ v2（已确认）；再修订出 v3；旧版不再可修订
+- [x] Controller 加 `POST /revise?id=`（返新版本草稿 id）；权限复用 update
+- [x] revise 守卫：仅「同号最大版本且 = CONFIRMED」可操作（`SELECT FOR UPDATE` 同号行或唯一索引串行化）；非最新版报 `1_030_034_103`
+- [x] revise 同事务：旧版条件更新为 SUPERSEDED、插入 `version_no+1` 的 DRAFT（头行复制、有效期重置为今天起/至空、成本快照保留并标记「复制自 vN」）
+- [x] 同号草稿冲突由部分唯一索引兜底，转 `1_030_034_104`
+- [x] DRAFT 新版删除后该号止于 SUPERSEDED，不可「复活」旧版
+- [x] SUPERSEDED/CANCELLED 版本不可编辑不可删除（API 层守卫报 `1_030_034_102`）
+- [x] 前端列表/详情把编号展示为 `QT20260001-v2`；详情页加「同号版本历史」抽屉（按 `version_no` 倒序，只读）；修订/取消/删除按钮按状态版本权限启停
+- [x] `QuotationServiceImplTest` 单测：revise 仅最新 CONFIRMED 可操作、旧版 SUPERSEDED、同号草稿冲突 104、DRAFT 删除后该号止于 SUPERSEDED、SUPERSEDED/CANCELLED 不可改删
+- [x] 验收：v1 确认 → 修订出 v2 草稿 → 编辑确认 → 同号版本抽屉看到 v1（已修订只读）+ v2（已确认）；再修订出 v3；旧版不再可修订

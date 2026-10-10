@@ -73,10 +73,10 @@ public class QuotationController {
         return success(true);
     }
 
-    @PutMapping("/revise")
+    @RequestMapping(value = "/revise", method = {RequestMethod.POST, RequestMethod.PUT})
     @Operation(summary = "修订报价单（CONFIRMED -> SUPERSEDED，生成新版本草稿）")
     @Parameter(name = "id", description = "报价单编号", required = true)
-    @PreAuthorize("@ss.hasPermission('lunaerp:business:quotation:create')")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:quotation:update')")
     public CommonResult<Long> reviseQuotation(@RequestParam("id") Long id) {
         return success(quotationService.reviseQuotation(id));
     }

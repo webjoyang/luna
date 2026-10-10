@@ -394,8 +394,75 @@ public class QuotationServiceImplTest {
         assertEquals(2, newDraft.getVersionNo());
         assertEquals("DRAFT", newDraft.getStatus());
         assertEquals("QT20260001", newDraft.getQuotationNo());
+        assertNull(newDraft.getValidTo());
+        assertTrue(newDraft.getRemarks().contains("修订自 v1"));
 
-        verify(quotationItemMapper).insert(any(QuotationItemDO.class));
+        ArgumentCaptor<QuotationItemDO> itemCaptor = ArgumentCaptor.forClass(QuotationItemDO.class);
+        verify(quotationItemMapper).insert(itemCaptor.capture());
+        assertTrue(itemCaptor.getValue().getRemark().contains("复制自 v1"));
+    }
+
+    @Test
+    @DisplayName("修订报价单 - 非最新版本拦截 103")
+    public void testReviseQuotation_NotLatestVersion() {
+        QuotationDO oldVersion = QuotationDO.builder()
+                .id(1L)
+                .quotationNo("QT20260001")
+                .versionNo(1)
+                .status("CONFIRMED")
+                .build();
+        when(quotationMapper.selectById(1L)).thenReturn(oldVersion);
+        when(quotationMapper.selectMaxVersionNoByQuotationNo("QT20260001")).thenReturn(2); // 最新是 2
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> quotationService.reviseQuotation(1L));
+        assertEquals(QUOTATION_NOT_LATEST_VERSION.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("修订报价单 - 非 CONFIRMED 状态拦截 102")
+    public void testReviseQuotation_NotConfirmedStatus() {
+        QuotationDO draft = QuotationDO.builder()
+                .id(1L)
+                .quotationNo("QT20260001")
+                .versionNo(1)
+                .status("DRAFT")
+                .build();
+        when(quotationMapper.selectById(1L)).thenReturn(draft);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> quotationService.reviseQuotation(1L));
+        assertEquals(QUOTATION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("修订报价单 - 同号已有草稿拦截 104")
+    public void testReviseQuotation_DraftAlreadyExists() {
+        QuotationDO confirmed = QuotationDO.builder()
+                .id(1L)
+                .quotationNo("QT20260001")
+                .versionNo(1)
+                .status("CONFIRMED")
+                .build();
+        when(quotationMapper.selectById(1L)).thenReturn(confirmed);
+        when(quotationMapper.selectMaxVersionNoByQuotationNo("QT20260001")).thenReturn(1);
+        when(quotationMapper.selectDraftByQuotationNo("QT20260001")).thenReturn(new QuotationDO());
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> quotationService.reviseQuotation(1L));
+        assertEquals(QUOTATION_DRAFT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("状态守卫 - SUPERSEDED 与 CANCELLED 终态不可修改不可删除")
+    public void testStatusGuard_SupersededAndCancelledImmutable() {
+        QuotationDO superseded = QuotationDO.builder().id(1L).status("SUPERSEDED").build();
+        when(quotationMapper.selectById(1L)).thenReturn(superseded);
+
+        QuotationSaveReqVO updateReq = buildValidReqVO();
+        updateReq.setId(1L);
+        ServiceException updateEx = assertThrows(ServiceException.class, () -> quotationService.updateQuotation(updateReq));
+        assertEquals(QUOTATION_STATUS_NOT_ALLOWED.getCode(), updateEx.getCode());
+
+        ServiceException deleteEx = assertThrows(ServiceException.class, () -> quotationService.deleteQuotation(1L));
+        assertEquals(QUOTATION_STATUS_NOT_ALLOWED.getCode(), deleteEx.getCode());
     }
 
 }

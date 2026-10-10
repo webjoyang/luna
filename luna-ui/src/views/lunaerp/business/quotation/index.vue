@@ -78,12 +78,9 @@
   <!-- 列表卡片 -->
   <ContentWrap>
     <el-table v-loading="loading" :data="list" stripe border>
-      <el-table-column label="报价单号" align="center" prop="quotationNo" min-width="150">
+      <el-table-column label="报价单号" align="center" prop="quotationNo" min-width="160">
         <template #default="{ row }">
-          <div class="flex items-center justify-center gap-1">
-            <span class="font-mono font-medium">{{ row.quotationNo }}</span>
-            <el-tag size="small" type="info">v{{ row.versionNo }}</el-tag>
-          </div>
+          <span class="font-mono font-medium">{{ row.quotationNo }}-v{{ row.versionNo }}</span>
         </template>
       </el-table-column>
 
