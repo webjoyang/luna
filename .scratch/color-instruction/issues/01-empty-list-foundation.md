@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** completed
+**Status:** resolved
 
 - [x] 主表 `lunaerp_production_color_instruction` + 颜色行子表 `lunaerp_production_color_instruction_color` 已建（含主键序列、`tenant_id`+create/update/deleted 框架列、`UNIQUE (tenant_id, instruction_no)` 全量唯一含已删行仿 ADR-0006、`(tenant_id, customer_id)`/`(tenant_id, status)`/`(tenant_id, instruction_date)`/颜色行 `(tenant_id, instruction_id)`/`(tenant_id, status)` 索引、全列注释）
 - [x] "生产管理"目录（10200）下注册菜单 10230 打色指示单（type=2，sort=0，时序在胚布单之前）+ 按钮 10231-10235（创建/修改/删除/确认/打印）；脚本事务内先 DELETE 再 INSERT 可重复执行
