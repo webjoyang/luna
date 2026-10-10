@@ -66,6 +66,9 @@ public class SalesContractRespVO {
     @Schema(description = "合同状态（字典 lunaerp_sales_contract_status）", example = "ACTIVE")
     private String status;
 
+    @Schema(description = "审批状态（DRAFT/PENDING/APPROVING/APPROVED/REJECTED/CANCELLED）", example = "DRAFT")
+    private String approvalStatus;
+
     @Schema(description = "商品明细列表（按 line_no 升序；分页列表不返回明细）")
     private List<SalesContractItemRespVO> items;
 

@@ -31,6 +31,16 @@
           />
         </el-select>
       </el-form-item>
+      <el-form-item label="审批状态" prop="approvalStatus">
+        <el-select v-model="queryParams.approvalStatus" placeholder="全部" clearable class="!w-180px">
+          <el-option
+            v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_APPROVAL_INSTANCE_STATUS)"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
+      </el-form-item>
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" />重置</el-button>
@@ -71,6 +81,11 @@
           <DictTag :type="DICT_TYPE.LUNAERP_SALES_CONTRACT_STATUS" :value="row.status" />
         </template>
       </el-table-column>
+      <el-table-column label="审批状态" prop="approvalStatus" width="100" align="center">
+        <template #default="{ row }">
+          <DictTag :type="DICT_TYPE.LUNAERP_APPROVAL_INSTANCE_STATUS" :value="row.approvalStatus || 'DRAFT'" />
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="180" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
@@ -84,6 +99,7 @@
           <el-button
             link
             type="primary"
+            :disabled="row.approvalStatus === 'APPROVING'"
             @click="openEdit(row.id)"
             v-hasPermi="['lunaerp:business:sales-contract:update']"
           >
@@ -92,6 +108,7 @@
           <el-button
             link
             type="danger"
+            :disabled="row.approvalStatus === 'APPROVING'"
             @click="handleDelete(row.id)"
             v-hasPermi="['lunaerp:business:sales-contract:delete']"
           >
@@ -133,6 +150,7 @@ const queryParams = reactive({
   pageSize: 20,
   keyword: '',
   status: '',
+  approvalStatus: '',
   tradeType: ''
 })
 

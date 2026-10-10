@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS lunaerp_business_sales_contract (
     total_amount             numeric(18,2) NOT NULL DEFAULT 0,
     remarks                  varchar(1000) NULL,
     status                   varchar       NOT NULL DEFAULT 'ACTIVE',
+    approval_status          varchar(16)   NOT NULL DEFAULT 'DRAFT',
     creator                  varchar(64)   NULL DEFAULT '',
     create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater                  varchar(64)   NULL DEFAULT '',
@@ -74,7 +75,10 @@ COMMENT ON COLUMN lunaerp_business_sales_contract.total_quantity IS '总数量�
 COMMENT ON COLUMN lunaerp_business_sales_contract.total_amount IS '总金额（本票固定 0，02 票按商品明细重算）';
 COMMENT ON COLUMN lunaerp_business_sales_contract.remarks IS '备注';
 COMMENT ON COLUMN lunaerp_business_sales_contract.status IS '合同状态（字典 lunaerp_sales_contract_status：ACTIVE/COMPLETED/CANCELLED），创建缺省 ACTIVE';
+COMMENT ON COLUMN lunaerp_business_sales_contract.approval_status IS '审批状态（DRAFT 草稿 / APPROVING 审批中 / APPROVED 已通过 / REJECTED 已驳回 / CANCELLED 已撤回）';
 COMMENT ON COLUMN lunaerp_business_sales_contract.creator IS '创建者';
+
+ALTER TABLE lunaerp_business_sales_contract ADD COLUMN IF NOT EXISTS approval_status varchar(16) NOT NULL DEFAULT 'DRAFT';
 COMMENT ON COLUMN lunaerp_business_sales_contract.create_time IS '创建时间';
 COMMENT ON COLUMN lunaerp_business_sales_contract.updater IS '更新者';
 COMMENT ON COLUMN lunaerp_business_sales_contract.update_time IS '更新时间';

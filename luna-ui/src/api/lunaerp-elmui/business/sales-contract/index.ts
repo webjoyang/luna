@@ -38,6 +38,7 @@ export interface SalesContractVO {
   totalAmount?: number // 服务端按明细权威重算，前端传入值会被忽略覆盖
   remarks?: string
   status?: string
+  approvalStatus?: string
   items?: SalesContractItemVO[] // 商品明细列表（整体替换；为空表示零明细合同）
   createTime?: Date | string
 }
@@ -48,6 +49,7 @@ export interface SalesContractPageParam {
   pageSize?: number
   keyword?: string
   status?: string
+  approvalStatus?: string
   tradeType?: string
   customerId?: number
 }

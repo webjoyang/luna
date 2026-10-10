@@ -57,6 +57,7 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_approval_config_status', label: '停用', value: 'DISABLED', colorType: 'danger', cssClass: '' }
   ],
   lunaerp_approval_instance_status: [
+    { dictType: 'lunaerp_approval_instance_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
     { dictType: 'lunaerp_approval_instance_status', label: '审批中', value: 'APPROVING', colorType: 'primary', cssClass: '' },
     { dictType: 'lunaerp_approval_instance_status', label: '已通过', value: 'APPROVED', colorType: 'success', cssClass: '' },
     { dictType: 'lunaerp_approval_instance_status', label: '已驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' },

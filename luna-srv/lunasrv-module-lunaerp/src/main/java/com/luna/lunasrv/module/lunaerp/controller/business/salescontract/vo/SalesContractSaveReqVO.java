@@ -64,6 +64,9 @@ public class SalesContractSaveReqVO {
     @Schema(description = "合同状态（字典 lunaerp_sales_contract_status），缺省 ACTIVE", example = "ACTIVE")
     private String status;
 
+    @Schema(description = "审批状态（DRAFT/PENDING/APPROVING/APPROVED/REJECTED/CANCELLED），缺省 DRAFT", example = "DRAFT")
+    private String approvalStatus;
+
     @Schema(description = "总数量（服务端按明细权威重算，前端传入值一律忽略覆盖）", example = "0")
     private java.math.BigDecimal totalQuantity;
 

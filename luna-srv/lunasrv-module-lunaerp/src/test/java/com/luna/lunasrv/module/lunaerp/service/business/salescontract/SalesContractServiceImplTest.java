@@ -925,4 +925,32 @@ class SalesContractServiceImplTest {
         assertEquals("P002", respVO.getItems().get(1).getProductCode());
     }
 
+    @Test
+    void updateSalesContract_whenApproving_throwsException() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        contract.setApprovalStatus("APPROVING");
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractSaveReqVO reqVO = new SalesContractSaveReqVO();
+        reqVO.setId(2048L);
+        reqVO.setCustomerId(1L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> salesContractService.updateSalesContract(reqVO));
+        assertEquals(1_030_030_004, ex.getCode());
+    }
+
+    @Test
+    void deleteSalesContract_whenApproving_throwsException() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        contract.setApprovalStatus("APPROVING");
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> salesContractService.deleteSalesContract(2048L));
+        assertEquals(1_030_030_004, ex.getCode());
+    }
+
 }
