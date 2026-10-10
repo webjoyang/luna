@@ -17,6 +17,7 @@ export const RECYCLE_BIZ_TYPES = [
   { label: '纱线材质', value: 'YARN_TYPE' },
   { label: '纱线规格', value: 'YARN_SPEC' },
   { label: '销售合同', value: 'SALES_CONTRACT' },
+  { label: '打色指示单', value: 'COLOR_INSTRUCTION' },
   { label: '胚布单', value: 'GREIGE_ORDER' },
   { label: '染色单', value: 'DYEING_ORDER' },
   { label: '纱线采购单', value: 'YARN_PURCHASE_ORDER' },
