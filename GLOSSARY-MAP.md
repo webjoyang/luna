@@ -10,7 +10,7 @@
 | 上下文 | 覆盖范围 | 文档 |
 |---|---|---|
 | **baseinfo** 基本信息 | 客户与联系人、供应商与联系人、产品（含胚布品种、产品标签） | [docs/contexts/baseinfo/GLOSSARY.md](docs/contexts/baseinfo/GLOSSARY.md) |
-| **business** 业务管理 | 销售合同、发货管理 | [docs/contexts/business/GLOSSARY.md](docs/contexts/business/GLOSSARY.md) |
+| **business** 业务管理 | 销售合同、发货管理、出口单证、成本卡与报价、销售退货 | [docs/contexts/business/GLOSSARY.md](docs/contexts/business/GLOSSARY.md) |
 | **production** 生产管理 | 胚布单（含发染记录）、染色单、纱线材质/规格/配比BOM/采购、检验单、质检确认、织造执行（织造单/机台任务/布票/织机/领纱/IoT）、进度反馈、生产进度聚合视图 | [docs/contexts/production/GLOSSARY.md](docs/contexts/production/GLOSSARY.md) |
 | **stock** 库存管理 | 入库单（含明细/库位分配）、仓库、库位、库存台账/流水、库存余额 | [docs/contexts/stock/GLOSSARY.md](docs/contexts/stock/GLOSSARY.md) |
 | **sample** 样品管理 | 样品分析（来样分析记录/针织工艺反推/成本报价/月结收费） | [docs/contexts/sample/GLOSSARY.md](docs/contexts/sample/GLOSSARY.md) |
