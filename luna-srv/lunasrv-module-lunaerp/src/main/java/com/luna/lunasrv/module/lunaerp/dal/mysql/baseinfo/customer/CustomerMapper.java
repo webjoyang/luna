@@ -9,6 +9,8 @@ import com.luna.lunasrv.module.lunaerp.controller.baseinfo.customer.vo.CustomerP
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -24,6 +26,21 @@ import java.util.List;
  */
 @Mapper
 public interface CustomerMapper extends BaseMapperX<CustomerDO> {
+
+    /**
+     * 调岗同步归属部门（ADR-0046）
+     *
+     * <p>绕过数据权限规则，在当前租户下将该业务员名下所有有效客户的归属部门刷新为新部门。</p>
+     *
+     * @param salespersonUserId 业务员用户编号
+     * @param deptId 新部门编号
+     * @return 更新行数
+     */
+    @DataPermission(enable = false)
+    @Update("UPDATE lunaerp_baseinfo_customer SET dept_id = #{deptId,jdbcType=BIGINT} "
+            + "WHERE salesperson_user_id = #{salespersonUserId,jdbcType=BIGINT} AND deleted = 0")
+    int updateDeptIdBySalespersonUserId(@Param("salespersonUserId") Long salespersonUserId,
+                                        @Param("deptId") Long deptId);
 
     /**
      * 客户分页查询：search 智能词 OR 四字段 ILIKE + status 等值过滤。

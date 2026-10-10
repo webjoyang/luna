@@ -211,4 +211,18 @@ public class LunaerpDataPermissionWiringSqlBootstrapTest {
         assertFalse(sql.contains("ALTER TABLE lunaerp_business_quotation"),
                 "报价单两表 DDL 由 05 票建表脚本自带，本脚本禁止 ALTER");
     }
+
+    @Test
+    @DisplayName("验证迁移脚本附幂等归属校正 SQL（默认注释形态随脚本交付，覆盖 4 表全量重刷）")
+    void testOwnershipCorrectionSqlPresent() throws IOException {
+        String sql = loadSqlContent();
+        assertTrue(sql.contains("UPDATE lunaerp_baseinfo_customer t SET dept_id = u.dept_id"),
+                "客户表需包含注释形态的归属校正 SQL");
+        assertTrue(sql.contains("UPDATE lunaerp_business_sales_contract t SET dept_id = u.dept_id"),
+                "销售合同表需包含注释形态的归属校正 SQL");
+        assertTrue(sql.contains("UPDATE lunaerp_business_shipment t SET dept_id = u.dept_id"),
+                "发货单表需包含注释形态的归属校正 SQL");
+        assertTrue(sql.contains("UPDATE lunaerp_business_quotation t SET dept_id = u.dept_id"),
+                "报价单表需包含注释形态的归属校正 SQL");
+    }
 }

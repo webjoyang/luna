@@ -8,6 +8,7 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.Sal
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 import org.springframework.util.StringUtils;
 
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
@@ -22,6 +23,21 @@ import java.util.List;
  */
 @Mapper
 public interface SalesContractMapper extends BaseMapperX<SalesContractDO> {
+
+    /**
+     * 调岗同步归属部门（ADR-0046）
+     *
+     * <p>绕过数据权限规则，在当前租户下将该业务员名下所有有效销售合同的归属部门刷新为新部门。</p>
+     *
+     * @param salespersonUserId 业务员用户编号
+     * @param deptId 新部门编号
+     * @return 更新行数
+     */
+    @DataPermission(enable = false)
+    @Update("UPDATE lunaerp_business_sales_contract SET dept_id = #{deptId,jdbcType=BIGINT} "
+            + "WHERE salesperson_user_id = #{salespersonUserId,jdbcType=BIGINT} AND deleted = 0")
+    int updateDeptIdBySalespersonUserId(@Param("salespersonUserId") Long salespersonUserId,
+                                        @Param("deptId") Long deptId);
 
     /**
      * 回收站分页查询已软删草稿销售合同（手写 XML：显式 WHERE deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}）
