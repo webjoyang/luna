@@ -229,7 +229,9 @@ class CustomerServiceImplTest {
         c2.setId(2L);
         CustomerDO c3 = new CustomerDO();
         c3.setId(3L);
-        when(customerMapper.selectByIds(anyList())).thenReturn(Arrays.asList(c1, c2, c3));
+        when(customerMapper.selectById(1L)).thenReturn(c1);
+        when(customerMapper.selectById(2L)).thenReturn(c2);
+        when(customerMapper.selectById(3L)).thenReturn(c3);
 
         customerService.deleteCustomerList(Arrays.asList(1L, 2L, 3L));
 
@@ -241,6 +243,23 @@ class CustomerServiceImplTest {
             assertEquals("INACTIVE", statusUpdate.getStatus(), "批量删除时每条都应先置 INACTIVE");
         }
         verify(customerMapper).deleteByIds(Arrays.asList(1L, 2L, 3L));
+    }
+
+    @Test
+    void deleteCustomerList_withInvisibleId_throwsCode1030004000_andZeroDeletions() {
+        // §5.4 / §9.2 用例 4：ids 中混入不可见 id → 整体失败且零删除、禁止部分成功
+        CustomerDO c1 = new CustomerDO();
+        c1.setId(1L);
+        when(customerMapper.selectById(1L)).thenReturn(c1);
+        when(customerMapper.selectById(2L)).thenReturn(null); // 不可见（或不存在）
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> customerService.deleteCustomerList(Arrays.asList(1L, 2L, 3L)));
+        assertEquals(1_030_004_000, ex.getCode(), "任一 id 不可见必须整体抛 CUSTOMER_NOT_EXISTS");
+
+        // 断言写操作 DB 零变更（不得部分置 INACTIVE，不得部分删除）
+        verify(customerMapper, never()).updateById(any(CustomerDO.class));
+        verify(customerMapper, never()).deleteByIds(anyList());
     }
 
     private static final List<String> CUSTOMER_HEADERS = Arrays.asList(

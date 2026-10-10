@@ -51,6 +51,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
+import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.baseinfo.customercontact.vo.CustomerContactPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.baseinfo.customercontact.vo.CustomerContactSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customercontact.CustomerContactDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customercontact.CustomerContactMapper;
+import com.luna.lunasrv.module.lunaerp.service.baseinfo.customercontact.CustomerContactServiceImpl;
+import org.mockito.ArgumentCaptor;
+
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -59,7 +67,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
 /**
- * 销售归属链数据权限接线测试（Issue 02）
+ * 销售归属链数据权限接线测试（Issue 02 / 05）
  *
  * 验证：
  * 1. LunaerpDataPermissionConfiguration 正确注册 CustomerDO / SalesContractDO / ShipmentDO 到 DeptDataPermissionRule；
@@ -68,6 +76,9 @@ import static org.mockito.Mockito.when;
  * 3. 边界语义：无登录用户不生效、无角色仅看本人、皆空拼 null=null、空归属行仅 ALL 可见
  * 4. easy-trans 翻译调用底座自动豁免
  * 5. 系统侧调用（取号扫描、未发量聚合、生产进度聚合）@DataPermission(enable=false) 显式关闭，且租户隔离不受影响
+ * 6. §5.3 / §9.2 用例 3 联系人裸 EXISTS 继承与五种调法防探测统一抛 1_030_004_001
+ * 7. §5.4 / §9.2 用例 4 客户批量删除强校验，混入不可见 id 整体失败零删除
+ * 8. §9.2 用例 2 四入口一致性校验
  *
  * @author luna
  */
@@ -83,6 +94,7 @@ public class LunaerpDataPermissionWiringTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), CustomerDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), SalesContractDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), ShipmentDO.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), CustomerContactDO.class);
     }
 
     @AfterEach
@@ -512,6 +524,178 @@ public class LunaerpDataPermissionWiringTest {
         List<ShipmentDO> completedList = shipmentService.selectListByContractIdAndStatus(777L, "COMPLETED");
         assertEquals(1, completedList.size());
         verify(shipmentMapper).selectListByContractIdAndStatus(777L, "COMPLETED");
+    }
+
+    @Test
+    @DisplayName("13. §5.3 / §9.2 用例 3 联系人继承：selectPage 构建裸 EXISTS 子查询，五种调法直连他人联系人/客户 id 一律 CUSTOMER_CONTACT_NOT_EXISTS")
+    void testCustomerContactInheritanceAndFiveAccessPoints() {
+        // 13.1 验证 selectPage 构建裸 EXISTS 子查询（无外部参数、防注入、ADR-0046 / §5.3）
+        CustomerContactMapper mockContactMapper = Mockito.mock(CustomerContactMapper.class, Mockito.withSettings().defaultAnswer(Mockito.CALLS_REAL_METHODS));
+        CustomerContactPageReqVO pageReqVO = new CustomerContactPageReqVO();
+        pageReqVO.setCustomerId(1024L);
+
+        mockContactMapper.selectPage(pageReqVO);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapperX<CustomerContactDO>> wrapperCaptor = ArgumentCaptor.forClass(LambdaQueryWrapperX.class);
+        verify(mockContactMapper).selectPage(eq(pageReqVO), wrapperCaptor.capture());
+        LambdaQueryWrapperX<CustomerContactDO> capturedWrapper = wrapperCaptor.getValue();
+        assertNotNull(capturedWrapper);
+        String customSqlSegment = capturedWrapper.getCustomSqlSegment();
+        assertTrue(customSqlSegment.contains("EXISTS (SELECT 1 FROM lunaerp_baseinfo_customer c WHERE c.id = lunaerp_baseinfo_customer_contact.customer_id)"),
+                "联系人分页查询必须包含裸 EXISTS 子查询");
+
+        // 13.2 验证联系人 Service 面对不可见客户（他人客户或不存在）五种调法一律统一抛 1_030_004_001
+        Long othersCustomerId = 9991L;
+        Long othersContactId = 9992L;
+        CustomerMapper customerMapper = Mockito.mock(CustomerMapper.class);
+        CustomerContactMapper contactMapper = Mockito.mock(CustomerContactMapper.class);
+        CustomerContactServiceImpl contactService = new CustomerContactServiceImpl();
+        ReflectionTestUtils.setField(contactService, "customerMapper", customerMapper);
+        ReflectionTestUtils.setField(contactService, "customerContactMapper", contactMapper);
+
+        when(customerMapper.selectById(othersCustomerId)).thenReturn(null); // 不可见或不存在
+        CustomerContactDO othersContact = new CustomerContactDO();
+        othersContact.setId(othersContactId);
+        othersContact.setCustomerId(othersCustomerId);
+        othersContact.setName("他人联系人");
+        when(contactMapper.selectById(othersContactId)).thenReturn(othersContact);
+
+        // 1. 列表
+        CustomerContactPageReqVO pageReq = new CustomerContactPageReqVO();
+        pageReq.setCustomerId(othersCustomerId);
+        ServiceException exPage = assertThrows(ServiceException.class, () -> contactService.getCustomerContactPage(pageReq));
+        assertEquals(CUSTOMER_CONTACT_NOT_EXISTS.getCode(), exPage.getCode());
+
+        // 2. 详情
+        ServiceException exGet = assertThrows(ServiceException.class, () -> contactService.getCustomerContact(othersContactId));
+        assertEquals(CUSTOMER_CONTACT_NOT_EXISTS.getCode(), exGet.getCode());
+
+        // 3. 改
+        CustomerContactSaveReqVO updateReq = new CustomerContactSaveReqVO();
+        updateReq.setId(othersContactId);
+        updateReq.setCustomerId(othersCustomerId);
+        updateReq.setName("新名称");
+        ServiceException exUpd = assertThrows(ServiceException.class, () -> contactService.updateCustomerContact(updateReq));
+        assertEquals(CUSTOMER_CONTACT_NOT_EXISTS.getCode(), exUpd.getCode());
+
+        // 4. 删
+        ServiceException exDel = assertThrows(ServiceException.class, () -> contactService.deleteCustomerContact(othersContactId));
+        assertEquals(CUSTOMER_CONTACT_NOT_EXISTS.getCode(), exDel.getCode());
+
+        // 5. 新建
+        CustomerContactSaveReqVO createReq = new CustomerContactSaveReqVO();
+        createReq.setCustomerId(othersCustomerId);
+        createReq.setName("新联系人");
+        ServiceException exCreate = assertThrows(ServiceException.class, () -> contactService.createCustomerContact(createReq));
+        assertEquals(CUSTOMER_CONTACT_NOT_EXISTS.getCode(), exCreate.getCode());
+
+        // 断言写操作 DB 零变更
+        verify(contactMapper, never()).insert(any(CustomerContactDO.class));
+        verify(contactMapper, never()).updateById(any(CustomerContactDO.class));
+        verify(contactMapper, never()).deleteById(othersContactId);
+    }
+
+    @Test
+    @DisplayName("14. §5.4 / §9.2 用例 4 客户批量删除强校验：ids 中混入不可见 id → 整体失败且零删除")
+    void testCustomerBatchDeleteStrictVisibilityValidation() {
+        CustomerMapper customerMapper = Mockito.mock(CustomerMapper.class);
+        CustomerServiceImpl customerService = new CustomerServiceImpl();
+        ReflectionTestUtils.setField(customerService, "customerMapper", customerMapper);
+
+        Long visibleId1 = 1001L;
+        Long invisibleId = 1002L;
+        Long visibleId2 = 1003L;
+
+        CustomerDO c1 = new CustomerDO();
+        c1.setId(visibleId1);
+        CustomerDO c3 = new CustomerDO();
+        c3.setId(visibleId2);
+
+        when(customerMapper.selectById(visibleId1)).thenReturn(c1);
+        when(customerMapper.selectById(invisibleId)).thenReturn(null); // 受限用户不可见
+        when(customerMapper.selectById(visibleId2)).thenReturn(c3);
+
+        List<Long> mixedIds = List.of(visibleId1, invisibleId, visibleId2);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerService.deleteCustomerList(mixedIds));
+        assertEquals(CUSTOMER_NOT_EXISTS.getCode(), ex.getCode(), "任一 id 不可见必须整体抛 CUSTOMER_NOT_EXISTS");
+
+        // 断言零部分成功，零删除，零更新
+        verify(customerMapper, never()).updateById(any(CustomerDO.class));
+        verify(customerMapper, never()).deleteByIds(anyList());
+    }
+
+    @Test
+    @DisplayName("15. §9.2 用例 2 四入口一致性：不可见行在详情、update、delete、状态操作等入口统一返回各表 NOT_EXISTS，写操作断言 DB 零变更")
+    void testFourEntrypointsConsistencyAllEntities() {
+        Long invisibleId = 999999L;
+
+        // 1. 客户：不可见 -> CUSTOMER_NOT_EXISTS
+        CustomerMapper customerMapper = Mockito.mock(CustomerMapper.class);
+        CustomerServiceImpl customerService = new CustomerServiceImpl();
+        ReflectionTestUtils.setField(customerService, "customerMapper", customerMapper);
+        when(customerMapper.selectById(invisibleId)).thenReturn(null);
+
+        assertEquals(CUSTOMER_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> customerService.getCustomer(invisibleId)).getCode());
+        CustomerSaveReqVO custUpd = new CustomerSaveReqVO();
+        custUpd.setId(invisibleId);
+        custUpd.setCompanyName("X");
+        assertEquals(CUSTOMER_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> customerService.updateCustomer(custUpd)).getCode());
+        assertEquals(CUSTOMER_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> customerService.deleteCustomer(invisibleId)).getCode());
+        verify(customerMapper, never()).updateById(any(CustomerDO.class));
+        verify(customerMapper, never()).deleteByIds(anyList());
+
+        // 2. 销售合同：不可见 -> SALES_CONTRACT_NOT_EXISTS
+        SalesContractMapper scMapper = Mockito.mock(SalesContractMapper.class);
+        SalesContractServiceImpl scService = new SalesContractServiceImpl();
+        ReflectionTestUtils.setField(scService, "salesContractMapper", scMapper);
+        when(scMapper.selectById(invisibleId)).thenReturn(null);
+
+        assertEquals(SALES_CONTRACT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> scService.getSalesContract(invisibleId)).getCode());
+        SalesContractSaveReqVO scUpd = new SalesContractSaveReqVO();
+        scUpd.setId(invisibleId);
+        assertEquals(SALES_CONTRACT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> scService.updateSalesContract(scUpd)).getCode());
+        assertEquals(SALES_CONTRACT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> scService.deleteSalesContract(invisibleId)).getCode());
+        verify(scMapper, never()).updateById(any(SalesContractDO.class));
+        verify(scMapper, never()).deleteById(any(Long.class));
+
+        // 3. 发货单：不可见 -> SHIPMENT_NOT_EXISTS (含 update, audit, cancel, delete)
+        ShipmentMapper shMapper = Mockito.mock(ShipmentMapper.class);
+        ShipmentServiceImpl shService = new ShipmentServiceImpl();
+        ReflectionTestUtils.setField(shService, "shipmentMapper", shMapper);
+        when(shMapper.selectById(invisibleId)).thenReturn(null);
+
+        assertEquals(SHIPMENT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> shService.getShipment(invisibleId)).getCode());
+        ShipmentSaveReqVO shUpd = new ShipmentSaveReqVO();
+        shUpd.setId(invisibleId);
+        assertEquals(SHIPMENT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> shService.updateShipment(shUpd)).getCode());
+        assertEquals(SHIPMENT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> shService.auditShipment(invisibleId)).getCode());
+        assertEquals(SHIPMENT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> shService.cancelShipment(invisibleId)).getCode());
+        assertEquals(SHIPMENT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> shService.deleteShipment(invisibleId)).getCode());
+        verify(shMapper, never()).updateById(any(ShipmentDO.class));
+        verify(shMapper, never()).deleteById(any(Long.class));
+
+        // 4. 联系人：不可见客户的联系人 -> CUSTOMER_CONTACT_NOT_EXISTS
+        CustomerContactMapper ccMapper = Mockito.mock(CustomerContactMapper.class);
+        CustomerContactServiceImpl ccService = new CustomerContactServiceImpl();
+        ReflectionTestUtils.setField(ccService, "customerMapper", customerMapper);
+        ReflectionTestUtils.setField(ccService, "customerContactMapper", ccMapper);
+
+        CustomerContactDO ccDO = new CustomerContactDO();
+        ccDO.setId(invisibleId);
+        ccDO.setCustomerId(invisibleId);
+        when(ccMapper.selectById(invisibleId)).thenReturn(ccDO);
+
+        assertEquals(CUSTOMER_CONTACT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> ccService.getCustomerContact(invisibleId)).getCode());
+        CustomerContactSaveReqVO ccUpd = new CustomerContactSaveReqVO();
+        ccUpd.setId(invisibleId);
+        ccUpd.setCustomerId(invisibleId);
+        ccUpd.setName("Contact");
+        assertEquals(CUSTOMER_CONTACT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> ccService.updateCustomerContact(ccUpd)).getCode());
+        assertEquals(CUSTOMER_CONTACT_NOT_EXISTS.getCode(), assertThrows(ServiceException.class, () -> ccService.deleteCustomerContact(invisibleId)).getCode());
+        verify(ccMapper, never()).updateById(any(CustomerContactDO.class));
+        verify(ccMapper, never()).deleteById(any(Long.class));
     }
 
 }

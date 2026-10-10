@@ -10,6 +10,11 @@ import java.util.List;
 /**
  * 基本信息-客户信息 Service 接口
  *
+ * 数据权限与导出契约（ADR-0046 / §5.3 / §5.4）：
+ * 1. 客户主表已注册数据权限（dept_id / salesperson_user_id），受限用户仅能查询本范围数据；
+ * 2. 批量删除（deleteCustomerList）逐个 id 校验可见性，任一不可见整体抛 CUSTOMER_NOT_EXISTS，禁止部分成功；
+ * 3. 导出契约：当前 5 表（客户、联系人、报价、合同、发货）均无 export 端点；未来若新增导出，必须复用同一带数据权限过滤的查询方法（如 selectPage），严禁另开无过滤查询，确保四入口（列表、详情、写操作、导出）一致性。
+ *
  * @author luna
  */
 public interface CustomerService {

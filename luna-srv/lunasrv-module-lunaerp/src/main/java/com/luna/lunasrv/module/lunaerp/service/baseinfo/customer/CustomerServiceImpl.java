@@ -132,15 +132,31 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteCustomer(Long id) {
-        // 校验存在
-        validateCustomerExists(id);
-        doDelete(Collections.singletonList(id));
+        // 单条删除：通过逐个校验后统一删除（ADR-0046 / §5.4）
+        deleteCustomerList(Collections.singletonList(id));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteCustomerList(List<Long> ids) {
-        doDelete(ids);
+        if (CollUtil.isEmpty(ids)) {
+            return;
+        }
+        // 逐个 id 可见性校验，任一不可见即整体抛 CUSTOMER_NOT_EXISTS（1_030_004_000），禁止部分成功（ADR-0046 / §5.4）
+        List<CustomerDO> customers = new ArrayList<>(ids.size());
+        for (Long id : ids) {
+            CustomerDO customer = validateCustomerExists(id);
+            customers.add(customer);
+        }
+        // 1. 先置 status='INACTIVE'
+        for (CustomerDO customer : customers) {
+            CustomerDO updateObj = new CustomerDO();
+            updateObj.setId(customer.getId());
+            updateObj.setStatus(STATUS_INACTIVE);
+            customerMapper.updateById(updateObj);
+        }
+        // 2. 逻辑删除（deleted=1）
+        customerMapper.deleteByIds(ids);
     }
 
     // ==================== 私有方法 ====================
@@ -166,29 +182,6 @@ public class CustomerServiceImpl implements CustomerService {
             throw exception(CUSTOMER_NOT_EXISTS);
         }
         return customer;
-    }
-
-    /**
-     * 批量逻辑删除：先置 status='INACTIVE'，再走 mapper.deleteByIds（deleted=1，与 product 模块模式一致）。
-     * 仅处理当前租户下存在的客户。
-     */
-    private void doDelete(List<Long> ids) {
-        if (CollUtil.isEmpty(ids)) {
-            return;
-        }
-        List<CustomerDO> customers = customerMapper.selectByIds(ids);
-        if (CollUtil.isEmpty(customers)) {
-            return;
-        }
-        // 1. 先置 status='INACTIVE'
-        for (CustomerDO customer : customers) {
-            CustomerDO updateObj = new CustomerDO();
-            updateObj.setId(customer.getId());
-            updateObj.setStatus(STATUS_INACTIVE);
-            customerMapper.updateById(updateObj);
-        }
-        // 2. 逻辑删除（deleted=1）
-        customerMapper.deleteByIds(ids);
     }
 
     /**

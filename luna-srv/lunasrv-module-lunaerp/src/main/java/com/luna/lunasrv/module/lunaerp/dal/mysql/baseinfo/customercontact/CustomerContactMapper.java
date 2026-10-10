@@ -22,7 +22,10 @@ import java.time.LocalDateTime;
 public interface CustomerContactMapper extends BaseMapperX<CustomerContactDO> {
 
     /**
-     * 联系人分页查询：按 customerId 等值过滤，主联系人优先、再按创建时间倒序。
+     * 联系人分页查询：按 customerId 等值过滤，裸 EXISTS 实时继承客户数据权限与租户隔离，主联系人优先、再按创建时间倒序。
+     *
+     * 导出契约（ADR-0046 / §5.3）：当前 5 表均无 export 端点；未来若新增导出，必须复用同一带数据权限过滤的
+     * 查询方法（如 selectPage / 带 EXISTS 的 Mapper 方法），严禁另开无过滤查询，确保四入口（列表、详情、写操作、导出）一致性。
      *
      * @param reqVO 分页与查询条件（customerId 必填）
      * @return 联系人分页
@@ -31,6 +34,10 @@ public interface CustomerContactMapper extends BaseMapperX<CustomerContactDO> {
         LambdaQueryWrapperX<CustomerContactDO> wrapper = new LambdaQueryWrapperX<>();
         // customerId 必填，联系人只在客户工作台 Tab 内按所属客户查询
         wrapper.eq(CustomerContactDO::getCustomerId, reqVO.getCustomerId());
+        // 裸 EXISTS 子查询实时继承客户数据权限与租户条件（无外部参数，注释防 SQL 注入，ADR-0046 / §5.3）
+        // lunaerp_baseinfo_customer 已在 DeptDataPermissionRule 注册，JSqlParser 解析子查询时对 c 自动追加数据权限与租户条件；
+        // contact 表未注册，外层不被改写
+        wrapper.exists("SELECT 1 FROM lunaerp_baseinfo_customer c WHERE c.id = lunaerp_baseinfo_customer_contact.customer_id");
         // 主联系人排在前面，同级别按创建时间倒序
         wrapper.orderByDesc(CustomerContactDO::getIsPrimary);
         wrapper.orderByDesc(CustomerContactDO::getCreateTime);

@@ -165,9 +165,19 @@ public class LambdaQueryWrapperX<T> extends LambdaQueryWrapper<T> {
         return this;
     }
 
+    public LambdaQueryWrapperX<T> exists(String existsSql) {
+        super.exists(existsSql);
+        return this;
+    }
+
     @Override
     public LambdaQueryWrapperX<T> notExists(boolean condition, String existsSql, Object... values) {
         super.notExists(condition, existsSql, values);
+        return this;
+    }
+
+    public LambdaQueryWrapperX<T> notExists(String existsSql) {
+        super.notExists(existsSql);
         return this;
     }
 
