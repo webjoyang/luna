@@ -106,6 +106,15 @@
           </el-select>
         </el-form-item>
       </el-col>
+      <el-col :span="12">
+        <el-form-item label="归属业务员" prop="salespersonUserId">
+          <UserSelect
+            v-model="formData.salespersonUserId"
+            placeholder="请选择归属业务员（可空）"
+            clearable
+          />
+        </el-form-item>
+      </el-col>
       <el-col :span="24">
         <el-form-item label="备注" prop="remark">
           <el-input
@@ -141,6 +150,8 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
+import UserSelect from '@/views/system/user/components/UserSelect.vue'
+import { useUserStore } from '@/store/modules/user'
 
 defineOptions({ name: 'LunaerpElmuiCustomerBasicProfileTab' })
 
@@ -169,7 +180,8 @@ const formData = reactive<CustomerVO>({
   cooperationStatus: '',
   unifiedSocialCreditCode: '',
   remark: '',
-  status: 'ACTIVE'
+  status: 'ACTIVE',
+  salespersonUserId: undefined
 })
 
 const rules: FormRules = {
@@ -217,7 +229,14 @@ const handleBack = () => {
 }
 
 onMounted(() => {
-  loadCustomer()
+  if (isCreateMode.value) {
+    const userStore = useUserStore()
+    if (userStore.getUser?.id) {
+      formData.salespersonUserId = userStore.getUser.id
+    }
+  } else {
+    loadCustomer()
+  }
 })
 </script>
 

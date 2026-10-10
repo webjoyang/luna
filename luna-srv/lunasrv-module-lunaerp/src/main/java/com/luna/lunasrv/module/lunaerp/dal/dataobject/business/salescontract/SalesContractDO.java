@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
@@ -56,10 +58,12 @@ public class SalesContractDO extends TenantBaseDO {
     /**
      * 业务员用户ID（system_users.id，可空）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long salespersonUserId;
     /**
      * 归属部门（数据范围 dept 列）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long deptId;
     /**
      * 签订日期（必填，创建缺省当天）
@@ -101,5 +105,10 @@ public class SalesContractDO extends TenantBaseDO {
      * 合同状态（字典 lunaerp_sales_contract_status：ACTIVE 进行中 / COMPLETED 已完成 / CANCELLED 已取消），创建缺省 ACTIVE
      */
     private String status;
+
+    /**
+     * 审批状态（DRAFT 草稿 / PENDING 待提交 / APPROVING 审批中 / APPROVED 已通过 / REJECTED 已驳回 / CANCELLED 已撤回），缺省 DRAFT
+     */
+    private String approvalStatus;
 
 }

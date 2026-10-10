@@ -22,6 +22,14 @@
           <el-option label="停用" value="INACTIVE" />
         </el-select>
       </el-form-item>
+      <el-form-item label="业务员" prop="salespersonUserId">
+        <UserSelect
+          v-model="queryParams.salespersonUserId"
+          placeholder="全部"
+          clearable
+          class="!w-180px"
+        />
+      </el-form-item>
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" />重置</el-button>
@@ -158,6 +166,7 @@ import download from '@/utils/download'
 import CustomerImportDialog from './CustomerImportDialog.vue'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
+import UserSelect from '@/views/system/user/components/UserSelect.vue'
 
 defineOptions({ name: 'LunaerpElmuiBaseinfoCustomer' })
 
@@ -175,7 +184,8 @@ const queryParams = reactive({
   pageNo: 1,
   pageSize: 20,
   search: '',
-  status: ''
+  status: '',
+  salespersonUserId: undefined
 })
 
 /** 查询客户分页 */

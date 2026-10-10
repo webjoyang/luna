@@ -57,9 +57,6 @@ public class CustomerRespVO {
     @Schema(description = "归属业务员")
     private Long salespersonUserId;
 
-    @Schema(description = "归属部门")
-    private Long deptId;
-
     @Schema(description = "状态（ACTIVE 启用 / INACTIVE 停用）")
     private String status;
 

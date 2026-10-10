@@ -22,6 +22,9 @@ import org.springframework.util.StringUtils;
 
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
 import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
+import com.luna.lunasrv.module.system.api.user.AdminUserApi;
+import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,12 +36,14 @@ import java.util.regex.Pattern;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
+import static com.luna.lunasrv.module.lunaerp.enums.ApprovalErrorCodeConstants.APPROVAL_INSTANCE_STATUS_ERROR;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SALES_CONTRACT_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SALES_CONTRACT_NO_DUPLICATE;
 
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -91,7 +96,6 @@ public class SalesContractServiceImpl implements SalesContractService {
      * 币种缺省：人民币
      */
     private static final String DEFAULT_CURRENCY = "RMB";
-
     @Resource
     private SalesContractMapper salesContractMapper;
 
@@ -100,6 +104,9 @@ public class SalesContractServiceImpl implements SalesContractService {
 
     @Resource
     private CustomerMapper customerMapper;
+
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -137,6 +144,26 @@ public class SalesContractServiceImpl implements SalesContractService {
         if (!StringUtils.hasText(contract.getCurrency())) {
             contract.setCurrency(DEFAULT_CURRENCY);
         }
+        // 归属人缺省当前登录用户，归属部门服务端推导（ADR-0046）
+        if (contract.getSalespersonUserId() == null) {
+            Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+            if (loginUserId != null) {
+                contract.setSalespersonUserId(loginUserId);
+            }
+        }
+        if (contract.getSalespersonUserId() != null) {
+            if (adminUserApi != null) {
+                AdminUserRespDTO user = adminUserApi.getUser(contract.getSalespersonUserId());
+                contract.setDeptId(user != null ? user.getDeptId() : null);
+            } else {
+                contract.setDeptId(null);
+            }
+        } else {
+            contract.setDeptId(null);
+        }
+        if (!StringUtils.hasText(contract.getApprovalStatus())) {
+            contract.setApprovalStatus("DRAFT");
+        }
         // 1.6 明细聚合：服务端权威重算行金额与主表汇总（请求体传入的 totalQuantity/totalAmount 一律忽略覆盖）
         List<SalesContractItemDO> itemDOList = buildItemDOList(null, createReqVO.getItems());
         BigDecimal[] totals = recalculateTotals(itemDOList);
@@ -152,7 +179,10 @@ public class SalesContractServiceImpl implements SalesContractService {
     @Transactional(rollbackFor = Exception.class)
     public void updateSalesContract(SalesContractSaveReqVO updateReqVO) {
         // 1. 校验合同存在
-        validateSalesContractExists(updateReqVO.getId());
+        SalesContractDO existing = validateSalesContractExists(updateReqVO.getId());
+        if ("APPROVING".equalsIgnoreCase(existing.getApprovalStatus())) {
+            throw exception(APPROVAL_INSTANCE_STATUS_ERROR);
+        }
         // 2. 校验客户存在（customerId 可编辑换客户）
         CustomerDO customer = validateCustomerExists(updateReqVO.getCustomerId());
         // 3. 组装并更新（clientName 为空时用客户公司名称回填，与创建一致）
@@ -168,6 +198,22 @@ public class SalesContractServiceImpl implements SalesContractService {
         if (!StringUtils.hasText(updateObj.getClientName())) {
             updateObj.setClientName(customer.getCompanyName());
         }
+        // 归属人推导逻辑（Issue 03 / ADR-0046）：
+        // 归属人变更 → 同事务重算 dept_id（含清空归属人则两列清空）；归属人未变 → 不动 dept_id
+        if (!Objects.equals(existing.getSalespersonUserId(), updateObj.getSalespersonUserId())) {
+            if (updateObj.getSalespersonUserId() != null) {
+                if (adminUserApi != null) {
+                    AdminUserRespDTO user = adminUserApi.getUser(updateObj.getSalespersonUserId());
+                    updateObj.setDeptId(user != null ? user.getDeptId() : null);
+                } else {
+                    updateObj.setDeptId(null);
+                }
+            } else {
+                updateObj.setDeptId(null);
+            }
+        } else {
+            updateObj.setDeptId(existing.getDeptId());
+        }
         // 4. 明细差异保存（ADR-0032）：
         //    带 id 且属于本合同的行走 update、无 id 行走 insert、本合同库内有但本次未提交的行走逻辑删除；
         //    提交行 id 不属于本合同时报错（防跨父 id 串数据）；行号按提交顺序重排；
@@ -180,7 +226,10 @@ public class SalesContractServiceImpl implements SalesContractService {
     @Transactional(rollbackFor = Exception.class)
     public void deleteSalesContract(Long id) {
         // 校验存在
-        validateSalesContractExists(id);
+        SalesContractDO existing = validateSalesContractExists(id);
+        if ("APPROVING".equalsIgnoreCase(existing.getApprovalStatus())) {
+            throw exception(APPROVAL_INSTANCE_STATUS_ERROR);
+        }
         // 逻辑删除主表 + 级联逻辑删除全部明细（明细是合同聚合的一部分，ADR-0003）
         salesContractMapper.deleteById(id);
         salesContractItemMapper.deleteByContractId(id);
@@ -493,10 +542,15 @@ public class SalesContractServiceImpl implements SalesContractService {
     /**
      * 校验合同存在，不存在抛 1_030_003_000
      */
-    private void validateSalesContractExists(Long id) {
-        if (id == null || salesContractMapper.selectById(id) == null) {
+    private SalesContractDO validateSalesContractExists(Long id) {
+        if (id == null) {
             throw exception(SALES_CONTRACT_NOT_EXISTS);
         }
+        SalesContractDO contract = salesContractMapper.selectById(id);
+        if (contract == null) {
+            throw exception(SALES_CONTRACT_NOT_EXISTS);
+        }
+        return contract;
     }
 
     /**

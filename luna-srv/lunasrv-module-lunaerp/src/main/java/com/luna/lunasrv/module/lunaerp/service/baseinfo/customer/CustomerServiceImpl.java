@@ -70,11 +70,15 @@ public class CustomerServiceImpl implements CustomerService {
                 customer.setSalespersonUserId(loginUserId);
             }
         }
-        if (customer.getSalespersonUserId() != null && customer.getDeptId() == null && adminUserApi != null) {
-            AdminUserRespDTO user = adminUserApi.getUser(customer.getSalespersonUserId());
-            if (user != null) {
-                customer.setDeptId(user.getDeptId());
+        if (customer.getSalespersonUserId() != null) {
+            if (adminUserApi != null) {
+                AdminUserRespDTO user = adminUserApi.getUser(customer.getSalespersonUserId());
+                customer.setDeptId(user != null ? user.getDeptId() : null);
+            } else {
+                customer.setDeptId(null);
             }
+        } else {
+            customer.setDeptId(null);
         }
         customerMapper.insert(customer);
         return customer.getId();
@@ -99,11 +103,29 @@ public class CustomerServiceImpl implements CustomerService {
     @Transactional(rollbackFor = Exception.class)
     public void updateCustomer(CustomerSaveReqVO updateReqVO) {
         // 校验存在
-        validateCustomerExists(updateReqVO.getId());
+        CustomerDO existing = validateCustomerExists(updateReqVO.getId());
         validateCustomerNotMasked(updateReqVO);
         // 更新（shortName 为空时用 companyName 回填，与创建一致）
         CustomerDO updateObj = BeanUtils.toBean(updateReqVO, CustomerDO.class);
         backfillShortName(updateObj);
+
+        // 归属人推导逻辑（Issue 03 / ADR-0046）：
+        // 归属人变更 → 同事务重算 dept_id（含清空归属人则两列清空）；归属人未变 → 不动 dept_id
+        if (!Objects.equals(existing.getSalespersonUserId(), updateObj.getSalespersonUserId())) {
+            if (updateObj.getSalespersonUserId() != null) {
+                if (adminUserApi != null) {
+                    AdminUserRespDTO user = adminUserApi.getUser(updateObj.getSalespersonUserId());
+                    updateObj.setDeptId(user != null ? user.getDeptId() : null);
+                } else {
+                    updateObj.setDeptId(null);
+                }
+            } else {
+                updateObj.setDeptId(null);
+            }
+        } else {
+            updateObj.setDeptId(existing.getDeptId());
+        }
+
         customerMapper.updateById(updateObj);
     }
 
@@ -135,10 +157,15 @@ public class CustomerServiceImpl implements CustomerService {
     /**
      * 校验客户存在，不存在抛 1_030_004_000
      */
-    private void validateCustomerExists(Long id) {
-        if (id == null || customerMapper.selectById(id) == null) {
+    private CustomerDO validateCustomerExists(Long id) {
+        if (id == null) {
             throw exception(CUSTOMER_NOT_EXISTS);
         }
+        CustomerDO customer = customerMapper.selectById(id);
+        if (customer == null) {
+            throw exception(CUSTOMER_NOT_EXISTS);
+        }
+        return customer;
     }
 
     /**

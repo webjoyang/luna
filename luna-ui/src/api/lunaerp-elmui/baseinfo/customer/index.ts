@@ -15,6 +15,7 @@ export interface CustomerVO {
   unifiedSocialCreditCode?: string
   remark?: string
   status?: string
+  salespersonUserId?: number
   createTime?: Date | string
 }
 
@@ -24,6 +25,7 @@ export interface CustomerPageParam {
   pageSize?: number
   search?: string
   status?: string
+  salespersonUserId?: number
 }
 
 // 查询客户分页

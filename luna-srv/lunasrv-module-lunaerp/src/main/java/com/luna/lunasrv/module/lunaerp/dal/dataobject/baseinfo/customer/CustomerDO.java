@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
@@ -86,10 +88,11 @@ public class CustomerDO extends TenantBaseDO {
     /**
      * 归属业务员（数据范围 user 列）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long salespersonUserId;
     /**
      * 归属部门（数据范围 dept 列）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long deptId;
-
 }

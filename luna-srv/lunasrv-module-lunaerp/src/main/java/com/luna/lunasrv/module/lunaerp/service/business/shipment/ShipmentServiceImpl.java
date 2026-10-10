@@ -28,6 +28,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollM
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
 import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMapper;
 import com.luna.lunasrv.module.lunaerp.service.stock.stockledger.StockLedgerService;
@@ -205,6 +206,14 @@ public class ShipmentServiceImpl implements ShipmentService {
             shipment.setShipmentNo(generateShipmentNoWithRetry(shipment.getShippingDate()));
         }
 
+        // 归属人缺省当前登录用户，归属部门服务端推导（ADR-0046）
+        if (shipment.getSalespersonUserId() == null) {
+            Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+            if (loginUserId != null) {
+                shipment.setSalespersonUserId(loginUserId);
+            }
+        }
+
         // 3. 关联存在性校验与快照回填
         fillSnapshotsAndValidateRefs(shipment, createReqVO);
 
@@ -245,8 +254,16 @@ public class ShipmentServiceImpl implements ShipmentService {
             updateObj.setShipmentNo(null);
         }
 
+        // 归属人推导逻辑（Issue 03 / ADR-0046）：
+        // 归属人变更 → 同事务重算 dept_id（含清空归属人则两列清空）；归属人未变 → 不动 dept_id
+        boolean ownerChanged = !Objects.equals(existing.getSalespersonUserId(), updateObj.getSalespersonUserId());
+
         // 4. 关联存在性校验与快照回填
         fillSnapshotsAndValidateRefs(updateObj, updateReqVO);
+
+        if (!ownerChanged) {
+            updateObj.setDeptId(existing.getDeptId());
+        }
 
         // 5. 明细与卷清单两级差异保存（ADR-0032）：
         //    严格先父行（明细）后子行（卷），三分流保存，金额匹数权威重算
@@ -697,14 +714,16 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // 4. 业务员（可选）
-        if (reqVO.getSalespersonUserId() != null) {
-            AdminUserRespDTO user = adminUserApi.getUser(reqVO.getSalespersonUserId());
+        if (shipment.getSalespersonUserId() != null) {
+            AdminUserRespDTO user = adminUserApi.getUser(shipment.getSalespersonUserId());
             if (user == null || CommonStatusEnum.isDisable(user.getStatus())) {
                 throw exception(SHIPMENT_RELATED_REF_NOT_EXISTS, "业务员");
             }
             shipment.setSalespersonName(user.getNickname());
+            shipment.setDeptId(user.getDeptId());
         } else {
             shipment.setSalespersonName(null);
+            shipment.setDeptId(null);
         }
     }
 

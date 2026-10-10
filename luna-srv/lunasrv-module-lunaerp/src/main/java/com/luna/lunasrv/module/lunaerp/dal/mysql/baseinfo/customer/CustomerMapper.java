@@ -35,6 +35,8 @@ public interface CustomerMapper extends BaseMapperX<CustomerDO> {
         LambdaQueryWrapperX<CustomerDO> wrapper = new LambdaQueryWrapperX<>();
         // status 等值过滤（为空则不过滤，便于"全部"场景）
         wrapper.eqIfPresent(CustomerDO::getStatus, reqVO.getStatus());
+        // 归属业务员等值过滤
+        wrapper.eqIfPresent(CustomerDO::getSalespersonUserId, reqVO.getSalespersonUserId());
         // search 智能词：命中 company_name / short_name / phone / unified_social_credit_code 之一
         String search = reqVO.getSearch() == null ? "" : reqVO.getSearch().trim();
         if (!search.isEmpty()) {
