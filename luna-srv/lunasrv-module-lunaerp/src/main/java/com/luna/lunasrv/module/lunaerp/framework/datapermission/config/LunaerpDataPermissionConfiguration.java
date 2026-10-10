@@ -36,6 +36,10 @@ public class LunaerpDataPermissionConfiguration {
             // 发货单
             rule.addDeptColumn(ShipmentDO.class, "dept_id");
             rule.addUserColumn(ShipmentDO.class, "salesperson_user_id");
+
+            // 报价单
+            rule.addDeptColumn(com.luna.lunasrv.module.lunaerp.dal.dataobject.business.quotation.QuotationDO.class, "dept_id");
+            rule.addUserColumn(com.luna.lunasrv.module.lunaerp.dal.dataobject.business.quotation.QuotationDO.class, "salesperson_user_id");
         };
     }
 

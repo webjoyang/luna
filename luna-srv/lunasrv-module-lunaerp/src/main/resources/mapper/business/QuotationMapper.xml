@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.business.quotation.QuotationMapper">
+
+    <!-- 回收站分页查询已软删草稿报价单（显式 WHERE deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}） -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'QUOTATION' AS biz_type,
+            id AS biz_id,
+            quotation_no AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_business_quotation
+        WHERE deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删的草稿报价单记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.business.quotation.QuotationDO">
+        SELECT *
+        FROM lunaerp_business_quotation
+        WHERE id = #{id}
+          AND deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复草稿报价单（并发条件更新带 deleted=1 AND status='DRAFT' AND tenant_id=?） -->
+    <update id="restoreQuotation">
+        UPDATE lunaerp_business_quotation
+        SET deleted = 0,
+            status = 'DRAFT',
+            updater = #{updater},
+            update_time = #{now}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除草稿报价单（物理删除带 deleted=1 AND status='DRAFT' AND tenant_id=?） -->
+    <delete id="purgeQuotation">
+        DELETE FROM lunaerp_business_quotation
+        WHERE id = #{id}
+          AND deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查报价单是否存在活跃业务引用（如转销售合同） -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM lunaerp_business_sales_contract
+        WHERE source_quotation_id = #{quotationId}
+          AND deleted = 0
+          AND tenant_id = #{tenantId}
+    </select>
+
+</mapper>
