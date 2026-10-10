@@ -18,10 +18,20 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.Customer
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportSellerConfigDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.exportdoc.ExportDocItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.exportdoc.ExportDocMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.exportdoc.ExportSellerConfigMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,6 +80,21 @@ public class ExportDocServiceImpl implements ExportDocService {
 
     @Resource
     private CustomerMapper customerMapper;
+
+    @Resource
+    private SalesContractMapper salesContractMapper;
+
+    @Resource
+    private SalesContractItemMapper salesContractItemMapper;
+
+    @Resource
+    private ShipmentMapper shipmentMapper;
+
+    @Resource
+    private ShipmentItemMapper shipmentItemMapper;
+
+    @Resource
+    private ShipmentRollMapper shipmentRollMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -282,6 +307,327 @@ public class ExportDocServiceImpl implements ExportDocService {
         if (rows == 0) {
             throw exception(EXPORT_DOC_STATUS_NOT_ALLOW);
         }
+    }
+
+    @Override
+    public ExportDocRespVO getDraftFromContract(Long contractId) {
+        if (contractId == null) {
+            throw exception(EXPORT_DOC_REFERENCE_NOT_FOUND, "销售合同");
+        }
+        SalesContractDO contract = salesContractMapper.selectById(contractId);
+        if (contract == null) {
+            throw exception(EXPORT_DOC_REFERENCE_NOT_FOUND, "销售合同");
+        }
+        if (!"EXPORT".equalsIgnoreCase(contract.getTradeType())) {
+            throw exception(EXPORT_DOC_CONTRACT_NOT_EXPORT);
+        }
+
+        CustomerDO customer = contract.getCustomerId() != null ? customerMapper.selectById(contract.getCustomerId()) : null;
+
+        ExportDocRespVO draft = new ExportDocRespVO();
+        draft.setStatus(DEFAULT_STATUS);
+        draft.setSourceType("CONTRACT");
+        draft.setContractId(contract.getId());
+        draft.setContractNo(contract.getContractNo());
+        draft.setCustomerId(contract.getCustomerId());
+        draft.setCustomerName(customer != null ? customer.getCompanyName() : contract.getClientName());
+
+        if (customer != null && StringUtils.hasText(customer.getNameEn())) {
+            draft.setBuyerName(customer.getNameEn());
+        } else {
+            draft.setBuyerName(contract.getClientName());
+        }
+
+        if (customer != null && StringUtils.hasText(customer.getAddressEn())) {
+            draft.setBuyerAddress(customer.getAddressEn());
+        } else if (customer != null && StringUtils.hasText(customer.getAddress())) {
+            draft.setBuyerAddress(customer.getAddress());
+        } else {
+            draft.setBuyerAddress(contract.getClientAddress());
+        }
+
+        draft.setBuyerBankInfo(null);
+        draft.setIncoterm(contract.getIncoterm());
+        draft.setPortOfLoading(contract.getPortOfLoading());
+        draft.setPortOfDischarge(contract.getPortOfDischarge());
+        draft.setPaymentTerm(contract.getPaymentTerm());
+        draft.setCurrency(StringUtils.hasText(contract.getCurrency()) ? contract.getCurrency() : DEFAULT_CURRENCY);
+
+        // 卖方配置缺省带出
+        prefillSellerConfigRespIfEmpty(draft);
+
+        // 合同明细带出
+        List<SalesContractItemDO> contractItems = salesContractItemMapper.selectListByContractId(contractId);
+        List<ExportDocItemRespVO> items = new ArrayList<>();
+        if (CollUtil.isNotEmpty(contractItems)) {
+            for (int i = 0; i < contractItems.size(); i++) {
+                SalesContractItemDO ci = contractItems.get(i);
+                ExportDocItemRespVO item = new ExportDocItemRespVO();
+                item.setLineNo(ci.getLineNo() != null ? ci.getLineNo() : i + 1);
+                item.setNameCn(ci.getProductName());
+                item.setNameEn(null);
+                item.setSpec(buildContractItemSpec(ci));
+                item.setQuantity(ci.getQuantity());
+                item.setUnit(contract.getUnit());
+                item.setUnitPrice(ci.getUnitPrice());
+                item.setAmount(ci.getAmount());
+                item.setOrigin(DEFAULT_ORIGIN);
+                item.setNetWeight(null);
+                item.setGrossWeight(null);
+                item.setPackages(null);
+                item.setVolume(null);
+                item.setRemark(ci.getRemark());
+                items.add(item);
+            }
+        }
+        draft.setItems(items);
+        return draft;
+    }
+
+    @Override
+    public ExportDocRespVO getDraftFromShipment(Long shipmentId) {
+        if (shipmentId == null) {
+            throw exception(EXPORT_DOC_REFERENCE_NOT_FOUND, "发货单");
+        }
+        ShipmentDO shipment = shipmentMapper.selectById(shipmentId);
+        if (shipment == null) {
+            throw exception(EXPORT_DOC_REFERENCE_NOT_FOUND, "发货单");
+        }
+
+        CustomerDO customer = shipment.getCustomerId() != null ? customerMapper.selectById(shipment.getCustomerId()) : null;
+
+        ExportDocRespVO draft = new ExportDocRespVO();
+        draft.setStatus(DEFAULT_STATUS);
+        draft.setSourceType("SHIPMENT");
+        draft.setShipmentId(shipment.getId());
+        draft.setShipmentNo(shipment.getShipmentNo());
+        draft.setContractId(shipment.getSalesContractId());
+        draft.setContractNo(shipment.getContractNo());
+        draft.setCustomerId(shipment.getCustomerId());
+
+        // 实发客户名优先于合同抬头
+        String customerName = StringUtils.hasText(shipment.getCustomerName()) ? shipment.getCustomerName()
+                : (customer != null ? customer.getCompanyName() : null);
+        draft.setCustomerName(customerName);
+
+        if (customer != null && StringUtils.hasText(customer.getNameEn())) {
+            draft.setBuyerName(customer.getNameEn());
+        } else {
+            draft.setBuyerName(customerName);
+        }
+
+        if (customer != null && StringUtils.hasText(customer.getAddressEn())) {
+            draft.setBuyerAddress(customer.getAddressEn());
+        } else if (customer != null && StringUtils.hasText(customer.getAddress())) {
+            draft.setBuyerAddress(customer.getAddress());
+        } else {
+            draft.setBuyerAddress(shipment.getReceiveAddress());
+        }
+
+        draft.setBuyerBankInfo(null);
+
+        // 合同条款经发货单的合同联动带出
+        if (shipment.getSalesContractId() != null) {
+            SalesContractDO contract = salesContractMapper.selectById(shipment.getSalesContractId());
+            if (contract != null) {
+                draft.setIncoterm(contract.getIncoterm());
+                draft.setPortOfLoading(contract.getPortOfLoading());
+                draft.setPortOfDischarge(contract.getPortOfDischarge());
+                draft.setPaymentTerm(contract.getPaymentTerm());
+                if (!StringUtils.hasText(draft.getContractNo())) {
+                    draft.setContractNo(contract.getContractNo());
+                }
+                if (!StringUtils.hasText(shipment.getCurrency()) && StringUtils.hasText(contract.getCurrency())) {
+                    draft.setCurrency(contract.getCurrency());
+                }
+            }
+        }
+        if (!StringUtils.hasText(draft.getCurrency())) {
+            draft.setCurrency(StringUtils.hasText(shipment.getCurrency()) ? shipment.getCurrency() : DEFAULT_CURRENCY);
+        }
+
+        // 卖方配置缺省带出
+        prefillSellerConfigRespIfEmpty(draft);
+
+        // 发货明细与卷清单净重 SUM 聚合
+        List<ShipmentItemDO> shipmentItems = shipmentItemMapper.selectListByShipmentId(shipmentId);
+        List<ShipmentRollDO> rolls = shipmentRollMapper.selectListByShipmentId(shipmentId);
+        java.util.Map<Long, BigDecimal> netWeightMap = new java.util.HashMap<>();
+        if (CollUtil.isNotEmpty(rolls)) {
+            for (ShipmentRollDO roll : rolls) {
+                if (roll.getShipmentItemId() != null && roll.getWeight() != null) {
+                    netWeightMap.merge(roll.getShipmentItemId(), roll.getWeight(), BigDecimal::add);
+                }
+            }
+        }
+
+        List<ExportDocItemRespVO> items = new ArrayList<>();
+        if (CollUtil.isNotEmpty(shipmentItems)) {
+            for (int i = 0; i < shipmentItems.size(); i++) {
+                ShipmentItemDO si = shipmentItems.get(i);
+                ExportDocItemRespVO item = new ExportDocItemRespVO();
+                item.setLineNo(i + 1);
+                item.setNameCn(si.getProductName());
+                item.setNameEn(null);
+                item.setSpec(StringUtils.hasText(si.getColorName()) ? si.getColorName() : si.getCustomerColorNo());
+                item.setQuantity(si.getQuantity());
+                item.setUnit(si.getUnit());
+                item.setUnitPrice(si.getUnitPrice());
+                item.setAmount(si.getAmount());
+                item.setOrigin(DEFAULT_ORIGIN);
+
+                BigDecimal netWeight = netWeightMap.get(si.getId());
+                if (netWeight != null && netWeight.compareTo(BigDecimal.ZERO) > 0) {
+                    item.setNetWeight(netWeight.setScale(2, RoundingMode.HALF_UP));
+                } else {
+                    item.setNetWeight(null);
+                }
+                item.setGrossWeight(null);
+                item.setPackages(null);
+                item.setVolume(null);
+                item.setRemark(si.getRemark());
+                items.add(item);
+            }
+        }
+        draft.setItems(items);
+        return draft;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resyncFromSource(Long id) {
+        ExportDocDO doc = validateExportDocExists(id);
+        if (!"DRAFT".equalsIgnoreCase(doc.getStatus())) {
+            throw exception(EXPORT_DOC_STATUS_NOT_ALLOW);
+        }
+        if ("MANUAL".equalsIgnoreCase(doc.getSourceType()) || !StringUtils.hasText(doc.getSourceType())) {
+            throw exception(EXPORT_DOC_SOURCE_REQUIRED);
+        }
+
+        ExportDocRespVO candidate;
+        if ("CONTRACT".equalsIgnoreCase(doc.getSourceType())) {
+            if (doc.getContractId() == null) {
+                throw exception(EXPORT_DOC_REFERENCE_NOT_FOUND, "销售合同");
+            }
+            candidate = getDraftFromContract(doc.getContractId());
+        } else if ("SHIPMENT".equalsIgnoreCase(doc.getSourceType())) {
+            if (doc.getShipmentId() == null) {
+                throw exception(EXPORT_DOC_REFERENCE_NOT_FOUND, "发货单");
+            }
+            candidate = getDraftFromShipment(doc.getShipmentId());
+        } else {
+            throw exception(EXPORT_DOC_SOURCE_REQUIRED);
+        }
+
+        // 1. 抬头层补空：只填当前为空字段、永不覆盖已编辑值
+        if (!StringUtils.hasText(doc.getCustomerName())) doc.setCustomerName(candidate.getCustomerName());
+        if (!StringUtils.hasText(doc.getBuyerName())) doc.setBuyerName(candidate.getBuyerName());
+        if (!StringUtils.hasText(doc.getBuyerAddress())) doc.setBuyerAddress(candidate.getBuyerAddress());
+        if (!StringUtils.hasText(doc.getSellerName())) doc.setSellerName(candidate.getSellerName());
+        if (!StringUtils.hasText(doc.getSellerAddress())) doc.setSellerAddress(candidate.getSellerAddress());
+        if (!StringUtils.hasText(doc.getSellerBankInfo())) doc.setSellerBankInfo(candidate.getSellerBankInfo());
+        if (!StringUtils.hasText(doc.getIncoterm())) doc.setIncoterm(candidate.getIncoterm());
+        if (!StringUtils.hasText(doc.getPortOfLoading())) doc.setPortOfLoading(candidate.getPortOfLoading());
+        if (!StringUtils.hasText(doc.getPortOfDischarge())) doc.setPortOfDischarge(candidate.getPortOfDischarge());
+        if (!StringUtils.hasText(doc.getCountryOfDest())) doc.setCountryOfDest(candidate.getCountryOfDest());
+        if (!StringUtils.hasText(doc.getTransportMode())) doc.setTransportMode(candidate.getTransportMode());
+        if (!StringUtils.hasText(doc.getPaymentTerm())) doc.setPaymentTerm(candidate.getPaymentTerm());
+        if (!StringUtils.hasText(doc.getCurrency())) doc.setCurrency(candidate.getCurrency());
+        if (!StringUtils.hasText(doc.getShippingMark())) doc.setShippingMark(candidate.getShippingMark());
+        if (!StringUtils.hasText(doc.getContractNo()) && StringUtils.hasText(candidate.getContractNo())) doc.setContractNo(candidate.getContractNo());
+        if (doc.getContractId() == null && candidate.getContractId() != null) doc.setContractId(candidate.getContractId());
+
+        // 2. 单据 meta 层补空（如果单证元数据为空字符串或 null，而来源 candidate 中有内容）
+        if (!StringUtils.hasText(doc.getPiMeta()) && StringUtils.hasText(candidate.getPiMeta())) doc.setPiMeta(candidate.getPiMeta());
+        if (!StringUtils.hasText(doc.getCiMeta()) && StringUtils.hasText(candidate.getCiMeta())) doc.setCiMeta(candidate.getCiMeta());
+        if (!StringUtils.hasText(doc.getPlMeta()) && StringUtils.hasText(candidate.getPlMeta())) doc.setPlMeta(candidate.getPlMeta());
+
+        exportDocMapper.updateById(doc);
+
+        // 3. 明细行层补空：按来源行匹配补空
+        List<ExportDocItemDO> currentItems = exportDocItemMapper.selectListByDocId(id);
+        List<ExportDocItemRespVO> candItems = candidate.getItems();
+        List<ExportDocItemSaveReqVO> mergedItems = new ArrayList<>();
+
+        int maxLen = Math.max(currentItems.size(), candItems != null ? candItems.size() : 0);
+        for (int i = 0; i < maxLen; i++) {
+            ExportDocItemSaveReqVO itemReq = new ExportDocItemSaveReqVO();
+            ExportDocItemDO cur = i < currentItems.size() ? currentItems.get(i) : null;
+            ExportDocItemRespVO cand = (candItems != null && i < candItems.size()) ? candItems.get(i) : null;
+
+            if (cur != null) {
+                itemReq.setId(cur.getId());
+                itemReq.setNameCn(StringUtils.hasText(cur.getNameCn()) ? cur.getNameCn() : (cand != null ? cand.getNameCn() : null));
+                itemReq.setNameEn(StringUtils.hasText(cur.getNameEn()) ? cur.getNameEn() : (cand != null ? cand.getNameEn() : null));
+                itemReq.setHsCode(StringUtils.hasText(cur.getHsCode()) ? cur.getHsCode() : (cand != null ? cand.getHsCode() : null));
+                itemReq.setSpec(StringUtils.hasText(cur.getSpec()) ? cur.getSpec() : (cand != null ? cand.getSpec() : null));
+                itemReq.setQuantity(cur.getQuantity() != null && cur.getQuantity().compareTo(BigDecimal.ZERO) > 0 ? cur.getQuantity() : (cand != null ? cand.getQuantity() : cur.getQuantity()));
+                itemReq.setUnit(StringUtils.hasText(cur.getUnit()) ? cur.getUnit() : (cand != null ? cand.getUnit() : null));
+                itemReq.setUnitPrice(cur.getUnitPrice() != null && cur.getUnitPrice().compareTo(BigDecimal.ZERO) > 0 ? cur.getUnitPrice() : (cand != null ? cand.getUnitPrice() : cur.getUnitPrice()));
+                itemReq.setAmount(cur.getAmount() != null && cur.getAmount().compareTo(BigDecimal.ZERO) > 0 ? cur.getAmount() : (cand != null ? cand.getAmount() : cur.getAmount()));
+                itemReq.setNetWeight(cur.getNetWeight() != null ? cur.getNetWeight() : (cand != null ? cand.getNetWeight() : null));
+                itemReq.setGrossWeight(cur.getGrossWeight() != null ? cur.getGrossWeight() : (cand != null ? cand.getGrossWeight() : null));
+                itemReq.setPackages(cur.getPackages() != null ? cur.getPackages() : (cand != null ? cand.getPackages() : null));
+                itemReq.setVolume(cur.getVolume() != null ? cur.getVolume() : (cand != null ? cand.getVolume() : null));
+                itemReq.setOrigin(StringUtils.hasText(cur.getOrigin()) ? cur.getOrigin() : (cand != null ? cand.getOrigin() : DEFAULT_ORIGIN));
+                itemReq.setRemark(StringUtils.hasText(cur.getRemark()) ? cur.getRemark() : (cand != null ? cand.getRemark() : null));
+            } else if (cand != null) {
+                // 来源中新增的行
+                itemReq.setNameCn(cand.getNameCn());
+                itemReq.setNameEn(cand.getNameEn());
+                itemReq.setHsCode(cand.getHsCode());
+                itemReq.setSpec(cand.getSpec());
+                itemReq.setQuantity(cand.getQuantity());
+                itemReq.setUnit(cand.getUnit());
+                itemReq.setUnitPrice(cand.getUnitPrice());
+                itemReq.setAmount(cand.getAmount());
+                itemReq.setNetWeight(cand.getNetWeight());
+                itemReq.setGrossWeight(cand.getGrossWeight());
+                itemReq.setPackages(cand.getPackages());
+                itemReq.setVolume(cand.getVolume());
+                itemReq.setOrigin(StringUtils.hasText(cand.getOrigin()) ? cand.getOrigin() : DEFAULT_ORIGIN);
+                itemReq.setRemark(cand.getRemark());
+            }
+            mergedItems.add(itemReq);
+        }
+
+        exportDocItemMapper.deleteByDocId(id);
+        saveItems(id, mergedItems);
+    }
+
+    private void prefillSellerConfigRespIfEmpty(ExportDocRespVO draft) {
+        ExportSellerConfigDO sellerConfig = exportSellerConfigMapper.selectByTenant();
+        if (sellerConfig == null) {
+            return;
+        }
+        if (!StringUtils.hasText(draft.getSellerName())) {
+            draft.setSellerName(sellerConfig.getSellerName());
+        }
+        if (!StringUtils.hasText(draft.getSellerAddress())) {
+            draft.setSellerAddress(sellerConfig.getSellerAddress());
+        }
+        if (!StringUtils.hasText(draft.getSellerBankInfo())) {
+            StringBuilder sb = new StringBuilder();
+            if (StringUtils.hasText(sellerConfig.getBankName())) sb.append(sellerConfig.getBankName()).append(" ");
+            if (StringUtils.hasText(sellerConfig.getBankAccount())) sb.append("A/C: ").append(sellerConfig.getBankAccount()).append(" ");
+            if (StringUtils.hasText(sellerConfig.getBankSwift())) sb.append("SWIFT: ").append(sellerConfig.getBankSwift()).append(" ");
+            if (StringUtils.hasText(sellerConfig.getBankAddress())) sb.append(sellerConfig.getBankAddress());
+            String bankInfo = sb.toString().trim();
+            if (!bankInfo.isEmpty()) {
+                draft.setSellerBankInfo(bankInfo);
+            }
+        }
+    }
+
+    private String buildContractItemSpec(SalesContractItemDO ci) {
+        if (StringUtils.hasText(ci.getComposition()) && StringUtils.hasText(ci.getWidth())) {
+            return ci.getComposition().trim() + " " + ci.getWidth().trim();
+        } else if (StringUtils.hasText(ci.getComposition())) {
+            return ci.getComposition().trim();
+        } else if (StringUtils.hasText(ci.getWidth())) {
+            return ci.getWidth().trim();
+        }
+        return null;
     }
 
     // ==================== 私有方法 ====================

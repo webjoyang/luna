@@ -85,4 +85,27 @@ public interface ExportDocService {
      */
     void revokeExportDoc(Long id);
 
+    /**
+     * 从销售合同带出草稿单证套数据（不落库）
+     *
+     * @param contractId 合同ID
+     * @return 预填的单证套草稿
+     */
+    ExportDocRespVO getDraftFromContract(Long contractId);
+
+    /**
+     * 从发货单带出草稿单证套数据（不落库）
+     *
+     * @param shipmentId 发货单ID
+     * @return 预填的单证套草稿
+     */
+    ExportDocRespVO getDraftFromShipment(Long shipmentId);
+
+    /**
+     * 重新同步源单据数据（仅 DRAFT 且非 MANUAL 来源；只补充空白字段、不覆盖已填字段）
+     *
+     * @param id 单证套ID
+     */
+    void resyncFromSource(Long id);
+
 }

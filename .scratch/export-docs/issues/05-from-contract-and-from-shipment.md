@@ -4,10 +4,10 @@
 
 **Blocked by:** 03（Service 骨架）, 02（合同 4 条款列 + 客户英文名址需先就位）
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] `GET /from-contract?contractId=`：4 条款列 + 客户英文名址（为空回退中文快照）+ 行快照；净重/毛重/箱数/体积留空；非 EXPORT 合同拒绝 EXPORT_DOC_CONTRACT_NOT_EXPORT
-- [ ] `GET /from-shipment?shipmentId=`：卷清单净重按明细行 SUM 聚合、毛重/箱数/体积留空手填、实发客户名优先、合同条款经发货单的合同联动带出
-- [ ] buyerBankInfo 始终留空手填；currency 取合同/发货单；卖方抬头缺省取租户配置
-- [ ] 权限 `lunaerp:business:export-doc:create`
-- [ ] 单测：从合同带出字段映射断言 + 净重留空 + 非 EXPORT 拒绝；从发货带出卷净重 Σ 聚合 + 实发客户名优先 + 合同条款联动
+- [x] `GET /from-contract?contractId=`：4 条款列 + 客户英文名址（为空回退中文快照）+ 行快照；净重/毛重/箱数/体积留空；非 EXPORT 合同拒绝 EXPORT_DOC_CONTRACT_NOT_EXPORT
+- [x] `GET /from-shipment?shipmentId=`：卷清单净重按明细行 SUM 聚合、毛重/箱数/体积留空手填、实发客户名优先、合同条款经发货单的合同联动带出
+- [x] buyerBankInfo 始终留空手填；currency 取合同/发货单；卖方抬头缺省取租户配置
+- [x] 权限 `lunaerp:business:export-doc:create`
+- [x] 单测：从合同带出字段映射断言 + 净重留空 + 非 EXPORT 拒绝；从发货带出卷净重 Σ 聚合 + 实发客户名优先 + 合同条款联动

@@ -4,11 +4,11 @@
 
 **Blocked by:** 05（复用 from-contract/from-shipment 的映射逻辑）
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] `PUT /resync-from-source?id=`：仅 DRAFT 且 source 非 MANUAL 可用
-- [ ] 只填当前为空字段、永不覆盖已编辑值；明细行按来源行匹配补空
-- [ ] 优先级 发货单 > 合同 > 卖方配置
-- [ ] MANUAL 来源拒绝 EXPORT_DOC_SOURCE_REQUIRED；非 DRAFT 拒绝 EXPORT_DOC_STATUS_NOT_ALLOW
-- [ ] 权限复用 `lunaerp:business:export-doc:update`
-- [ ] 单测：抬头/meta/行三层只填空不覆盖（每层各有用例）+ MANUAL 拒绝 + 非 DRAFT 拒绝
+- [x] `PUT /resync-from-source?id=`：仅 DRAFT 且 source 非 MANUAL 可用
+- [x] 只填当前为空字段、永不覆盖已编辑值；明细行按来源行匹配补空
+- [x] 优先级 发货单 > 合同 > 卖方配置
+- [x] MANUAL 来源拒绝 EXPORT_DOC_SOURCE_REQUIRED；非 DRAFT 拒绝 EXPORT_DOC_STATUS_NOT_ALLOW
+- [x] 权限复用 `lunaerp:business:export-doc:update`
+- [x] 单测：抬头/meta/行三层只填空不覆盖（每层各有用例）+ MANUAL 拒绝 + 非 DRAFT 拒绝

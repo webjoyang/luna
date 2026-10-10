@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocSaveReqVO;
@@ -13,10 +14,20 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.Customer
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportSellerConfigDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.exportdoc.ExportDocItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.exportdoc.ExportDocMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.exportdoc.ExportSellerConfigMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +65,21 @@ class ExportDocServiceImplTest {
 
     @Mock
     private CustomerMapper customerMapper;
+
+    @Mock
+    private SalesContractMapper salesContractMapper;
+
+    @Mock
+    private SalesContractItemMapper salesContractItemMapper;
+
+    @Mock
+    private ShipmentMapper shipmentMapper;
+
+    @Mock
+    private ShipmentItemMapper shipmentItemMapper;
+
+    @Mock
+    private ShipmentRollMapper shipmentRollMapper;
 
     @InjectMocks
     private ExportDocServiceImpl exportDocService;
@@ -556,5 +582,275 @@ class ExportDocServiceImplTest {
 
         ServiceException ex = assertThrows(ServiceException.class, () -> exportDocService.revokeExportDoc(10L));
         assertEquals(EXPORT_DOC_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    // ==================== Issue 05: 从合同/发货单带出 ====================
+
+    @Test
+    @DisplayName("从销售合同带出草稿：正常带出4条款、客户英文名址、行快照，且重量一律留空")
+    void testGetDraftFromContract_Success() {
+        Long contractId = 201L;
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(contractId);
+        contract.setContractNo("SC20260001");
+        contract.setTradeType("EXPORT");
+        contract.setCustomerId(1L);
+        contract.setClientName("中文客户名");
+        contract.setClientAddress("中文地址");
+        contract.setIncoterm("FOB");
+        contract.setPortOfLoading("SHANGHAI");
+        contract.setPortOfDischarge("LOS ANGELES");
+        contract.setPaymentTerm("TT");
+        contract.setCurrency("USD");
+        contract.setUnit("M");
+        when(salesContractMapper.selectById(contractId)).thenReturn(contract);
+
+        CustomerDO customer = createMockCustomer(1L);
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+
+        SalesContractItemDO ci1 = new SalesContractItemDO();
+        ci1.setLineNo(1);
+        ci1.setProductName("Silk Satin");
+        ci1.setComposition("100% SILK");
+        ci1.setWidth("140CM");
+        ci1.setQuantity(new BigDecimal("500.00"));
+        ci1.setUnitPrice(new BigDecimal("15.50"));
+        ci1.setAmount(new BigDecimal("7750.00"));
+        ci1.setWeight("16MM"); // GSM / m/m
+        when(salesContractItemMapper.selectListByContractId(contractId)).thenReturn(Collections.singletonList(ci1));
+
+        ExportDocRespVO draft = exportDocService.getDraftFromContract(contractId);
+
+        assertNotNull(draft);
+        assertEquals("CONTRACT", draft.getSourceType());
+        assertEquals(contractId, draft.getContractId());
+        assertEquals("SC20260001", draft.getContractNo());
+        assertEquals("FOB", draft.getIncoterm());
+        assertEquals("SHANGHAI", draft.getPortOfLoading());
+        assertEquals("LOS ANGELES", draft.getPortOfDischarge());
+        assertEquals("TT", draft.getPaymentTerm());
+        assertEquals("USD", draft.getCurrency());
+        assertEquals("ACME GLOBAL CO., LTD.", draft.getBuyerName());
+        assertEquals("100 West Lake Rd, Hangzhou, China", draft.getBuyerAddress());
+        assertNull(draft.getBuyerBankInfo());
+
+        assertEquals(1, draft.getItems().size());
+        ExportDocItemRespVO item = draft.getItems().get(0);
+        assertEquals("Silk Satin", item.getNameCn());
+        assertNull(item.getNameEn());
+        assertEquals("100% SILK 140CM", item.getSpec());
+        assertEquals(new BigDecimal("500.00"), item.getQuantity());
+        assertEquals("M", item.getUnit());
+        assertEquals(new BigDecimal("15.50"), item.getUnitPrice());
+        assertEquals(new BigDecimal("7750.00"), item.getAmount());
+        // 重量/箱数/体积留空
+        assertNull(item.getNetWeight());
+        assertNull(item.getGrossWeight());
+        assertNull(item.getPackages());
+        assertNull(item.getVolume());
+    }
+
+    @Test
+    @DisplayName("从销售合同带出草稿：非 EXPORT 合同拒绝报 EXPORT_DOC_CONTRACT_NOT_EXPORT")
+    void testGetDraftFromContract_NotExport_Reject() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(202L);
+        contract.setTradeType("DOMESTIC");
+        when(salesContractMapper.selectById(202L)).thenReturn(contract);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> exportDocService.getDraftFromContract(202L));
+        assertEquals(EXPORT_DOC_CONTRACT_NOT_EXPORT.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("从发货单带出草稿：卷清单净重按明细行 SUM 聚合、实发客户名优先、合同条款联动")
+    void testGetDraftFromShipment_Success() {
+        Long shipmentId = 301L;
+        Long contractId = 201L;
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(shipmentId);
+        shipment.setShipmentNo("SH-20261010-001");
+        shipment.setCustomerId(1L);
+        shipment.setCustomerName("实发特殊客户名");
+        shipment.setSalesContractId(contractId);
+        shipment.setContractNo("SC20260001");
+        shipment.setCurrency("EUR");
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(shipment);
+
+        CustomerDO customer = createMockCustomer(1L);
+        customer.setNameEn(null); // 无英文名，回退实发客户名
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(contractId);
+        contract.setIncoterm("CIF");
+        contract.setPortOfLoading("NINGBO");
+        contract.setPortOfDischarge("HAMBURG");
+        contract.setPaymentTerm("LC");
+        when(salesContractMapper.selectById(contractId)).thenReturn(contract);
+
+        ShipmentItemDO si1 = new ShipmentItemDO();
+        si1.setId(1001L);
+        si1.setShipmentId(shipmentId);
+        si1.setProductName("Cotton Twill");
+        si1.setColorName("Navy Blue");
+        si1.setQuantity(new BigDecimal("120.00"));
+        si1.setUnit("KG");
+        si1.setUnitPrice(new BigDecimal("8.00"));
+        si1.setAmount(new BigDecimal("960.00"));
+        when(shipmentItemMapper.selectListByShipmentId(shipmentId)).thenReturn(Collections.singletonList(si1));
+
+        ShipmentRollDO r1 = new ShipmentRollDO();
+        r1.setShipmentItemId(1001L);
+        r1.setWeight(new BigDecimal("60.25"));
+        ShipmentRollDO r2 = new ShipmentRollDO();
+        r2.setShipmentItemId(1001L);
+        r2.setWeight(new BigDecimal("59.50"));
+        when(shipmentRollMapper.selectListByShipmentId(shipmentId)).thenReturn(List.of(r1, r2));
+
+        ExportDocRespVO draft = exportDocService.getDraftFromShipment(shipmentId);
+
+        assertNotNull(draft);
+        assertEquals("SHIPMENT", draft.getSourceType());
+        assertEquals(shipmentId, draft.getShipmentId());
+        assertEquals("SH-20261010-001", draft.getShipmentNo());
+        assertEquals("实发特殊客户名", draft.getCustomerName());
+        assertEquals("实发特殊客户名", draft.getBuyerName());
+        assertEquals("CIF", draft.getIncoterm());
+        assertEquals("NINGBO", draft.getPortOfLoading());
+        assertEquals("HAMBURG", draft.getPortOfDischarge());
+        assertEquals("LC", draft.getPaymentTerm());
+        assertEquals("EUR", draft.getCurrency());
+
+        assertEquals(1, draft.getItems().size());
+        ExportDocItemRespVO item = draft.getItems().get(0);
+        assertEquals("Cotton Twill", item.getNameCn());
+        assertEquals("Navy Blue", item.getSpec());
+        // 净重按卷清单聚合 SUM: 60.25 + 59.50 = 119.75
+        assertEquals(new BigDecimal("119.75"), item.getNetWeight());
+        assertNull(item.getGrossWeight());
+        assertNull(item.getPackages());
+        assertNull(item.getVolume());
+    }
+
+    // ==================== Issue 06: 重新同步 ====================
+
+    @Test
+    @DisplayName("重新同步：MANUAL 来源拒绝报 EXPORT_DOC_SOURCE_REQUIRED")
+    void testResyncFromSource_Manual_Reject() {
+        ExportDocDO doc = new ExportDocDO();
+        doc.setId(10L);
+        doc.setStatus("DRAFT");
+        doc.setSourceType("MANUAL");
+        when(exportDocMapper.selectById(10L)).thenReturn(doc);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> exportDocService.resyncFromSource(10L));
+        assertEquals(EXPORT_DOC_SOURCE_REQUIRED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("重新同步：非 DRAFT 状态拒绝报 EXPORT_DOC_STATUS_NOT_ALLOW")
+    void testResyncFromSource_NotDraft_Reject() {
+        ExportDocDO doc = new ExportDocDO();
+        doc.setId(10L);
+        doc.setStatus("FINALIZED");
+        doc.setSourceType("CONTRACT");
+        when(exportDocMapper.selectById(10L)).thenReturn(doc);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> exportDocService.resyncFromSource(10L));
+        assertEquals(EXPORT_DOC_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("重新同步：抬头/meta/行三层只填空不覆盖已填值，且追加来源新行")
+    void testResyncFromSource_FillEmptyOnly() {
+        Long docId = 10L;
+        Long contractId = 201L;
+        ExportDocDO existingDoc = new ExportDocDO();
+        existingDoc.setId(docId);
+        existingDoc.setStatus("DRAFT");
+        existingDoc.setSourceType("CONTRACT");
+        existingDoc.setContractId(contractId);
+        // 抬头层：已有 buyerName，缺失 incoterm
+        existingDoc.setBuyerName("ALREADY CUSTOM BUYER");
+        existingDoc.setIncoterm(null);
+        // meta 层：已有 piMeta，缺失 ciMeta
+        existingDoc.setPiMeta("{\"customPi\":true}");
+        existingDoc.setCiMeta(null);
+        when(exportDocMapper.selectById(docId)).thenReturn(existingDoc);
+
+        // 合同源数据
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(contractId);
+        contract.setContractNo("SC20260001");
+        contract.setTradeType("EXPORT");
+        contract.setCustomerId(1L);
+        contract.setIncoterm("FOB");
+        contract.setPortOfLoading("SHANGHAI");
+        contract.setUnit("M");
+        when(salesContractMapper.selectById(contractId)).thenReturn(contract);
+
+        CustomerDO customer = createMockCustomer(1L);
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+
+        // 合同源行：共 2 行
+        SalesContractItemDO ci1 = new SalesContractItemDO();
+        ci1.setLineNo(1);
+        ci1.setProductName("Silk Satin");
+        ci1.setComposition("100% SILK");
+        ci1.setQuantity(new BigDecimal("500.00"));
+        ci1.setUnitPrice(new BigDecimal("15.50"));
+        ci1.setAmount(new BigDecimal("7750.00"));
+
+        SalesContractItemDO ci2 = new SalesContractItemDO();
+        ci2.setLineNo(2);
+        ci2.setProductName("Silk Chiffon");
+        ci2.setQuantity(new BigDecimal("200.00"));
+        ci2.setUnitPrice(new BigDecimal("10.00"));
+        ci2.setAmount(new BigDecimal("2000.00"));
+        when(salesContractItemMapper.selectListByContractId(contractId)).thenReturn(List.of(ci1, ci2));
+
+        // 单证套现有明细：仅 1 行，且已手填修改过 spec 与 quantity
+        ExportDocItemDO dbItem1 = new ExportDocItemDO();
+        dbItem1.setId(101L);
+        dbItem1.setDocId(docId);
+        dbItem1.setLineNo(1);
+        dbItem1.setNameCn("Silk Satin");
+        dbItem1.setSpec("CUSTOM MODIFIED SPEC");
+        dbItem1.setQuantity(new BigDecimal("600.00"));
+        dbItem1.setUnit("M");
+        dbItem1.setUnitPrice(new BigDecimal("15.50"));
+        dbItem1.setAmount(new BigDecimal("9300.00"));
+        when(exportDocItemMapper.selectListByDocId(docId)).thenReturn(Collections.singletonList(dbItem1));
+
+        // Act
+        exportDocService.resyncFromSource(docId);
+
+        // Assert 抬头层与 meta 层：
+        ArgumentCaptor<ExportDocDO> docCaptor = ArgumentCaptor.forClass(ExportDocDO.class);
+        verify(exportDocMapper).updateById(docCaptor.capture());
+        ExportDocDO updatedDoc = docCaptor.getValue();
+        // 已有字段未被覆盖
+        assertEquals("ALREADY CUSTOM BUYER", updatedDoc.getBuyerName());
+        assertEquals("{\"customPi\":true}", updatedDoc.getPiMeta());
+        // 空白字段被补充
+        assertEquals("FOB", updatedDoc.getIncoterm());
+        assertEquals("SHANGHAI", updatedDoc.getPortOfLoading());
+
+        // Assert 明细行层：
+        verify(exportDocItemMapper).deleteByDocId(docId);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ExportDocItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(exportDocItemMapper).insertBatch(itemsCaptor.capture());
+        List<ExportDocItemDO> savedItems = itemsCaptor.getValue();
+        assertEquals(2, savedItems.size());
+        // 行 1：已手填的值未被覆盖
+        ExportDocItemDO saved1 = savedItems.get(0);
+        assertEquals("CUSTOM MODIFIED SPEC", saved1.getSpec());
+        assertEquals(new BigDecimal("600.00"), saved1.getQuantity());
+        // 行 2：来源新增行被追加
+        ExportDocItemDO saved2 = savedItems.get(1);
+        assertEquals("Silk Chiffon", saved2.getNameCn());
+        assertEquals(new BigDecimal("200.00"), saved2.getQuantity());
     }
 }

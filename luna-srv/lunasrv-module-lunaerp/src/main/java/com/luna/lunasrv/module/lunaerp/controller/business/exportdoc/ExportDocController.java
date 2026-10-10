@@ -112,4 +112,29 @@ public class ExportDocController {
         return success(true);
     }
 
+    @GetMapping("/from-contract")
+    @Operation(summary = "从销售合同带出草稿单证套数据（不落库）")
+    @Parameter(name = "contractId", description = "销售合同ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:export-doc:create')")
+    public CommonResult<ExportDocRespVO> getDraftFromContract(@RequestParam("contractId") Long contractId) {
+        return success(exportDocService.getDraftFromContract(contractId));
+    }
+
+    @GetMapping("/from-shipment")
+    @Operation(summary = "从发货单带出草稿单证套数据（不落库）")
+    @Parameter(name = "shipmentId", description = "发货单ID", required = true, example = "2048")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:export-doc:create')")
+    public CommonResult<ExportDocRespVO> getDraftFromShipment(@RequestParam("shipmentId") Long shipmentId) {
+        return success(exportDocService.getDraftFromShipment(shipmentId));
+    }
+
+    @PutMapping("/resync-from-source")
+    @Operation(summary = "重新同步源单据数据（仅 DRAFT 且非 MANUAL 来源；只补充空白字段、不覆盖已填字段）")
+    @Parameter(name = "id", description = "单证套编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:export-doc:update')")
+    public CommonResult<Boolean> resyncFromSource(@RequestParam("id") Long id) {
+        exportDocService.resyncFromSource(id);
+        return success(true);
+    }
+
 }
