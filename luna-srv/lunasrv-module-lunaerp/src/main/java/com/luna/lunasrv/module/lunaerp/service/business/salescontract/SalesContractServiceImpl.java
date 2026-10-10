@@ -277,6 +277,7 @@ public class SalesContractServiceImpl implements SalesContractService {
         LambdaQueryWrapperX<SalesContractDO> wrapper = new LambdaQueryWrapperX<>();
         // 等值过滤（为空则不过滤，便于"全部"场景）
         wrapper.eqIfPresent(SalesContractDO::getStatus, reqVO.getStatus());
+        wrapper.eqIfPresent(SalesContractDO::getApprovalStatus, reqVO.getApprovalStatus());
         wrapper.eqIfPresent(SalesContractDO::getTradeType, reqVO.getTradeType());
         // customerId 预留透传（本票无 UI 入口）
         wrapper.eqIfPresent(SalesContractDO::getCustomerId, reqVO.getCustomerId());

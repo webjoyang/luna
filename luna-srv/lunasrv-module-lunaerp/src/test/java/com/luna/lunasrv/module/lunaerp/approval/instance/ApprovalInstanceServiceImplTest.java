@@ -220,6 +220,18 @@ class ApprovalInstanceServiceImplTest {
     }
 
     @Test
+    @DisplayName("发起审批失败：未登录用户抛出 1_030_030_005")
+    void testSubmitInstance_NotLoggedIn_Throws() {
+        SecurityContextHolder.clearContext();
+        ApprovalInstanceSubmitReqVO reqVO = new ApprovalInstanceSubmitReqVO();
+        reqVO.setBizType("sales_contract");
+        reqVO.setBizId(1001L);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> approvalInstanceService.submitInstance(reqVO));
+        assertEquals(APPROVAL_NO_PERMISSION.getCode(), ex.getCode());
+    }
+
+    @Test
     @DisplayName("发起审批失败：无启用的流程配置抛出 1_030_030_001")
     void testSubmitInstance_NoEnabledConfig_Throws() {
         when(approvalConfigService.getEnabledConfigByBizType("sales_contract")).thenReturn(null);
@@ -310,6 +322,24 @@ class ApprovalInstanceServiceImplTest {
         ServiceException ex = assertThrows(ServiceException.class,
                 () -> approvalInstanceService.withdrawInstance(9999L, null));
         assertEquals(APPROVAL_INSTANCE_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("撤回审批失败：未登录用户撤回抛出 1_030_030_005")
+    void testWithdrawInstance_NotLoggedIn_Throws() {
+        SecurityContextHolder.clearContext();
+        ApprovalInstanceDO instance = ApprovalInstanceDO.builder()
+                .id(5001L)
+                .bizType("sales_contract")
+                .bizId(1001L)
+                .status("APPROVING")
+                .submitterId(loginUserId)
+                .build();
+        when(approvalInstanceMapper.selectById(5001L)).thenReturn(instance);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> approvalInstanceService.withdrawInstance(5001L, null));
+        assertEquals(APPROVAL_NO_PERMISSION.getCode(), ex.getCode());
     }
 
     @Test

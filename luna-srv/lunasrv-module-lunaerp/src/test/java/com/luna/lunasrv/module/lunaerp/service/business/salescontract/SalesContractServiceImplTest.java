@@ -428,6 +428,7 @@ class SalesContractServiceImplTest {
         reqVO.setPageSize(20);
         reqVO.setKeyword("杭州");
         reqVO.setStatus("ACTIVE");
+        reqVO.setApprovalStatus("APPROVING");
         reqVO.setTradeType("DOMESTIC");
         reqVO.setCustomerId(CUSTOMER_ID);
         when(salesContractMapper.selectPage(any(SalesContractPageReqVO.class), any(Wrapper.class)))
@@ -445,8 +446,9 @@ class SalesContractServiceImplTest {
         assertTrue(sqlSegment.contains("LOWER(contract_no) LIKE"), "keyword 应透传到 contract_no 模糊");
         assertTrue(sqlSegment.contains("LOWER(client_name) LIKE"), "keyword 应透传到 client_name 模糊");
         assertTrue(sqlSegment.contains("LOWER(client_contract_no) LIKE"), "keyword 应透传到 client_contract_no 模糊");
-        // status / tradeType / customerId 等值透传
+        // status / approvalStatus / tradeType / customerId 等值透传
         assertTrue(sqlSegment.contains("status ="), "status 应透传等值过滤");
+        assertTrue(sqlSegment.contains("approval_status ="), "approvalStatus 应透传等值过滤");
         assertTrue(sqlSegment.contains("trade_type ="), "tradeType 应透传等值过滤");
         assertTrue(sqlSegment.contains("customer_id ="), "customerId 应透传等值过滤");
         // 默认签订日期倒序

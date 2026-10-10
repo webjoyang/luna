@@ -16,6 +16,9 @@ public class SalesContractPageReqVO extends PageParam {
     @Schema(description = "合同状态：ACTIVE/COMPLETED/CANCELLED", example = "ACTIVE")
     private String status;
 
+    @Schema(description = "审批状态：DRAFT/APPROVING/APPROVED/REJECTED/CANCELLED", example = "APPROVING")
+    private String approvalStatus;
+
     @Schema(description = "贸易类型：DOMESTIC/EXPORT", example = "DOMESTIC")
     private String tradeType;
 

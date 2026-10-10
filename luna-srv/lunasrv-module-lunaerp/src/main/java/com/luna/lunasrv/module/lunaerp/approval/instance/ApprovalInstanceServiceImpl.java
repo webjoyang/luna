@@ -103,6 +103,12 @@ public class ApprovalInstanceServiceImpl implements ApprovalInstanceService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long submitInstance(ApprovalInstanceSubmitReqVO submitReqVO) {
+        // 0. 校验发起人权限（未登录不允许发起）
+        Long submitterId = SecurityFrameworkUtils.getLoginUserId();
+        if (submitterId == null) {
+            throw exception(APPROVAL_NO_PERMISSION);
+        }
+
         // 1. 业务单据处理器校验
         ApprovalBizHandler handler = getHandler(submitReqVO.getBizType());
         handler.validateCanSubmit(submitReqVO.getBizId());
@@ -118,8 +124,7 @@ public class ApprovalInstanceServiceImpl implements ApprovalInstanceService {
         }
 
         // 3. 提交人与单据信息
-        Long submitterId = SecurityFrameworkUtils.getLoginUserId();
-        AdminUserRespDTO submitter = submitterId != null && adminUserApi != null ? adminUserApi.getUser(submitterId) : null;
+        AdminUserRespDTO submitter = adminUserApi != null ? adminUserApi.getUser(submitterId) : null;
         String submitterName = submitter != null ? submitter.getNickname() : "发起人";
         String bizNo = handler.getBizNo(submitReqVO.getBizId());
 
@@ -220,7 +225,7 @@ public class ApprovalInstanceServiceImpl implements ApprovalInstanceService {
 
         // 2. 校验发起人权限（仅本人可撤回，非本人报 1_030_030_005）
         Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
-        if (loginUserId != null && !instance.getSubmitterId().equals(loginUserId)) {
+        if (loginUserId == null || !instance.getSubmitterId().equals(loginUserId)) {
             throw exception(APPROVAL_NO_PERMISSION);
         }
 
