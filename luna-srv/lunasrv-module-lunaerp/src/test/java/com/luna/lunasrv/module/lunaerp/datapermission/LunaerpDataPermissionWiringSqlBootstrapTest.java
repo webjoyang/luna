@@ -225,4 +225,52 @@ public class LunaerpDataPermissionWiringSqlBootstrapTest {
         assertTrue(sql.contains("UPDATE lunaerp_business_quotation t SET dept_id = u.dept_id"),
                 "报价单表需包含注释形态的归属校正 SQL");
     }
+
+    @Test
+    @DisplayName("验证 §9.1 组织造数 fixture SQL 存在且包含完整部门、用户与 4 表数据")
+    void testDataPermissionFixtureSql() throws IOException {
+        Path fixturePath = Path.of("sql/postgresql/lunaerp-data-permission-fixture.sql");
+        if (!Files.exists(fixturePath)) {
+            fixturePath = Path.of("../sql/postgresql/lunaerp-data-permission-fixture.sql");
+        }
+        if (!Files.exists(fixturePath)) {
+            File root = new File("").getAbsoluteFile();
+            while (root != null && !new File(root, "sql/postgresql/lunaerp-data-permission-fixture.sql").exists()) {
+                root = root.getParentFile();
+            }
+            if (root != null) {
+                fixturePath = new File(root, "sql/postgresql/lunaerp-data-permission-fixture.sql").toPath();
+            }
+        }
+        assertTrue(Files.exists(fixturePath), "fixture SQL 文件必须存在于 sql/postgresql/lunaerp-data-permission-fixture.sql");
+        String sql = Files.readString(fixturePath, StandardCharsets.UTF_8);
+
+        // 语法解析校验
+        String standardSql = sql.replaceAll("(?s)/\\*.*?\\*/", "")
+                                .replaceAll("--.*?(\r?\n)", "\n");
+        List<SQLStatement> statements = SQLUtils.parseStatements(standardSql, DbType.postgresql);
+        assertFalse(statements.isEmpty(), "fixture SQL 必须能被 PostgreSQL 解析器成功解析");
+
+        // 部门 D1/D1.1/D2
+        assertTrue(sql.contains("销售一部(D1)"));
+        assertTrue(sql.contains("销售一部一科(D1.1)"));
+        assertTrue(sql.contains("销售二部(D2)"));
+
+        // 用户与角色
+        assertTrue(sql.contains("sales_manager_m"));
+        assertTrue(sql.contains("salesperson_a"));
+        assertTrue(sql.contains("salesperson_c"));
+        assertTrue(sql.contains("salesperson_d"));
+        assertTrue(sql.contains("dept_only_user"));
+        assertTrue(sql.contains("salesperson_deact"));
+
+        // 4 表数据
+        assertTrue(sql.contains("lunaerp_baseinfo_customer"));
+        assertTrue(sql.contains("lunaerp_business_sales_contract"));
+        assertTrue(sql.contains("lunaerp_business_shipment"));
+        assertTrue(sql.contains("lunaerp_baseinfo_customer_contact"));
+
+        // 幂等性
+        assertTrue(sql.contains("ON CONFLICT (id) DO UPDATE"));
+    }
 }
