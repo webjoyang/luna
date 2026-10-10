@@ -15,6 +15,7 @@ public interface ColorInstructionErrorCodeConstants {
     ErrorCode COLOR_INSTRUCTION_NOT_EXISTS = new ErrorCode(1_030_032_000, "打色指示单不存在");
     ErrorCode COLOR_INSTRUCTION_NO_DUPLICATE = new ErrorCode(1_030_032_001, "打色单号【{}】已存在");
     ErrorCode COLOR_INSTRUCTION_STATUS_NOT_ALLOW = new ErrorCode(1_030_032_002, "打色指示单当前状态不允许该操作");
+    ErrorCode COLOR_INSTRUCTION_STATUS_NOT_ALLOWED = COLOR_INSTRUCTION_STATUS_NOT_ALLOW;
     ErrorCode COLOR_INSTRUCTION_REFERENCE_NOT_EXISTS = new ErrorCode(1_030_032_003, "关联引用不存在（客户/产品/供应商）");
     ErrorCode COLOR_INSTRUCTION_CANNOT_CONFIRM = new ErrorCode(1_030_032_004, "存在未决颜色行或无通过行，不能确认");
     ErrorCode COLOR_INSTRUCTION_REFERENCED_BY_DOWNSTREAM = new ErrorCode(1_030_032_005, "已被下游有效单据引用，不能作废或删除");
