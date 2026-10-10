@@ -624,6 +624,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
     meta: { hidden: true },
     children: [
       {
+        path: 'color-instruction/edit/:id?',
+        component: () => import('@/views/lunaerp-elmui/production/color-instruction/edit.vue'),
+        name: 'LunaerpElmuiProductionColorInstructionEdit',
+        meta: {
+          title: '打色指示单',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/production/color-instruction'
+        }
+      },
+      {
         path: 'greige-order/edit/:id?',
         component: () => import('@/views/lunaerp-elmui/production/greige-order/edit/index.vue'),
         name: 'LunaerpElmuiProductionGreigeOrderEdit',

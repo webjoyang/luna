@@ -1,0 +1,114 @@
+import request from '@/config/axios'
+
+/**
+ * 颜色摘要 VO（色号 chips + 轮次数，防 N+1 预聚合）
+ */
+export interface ColorInstructionSummaryVO {
+  customerColorNo: string
+  colorName?: string
+  colorHex?: string
+  round: number
+  status: string
+}
+
+/**
+ * 打色指示单颜色行 VO
+ */
+export interface ColorInstructionColorVO {
+  id?: number
+  instructionId?: number
+  lineNo?: number
+  customerColorNo: string
+  colorName: string
+  factoryColorNo?: string
+  colorHex?: string
+  lightPrimary: string
+  lightSecondary?: string
+  colorCardRef?: string
+  samplePhotos?: string
+  copies?: number
+  round: number
+  status: string
+  rejectReason?: string
+  remark?: string
+}
+
+/**
+ * 打色指示单主档 VO
+ */
+export interface ColorInstructionVO {
+  id?: number
+  instructionNo?: string
+  customerId: number
+  clientName: string
+  contactPerson?: string
+  productId: number
+  productCode: string
+  productName: string
+  labFactoryId?: number | null
+  labFactoryName?: string
+  composition?: string
+  width?: string
+  gsm?: string
+  instructionDate: string
+  deliveryDate?: string
+  status: string
+  confirmType?: string
+  customerFeedback?: string
+  confirmedBy?: number
+  confirmedAt?: string
+  voidReason?: string
+  remark?: string
+  createTime?: string
+  colorSummary?: ColorInstructionSummaryVO[]
+  colors?: ColorInstructionColorVO[]
+}
+
+/**
+ * 打色指示单分页查询请求 VO
+ */
+export interface ColorInstructionPageReqVO {
+  pageNo: number
+  pageSize: number
+  instructionNo?: string
+  customerId?: number
+  productCodeOrName?: string
+  customerColorNo?: string
+  status?: string
+  instructionDateRange?: string[]
+}
+
+/**
+ * 查询打色指示单分页
+ */
+export const getColorInstructionPage = (params: ColorInstructionPageReqVO) => {
+  return request.get({ url: '/lunaerp/production/color-instruction/page', params })
+}
+
+/**
+ * 查询打色指示单详情
+ */
+export const getColorInstruction = (id: number) => {
+  return request.get({ url: '/lunaerp/production/color-instruction/get', params: { id } })
+}
+
+/**
+ * 创建打色指示单（预留骨架，后续票据落地）
+ */
+export const createColorInstruction = (data: Partial<ColorInstructionVO>) => {
+  return request.post({ url: '/lunaerp/production/color-instruction/create', data })
+}
+
+/**
+ * 更新打色指示单（预留骨架，后续票据落地）
+ */
+export const updateColorInstruction = (data: Partial<ColorInstructionVO>) => {
+  return request.put({ url: '/lunaerp/production/color-instruction/update', data })
+}
+
+/**
+ * 删除打色指示单（预留骨架，后续票据落地）
+ */
+export const deleteColorInstruction = (id: number) => {
+  return request.delete({ url: '/lunaerp/production/color-instruction/delete', params: { id } })
+}

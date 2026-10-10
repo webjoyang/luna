@@ -57,6 +57,9 @@ BEGIN
     END IF;
 END $$;
 
+ALTER TABLE lunaerp_production_dyeing_order ADD COLUMN IF NOT EXISTS color_instruction_id int8 NULL;
+ALTER TABLE lunaerp_production_dyeing_order ADD COLUMN IF NOT EXISTS color_instruction_no varchar(32) NULL;
+
 CREATE INDEX IF NOT EXISTS idx_lb_dyeing_order_status
     ON lunaerp_production_dyeing_order (status);
 CREATE INDEX IF NOT EXISTS idx_lb_dyeing_order_order_date
@@ -68,6 +71,8 @@ COMMENT ON TABLE lunaerp_production_dyeing_order IS '生产管理-染色单主�
 COMMENT ON COLUMN lunaerp_production_dyeing_order.id IS '染色单ID';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.sales_contract_id IS '销售合同ID（lunaerp_business_sales_contract.id，逻辑关联可空）';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.contract_no IS '合同号快照（选中合同时保存）';
+COMMENT ON COLUMN lunaerp_production_dyeing_order.color_instruction_id IS '打色指示单ID（lunaerp_production_color_instruction.id，逻辑关联可空）';
+COMMENT ON COLUMN lunaerp_production_dyeing_order.color_instruction_no IS '打色单号快照（可空）';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.customer_id IS '客户ID（lunaerp_baseinfo_customer.id，从合同带出可空）';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.client_name IS '客户名快照（从合同带出）';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.dyeing_factory_id IS '承染方供应商ID（lunaerp_baseinfo_supplier.id，必填）';

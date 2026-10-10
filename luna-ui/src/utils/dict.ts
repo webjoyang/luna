@@ -133,6 +133,26 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
   lunaerp_quotation_cost_source: [
     { dictType: 'lunaerp_quotation_cost_source', label: '成本卡', value: 'CARD', colorType: 'primary', cssClass: '' },
     { dictType: 'lunaerp_quotation_cost_source', label: '手工', value: 'MANUAL', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_color_light_source: [
+    { dictType: 'lunaerp_color_light_source', label: 'D65', value: 'D65', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'TL84', value: 'TL84', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'CWF', value: 'CWF', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'A', value: 'A', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'UV', value: 'UV', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'TL83', value: 'TL83', colorType: '', cssClass: '' }
+  ],
+  lunaerp_color_line_status: [
+    { dictType: 'lunaerp_color_line_status', label: '待打色', value: 'PENDING', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_color_line_status', label: '通过', value: 'APPROVED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_color_line_status', label: '驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_color_instruction_status: [
+    { dictType: 'lunaerp_color_instruction_status', label: '待打色', value: 'PENDING', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_color_instruction_status', label: '打色中', value: 'IN_PROGRESS', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_color_instruction_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_color_instruction_status', label: '已投产', value: 'IN_PRODUCTION', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_color_instruction_status', label: '已作废', value: 'VOID', colorType: 'danger', cssClass: '' }
   ]
 }
 
@@ -644,5 +664,10 @@ export enum DICT_TYPE {
   LUNAERP_COST_FEE_UNIT = 'lunaerp_cost_fee_unit', // 费用计费口径
   LUNAERP_YARN_PRICE_TYPE = 'lunaerp_yarn_price_type', // 纱价类型
   LUNAERP_QUOTATION_STATUS = 'lunaerp_quotation_status', // 报价单状态
-  LUNAERP_QUOTATION_COST_SOURCE = 'lunaerp_quotation_cost_source' // 报价成本来源
+  LUNAERP_QUOTATION_COST_SOURCE = 'lunaerp_quotation_cost_source', // 报价成本来源
+
+  // ========== LunaERP - 生产管理-打色指示单模块 ==========
+  LUNAERP_COLOR_LIGHT_SOURCE = 'lunaerp_color_light_source', // 打色灯源
+  LUNAERP_COLOR_LINE_STATUS = 'lunaerp_color_line_status', // 打色单行状态
+  LUNAERP_COLOR_INSTRUCTION_STATUS = 'lunaerp_color_instruction_status' // 打色指示单状态
 }
