@@ -4,21 +4,21 @@
 
 **Blocked by:** 03（取价 Service `YarnPriceService#getEffectivePrice`）, 04（BOM 5 列 DO 形状）, 05（`CostCardPricingCalculator` + trial 接口基础）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] 后端 `business/business/costcard` 四层（DO 主表+纱线行子表+费用行子表 DO/Mapper/Service/Controller）；VO 头+嵌套 `yarnItems[]`/`feeItems[]` 聚合保存，带 Swagger 与 jakarta.validation
-- [ ] Controller 路径 `/lunaerp/business/cost-card`；`GET /page`、`GET /get`、`POST /create`、`PUT /update`、`DELETE /delete`、`PUT /effect`、`PUT /expire`、`POST /copy`、`POST /refresh-prices`、`POST /trial`、`GET /get-next-no`、`GET /effective-by-product`；权限 `lunaerp:business:cost-card:{query,create,update,delete}`（effect/expire/copy/refresh 复用 update，get-next-no/effective/trial 复用 query）
-- [ ] 聚合保存：头+纱线行+费用行整体替换（update 时按 contract_id 模式逻辑删旧行+插新行），`line_no` 按数组重排
-- [ ] 服务端取价（调 `YarnPriceService#getEffectivePrice`）+ 重算（调 `CostCardPricingCalculator`）落库；前端传值忽略
-- [ ] 卡号 `CC{yyyy}NNNN` 扫描含删（绕过逻辑删除的自定义查询，注释 ADR-0004 意图）+ 撞号报 `1_030_034_001`；自动号撞唯一索引有限次顺延重试
-- [ ] effect 守卫：非草稿报 `1_030_034_002`、缺价报 `1_030_034_003`、无 BOM 报 `1_030_034_004`；同事务顶旧 EFFECTIVE 卡为 EXPIRED；条件更新影响行 0 报 002；部分唯一索引冲突转业务错
-- [ ] expire 仅 EFFECTIVE→EXPIRED；EFFECTIVE/EXPIRED 不可 update/delete（API 层报 002）
-- [ ] copy 生成 DRAFT 新卡，行数据复制，价格标记为复制时点快照，可重新取价
-- [ ] `/trial` 不落库试算，body 同保存 VO（允许无 id/无卡号），返回完整测算结果（含双口径、缺价数、各行列贡献）
-- [ ] `/effective-by-product?productId=` 无生效卡返回空成功（供报价带卡用）
-- [ ] `/refresh-prices` 按价类重取当日价，返回重算结果，草稿保存时同样重取
-- [ ] W0 回收站 handler 注册（仅 DRAFT，级联复活两子表）
-- [ ] 产品档案成本分区改调 `/trial`；`product-yarn-cost.ts` 加「权威实现已迁移至后端 CostCardPricingCalculator，ADR-0039」注释，既有 TS 测试保留
-- [ ] 前端正式目录 `views/lunaerp/business/cost-card/` + API 镜像 `src/api/lunaerp/business/cost-card/`；列表（关键词/状态/产品筛选、状态 DictTag、卡号-产品-口径-单位成本-生效日期列、按钮按状态权限禁用）、编辑页（选品带快照+BOM+自动取价、纱线行/费用行可编辑表格、行贡献双口径实时 `/trial`、缺价红字、重新取价、底部四单位成本+缺价数、生效二次确认提示旧卡失效、生效卡全页只读）、`remaining.ts` 隐藏路由 `/business/cost-card/edit/:id?`
-- [ ] `CostCardServiceImplTest` 单测（纯 Mockito）：编号/扫描含删/撞号、聚合保存重排 `line_no` 与服务端重算、effect 守卫三条（002/003/004）、同事务顶旧卡、expire 守卫、copy 为新草稿、生效/失效卡不可改删、部分唯一索引冲突转业务错、跨租户不可达
-- [ ] 验收：建针织卡 + 梭织简易卡 + 梭织经纬精算卡各一张；缺价拦截 → 补价生效 → 旧卡失效 → 复制调价再生效；生效卡全页只读；产品档案成本分区显示 trial 结果；跨租户不可达
+- [x] 后端 `business/business/costcard` 四层（DO 主表+纱线行子表+费用行子表 DO/Mapper/Service/Controller）；VO 头+嵌套 `yarnItems[]`/`feeItems[]` 聚合保存，带 Swagger 与 jakarta.validation
+- [x] Controller 路径 `/lunaerp/business/cost-card`；`GET /page`、`GET /get`、`POST /create`、`PUT /update`、`DELETE /delete`、`PUT /effect`、`PUT /expire`、`POST /copy`、`POST /refresh-prices`、`POST /trial`、`GET /get-next-no`、`GET /effective-by-product`；权限 `lunaerp:business:cost-card:{query,create,update,delete}`（effect/expire/copy/refresh 复用 update，get-next-no/effective/trial 复用 query）
+- [x] 聚合保存：头+纱线行+费用行整体替换（update 时按 contract_id 模式逻辑删旧行+插新行），`line_no` 按数组重排
+- [x] 服务端取价（调 `YarnPriceService#getEffectivePrice`）+ 重算（调 `CostCardPricingCalculator`）落库；前端传值忽略
+- [x] 卡号 `CC{yyyy}NNNN` 扫描含删（绕过逻辑删除的自定义查询，注释 ADR-0004 意图）+ 撞号报 `1_030_034_001`；自动号撞唯一索引有限次顺延重试
+- [x] effect 守卫：非草稿报 `1_030_034_002`、缺价报 `1_030_034_003`、无 BOM 报 `1_030_034_004`；同事务顶旧 EFFECTIVE 卡为 EXPIRED；条件更新影响行 0 报 002；部分唯一索引冲突转业务错
+- [x] expire 仅 EFFECTIVE→EXPIRED；EFFECTIVE/EXPIRED 不可 update/delete（API 层报 002）
+- [x] copy 生成 DRAFT 新卡，行数据复制，价格标记为复制时点快照，可重新取价
+- [x] `/trial` 不落库试算，body 同保存 VO（允许无 id/无卡号），返回完整测算结果（含双口径、缺价数、各行列贡献）
+- [x] `/effective-by-product?productId=` 无生效卡返回空成功（供报价带卡用）
+- [x] `/refresh-prices` 按价类重取当日价，返回重算结果，草稿保存时同样重取
+- [x] W0 回收站 handler 注册（仅 DRAFT，级联复活两子表）
+- [x] 产品档案成本分区改调 `/trial`；`product-yarn-cost.ts` 加「权威实现已迁移至后端 CostCardPricingCalculator，ADR-0039」注释，既有 TS 测试保留
+- [x] 前端正式目录 `views/lunaerp/business/cost-card/` + API 镜像 `src/api/lunaerp/business/cost-card/`；列表（关键词/状态/产品筛选、状态 DictTag、卡号-产品-口径-单位成本-生效日期列、按钮按状态权限禁用）、编辑页（选品带快照+BOM+自动取价、纱线行/费用行可编辑表格、行贡献双口径实时 `/trial`、缺价红字、重新取价、底部四单位成本+缺价数、生效二次确认提示旧卡失效、生效卡全页只读）、`remaining.ts` 隐藏路由 `/business/cost-card/edit/:id?`
+- [x] `CostCardServiceImplTest` 单测（纯 Mockito）：编号/扫描含删/撞号、聚合保存重排 `line_no` 与服务端重算、effect 守卫三条（002/003/004）、同事务顶旧卡、expire 守卫、copy 为新草稿、生效/失效卡不可改删、部分唯一索引冲突转业务错、跨租户不可达
+- [x] 验收：建针织卡 + 梭织简易卡 + 梭织经纬精算卡各一张；缺价拦截 → 补价生效 → 旧卡失效 → 复制调价再生效；生效卡全页只读；产品档案成本分区显示 trial 结果；跨租户不可达

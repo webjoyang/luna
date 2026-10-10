@@ -589,6 +589,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/business/export-doc'
         }
+      },
+      {
+        path: 'cost-card/edit/:id?',
+        component: () => import('@/views/lunaerp/business/cost-card/edit.vue'),
+        name: 'LunaerpBusinessCostCardEdit',
+        meta: {
+          title: '成本卡编辑',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/business/cost-card'
+        }
       }
     ]
   },

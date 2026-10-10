@@ -532,6 +532,7 @@ import YarnSelect from './YarnSelect.vue'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { YarnSpecOptionVO } from '@/api/lunaerp-elmui/production/yarn-master'
+import * as CostCardApi from '@/api/lunaerp/business/cost-card'
 
 defineOptions({ name: 'ProductYarnCostSection' })
 
@@ -765,6 +766,65 @@ const calcRowContribution = (row: EditableYarnRow): number => {
     costResult.value.kgPerMeter
   )
 }
+
+// 异步调用后端 trial 接口（ADR-0039：权威测算逻辑迁移至后端 CostCardPricingCalculator）
+const trialBackend = async () => {
+  if (!yarnRows.value || yarnRows.value.length === 0) return
+  try {
+    const feeItems = []
+    if (costSettings.value.fabricConstruction === 'KNIT') {
+      if (costSettings.value.knitProcessingFeePerKg > 0) {
+        feeItems.push({
+          feeType: 'WEAVING',
+          feeUnit: 'PER_KG',
+          price: costSettings.value.knitProcessingFeePerKg,
+          lossRate: 0
+        })
+      }
+    } else {
+      if (costSettings.value.weavingFeePerMeter > 0) {
+        feeItems.push({
+          feeType: 'WEAVING',
+          feeUnit: 'PER_METER',
+          price: costSettings.value.weavingFeePerMeter,
+          lossRate: 0
+        })
+      }
+      if (costSettings.value.otherProcessingFeePerMeter > 0) {
+        feeItems.push({
+          feeType: 'DYEING',
+          feeUnit: 'PER_METER',
+          price: costSettings.value.otherProcessingFeePerMeter,
+          lossRate: 0
+        })
+      }
+    }
+    await CostCardApi.trialCostCard({
+      fabricConstruction: costSettings.value.fabricConstruction,
+      wovenCalculationMode: costSettings.value.wovenCalculationMode,
+      greigeWeightGsm: costSettings.value.greigeWeightGsm,
+      greigeWidthCm: costSettings.value.greigeWidthCm,
+      taxRate: 0,
+      basis: costSettings.value.fabricConstruction === 'KNIT' ? 'KG' : 'METER',
+      yarnItems: yarnRows.value.map((r) => ({
+        yarnSpecId: r.yarnSpecId || 0,
+        yarnSpecName: r.yarnSpecName || '',
+        direction: r.direction || 'GENERAL',
+        ratio: Number(r.ratio) || 0,
+        density: Number(r.density) || undefined,
+        crimpRate: Number(r.crimpRate) || undefined,
+        wasteRate: Number(r.wasteRate) || 0,
+        consumptionKgPerMeter: Number(r.consumptionKgPerMeter) || undefined,
+        price: Number(r.price) || 0
+      })),
+      feeItems
+    })
+  } catch {}
+}
+
+watch([yarnRows, costSettings], () => {
+  trialBackend()
+}, { deep: true })
 
 // ========== 成本项与供应商 ==========
 const supplierLoading = ref(false)
