@@ -110,3 +110,6 @@ output/
 skills/
 .trae/commands/
 .qoder/
+
+.worktrees/
+
