@@ -4,7 +4,7 @@
 
 **Blocked by:** 01（横切地基 prefactor）
 
-**Status:** ready-for-agent
+**Status:** closed
 
 - [x] 单文件 SQL 落库，重跑不报错且菜单/字典/表不重复
 - [x] 6 新表 DDL 含 TenantBaseDO 标准列、主键 DO 块判存、序列、全列 COMMENT

@@ -4,7 +4,7 @@
 
 **Blocked by:** None（can start immediately）
 
-**Status:** ready-for-agent
+**Status:** closed
 
 - [x] lunaerp 模块 `ErrorCodeConstants.java` 落 1_030_034_000-107 + 1_030_008_008-009 常量（13 + 2 共 15 条），注释含中文名与触发场景，与 spec「错误码」节一致
 - [x] `docs/adr/0039-cost-card-snapshot-bom-convergence-backend-pricing.md` 落 ADR-0039（含「修订 ADR-0035 算价位置」明示，不推翻字段迁移结论）

@@ -61,6 +61,8 @@ END $$;
 ALTER TABLE lunaerp_production_greige_order ALTER COLUMN greige_factory_id DROP NOT NULL;
 ALTER TABLE lunaerp_production_greige_order ALTER COLUMN greige_factory_name DROP NOT NULL;
 ALTER TABLE lunaerp_production_greige_order ADD COLUMN IF NOT EXISTS production_mode varchar(16) NOT NULL DEFAULT 'OUTSOURCE';
+ALTER TABLE lunaerp_production_greige_order ADD COLUMN IF NOT EXISTS color_instruction_id int8 NULL;
+ALTER TABLE lunaerp_production_greige_order ADD COLUMN IF NOT EXISTS color_instruction_no varchar(32) NULL;
 
 -- 胚布单号租户内全量唯一（ADR-0006）：普通唯一索引、不带 WHERE deleted=0，
 -- 按天取号、软删不释放编号。勿"修正"为部分唯一索引。
@@ -109,6 +111,8 @@ COMMENT ON COLUMN lunaerp_production_greige_order.production_remark IS '生产�
 COMMENT ON COLUMN lunaerp_production_greige_order.remark IS '备注';
 COMMENT ON COLUMN lunaerp_production_greige_order.status IS '胚布单状态（字典 lunaerp_greige_order_status：ACTIVE/COMPLETED/CANCELLED），创建缺省 ACTIVE';
 COMMENT ON COLUMN lunaerp_production_greige_order.production_mode IS '生产模式（字典 lunaerp_greige_production_mode：SELF 自织 / OUTSOURCE 外发，缺省 OUTSOURCE，见 ADR-0022）';
+COMMENT ON COLUMN lunaerp_production_greige_order.color_instruction_id IS '打色指示单ID（lunaerp_production_color_instruction.id，逻辑关联可空）';
+COMMENT ON COLUMN lunaerp_production_greige_order.color_instruction_no IS '打色单号快照（可空）';
 COMMENT ON COLUMN lunaerp_production_greige_order.creator IS '创建者';
 COMMENT ON COLUMN lunaerp_production_greige_order.create_time IS '创建时间';
 COMMENT ON COLUMN lunaerp_production_greige_order.updater IS '更新者';
