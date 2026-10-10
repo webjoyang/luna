@@ -1,11 +1,14 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
+import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -45,5 +48,31 @@ public interface ColorInstructionMapper extends BaseMapperX<ColorInstructionDO> 
             + "creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_production_color_instruction WHERE instruction_no LIKE CONCAT(#{prefix}, '%')")
     List<ColorInstructionDO> selectListByInstructionNoPrefixIncludingDeleted(@Param("prefix") String prefix);
+
+    /**
+     * 回收站分页查询已软删打色单（手写 XML：显式 WHERE deleted = 1 AND tenant_id = #{tenantId}）
+     */
+    IPage<RecycleItemRespVO> selectRecyclePage(IPage<RecycleItemRespVO> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的打色单记录
+     */
+    ColorInstructionDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复打色单（并发条件更新带 deleted=1 AND tenant_id=?）
+     */
+    int restoreColorInstruction(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                                @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底删除打色单（物理删除带 deleted=1 AND tenant_id=?）
+     */
+    int purgeColorInstruction(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 检查打色单是否存在活跃业务引用（deleted=0 且 tenant_id=?）
+     */
+    Long selectActiveReferenceCount(@Param("instructionId") Long instructionId, @Param("tenantId") Long tenantId);
 
 }

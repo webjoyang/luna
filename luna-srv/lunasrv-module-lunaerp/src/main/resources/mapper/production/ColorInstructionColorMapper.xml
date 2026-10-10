@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.color.ColorInstructionColorMapper">
+
+    <!-- 级联恢复打色单颜色行（显式 SET deleted=0 WHERE instruction_id=? AND deleted=1 AND tenant_id=?） -->
+    <update id="restoreByInstructionId">
+        UPDATE lunaerp_production_color_instruction_color
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE instruction_id = #{instructionId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除打色单颜色行（显式 DELETE WHERE instruction_id=? AND deleted=1 AND tenant_id=?） -->
+    <delete id="purgeByInstructionId">
+        DELETE FROM lunaerp_production_color_instruction_color
+        WHERE instruction_id = #{instructionId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

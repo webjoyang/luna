@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper">
+
+    <!-- 回收站分页查询已软删打色指示单（手写 XML：显式 WHERE deleted = 1 AND tenant_id = #{tenantId}） -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'COLOR_INSTRUCTION' AS biz_type,
+            id AS biz_id,
+            COALESCE(NULLIF(instruction_no, ''), CONCAT('打色单#', id)) AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_production_color_instruction
+        WHERE deleted = 1
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删的打色单记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO">
+        SELECT *
+        FROM lunaerp_production_color_instruction
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复打色单（并发条件更新带 deleted=1 AND tenant_id=?） -->
+    <update id="restoreColorInstruction">
+        UPDATE lunaerp_production_color_instruction
+        SET deleted = 0,
+            status = 'PENDING',
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除打色单（物理删除带 deleted=1 AND tenant_id=?） -->
+    <delete id="purgeColorInstruction">
+        DELETE FROM lunaerp_production_color_instruction
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查打色单是否存在活跃业务引用（deleted=0 且 tenant_id=?） -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT (
+            (SELECT COUNT(1) FROM lunaerp_production_greige_order WHERE color_instruction_id = #{instructionId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_production_dyeing_order WHERE color_instruction_id = #{instructionId} AND deleted = 0 AND tenant_id = #{tenantId})
+        )
+    </select>
+
+</mapper>
