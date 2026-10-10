@@ -6,12 +6,12 @@
 
 **Status:** ready-for-agent
 
-- [ ] 单文件 SQL 落库，重跑不报错且菜单/字典/表不重复
-- [ ] 6 新表 DDL 含 TenantBaseDO 标准列、主键 DO 块判存、序列、全列 COMMENT
-- [ ] 部分唯一索引就位：同品一生效卡 / 同号一草稿 / 卡号含删 / 报价号+版本号含删 / 纱价 (spec_id, type, effective_date) WHERE deleted=0
-- [ ] 取价辅助索引 `(yarn_spec_id, price_type, effective_date DESC)` 就位
-- [ ] 3 ALTER 用 `ADD COLUMN IF NOT EXISTS`，存量行默认 null
-- [ ] 10132 成本卡菜单 + 10136 报价单菜单挂 10100（sort 0）；按钮位 10133-10135 / 10137-10140 / 10245-10248 注册
-- [ ] 7 字典 2262-2268 + dict_data 3770-3791 初始化，标签颜色与 spec 一致
-- [ ] `lunaerp_quotation_status` 的 EXPIRED 标签 remark 注明「仅展示派生态，禁止写入」
-- [ ] 脚本头部含幂等 DO 块（避让 032/033 已占段位、菜单 id 段位、字典 id 段位的防重声明）
+- [x] 单文件 SQL 落库，重跑不报错且菜单/字典/表不重复
+- [x] 6 新表 DDL 含 TenantBaseDO 标准列、主键 DO 块判存、序列、全列 COMMENT
+- [x] 部分唯一索引就位：同品一生效卡 / 同号一草稿 / 卡号含删 / 报价号+版本号含删 / 纱价 (spec_id, type, effective_date) WHERE deleted=0
+- [x] 取价辅助索引 `(yarn_spec_id, price_type, effective_date DESC)` 就位
+- [x] 3 ALTER 用 `ADD COLUMN IF NOT EXISTS`，存量行默认 null
+- [x] 10132 成本卡菜单 + 10136 报价单菜单挂 10100（sort 0）；按钮位 10133-10135 / 10137-10140 / 10245-10248 注册
+- [x] 7 字典 2262-2268 + dict_data 3770-3791 初始化，标签颜色与 spec 一致
+- [x] `lunaerp_quotation_status` 的 EXPIRED 标签 remark 注明「仅展示派生态，禁止写入」
+- [x] 脚本头部含幂等 DO 块（避让 032/033 已占段位、菜单 id 段位、字典 id 段位的防重声明）
