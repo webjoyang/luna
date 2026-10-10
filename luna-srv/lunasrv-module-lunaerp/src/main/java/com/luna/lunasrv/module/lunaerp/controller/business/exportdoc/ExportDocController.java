@@ -5,6 +5,8 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.business.exportdoc.ExportDocService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -75,6 +77,21 @@ public class ExportDocController {
     @PreAuthorize("@ss.hasPermission('lunaerp:business:export-doc:query')")
     public CommonResult<String> getNextDocNo() {
         return success(exportDocService.getNextDocNo());
+    }
+
+    @GetMapping("/seller-config")
+    @Operation(summary = "获得当前租户的卖方出口配置")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:export-doc:seller-config')")
+    public CommonResult<ExportSellerConfigRespVO> getSellerConfig() {
+        return success(exportDocService.getSellerConfig());
+    }
+
+    @PutMapping("/seller-config")
+    @Operation(summary = "保存/更新当前租户的卖方出口配置（upsert 幂等）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:export-doc:seller-config')")
+    public CommonResult<Boolean> saveSellerConfig(@Valid @RequestBody ExportSellerConfigSaveReqVO saveReqVO) {
+        exportDocService.saveSellerConfig(saveReqVO);
+        return success(true);
     }
 
 }

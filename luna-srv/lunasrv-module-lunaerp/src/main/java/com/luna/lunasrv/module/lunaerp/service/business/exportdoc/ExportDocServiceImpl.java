@@ -11,6 +11,8 @@ import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDo
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocItemDO;
@@ -216,6 +218,33 @@ public class ExportDocServiceImpl implements ExportDocService {
     @DataPermission(enable = false)
     public String getNextDocNo() {
         return DataPermissionUtils.executeIgnore(this::generateDocNo);
+    }
+
+    @Override
+    public ExportSellerConfigRespVO getSellerConfig() {
+        ExportSellerConfigDO config = exportSellerConfigMapper.selectByTenant();
+        if (config == null) {
+            return new ExportSellerConfigRespVO();
+        }
+        return BeanUtils.toBean(config, ExportSellerConfigRespVO.class);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void saveSellerConfig(ExportSellerConfigSaveReqVO saveReqVO) {
+        ExportSellerConfigDO existing = exportSellerConfigMapper.selectByTenant();
+        try {
+            if (existing == null) {
+                ExportSellerConfigDO newConfig = BeanUtils.toBean(saveReqVO, ExportSellerConfigDO.class);
+                exportSellerConfigMapper.insert(newConfig);
+            } else {
+                ExportSellerConfigDO updateConfig = BeanUtils.toBean(saveReqVO, ExportSellerConfigDO.class);
+                updateConfig.setId(existing.getId());
+                exportSellerConfigMapper.updateById(updateConfig);
+            }
+        } catch (Exception ex) {
+            throw exception(EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED);
+        }
     }
 
     // ==================== 私有方法 ====================

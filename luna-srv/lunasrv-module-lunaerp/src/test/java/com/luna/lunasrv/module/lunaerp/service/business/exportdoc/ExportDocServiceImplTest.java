@@ -3,9 +3,12 @@ package com.luna.lunasrv.module.lunaerp.service.business.exportdoc;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocItemDO;
@@ -15,6 +18,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.exportdoc.ExportDocIte
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.exportdoc.ExportDocMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.exportdoc.ExportSellerConfigMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -60,6 +64,7 @@ class ExportDocServiceImplTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ExportDocDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ExportDocItemDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ExportSellerConfigDO.class);
+        TenantContextHolder.setTenantId(1L);
 
         when(exportDocMapper.insert(any(ExportDocDO.class))).thenAnswer(invocation -> {
             ExportDocDO doc = invocation.getArgument(0);
@@ -68,6 +73,11 @@ class ExportDocServiceImplTest {
         });
         when(exportDocMapper.updateById(any(ExportDocDO.class))).thenReturn(1);
         when(exportDocItemMapper.insert(any(ExportDocItemDO.class))).thenReturn(1);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContextHolder.clear();
     }
 
     private CustomerDO createMockCustomer(Long id) {
@@ -324,5 +334,162 @@ class ExportDocServiceImplTest {
 
         String nextNo = exportDocService.getNextDocNo();
         assertEquals(prefix + "0011", nextNo);
+    }
+
+    @Test
+    @DisplayName("卖方出口配置：首次保存（不存在时插入）")
+    void testSaveSellerConfig_Insert() {
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(null);
+
+        ExportSellerConfigSaveReqVO req = new ExportSellerConfigSaveReqVO();
+        req.setSellerName("LUNA OVERSEAS TRADING");
+        req.setSellerAddress("Hangzhou, China");
+        req.setBankName("BANK OF CHINA");
+
+        exportDocService.saveSellerConfig(req);
+
+        ArgumentCaptor<ExportSellerConfigDO> captor = ArgumentCaptor.forClass(ExportSellerConfigDO.class);
+        verify(exportSellerConfigMapper).insert(captor.capture());
+        ExportSellerConfigDO saved = captor.getValue();
+        assertEquals("LUNA OVERSEAS TRADING", saved.getSellerName());
+        assertEquals("Hangzhou, China", saved.getSellerAddress());
+        assertEquals("BANK OF CHINA", saved.getBankName());
+    }
+
+    @Test
+    @DisplayName("卖方出口配置：再次保存（已存在时更新，幂等）")
+    void testSaveSellerConfig_Update() {
+        ExportSellerConfigDO existing = new ExportSellerConfigDO();
+        existing.setId(50L);
+        existing.setSellerName("OLD NAME");
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(existing);
+
+        ExportSellerConfigSaveReqVO req = new ExportSellerConfigSaveReqVO();
+        req.setSellerName("NEW NAME");
+        req.setSellerAddress("New Address");
+
+        exportDocService.saveSellerConfig(req);
+
+        ArgumentCaptor<ExportSellerConfigDO> captor = ArgumentCaptor.forClass(ExportSellerConfigDO.class);
+        verify(exportSellerConfigMapper).updateById(captor.capture());
+        ExportSellerConfigDO updated = captor.getValue();
+        assertEquals(50L, updated.getId());
+        assertEquals("NEW NAME", updated.getSellerName());
+        assertEquals("New Address", updated.getSellerAddress());
+    }
+
+    @Test
+    @DisplayName("卖方出口配置：并发/数据库异常时报 EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED")
+    void testSaveSellerConfig_ConcurrencyError() {
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(null);
+        doThrow(new RuntimeException("duplicate key")).when(exportSellerConfigMapper).insert(any(ExportSellerConfigDO.class));
+
+        ExportSellerConfigSaveReqVO req = new ExportSellerConfigSaveReqVO();
+        req.setSellerName("LUNA");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> exportDocService.saveSellerConfig(req));
+        assertEquals(EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("获得卖方出口配置：不存在时返回空对象不报错")
+    void testGetSellerConfig_NotExists_ReturnsEmptyObject() {
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(null);
+
+        ExportSellerConfigRespVO resp = exportDocService.getSellerConfig();
+        assertNotNull(resp);
+        assertNull(resp.getSellerName());
+        assertNull(resp.getId());
+    }
+
+    @Test
+    @DisplayName("获得卖方出口配置：存在时正常返回各字段")
+    void testGetSellerConfig_Exists() {
+        ExportSellerConfigDO config = new ExportSellerConfigDO();
+        config.setId(88L);
+        config.setSellerName("LUNA EXPORT LTD");
+        config.setBankSwift("BKCHCNBJ");
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(config);
+
+        ExportSellerConfigRespVO resp = exportDocService.getSellerConfig();
+        assertNotNull(resp);
+        assertEquals(88L, resp.getId());
+        assertEquals("LUNA EXPORT LTD", resp.getSellerName());
+        assertEquals("BKCHCNBJ", resp.getBankSwift());
+    }
+
+    @Test
+    @DisplayName("创建出口单证套：无卖方配置时降级为空字段不报错")
+    void testCreateExportDoc_NoSellerConfig_Fallback() {
+        CustomerDO customer = createMockCustomer(1L);
+        when(customerMapper.selectById(1L)).thenReturn(customer);
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(null);
+
+        ExportDocSaveReqVO req = new ExportDocSaveReqVO();
+        req.setCustomerId(1L);
+
+        Long docId = exportDocService.createExportDoc(req);
+        assertEquals(100L, docId);
+
+        ArgumentCaptor<ExportDocDO> docCaptor = ArgumentCaptor.forClass(ExportDocDO.class);
+        verify(exportDocMapper).insert(docCaptor.capture());
+        ExportDocDO savedDoc = docCaptor.getValue();
+        assertNull(savedDoc.getSellerName());
+        assertNull(savedDoc.getSellerAddress());
+        assertNull(savedDoc.getSellerBankInfo());
+    }
+
+    @Test
+    @DisplayName("编辑出口单证套：此后编辑不回写卖方配置")
+    void testUpdateExportDoc_DoesNotOverwriteSellerConfig() {
+        ExportDocDO existing = new ExportDocDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setSellerName("CUSTOM SELLER");
+        when(exportDocMapper.selectById(10L)).thenReturn(existing);
+
+        ExportSellerConfigDO newTenantConfig = new ExportSellerConfigDO();
+        newTenantConfig.setSellerName("TENANT GLOBAL SELLER");
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(newTenantConfig);
+
+        ExportDocSaveReqVO req = new ExportDocSaveReqVO();
+        req.setId(10L);
+        req.setSellerName("CUSTOM SELLER MODIFIED");
+
+        exportDocService.updateExportDoc(req);
+
+        // 验证 updateById 保存的 sellerName 仍然是 reqVO 中的值，而不是被 tenantConfig 覆写
+        ArgumentCaptor<ExportDocDO> captor = ArgumentCaptor.forClass(ExportDocDO.class);
+        verify(exportDocMapper).updateById(captor.capture());
+        assertEquals("CUSTOM SELLER MODIFIED", captor.getValue().getSellerName());
+        // 验证没有调用 selectByTenant
+        verify(exportSellerConfigMapper, never()).selectByTenant();
+    }
+
+    @Test
+    @DisplayName("租户隔离专测：A 租户读不到 B 租户配置")
+    void testTenantIsolation_TenantACannotReadTenantBConfig() {
+        // 租户 1 有配置
+        ExportSellerConfigDO tenant1Config = new ExportSellerConfigDO();
+        tenant1Config.setId(1L);
+        tenant1Config.setSellerName("TENANT 1 SELLER");
+        tenant1Config.setTenantId(1L);
+
+        // 模拟当前上下文切换为租户 2，Mapper 根据租户拦截器只查询租户 2，返回 null
+        TenantContextHolder.setTenantId(2L);
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(null);
+
+        ExportSellerConfigRespVO respTenant2 = exportDocService.getSellerConfig();
+        assertNotNull(respTenant2);
+        assertNull(respTenant2.getSellerName(), "租户 2 读取不到租户 1 的配置，得到空对象");
+
+        // 租户 2 保存自己的配置
+        ExportSellerConfigSaveReqVO reqTenant2 = new ExportSellerConfigSaveReqVO();
+        reqTenant2.setSellerName("TENANT 2 SELLER");
+        exportDocService.saveSellerConfig(reqTenant2);
+
+        ArgumentCaptor<ExportSellerConfigDO> captor = ArgumentCaptor.forClass(ExportSellerConfigDO.class);
+        verify(exportSellerConfigMapper).insert(captor.capture());
+        assertEquals("TENANT 2 SELLER", captor.getValue().getSellerName());
     }
 }

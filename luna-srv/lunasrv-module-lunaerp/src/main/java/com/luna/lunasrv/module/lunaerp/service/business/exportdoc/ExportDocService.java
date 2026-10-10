@@ -57,4 +57,18 @@ public interface ExportDocService {
      */
     String getNextDocNo();
 
+    /**
+     * 获取当前租户的卖方出口配置（若无配置返回空对象）
+     *
+     * @return 卖方出口配置
+     */
+    com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigRespVO getSellerConfig();
+
+    /**
+     * 保存/更新当前租户的卖方出口配置（upsert 幂等）
+     *
+     * @param saveReqVO 保存请求
+     */
+    void saveSellerConfig(com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigSaveReqVO saveReqVO);
+
 }

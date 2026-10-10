@@ -4,10 +4,10 @@
 
 **Blocked by:** 03（DO/Service 骨架 + create 流程）
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] GET/PUT `/seller-config` 端点，upsert 幂等（首次/再次），并发兜底报 EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED，无删除端点
-- [ ] 创建单证时从租户配置缺省带出卖方英文名/地址/银行（仅创建时带出，此后编辑不回写）
-- [ ] 配置缺失时创建单证降级为空字段不报错；GET 不存在返回空对象不报错
-- [ ] 权限位 `lunaerp:business:export-doc:seller-config`
-- [ ] 单测：upsert 幂等、创建时配置带出、此后编辑不回写、配置缺失降级、**租户隔离专测**（A 租户读不到 B 租户配置）
+- [x] GET/PUT `/seller-config` 端点，upsert 幂等（首次/再次），并发兜底报 EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED，无删除端点
+- [x] 创建单证时从租户配置缺省带出卖方英文名/地址/银行（仅创建时带出，此后编辑不回写）
+- [x] 配置缺失时创建单证降级为空字段不报错；GET 不存在返回空对象不报错
+- [x] 权限位 `lunaerp:business:export-doc:seller-config`
+- [x] 单测：upsert 幂等、创建时配置带出、此后编辑不回写、配置缺失降级、**租户隔离专测**（A 租户读不到 B 租户配置）
