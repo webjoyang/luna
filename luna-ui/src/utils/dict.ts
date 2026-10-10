@@ -74,6 +74,29 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_approval_record_action', label: '驳回', value: 'REJECT', colorType: 'danger', cssClass: '' },
     { dictType: 'lunaerp_approval_record_action', label: '转交', value: 'TRANSFER', colorType: 'warning', cssClass: '' },
     { dictType: 'lunaerp_approval_record_action', label: '撤回', value: 'WITHDRAW', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_export_doc_status: [
+    { dictType: 'lunaerp_export_doc_status', label: '草稿', value: 'DRAFT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_export_doc_status', label: '已定稿', value: 'FINALIZED', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_incoterm: [
+    { dictType: 'lunaerp_incoterm', label: 'FOB', value: 'FOB', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_incoterm', label: 'CIF', value: 'CIF', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_incoterm', label: 'CFR', value: 'CFR', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_incoterm', label: 'EXW', value: 'EXW', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_payment_term: [
+    { dictType: 'lunaerp_payment_term', label: 'T/T', value: 'TT', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_payment_term', label: 'L/C', value: 'LC', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_payment_term', label: 'D/P', value: 'DP', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_payment_term', label: 'D/A', value: 'DA', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_payment_term', label: 'O/A', value: 'OA', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_transport_mode: [
+    { dictType: 'lunaerp_transport_mode', label: '海运', value: 'SEA', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_transport_mode', label: '空运', value: 'AIR', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_transport_mode', label: '陆运', value: 'LAND', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_transport_mode', label: '快递', value: 'EXPRESS', colorType: 'warning', cssClass: '' }
   ]
 }
 
@@ -570,5 +593,11 @@ export enum DICT_TYPE {
   LUNAERP_APPROVAL_APPROVER_TYPE = 'lunaerp_approval_approver_type', // 审批人来源
   LUNAERP_APPROVAL_INSTANCE_STATUS = 'lunaerp_approval_instance_status', // 审批实例状态
   LUNAERP_APPROVAL_TASK_ACTION = 'lunaerp_approval_task_action', // 审批任务动作
-  LUNAERP_APPROVAL_RECORD_ACTION = 'lunaerp_approval_record_action' // 审批记录动作
+  LUNAERP_APPROVAL_RECORD_ACTION = 'lunaerp_approval_record_action', // 审批记录动作
+
+  // ========== LunaERP - 业务管理-出口单证模块 ==========
+  LUNAERP_EXPORT_DOC_STATUS = 'lunaerp_export_doc_status', // 出口单证状态
+  LUNAERP_INCOTERM = 'lunaerp_incoterm', // 贸易术语
+  LUNAERP_PAYMENT_TERM = 'lunaerp_payment_term', // 付款方式
+  LUNAERP_TRANSPORT_MODE = 'lunaerp_transport_mode' // 运输方式
 }

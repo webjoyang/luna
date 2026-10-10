@@ -58,6 +58,18 @@ public class SalesContractSaveReqVO {
     @Schema(description = "订单属性（字典 lunaerp_sales_contract_order_type），缺省 BULK", example = "BULK")
     private String orderType;
 
+    @Schema(description = "贸易术语（字典 lunaerp_incoterm：FOB/CIF/CFR/EXW，可空）", example = "FOB")
+    private String incoterm;
+
+    @Schema(description = "起运港（可空）", example = "SHANGHAI")
+    private String portOfLoading;
+
+    @Schema(description = "目的港（可空）", example = "LOS ANGELES")
+    private String portOfDischarge;
+
+    @Schema(description = "付款方式（字典 lunaerp_payment_term：TT/LC/DP/DA/OA，可空）", example = "TT")
+    private String paymentTerm;
+
     @Schema(description = "备注")
     private String remarks;
 

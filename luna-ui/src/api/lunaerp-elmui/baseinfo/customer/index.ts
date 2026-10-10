@@ -16,6 +16,8 @@ export interface CustomerVO {
   remark?: string
   status?: string
   salespersonUserId?: number
+  nameEn?: string
+  addressEn?: string
   createTime?: Date | string
 }
 

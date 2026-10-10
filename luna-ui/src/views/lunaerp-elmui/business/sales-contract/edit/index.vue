@@ -184,6 +184,69 @@
         </el-col>
       </el-row>
 
+      <!-- 外贸条款区块：仅 trade_type=EXPORT 时显示（可空，供出口单证带出） -->
+      <template v-if="formData.tradeType === 'EXPORT'">
+        <div class="section-title">外贸条款</div>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="贸易术语" prop="incoterm">
+              <el-select
+                v-model="formData.incoterm"
+                :disabled="isReadOnly"
+                placeholder="请选择贸易术语（如 FOB/CIF/CFR/EXW）"
+                clearable
+                class="!w-full"
+              >
+                <el-option
+                  v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_INCOTERM)"
+                  :key="dict.value"
+                  :label="dict.label"
+                  :value="dict.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="付款方式" prop="paymentTerm">
+              <el-select
+                v-model="formData.paymentTerm"
+                :disabled="isReadOnly"
+                placeholder="请选择付款方式（如 TT/LC/DP/DA/OA）"
+                clearable
+                class="!w-full"
+              >
+                <el-option
+                  v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_PAYMENT_TERM)"
+                  :key="dict.value"
+                  :label="dict.label"
+                  :value="dict.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="起运港" prop="portOfLoading">
+              <el-input
+                v-model="formData.portOfLoading"
+                :disabled="isReadOnly"
+                placeholder="请输入起运港（如 SHANGHAI）"
+                maxlength="64"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="目的港" prop="portOfDischarge">
+              <el-input
+                v-model="formData.portOfDischarge"
+                :disabled="isReadOnly"
+                placeholder="请输入目的港（如 LOS ANGELES）"
+                maxlength="64"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </template>
+
       <div class="section-title">商品明细</div>
       <el-table
         :data="formData.items"
@@ -384,6 +447,10 @@ const formData = reactive<SalesContractVO>({
   currency: 'RMB',
   tradeType: 'DOMESTIC',
   orderType: 'BULK',
+  incoterm: undefined,
+  portOfLoading: '',
+  portOfDischarge: '',
+  paymentTerm: undefined,
   remarks: '',
   status: 'ACTIVE',
   approvalStatus: 'DRAFT',

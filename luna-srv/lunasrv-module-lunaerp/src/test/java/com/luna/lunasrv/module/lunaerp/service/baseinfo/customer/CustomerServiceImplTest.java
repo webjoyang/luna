@@ -135,6 +135,49 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void createAndUpdateCustomer_withEnglishFields() {
+        CustomerSaveReqVO req = new CustomerSaveReqVO();
+        req.setCompanyName(COMPANY_NAME);
+        req.setClientType(CLIENT_TYPE);
+        req.setNameEn("Hangzhou Weaving Co., Ltd.");
+        req.setAddressEn("123 Silk Road, Hangzhou, China");
+
+        customerService.createCustomer(req);
+
+        ArgumentCaptor<CustomerDO> captor = ArgumentCaptor.forClass(CustomerDO.class);
+        verify(customerMapper).insert(captor.capture());
+        CustomerDO saved = captor.getValue();
+        assertEquals("Hangzhou Weaving Co., Ltd.", saved.getNameEn());
+        assertEquals("123 Silk Road, Hangzhou, China", saved.getAddressEn());
+
+        // Update
+        CustomerDO existing = new CustomerDO();
+        existing.setId(1024L);
+        existing.setCompanyName(COMPANY_NAME);
+        existing.setNameEn("Hangzhou Weaving Co., Ltd.");
+        existing.setAddressEn("123 Silk Road, Hangzhou, China");
+        existing.setSalespersonUserId(99L);
+        existing.setDeptId(200L);
+        when(customerMapper.selectById(1024L)).thenReturn(existing);
+
+        CustomerSaveReqVO updateReq = new CustomerSaveReqVO();
+        updateReq.setId(1024L);
+        updateReq.setCompanyName(COMPANY_NAME);
+        updateReq.setClientType(CLIENT_TYPE);
+        updateReq.setNameEn("Hangzhou Textile Ltd.");
+        updateReq.setAddressEn("456 Cotton Road, Hangzhou, China");
+        updateReq.setSalespersonUserId(99L);
+
+        customerService.updateCustomer(updateReq);
+
+        ArgumentCaptor<CustomerDO> updateCaptor = ArgumentCaptor.forClass(CustomerDO.class);
+        verify(customerMapper).updateById(updateCaptor.capture());
+        CustomerDO updated = updateCaptor.getValue();
+        assertEquals("Hangzhou Textile Ltd.", updated.getNameEn());
+        assertEquals("456 Cotton Road, Hangzhou, China", updated.getAddressEn());
+    }
+
+    @Test
     void getCustomer_notExists_throwsCode1030004000() {
         when(customerMapper.selectById(9999L)).thenReturn(null);
 

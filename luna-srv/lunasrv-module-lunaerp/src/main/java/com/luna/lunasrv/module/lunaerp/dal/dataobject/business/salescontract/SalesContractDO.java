@@ -111,4 +111,24 @@ public class SalesContractDO extends TenantBaseDO {
      */
     private String approvalStatus;
 
+    /**
+     * 贸易术语（字典 lunaerp_incoterm：FOB/CIF/CFR/EXW，可空）
+     */
+    private String incoterm;
+
+    /**
+     * 起运港（可空）
+     */
+    private String portOfLoading;
+
+    /**
+     * 目的港（可空）
+     */
+    private String portOfDischarge;
+
+    /**
+     * 付款方式（字典 lunaerp_payment_term：TT/LC/DP/DA/OA，可空）
+     */
+    private String paymentTerm;
+
 }

@@ -955,4 +955,54 @@ class SalesContractServiceImplTest {
         assertEquals(1_030_030_004, ex.getCode());
     }
 
+    @Test
+    void testForeignTradeFields_createAndUpdateAndGet() {
+        // 1. Create with foreign trade fields
+        SalesContractSaveReqVO createReqVO = new SalesContractSaveReqVO();
+        createReqVO.setCustomerId(CUSTOMER_ID);
+        createReqVO.setTradeType("EXPORT");
+        createReqVO.setIncoterm("FOB");
+        createReqVO.setPortOfLoading("SHANGHAI");
+        createReqVO.setPortOfDischarge("LOS ANGELES");
+        createReqVO.setPaymentTerm("TT");
+
+        salesContractService.createSalesContract(createReqVO);
+
+        ArgumentCaptor<SalesContractDO> captor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).insert(captor.capture());
+        SalesContractDO inserted = captor.getValue();
+        assertEquals("EXPORT", inserted.getTradeType());
+        assertEquals("FOB", inserted.getIncoterm());
+        assertEquals("SHANGHAI", inserted.getPortOfLoading());
+        assertEquals("LOS ANGELES", inserted.getPortOfDischarge());
+        assertEquals("TT", inserted.getPaymentTerm());
+
+        // 2. Get with foreign trade fields
+        when(salesContractMapper.selectById(2048L)).thenReturn(inserted);
+        SalesContractRespVO respVO = salesContractService.getSalesContract(2048L);
+        assertEquals("FOB", respVO.getIncoterm());
+        assertEquals("SHANGHAI", respVO.getPortOfLoading());
+        assertEquals("LOS ANGELES", respVO.getPortOfDischarge());
+        assertEquals("TT", respVO.getPaymentTerm());
+
+        // 3. Update foreign trade fields
+        SalesContractSaveReqVO updateReqVO = new SalesContractSaveReqVO();
+        updateReqVO.setId(2048L);
+        updateReqVO.setCustomerId(CUSTOMER_ID);
+        updateReqVO.setTradeType("EXPORT");
+        updateReqVO.setIncoterm("CIF");
+        updateReqVO.setPortOfLoading("NINGBO");
+        updateReqVO.setPortOfDischarge("HAMBURG");
+        updateReqVO.setPaymentTerm("LC");
+        salesContractService.updateSalesContract(updateReqVO);
+
+        ArgumentCaptor<SalesContractDO> updateCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).updateById(updateCaptor.capture());
+        SalesContractDO updated = updateCaptor.getValue();
+        assertEquals("CIF", updated.getIncoterm());
+        assertEquals("NINGBO", updated.getPortOfLoading());
+        assertEquals("HAMBURG", updated.getPortOfDischarge());
+        assertEquals("LC", updated.getPaymentTerm());
+    }
+
 }

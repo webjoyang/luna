@@ -29,6 +29,16 @@
         </el-form-item>
       </el-col>
       <el-col :span="12">
+        <el-form-item label="英文名称" prop="nameEn">
+          <el-input v-model="formData.nameEn" placeholder="请输入英文名称（外销单据带出）" maxlength="128" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="英文地址" prop="addressEn">
+          <el-input v-model="formData.addressEn" placeholder="请输入英文地址（外销单据带出）" maxlength="512" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
         <el-form-item label="客户类型" prop="clientType">
           <el-select v-model="formData.clientType" placeholder="请选择客户类型" class="!w-full">
             <el-option
@@ -181,7 +191,9 @@ const formData = reactive<CustomerVO>({
   unifiedSocialCreditCode: '',
   remark: '',
   status: 'ACTIVE',
-  salespersonUserId: undefined
+  salespersonUserId: undefined,
+  nameEn: '',
+  addressEn: ''
 })
 
 const rules: FormRules = {

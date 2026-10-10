@@ -4,10 +4,10 @@
 
 **Blocked by:** 01（SQL 加列需先落地）
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] 销售合同 DO `SalesContractDO` +4 字段，create/update VO 同步，表单新增"外贸条款"区块仅 trade_type=EXPORT 显示与校验（非必填），详情只读展示
-- [ ] 客户档案 DO +name_en/address_en 两可空字段，表单/详情加两个可空输入
-- [ ] 客户 Excel 导入模板同步加"英文名称/英文地址"两可空列（协调 common-foundation 08；CF-08 已落地则补列，未落地则随其施工生效）
-- [ ] 字典复用 01 新建的 lunaerp_incoterm / lunaerp_payment_term，不重复建字典
-- [ ] 不做历史合同/客户数据回填；内销合同完全无感
+- [x] 销售合同 DO `SalesContractDO` +4 字段，create/update VO 同步，表单新增"外贸条款"区块仅 trade_type=EXPORT 显示与校验（非必填），详情只读展示
+- [x] 客户档案 DO +name_en/address_en 两可空字段，表单/详情加两个可空输入
+- [x] 客户 Excel 导入模板同步加"英文名称/英文地址"两可空列（协调 common-foundation 08；CF-08 已落地则补列，未落地则随其施工生效）
+- [x] 字典复用 01 新建的 lunaerp_incoterm / lunaerp_payment_term，不重复建字典
+- [x] 不做历史合同/客户数据回填；内销合同完全无感
