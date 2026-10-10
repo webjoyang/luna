@@ -139,5 +139,43 @@ public class ErrorCodeConstantsTest {
         assertEquals(ApprovalErrorCodeConstants.APPROVAL_CONFIG_BIZ_TYPE_ALREADY_ENABLED, ErrorCodeConstants.APPROVAL_CONFIG_BIZ_TYPE_ALREADY_ENABLED);
         assertEquals(ApprovalErrorCodeConstants.APPROVAL_CONFIG_HAS_ACTIVE_INSTANCE, ErrorCodeConstants.APPROVAL_CONFIG_HAS_ACTIVE_INSTANCE);
     }
+
+    @Test
+    void testExportDocErrorCodes() {
+        assertEquals(1_030_033_000, ExportDocErrorCodeConstants.EXPORT_DOC_NOT_EXISTS.getCode());
+        assertEquals("出口单证套不存在", ExportDocErrorCodeConstants.EXPORT_DOC_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_033_001, ExportDocErrorCodeConstants.EXPORT_DOC_NO_DUPLICATE.getCode());
+        assertTrue(ExportDocErrorCodeConstants.EXPORT_DOC_NO_DUPLICATE.getMsg().contains("单证套号"));
+
+        assertEquals(1_030_033_002, ExportDocErrorCodeConstants.EXPORT_DOC_STATUS_NOT_ALLOW.getCode());
+        assertEquals("当前状态不允许该操作", ExportDocErrorCodeConstants.EXPORT_DOC_STATUS_NOT_ALLOW.getMsg());
+
+        assertEquals(1_030_033_003, ExportDocErrorCodeConstants.EXPORT_DOC_REFERENCE_NOT_FOUND.getCode());
+        assertTrue(ExportDocErrorCodeConstants.EXPORT_DOC_REFERENCE_NOT_FOUND.getMsg().contains("关联的"));
+
+        assertEquals(1_030_033_004, ExportDocErrorCodeConstants.EXPORT_DOC_ITEM_EMPTY.getCode());
+        assertEquals("定稿失败：单证套没有货物明细", ExportDocErrorCodeConstants.EXPORT_DOC_ITEM_EMPTY.getMsg());
+
+        assertEquals(1_030_033_005, ExportDocErrorCodeConstants.EXPORT_DOC_CONTRACT_NOT_EXPORT.getCode());
+        assertTrue(ExportDocErrorCodeConstants.EXPORT_DOC_CONTRACT_NOT_EXPORT.getMsg().contains("外销合同"));
+
+        assertEquals(1_030_033_006, ExportDocErrorCodeConstants.EXPORT_DOC_SOURCE_REQUIRED.getCode());
+        assertTrue(ExportDocErrorCodeConstants.EXPORT_DOC_SOURCE_REQUIRED.getMsg().contains("来源单据"));
+
+        assertEquals(1_030_033_100, ExportDocErrorCodeConstants.EXPORT_DOC_ITEM_NOT_EXISTS.getCode());
+        assertEquals("明细行不存在", ExportDocErrorCodeConstants.EXPORT_DOC_ITEM_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_033_101, ExportDocErrorCodeConstants.EXPORT_DOC_ITEM_INVALID_ID.getCode());
+        assertTrue(ExportDocErrorCodeConstants.EXPORT_DOC_ITEM_INVALID_ID.getMsg().contains("不属于本单证套"));
+
+        assertEquals(1_030_033_200, ExportDocErrorCodeConstants.EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED.getCode());
+        assertEquals("卖方出口配置保存失败", ExportDocErrorCodeConstants.EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED.getMsg());
+
+        // 验证 ErrorCodeConstants 继承了所有 ExportDocErrorCodeConstants 错误码
+        assertEquals(ExportDocErrorCodeConstants.EXPORT_DOC_NOT_EXISTS, ErrorCodeConstants.EXPORT_DOC_NOT_EXISTS);
+        assertEquals(ExportDocErrorCodeConstants.EXPORT_DOC_ITEM_EMPTY, ErrorCodeConstants.EXPORT_DOC_ITEM_EMPTY);
+        assertEquals(ExportDocErrorCodeConstants.EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED, ErrorCodeConstants.EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED);
+    }
 }
 
