@@ -13,11 +13,8 @@ import com.luna.lunasrv.module.lunaerp.approval.config.ApprovalConfigNodeMapper;
 import com.luna.lunasrv.module.lunaerp.approval.config.ApprovalConfigService;
 import com.luna.lunasrv.module.lunaerp.approval.instance.dto.ApprovalNodeSnapshotDTO;
 import com.luna.lunasrv.module.lunaerp.approval.instance.dto.ApprovalProcessSnapshotDTO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceRespVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceSubmitReqVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceWithdrawReqVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalRecordRespVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalTaskRespVO;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.*;
 import com.luna.lunasrv.module.lunaerp.approval.record.ApprovalRecordDO;
 import com.luna.lunasrv.module.lunaerp.approval.record.ApprovalRecordMapper;
 import com.luna.lunasrv.module.lunaerp.approval.task.ApprovalTaskDO;
@@ -270,12 +267,93 @@ public class ApprovalInstanceServiceImpl implements ApprovalInstanceService {
     }
 
     @Override
+    public PageResult<ApprovalInstanceMyRespVO> getMyPage(ApprovalInstanceMyPageReqVO pageReqVO) {
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw exception(APPROVAL_NO_PERMISSION);
+        }
+
+        PageResult<ApprovalInstanceDO> pageResult = approvalInstanceMapper.selectMyPage(loginUserId, pageReqVO);
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return new PageResult<>(Collections.emptyList(), pageResult.getTotal());
+        }
+
+        AdminUserRespDTO user = adminUserApi != null ? adminUserApi.getUser(loginUserId) : null;
+        String submitterName = user != null ? user.getNickname() : null;
+
+        List<ApprovalInstanceMyRespVO> respList = new ArrayList<>();
+        for (ApprovalInstanceDO inst : pageResult.getList()) {
+            ApprovalBizHandler handler = getHandler(inst.getBizType());
+            String currentNodeName = resolveCurrentNodeName(inst);
+
+            ApprovalInstanceMyRespVO vo = ApprovalInstanceMyRespVO.builder()
+                    .id(inst.getId())
+                    .bizType(inst.getBizType())
+                    .bizTypeName(handler != null ? handler.getBizTypeName() : inst.getBizType())
+                    .bizId(inst.getBizId())
+                    .bizNo(inst.getBizNo())
+                    .status(inst.getStatus())
+                    .submitterId(inst.getSubmitterId())
+                    .submitterName(submitterName)
+                    .currentNodeSort(inst.getCurrentNodeSort())
+                    .currentNodeName(currentNodeName)
+                    .startTime(inst.getStartTime())
+                    .endTime(inst.getEndTime())
+                    .build();
+            respList.add(vo);
+        }
+
+        return new PageResult<>(respList, pageResult.getTotal());
+    }
+
+    private String resolveCurrentNodeName(ApprovalInstanceDO inst) {
+        if ("APPROVED".equalsIgnoreCase(inst.getStatus())) {
+            return "已通过";
+        }
+        if ("REJECTED".equalsIgnoreCase(inst.getStatus())) {
+            return "已驳回";
+        }
+        if ("CANCELLED".equalsIgnoreCase(inst.getStatus())) {
+            return "已撤回";
+        }
+        if (StrUtil.isNotBlank(inst.getProcessSnapshot())) {
+            try {
+                ApprovalProcessSnapshotDTO snapshot = JsonUtils.parseObject(inst.getProcessSnapshot(), ApprovalProcessSnapshotDTO.class);
+                if (snapshot != null && CollUtil.isNotEmpty(snapshot.getNodes())) {
+                    for (ApprovalNodeSnapshotDTO node : snapshot.getNodes()) {
+                        if (Objects.equals(node.getSort(), inst.getCurrentNodeSort())) {
+                            return node.getName();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return "审批中";
+    }
+
+    @Override
     public ApprovalInstanceRespVO getInstance(Long id) {
         ApprovalInstanceDO instance = approvalInstanceMapper.selectById(id);
         if (instance == null) {
             throw exception(APPROVAL_INSTANCE_NOT_EXISTS);
         }
-        return buildInstanceRespVO(instance);
+
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw exception(APPROVAL_NO_PERMISSION);
+        }
+
+        List<ApprovalTaskDO> tasks = approvalTaskMapper.selectListByInstanceId(instance.getId());
+
+        // 越权过滤：对非 submitter 且非任一 task approver 的用户返回 404 (APPROVAL_INSTANCE_NOT_EXISTS)
+        boolean isSubmitter = Objects.equals(instance.getSubmitterId(), loginUserId);
+        boolean isApprover = tasks.stream().anyMatch(t -> Objects.equals(t.getApproverId(), loginUserId));
+        if (!isSubmitter && !isApprover) {
+            throw exception(APPROVAL_INSTANCE_NOT_EXISTS);
+        }
+
+        return buildInstanceRespVO(instance, tasks);
     }
 
     @Override
@@ -284,12 +362,28 @@ public class ApprovalInstanceServiceImpl implements ApprovalInstanceService {
         if (instance == null) {
             return null;
         }
-        return buildInstanceRespVO(instance);
+        List<ApprovalTaskDO> tasks = approvalTaskMapper.selectListByInstanceId(instance.getId());
+        return buildInstanceRespVO(instance, tasks);
     }
 
     private ApprovalInstanceRespVO buildInstanceRespVO(ApprovalInstanceDO instance) {
-        List<ApprovalTaskDO> tasks = approvalTaskMapper.selectListByInstanceId(instance.getId());
+        return buildInstanceRespVO(instance, null);
+    }
+
+    private ApprovalInstanceRespVO buildInstanceRespVO(ApprovalInstanceDO instance, List<ApprovalTaskDO> tasks) {
+        if (tasks == null) {
+            tasks = approvalTaskMapper.selectListByInstanceId(instance.getId());
+        }
         List<ApprovalRecordDO> records = approvalRecordMapper.selectListByInstanceId(instance.getId());
+
+        // 解析快照节点
+        ApprovalProcessSnapshotDTO snapshot = null;
+        if (StrUtil.isNotBlank(instance.getProcessSnapshot())) {
+            try {
+                snapshot = JsonUtils.parseObject(instance.getProcessSnapshot(), ApprovalProcessSnapshotDTO.class);
+            } catch (Exception ignored) {
+            }
+        }
 
         // 收集所有需要回显昵称的用户ID
         Set<Long> userIds = new HashSet<>();
@@ -309,15 +403,102 @@ public class ApprovalInstanceServiceImpl implements ApprovalInstanceService {
                 userIds.add(record.getTransferToId());
             }
         }
+        if (snapshot != null && CollUtil.isNotEmpty(snapshot.getNodes())) {
+            for (ApprovalNodeSnapshotDTO node : snapshot.getNodes()) {
+                if (CollUtil.isNotEmpty(node.getApproverUserIds())) {
+                    userIds.addAll(node.getApproverUserIds());
+                }
+            }
+        }
 
         Map<Long, AdminUserRespDTO> userMap = adminUserApi != null && CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
 
         ApprovalInstanceRespVO respVO = BeanUtils.toBean(instance, ApprovalInstanceRespVO.class);
+        ApprovalBizHandler handler = getHandler(instance.getBizType());
+        if (handler != null) {
+            respVO.setBizTypeName(handler.getBizTypeName());
+        } else {
+            respVO.setBizTypeName(instance.getBizType());
+        }
+
         if (instance.getSubmitterId() != null && userMap.containsKey(instance.getSubmitterId())) {
             respVO.setSubmitterName(userMap.get(instance.getSubmitterId()).getNickname());
         }
 
+        // 计算节点进度列表 (nodeProgress)
+        List<ApprovalNodeProgressRespVO> nodeProgressList = new ArrayList<>();
+        if (snapshot != null && CollUtil.isNotEmpty(snapshot.getNodes())) {
+            int currentNodeSort = instance.getCurrentNodeSort() != null ? instance.getCurrentNodeSort() : 1;
+            String status = instance.getStatus() != null ? instance.getStatus() : STATUS_APPROVING;
+
+            for (ApprovalNodeSnapshotDTO node : snapshot.getNodes()) {
+                int sort = node.getSort() != null ? node.getSort() : 0;
+                String nodeStatus;
+                String statusDesc;
+
+                if ("APPROVED".equalsIgnoreCase(status)) {
+                    nodeStatus = "PASSED";
+                    statusDesc = "已通过";
+                } else if ("REJECTED".equalsIgnoreCase(status)) {
+                    if (sort < currentNodeSort) {
+                        nodeStatus = "PASSED";
+                        statusDesc = "已通过";
+                    } else if (sort == currentNodeSort) {
+                        nodeStatus = "REJECTED";
+                        statusDesc = "已驳回";
+                    } else {
+                        nodeStatus = "PENDING";
+                        statusDesc = "未到达";
+                    }
+                } else if ("CANCELLED".equalsIgnoreCase(status)) {
+                    if (sort < currentNodeSort) {
+                        nodeStatus = "PASSED";
+                        statusDesc = "已通过";
+                    } else {
+                        nodeStatus = "CANCELLED";
+                        statusDesc = "已撤回";
+                    }
+                } else {
+                    // APPROVING
+                    if (sort < currentNodeSort) {
+                        nodeStatus = "PASSED";
+                        statusDesc = "已通过";
+                    } else if (sort == currentNodeSort) {
+                        nodeStatus = "CURRENT";
+                        statusDesc = "审批中";
+                    } else {
+                        nodeStatus = "PENDING";
+                        statusDesc = "待审批";
+                    }
+                }
+
+                List<String> approverNames = new ArrayList<>();
+                if (CollUtil.isNotEmpty(node.getApproverUserIds())) {
+                    for (Long uid : node.getApproverUserIds()) {
+                        AdminUserRespDTO u = userMap.get(uid);
+                        if (u != null && StrUtil.isNotBlank(u.getNickname())) {
+                            approverNames.add(u.getNickname());
+                        }
+                    }
+                }
+
+                ApprovalNodeProgressRespVO nodeVO = ApprovalNodeProgressRespVO.builder()
+                        .sort(sort)
+                        .name(node.getName())
+                        .nodeType(node.getNodeType())
+                        .approverType(node.getApproverType())
+                        .approverUserIds(node.getApproverUserIds())
+                        .approverNames(approverNames)
+                        .status(nodeStatus)
+                        .statusDesc(statusDesc)
+                        .build();
+                nodeProgressList.add(nodeVO);
+            }
+        }
+        respVO.setNodeProgress(nodeProgressList);
+
+        // tasks
         List<ApprovalTaskRespVO> taskRespList = new ArrayList<>();
         for (ApprovalTaskDO task : tasks) {
             ApprovalTaskRespVO taskVO = BeanUtils.toBean(task, ApprovalTaskRespVO.class);
@@ -328,6 +509,7 @@ public class ApprovalInstanceServiceImpl implements ApprovalInstanceService {
         }
         respVO.setTasks(taskRespList);
 
+        // records
         List<ApprovalRecordRespVO> recordRespList = new ArrayList<>();
         for (ApprovalRecordDO record : records) {
             ApprovalRecordRespVO recordVO = BeanUtils.toBean(record, ApprovalRecordRespVO.class);
@@ -337,11 +519,27 @@ public class ApprovalInstanceServiceImpl implements ApprovalInstanceService {
             if (record.getTransferToId() != null && userMap.containsKey(record.getTransferToId())) {
                 recordVO.setTransferToName(userMap.get(record.getTransferToId()).getNickname());
             }
+            recordVO.setActionName(formatRecordActionName(record.getAction()));
             recordRespList.add(recordVO);
         }
         respVO.setRecords(recordRespList);
 
         return respVO;
+    }
+
+    private String formatRecordActionName(String action) {
+        if ("APPROVE".equalsIgnoreCase(action)) {
+            return "通过";
+        } else if ("REJECT".equalsIgnoreCase(action)) {
+            return "驳回";
+        } else if ("TRANSFER".equalsIgnoreCase(action)) {
+            return "转交";
+        } else if ("SUBMIT".equalsIgnoreCase(action)) {
+            return "提交";
+        } else if ("WITHDRAW".equalsIgnoreCase(action)) {
+            return "撤回";
+        }
+        return action;
     }
 
     private List<Long> resolveApproverUserIds(ApprovalConfigNodeDO node, Long submitterId, AdminUserRespDTO submitter) {

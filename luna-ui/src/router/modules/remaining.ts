@@ -132,6 +132,39 @@ const remainingRouter: AppRouteRecordRaw[] = [
         }
       },
       {
+        path: 'done',
+        component: () => import('@/views/approval/done/index.vue'),
+        name: 'ApprovalDone',
+        meta: {
+          title: '我已审批',
+          canTo: true,
+          hidden: true,
+          noCache: true
+        }
+      },
+      {
+        path: 'mine',
+        component: () => import('@/views/approval/mine/index.vue'),
+        name: 'ApprovalMine',
+        meta: {
+          title: '我发起的',
+          canTo: true,
+          hidden: true,
+          noCache: true
+        }
+      },
+      {
+        path: 'detail',
+        component: () => import('@/views/approval/detail/index.vue'),
+        name: 'ApprovalDetail',
+        meta: {
+          title: '审批实例详情',
+          canTo: true,
+          hidden: true,
+          noCache: true
+        }
+      },
+      {
         path: 'config',
         component: () => import('@/views/approval/config/index.vue'),
         name: 'ApprovalConfig',

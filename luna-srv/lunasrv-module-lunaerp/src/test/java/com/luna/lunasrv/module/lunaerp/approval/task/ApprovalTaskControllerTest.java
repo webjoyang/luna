@@ -57,6 +57,32 @@ class ApprovalTaskControllerTest {
     }
 
     @Test
+    @DisplayName("我已审批分页：GET /lunaerp/approval/task/done-page")
+    void testGetDonePage() {
+        ApprovalTaskDonePageReqVO reqVO = new ApprovalTaskDonePageReqVO();
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(10);
+        reqVO.setAction("APPROVE");
+
+        ApprovalTaskDoneRespVO respVO = ApprovalTaskDoneRespVO.builder()
+                .id(301L)
+                .instanceId(501L)
+                .bizNo("HT001")
+                .action("APPROVE")
+                .actionName("通过")
+                .comment("同意")
+                .build();
+        when(approvalTaskService.getDonePage(any())).thenReturn(new PageResult<>(List.of(respVO), 1L));
+
+        CommonResult<PageResult<ApprovalTaskDoneRespVO>> result = approvalTaskController.getDonePage(reqVO);
+        assertTrue(result.isSuccess());
+        assertEquals(1, result.getData().getList().size());
+        assertEquals(301L, result.getData().getList().get(0).getId());
+        assertEquals("APPROVE", result.getData().getList().get(0).getAction());
+        verify(approvalTaskService).getDonePage(reqVO);
+    }
+
+    @Test
     @DisplayName("审批通过：PUT /lunaerp/approval/task/{id}/approve")
     void testApproveTask() {
         ApprovalTaskApproveReqVO reqVO = new ApprovalTaskApproveReqVO();

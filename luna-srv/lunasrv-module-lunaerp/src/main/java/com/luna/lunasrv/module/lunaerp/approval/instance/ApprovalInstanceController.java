@@ -1,14 +1,14 @@
 package com.luna.lunasrv.module.lunaerp.approval.instance;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceRespVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceSubmitReqVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceWithdrawReqVO;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -43,9 +43,17 @@ public class ApprovalInstanceController {
         return success(true);
     }
 
+    @GetMapping("/my-page")
+    @Operation(summary = "获得我发起的审批实例分页")
+    @PreAuthorize("@ss.hasPermission('lunaerp:approval:task:query')")
+    public CommonResult<PageResult<ApprovalInstanceMyRespVO>> getMyPage(@Valid ApprovalInstanceMyPageReqVO pageReqVO) {
+        return success(approvalInstanceService.getMyPage(pageReqVO));
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "获取审批实例详情")
     @Parameter(name = "id", description = "审批实例ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:approval:task:query')")
     public CommonResult<ApprovalInstanceRespVO> getInstance(@PathVariable("id") Long id) {
         return success(approvalInstanceService.getInstance(id));
     }

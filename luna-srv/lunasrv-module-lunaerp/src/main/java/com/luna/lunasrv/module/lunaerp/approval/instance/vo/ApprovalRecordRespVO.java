@@ -33,6 +33,9 @@ public class ApprovalRecordRespVO {
     @Schema(description = "操作动作（SUBMIT / APPROVE / REJECT / TRANSFER / WITHDRAW）", example = "SUBMIT")
     private String action;
 
+    @Schema(description = "操作动作中文描述", example = "通过")
+    private String actionName;
+
     @Schema(description = "审批意见/说明", example = "同意")
     private String comment;
 

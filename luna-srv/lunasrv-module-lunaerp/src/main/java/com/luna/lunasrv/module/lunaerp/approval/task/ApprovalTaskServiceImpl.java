@@ -150,6 +150,110 @@ public class ApprovalTaskServiceImpl implements ApprovalTaskService {
     }
 
     @Override
+    public PageResult<ApprovalTaskDoneRespVO> getDonePage(ApprovalTaskDonePageReqVO pageReqVO) {
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw exception(APPROVAL_NO_PERMISSION);
+        }
+
+        PageResult<ApprovalRecordDO> recordPage = approvalRecordMapper.selectDonePage(loginUserId, pageReqVO);
+        if (CollUtil.isEmpty(recordPage.getList())) {
+            return new PageResult<>(Collections.emptyList(), recordPage.getTotal());
+        }
+
+        // 收集所有关联的审批实例ID
+        List<Long> instanceIds = CollectionUtils.convertList(recordPage.getList(), ApprovalRecordDO::getInstanceId);
+        List<ApprovalInstanceDO> instances = approvalInstanceMapper.selectBatchIds(instanceIds);
+        Map<Long, ApprovalInstanceDO> instanceMap = CollectionUtils.convertMap(instances, ApprovalInstanceDO::getId);
+
+        // 收集所有关联的任务ID
+        List<Long> taskIds = new ArrayList<>();
+        for (ApprovalRecordDO record : recordPage.getList()) {
+            if (record.getTaskId() != null) {
+                taskIds.add(record.getTaskId());
+            }
+        }
+        Map<Long, ApprovalTaskDO> taskMap = CollUtil.isNotEmpty(taskIds)
+                ? CollectionUtils.convertMap(approvalTaskMapper.selectBatchIds(taskIds), ApprovalTaskDO::getId)
+                : Collections.emptyMap();
+
+        // 收集所有用户ID用于回显姓名
+        Set<Long> userIds = new HashSet<>();
+        userIds.add(loginUserId);
+        for (ApprovalRecordDO record : recordPage.getList()) {
+            if (record.getOperatorId() != null) {
+                userIds.add(record.getOperatorId());
+            }
+            if (record.getTransferToId() != null) {
+                userIds.add(record.getTransferToId());
+            }
+        }
+        for (ApprovalInstanceDO inst : instances) {
+            if (inst != null && inst.getSubmitterId() != null) {
+                userIds.add(inst.getSubmitterId());
+            }
+        }
+
+        Map<Long, AdminUserRespDTO> userMap = (adminUserApi != null && CollUtil.isNotEmpty(userIds))
+                ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
+
+        List<ApprovalTaskDoneRespVO> respList = new ArrayList<>();
+        for (ApprovalRecordDO record : recordPage.getList()) {
+            ApprovalInstanceDO inst = instanceMap.get(record.getInstanceId());
+            ApprovalBizHandler handler = inst != null ? getHandler(inst.getBizType()) : null;
+            ApprovalTaskDO task = record.getTaskId() != null ? taskMap.get(record.getTaskId()) : null;
+
+            AdminUserRespDTO operator = userMap.get(record.getOperatorId());
+            AdminUserRespDTO submitter = (inst != null && inst.getSubmitterId() != null)
+                    ? userMap.get(inst.getSubmitterId()) : null;
+            AdminUserRespDTO transferTo = record.getTransferToId() != null
+                    ? userMap.get(record.getTransferToId()) : null;
+
+            ApprovalTaskDoneRespVO vo = ApprovalTaskDoneRespVO.builder()
+                    .id(record.getId())
+                    .instanceId(record.getInstanceId())
+                    .taskId(record.getTaskId())
+                    .bizType(inst != null ? inst.getBizType() : null)
+                    .bizTypeName(handler != null ? handler.getBizTypeName() : (inst != null ? inst.getBizType() : ""))
+                    .bizId(inst != null ? inst.getBizId() : null)
+                    .bizNo(inst != null ? inst.getBizNo() : null)
+                    .instanceStatus(inst != null ? inst.getStatus() : null)
+                    .instanceStartTime(inst != null ? inst.getStartTime() : null)
+                    .instanceEndTime(inst != null ? inst.getEndTime() : null)
+                    .submitterId(inst != null ? inst.getSubmitterId() : null)
+                    .submitterName(submitter != null ? submitter.getNickname() : null)
+                    .operatorId(record.getOperatorId())
+                    .operatorName(operator != null ? operator.getNickname() : null)
+                    .action(record.getAction())
+                    .actionName(formatRecordActionName(record.getAction()))
+                    .comment(record.getComment())
+                    .transferToId(record.getTransferToId())
+                    .transferToName(transferTo != null ? transferTo.getNickname() : null)
+                    .operateTime(record.getOperateTime())
+                    .nodeName(task != null ? task.getNodeName() : null)
+                    .build();
+            respList.add(vo);
+        }
+
+        return new PageResult<>(respList, recordPage.getTotal());
+    }
+
+    private String formatRecordActionName(String action) {
+        if ("APPROVE".equalsIgnoreCase(action)) {
+            return "通过";
+        } else if ("REJECT".equalsIgnoreCase(action)) {
+            return "驳回";
+        } else if ("TRANSFER".equalsIgnoreCase(action)) {
+            return "转交";
+        } else if ("SUBMIT".equalsIgnoreCase(action)) {
+            return "提交";
+        } else if ("WITHDRAW".equalsIgnoreCase(action)) {
+            return "撤回";
+        }
+        return action;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void approveTask(Long id, ApprovalTaskApproveReqVO reqVO) {
         Long loginUserId = SecurityFrameworkUtils.getLoginUserId();

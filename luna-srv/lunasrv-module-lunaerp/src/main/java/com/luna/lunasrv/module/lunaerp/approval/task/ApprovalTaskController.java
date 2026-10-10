@@ -35,6 +35,13 @@ public class ApprovalTaskController {
         return success(approvalTaskService.getTodoPage(pageReqVO));
     }
 
+    @GetMapping("/done-page")
+    @Operation(summary = "获得我已审批任务分页")
+    @PreAuthorize("@ss.hasPermission('lunaerp:approval:task:query')")
+    public CommonResult<PageResult<ApprovalTaskDoneRespVO>> getDonePage(@Valid ApprovalTaskDonePageReqVO pageReqVO) {
+        return success(approvalTaskService.getDonePage(pageReqVO));
+    }
+
     @PutMapping("/{id}/approve")
     @Operation(summary = "审批通过（仅审批人本人）")
     @Parameter(name = "id", description = "审批任务ID", required = true, example = "1024")

@@ -698,4 +698,83 @@ class ApprovalTaskServiceImplTest {
         assertEquals(APPROVAL_TRANSFER_TO_SELF_NOT_ALLOWED.getCode(), ex.getCode());
     }
 
+    @Test
+    @DisplayName("我已审批分页：成功聚合单据、操作记录、操作类型与用户昵称")
+    void testGetDonePage_Success() {
+        ApprovalTaskDonePageReqVO reqVO = new ApprovalTaskDonePageReqVO();
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(10);
+        reqVO.setAction("APPROVE");
+
+        ApprovalRecordDO record = ApprovalRecordDO.builder()
+                .id(301L)
+                .instanceId(501L)
+                .taskId(101L)
+                .operatorId(loginUserId)
+                .action("APPROVE")
+                .comment("同意通过合同")
+                .transferToId(null)
+                .operateTime(LocalDateTime.now())
+                .build();
+        when(approvalRecordMapper.selectDonePage(eq(loginUserId), any()))
+                .thenReturn(new PageResult<>(List.of(record), 1L));
+
+        ApprovalInstanceDO instance = ApprovalInstanceDO.builder()
+                .id(501L)
+                .bizType("sales_contract")
+                .bizId(2001L)
+                .bizNo("HT20261010001")
+                .status("APPROVED")
+                .submitterId(888L)
+                .startTime(LocalDateTime.now().minusHours(2))
+                .endTime(LocalDateTime.now())
+                .build();
+        when(approvalInstanceMapper.selectBatchIds(any())).thenReturn(List.of(instance));
+
+        ApprovalTaskDO task = ApprovalTaskDO.builder()
+                .id(101L)
+                .instanceId(501L)
+                .nodeName("财务审核")
+                .approverId(loginUserId)
+                .status("DONE")
+                .action("DONE")
+                .build();
+        when(approvalTaskMapper.selectBatchIds(any())).thenReturn(List.of(task));
+
+        AdminUserRespDTO opUser = new AdminUserRespDTO();
+        opUser.setId(loginUserId);
+        opUser.setNickname("审批财务专员");
+        AdminUserRespDTO subUser = new AdminUserRespDTO();
+        subUser.setId(888L);
+        subUser.setNickname("销售小李");
+        when(adminUserApi.getUserMap(anyCollection())).thenReturn(Map.of(loginUserId, opUser, 888L, subUser));
+
+        PageResult<ApprovalTaskDoneRespVO> result = approvalTaskService.getDonePage(reqVO);
+        assertNotNull(result);
+        assertEquals(1, result.getTotal());
+        ApprovalTaskDoneRespVO respVO = result.getList().get(0);
+        assertEquals(301L, respVO.getId());
+        assertEquals(501L, respVO.getInstanceId());
+        assertEquals(101L, respVO.getTaskId());
+        assertEquals("sales_contract", respVO.getBizType());
+        assertEquals("销售合同", respVO.getBizTypeName());
+        assertEquals("HT20261010001", respVO.getBizNo());
+        assertEquals("APPROVED", respVO.getInstanceStatus());
+        assertEquals("销售小李", respVO.getSubmitterName());
+        assertEquals("审批财务专员", respVO.getOperatorName());
+        assertEquals("APPROVE", respVO.getAction());
+        assertEquals("通过", respVO.getActionName());
+        assertEquals("同意通过合同", respVO.getComment());
+        assertEquals("财务审核", respVO.getNodeName());
+    }
+
+    @Test
+    @DisplayName("我已审批分页：未登录拦截抛 1_030_030_005")
+    void testGetDonePage_NotLoggedIn_Throws() {
+        SecurityContextHolder.clearContext();
+        ApprovalTaskDonePageReqVO reqVO = new ApprovalTaskDonePageReqVO();
+        ServiceException ex = assertThrows(ServiceException.class, () -> approvalTaskService.getDonePage(reqVO));
+        assertEquals(APPROVAL_NO_PERMISSION.getCode(), ex.getCode());
+    }
+
 }

@@ -10,10 +10,10 @@ import com.luna.lunasrv.module.lunaerp.approval.config.ApprovalConfigDO;
 import com.luna.lunasrv.module.lunaerp.approval.config.ApprovalConfigNodeDO;
 import com.luna.lunasrv.module.lunaerp.approval.config.ApprovalConfigNodeMapper;
 import com.luna.lunasrv.module.lunaerp.approval.config.ApprovalConfigService;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.approval.instance.dto.ApprovalNodeSnapshotDTO;
 import com.luna.lunasrv.module.lunaerp.approval.instance.dto.ApprovalProcessSnapshotDTO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceRespVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceSubmitReqVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceWithdrawReqVO;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.*;
 import com.luna.lunasrv.module.lunaerp.approval.record.ApprovalRecordDO;
 import com.luna.lunasrv.module.lunaerp.approval.record.ApprovalRecordMapper;
 import com.luna.lunasrv.module.lunaerp.approval.task.ApprovalTaskDO;
@@ -418,6 +418,192 @@ class ApprovalInstanceServiceImplTest {
         assertEquals("审批人主管", respVO.getTasks().get(0).getApproverName());
         assertEquals(1, respVO.getRecords().size());
         assertEquals("发起人小张", respVO.getRecords().get(0).getOperatorName());
+    }
+
+    @Test
+    @DisplayName("我发起的审批分页：成功返回实例状态、当前节点与单据信息")
+    void testGetMyPage_Success() {
+        ApprovalInstanceMyPageReqVO reqVO = new ApprovalInstanceMyPageReqVO();
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(10);
+        reqVO.setStatus("APPROVING");
+
+        ApprovalProcessSnapshotDTO snapshot = ApprovalProcessSnapshotDTO.builder()
+                .configId(10L)
+                .configName("销售合同审批链")
+                .bizType("sales_contract")
+                .nodes(List.of(
+                        ApprovalNodeSnapshotDTO.builder().sort(1).name("业务主管审核").build(),
+                        ApprovalNodeSnapshotDTO.builder().sort(2).name("财务总监审批").build()
+                ))
+                .build();
+
+        ApprovalInstanceDO instance = ApprovalInstanceDO.builder()
+                .id(5001L)
+                .bizType("sales_contract")
+                .bizId(1001L)
+                .bizNo("CH20260001")
+                .processSnapshot(JsonUtils.toJsonString(snapshot))
+                .status("APPROVING")
+                .submitterId(loginUserId)
+                .currentNodeSort(1)
+                .startTime(LocalDateTime.now())
+                .build();
+        when(approvalInstanceMapper.selectMyPage(eq(loginUserId), any()))
+                .thenReturn(new PageResult<>(List.of(instance), 1L));
+
+        AdminUserRespDTO user = new AdminUserRespDTO();
+        user.setId(loginUserId);
+        user.setNickname("发起人小张");
+        when(adminUserApi.getUser(loginUserId)).thenReturn(user);
+
+        PageResult<ApprovalInstanceMyRespVO> result = approvalInstanceService.getMyPage(reqVO);
+        assertNotNull(result);
+        assertEquals(1, result.getTotal());
+        ApprovalInstanceMyRespVO respVO = result.getList().get(0);
+        assertEquals(5001L, respVO.getId());
+        assertEquals("sales_contract", respVO.getBizType());
+        assertEquals("销售合同", respVO.getBizTypeName());
+        assertEquals("CH20260001", respVO.getBizNo());
+        assertEquals("APPROVING", respVO.getStatus());
+        assertEquals("发起人小张", respVO.getSubmitterName());
+        assertEquals(1, respVO.getCurrentNodeSort());
+        assertEquals("业务主管审核", respVO.getCurrentNodeName());
+    }
+
+    @Test
+    @DisplayName("我发起的审批分页：未登录拦截抛 1_030_030_005")
+    void testGetMyPage_NotLoggedIn_Throws() {
+        SecurityContextHolder.clearContext();
+        ApprovalInstanceMyPageReqVO reqVO = new ApprovalInstanceMyPageReqVO();
+        ServiceException ex = assertThrows(ServiceException.class, () -> approvalInstanceService.getMyPage(reqVO));
+        assertEquals(APPROVAL_NO_PERMISSION.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("实例详情权限校验：任一节点审批人允许查看详情")
+    void testGetInstance_ApproverCanView() {
+        // submitter 不是当前登录用户 (999L)，但 task 审批人是当前用户 (loginUserId)
+        ApprovalInstanceDO instance = ApprovalInstanceDO.builder()
+                .id(5002L)
+                .bizType("sales_contract")
+                .bizId(1002L)
+                .bizNo("CH20260002")
+                .status("APPROVING")
+                .submitterId(999L)
+                .currentNodeSort(1)
+                .startTime(LocalDateTime.now())
+                .build();
+        when(approvalInstanceMapper.selectById(5002L)).thenReturn(instance);
+
+        List<ApprovalTaskDO> tasks = List.of(
+                ApprovalTaskDO.builder().id(202L).instanceId(5002L).approverId(loginUserId).status("PENDING").build()
+        );
+        when(approvalTaskMapper.selectListByInstanceId(5002L)).thenReturn(tasks);
+        when(approvalRecordMapper.selectListByInstanceId(5002L)).thenReturn(Collections.emptyList());
+
+        ApprovalInstanceRespVO respVO = approvalInstanceService.getInstance(5002L);
+        assertNotNull(respVO);
+        assertEquals(5002L, respVO.getId());
+    }
+
+    @Test
+    @DisplayName("实例详情越权拦截：非 submitter 且非任一 task approver 抛出 1_030_030_002 审批实例不存在")
+    void testGetInstance_UnauthorizedReturns404() {
+        // submitter 为 999L，task 审批人为 888L，当前登录人 100L 无权查看
+        ApprovalInstanceDO instance = ApprovalInstanceDO.builder()
+                .id(5003L)
+                .bizType("sales_contract")
+                .bizId(1003L)
+                .bizNo("CH20260003")
+                .status("APPROVING")
+                .submitterId(999L)
+                .currentNodeSort(1)
+                .startTime(LocalDateTime.now())
+                .build();
+        when(approvalInstanceMapper.selectById(5003L)).thenReturn(instance);
+
+        List<ApprovalTaskDO> tasks = List.of(
+                ApprovalTaskDO.builder().id(203L).instanceId(5003L).approverId(888L).status("PENDING").build()
+        );
+        when(approvalTaskMapper.selectListByInstanceId(5003L)).thenReturn(tasks);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> approvalInstanceService.getInstance(5003L));
+        assertEquals(APPROVAL_INSTANCE_NOT_EXISTS.getCode(), ex.getCode());
+        assertEquals("审批实例不存在", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("实例详情节点进度推导：已通过 / 当前审批中 / 待审状态校验")
+    void testGetInstance_NodeProgressCalculation() {
+        ApprovalProcessSnapshotDTO snapshot = ApprovalProcessSnapshotDTO.builder()
+                .configId(10L)
+                .configName("销售合同审批链")
+                .bizType("sales_contract")
+                .nodes(List.of(
+                        ApprovalNodeSnapshotDTO.builder().sort(1).name("第一级主管").nodeType("SEQUENTIAL").approverType("USER").approverUserIds(List.of(101L)).build(),
+                        ApprovalNodeSnapshotDTO.builder().sort(2).name("第二级总监").nodeType("SEQUENTIAL").approverType("USER").approverUserIds(List.of(loginUserId)).build(),
+                        ApprovalNodeSnapshotDTO.builder().sort(3).name("第三级CEO").nodeType("SEQUENTIAL").approverType("USER").approverUserIds(List.of(103L)).build()
+                ))
+                .build();
+
+        ApprovalInstanceDO instance = ApprovalInstanceDO.builder()
+                .id(5004L)
+                .bizType("sales_contract")
+                .bizId(1004L)
+                .bizNo("CH20260004")
+                .processSnapshot(JsonUtils.toJsonString(snapshot))
+                .status("APPROVING")
+                .submitterId(999L)
+                .currentNodeSort(2)
+                .startTime(LocalDateTime.now())
+                .build();
+        when(approvalInstanceMapper.selectById(5004L)).thenReturn(instance);
+
+        List<ApprovalTaskDO> tasks = List.of(
+                ApprovalTaskDO.builder().id(204L).instanceId(5004L).approverId(loginUserId).status("PENDING").build()
+        );
+        when(approvalTaskMapper.selectListByInstanceId(5004L)).thenReturn(tasks);
+        when(approvalRecordMapper.selectListByInstanceId(5004L)).thenReturn(Collections.emptyList());
+
+        AdminUserRespDTO u101 = new AdminUserRespDTO();
+        u101.setId(101L);
+        u101.setNickname("主管A");
+        AdminUserRespDTO uCurrent = new AdminUserRespDTO();
+        uCurrent.setId(loginUserId);
+        uCurrent.setNickname("总监B");
+        AdminUserRespDTO u103 = new AdminUserRespDTO();
+        u103.setId(103L);
+        u103.setNickname("CEO-C");
+        when(adminUserApi.getUserMap(anyCollection())).thenReturn(Map.of(101L, u101, loginUserId, uCurrent, 103L, u103));
+
+        ApprovalInstanceRespVO respVO = approvalInstanceService.getInstance(5004L);
+        assertNotNull(respVO);
+        List<ApprovalNodeProgressRespVO> progress = respVO.getNodeProgress();
+        assertNotNull(progress);
+        assertEquals(3, progress.size());
+
+        // 节点 1 (sort 1 < currentNodeSort 2): PASSED 已通过
+        assertEquals(1, progress.get(0).getSort());
+        assertEquals("第一级主管", progress.get(0).getName());
+        assertEquals("PASSED", progress.get(0).getStatus());
+        assertEquals("已通过", progress.get(0).getStatusDesc());
+        assertEquals(List.of("主管A"), progress.get(0).getApproverNames());
+
+        // 节点 2 (sort 2 == currentNodeSort 2): CURRENT 审批中
+        assertEquals(2, progress.get(1).getSort());
+        assertEquals("第二级总监", progress.get(1).getName());
+        assertEquals("CURRENT", progress.get(1).getStatus());
+        assertEquals("审批中", progress.get(1).getStatusDesc());
+        assertEquals(List.of("总监B"), progress.get(1).getApproverNames());
+
+        // 节点 3 (sort 3 > currentNodeSort 2): PENDING 待审批
+        assertEquals(3, progress.get(2).getSort());
+        assertEquals("第三级CEO", progress.get(2).getName());
+        assertEquals("PENDING", progress.get(2).getStatus());
+        assertEquals("待审批", progress.get(2).getStatusDesc());
+        assertEquals(List.of("CEO-C"), progress.get(2).getApproverNames());
     }
 
 }

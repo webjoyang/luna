@@ -22,6 +22,9 @@ public class ApprovalInstanceRespVO {
     @Schema(description = "业务单据类型", example = "sales_contract")
     private String bizType;
 
+    @Schema(description = "业务单据类型中文名称", example = "销售合同")
+    private String bizTypeName;
+
     @Schema(description = "业务单据ID", example = "1024")
     private Long bizId;
 
@@ -51,6 +54,9 @@ public class ApprovalInstanceRespVO {
 
     @Schema(description = "审批结束时间")
     private LocalDateTime endTime;
+
+    @Schema(description = "审批流程节点进度列表")
+    private List<ApprovalNodeProgressRespVO> nodeProgress;
 
     @Schema(description = "审批任务列表")
     private List<ApprovalTaskRespVO> tasks;

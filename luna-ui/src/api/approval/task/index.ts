@@ -26,6 +26,36 @@ export interface ApprovalTaskTodoRespVO {
   status: string
 }
 
+export interface ApprovalTaskDonePageReqVO extends PageParam {
+  bizType?: string
+  bizNo?: string
+  action?: string
+}
+
+export interface ApprovalTaskDoneRespVO {
+  id: number
+  instanceId: number
+  taskId?: number
+  bizType: string
+  bizTypeName?: string
+  bizId: number
+  bizNo?: string
+  instanceStatus: string
+  instanceStartTime?: string
+  instanceEndTime?: string
+  submitterId: number
+  submitterName?: string
+  operatorId: number
+  operatorName?: string
+  action: string
+  actionName?: string
+  comment?: string
+  transferToId?: number
+  transferToName?: string
+  operateTime: string
+  nodeName?: string
+}
+
 export interface ApprovalTaskApproveReqVO {
   comment?: string
 }
@@ -44,6 +74,14 @@ export const ApprovalTaskApi = {
   getTodoPage: (params: ApprovalTaskTodoPageReqVO) => {
     return request.get<{ list: ApprovalTaskTodoRespVO[]; total: number }>({
       url: '/lunaerp/approval/task/todo-page',
+      params
+    })
+  },
+
+  // 我已审批分页
+  getDonePage: (params: ApprovalTaskDonePageReqVO) => {
+    return request.get<{ list: ApprovalTaskDoneRespVO[]; total: number }>({
+      url: '/lunaerp/approval/task/done-page',
       params
     })
   },

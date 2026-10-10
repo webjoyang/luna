@@ -1,8 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.approval.instance;
 
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceRespVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceSubmitReqVO;
-import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceWithdrawReqVO;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.*;
 import jakarta.validation.Valid;
 
 /**
@@ -27,6 +26,14 @@ public interface ApprovalInstanceService {
      * @param withdrawReqVO 撤回信息（可选原因）
      */
     void withdrawInstance(Long id, ApprovalInstanceWithdrawReqVO withdrawReqVO);
+
+    /**
+     * 获得我发起的审批实例分页
+     *
+     * @param pageReqVO 分页查询条件
+     * @return 审批实例分页
+     */
+    PageResult<ApprovalInstanceMyRespVO> getMyPage(@Valid ApprovalInstanceMyPageReqVO pageReqVO);
 
     /**
      * 获取审批实例详情

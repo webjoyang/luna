@@ -1,11 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.approval.task;
 
 import com.luna.lunasrv.framework.common.pojo.PageResult;
-import com.luna.lunasrv.module.lunaerp.approval.task.vo.ApprovalTaskApproveReqVO;
-import com.luna.lunasrv.module.lunaerp.approval.task.vo.ApprovalTaskRejectReqVO;
-import com.luna.lunasrv.module.lunaerp.approval.task.vo.ApprovalTaskTodoPageReqVO;
-import com.luna.lunasrv.module.lunaerp.approval.task.vo.ApprovalTaskTodoRespVO;
-import com.luna.lunasrv.module.lunaerp.approval.task.vo.ApprovalTaskTransferReqVO;
+import com.luna.lunasrv.module.lunaerp.approval.task.vo.*;
 import jakarta.validation.Valid;
 
 /**
@@ -22,6 +18,14 @@ public interface ApprovalTaskService {
      * @return 待办任务分页
      */
     PageResult<ApprovalTaskTodoRespVO> getTodoPage(@Valid ApprovalTaskTodoPageReqVO pageReqVO);
+
+    /**
+     * 获得我已审批任务分页
+     *
+     * @param pageReqVO 分页查询条件
+     * @return 已办任务分页
+     */
+    PageResult<ApprovalTaskDoneRespVO> getDonePage(@Valid ApprovalTaskDonePageReqVO pageReqVO);
 
     /**
      * 审批通过
