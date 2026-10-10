@@ -30,4 +30,10 @@ public class ApprovalCompletedEvent extends ApplicationEvent {
         this.bizId = bizId;
     }
 
+    public ApprovalCompletedEvent(String bizType, Long bizId) {
+        super(bizType != null ? bizType : "");
+        this.bizType = bizType;
+        this.bizId = bizId;
+    }
+
 }
