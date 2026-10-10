@@ -215,8 +215,16 @@
             align="center"
             :formatter="dateFormatter"
           />
-          <el-table-column label="操作" width="160" align="center" fixed="right">
+          <el-table-column label="操作" width="230" align="center" fixed="right">
             <template #default="{ row }">
+              <el-button
+                link
+                type="primary"
+                @click="openPriceDrawer(row)"
+                v-hasPermi="['lunaerp:production:yarn-price:query']"
+              >
+                <Icon icon="ep:money" class="mr-1" />价格记录
+              </el-button>
               <el-button
                 link
                 type="primary"
@@ -349,6 +357,9 @@
 
     <!-- 规格导入弹窗 -->
     <YarnSpecImportDialog ref="specImportDialogRef" @success="handleSpecImportSuccess" />
+
+    <!-- 纱价记录抽屉 -->
+    <YarnPriceDrawer ref="priceDrawerRef" />
   </el-container>
 </template>
 
@@ -372,6 +383,7 @@ import {
   type YarnSpecPageParam
 } from '@/api/lunaerp-elmui/production/yarn-master'
 import YarnSpecImportDialog from './YarnSpecImportDialog.vue'
+import YarnPriceDrawer from './components/YarnPriceDrawer.vue'
 
 defineOptions({ name: 'LunaerpElmuiProductionYarnMaster' })
 
@@ -642,6 +654,16 @@ const handleImportSpec = () => {
 /** 规格导入成功后刷新列表 */
 const handleSpecImportSuccess = async () => {
   await getSpecList()
+}
+
+/** 纱价记录抽屉 */
+const priceDrawerRef = ref()
+const openPriceDrawer = (row: YarnSpecVO) => {
+  priceDrawerRef.value?.open({
+    id: row.id,
+    specName: row.specName,
+    standardName: row.standardName
+  })
 }
 
 onMounted(async () => {

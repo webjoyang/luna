@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnprice.YarnPriceMapper">
+
+    <!-- 回收站分页查询已软删纱价 -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'YARN_PRICE' AS biz_type,
+            id AS biz_id,
+            (spec_name || ' [' || price_type || '] ' || price || '元') AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_production_yarn_price
+        WHERE deleted = 1
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删的纱价记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnprice.YarnPriceDO">
+        SELECT *
+        FROM lunaerp_production_yarn_price
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复纱价记录（并发条件更新带 deleted=1 AND tenant_id=?） -->
+    <update id="restoreYarnPrice">
+        UPDATE lunaerp_production_yarn_price
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除纱价记录（物理删除带 deleted=1 AND tenant_id=?） -->
+    <delete id="purgeYarnPrice">
+        DELETE FROM lunaerp_production_yarn_price
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查纱价是否存在活跃业务引用 -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT 0
+    </select>
+
+</mapper>
