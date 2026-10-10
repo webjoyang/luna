@@ -18,13 +18,13 @@
 
 **Blocked by:** 02（SQL 基建，确保 VO 形状与 cost_card_yarn schema 一致）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `CostCardPricingCalculator.java` 落 `service/business/costcard/pricing/`，纯函数（无 Spring 上下文依赖、无 Mapper 调用）
-- [ ] 三模式公式实现完整（针织 KG / 梭织简易 METER / 梭织经纬精算 METER），与 spec「算价规则」节一致
-- [ ] BigDecimal 4 位 HALF_UP；损耗率负值钳 0、≥100% 钳 99.9%
-- [ ] 双口径费用行归一与跨口径换算：克重/门幅缺失报 `1_030_034_005`
-- [ ] 报价行折币、毛利正反算、整单加权毛利纯函数覆盖
-- [ ] `CostCardPricingCalculatorTest` 单测先红后绿，覆盖 spec「Testing Decisions 1」列出的全部边界用例
-- [ ] 与历史 TS 边界用例（空数组/全零/多纱线/含损耗/无价格/超 100% 钳制/经纬分组）结果一致
-- [ ] 不启 Spring、不连库
+- [x] `CostCardPricingCalculator.java` 落 `service/business/costcard/pricing/`，纯函数（无 Spring 上下文依赖、无 Mapper 调用）
+- [x] 三模式公式实现完整（针织 KG / 梭织简易 METER / 梭织经纬精算 METER），与 spec「算价规则」节一致
+- [x] BigDecimal 4 位 HALF_UP；损耗率负值钳 0、≥100% 钳 99.9%
+- [x] 双口径费用行归一与跨口径换算：克重/门幅缺失报 `1_030_034_005`
+- [x] 报价行折币、毛利正反算、整单加权毛利纯函数覆盖
+- [x] `CostCardPricingCalculatorTest` 单测先红后绿，覆盖 spec「Testing Decisions 1」列出的全部边界用例
+- [x] 与历史 TS 边界用例（空数组/全零/多纱线/含损耗/无价格/超 100% 钳制/经纬分组）结果一致
+- [x] 不启 Spring、不连库

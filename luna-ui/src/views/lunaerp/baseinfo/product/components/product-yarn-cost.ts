@@ -1,6 +1,7 @@
 /**
- * 纱线成本计算纯函数（从旧系统 product-yarn-cost.ts 迁移，见 ADR-0035）
+ * 纱线成本计算纯函数（历史实现，见 ADR-0035）
  *
+ * 注：公式权威实现已迁移至后端 CostCardPricingCalculator（ADR-0039）。
  * 不依赖 Vue 响应式，供 ProductYarnCostSection 组件与单元测试使用。
  * 损耗口径统一为投入损耗：采购投入 = 净耗用 ÷ (1 - 损耗率)。
  * 金额精度 4 位小数（Math.round(value * 10000) / 10000）。
