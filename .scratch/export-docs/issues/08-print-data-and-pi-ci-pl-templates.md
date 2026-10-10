@@ -4,12 +4,13 @@
 
 **Blocked by:** 03（DO/Service）, 04（卖方银行字段）, common-foundation 03（统一打印内核 PrintDispatcher/QrSlot/usePrintHtml/registry）
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] `GET /{id}/print-data?template=PI|CI|PL` 独立打印 VO（豁免脱敏、含拼好 qrUrl + 银行全量字段）+ `@LogRecord` 留痕；DRAFT/FINALIZED 均可调；权限 `lunaerp:business:export-doc:print`
-- [ ] 三模板 EXPORT_DOC_PI/CI/PL + 共用 ExportDocGoodsTable 落在 `components/print/`，注册进 registry.ts，经 PrintDispatcher 分发
-- [ ] A4 纵向 760px Arial 版式照老系统三单结构；Description 优先英文回退中文；金额带币种符号
-- [ ] 底部签章区 `For and on behalf of {seller_name}` + 留白 + 日期（三单同构）
-- [ ] 二维码编码完整 URL `{luna.portal.base-url}/portal/export-doc?no={doc_no}`；基址未配置时不阻断、渲染提示
-- [ ] PL TOTAL 行：pl_meta 手填汇总优先、空则服务端求和
-- [ ] 单测：print-data URL 拼接断言；基址未配置不报错且返回未配置标记；PL 汇总手填优先 vs 求和
+- [x] `GET /{id}/print-data?template=PI|CI|PL` 独立打印 VO（豁免脱敏、含拼好 qrUrl + 银行全量字段）+ `@LogRecord` 留痕；DRAFT/FINALIZED 均可调；权限 `lunaerp:business:export-doc:print`
+- [x] 三模板 EXPORT_DOC_PI/CI/PL + 共用 ExportDocGoodsTable 落在 `components/print/`，注册进 registry.ts，经 PrintDispatcher 分发
+- [x] A4 纵向 760px Arial 版式照老系统三单结构；Description 优先英文回退中文；金额带币种符号
+- [x] 底部签章区 `For and on behalf of {seller_name}` + 留白 + 日期（三单同构）
+- [x] 二维码编码完整 URL `{luna.portal.base-url}/portal/export-doc?no={doc_no}`；基址未配置时不阻断、渲染提示
+- [x] PL TOTAL 行：pl_meta 手填汇总优先、空则服务端求和
+- [x] 单测：print-data URL 拼接断言；基址未配置不报错且返回未配置标记；PL 汇总手填优先 vs 求和
+

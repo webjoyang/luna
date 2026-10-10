@@ -3,6 +3,7 @@ package com.luna.lunasrv.module.lunaerp.controller.business.exportdoc;
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocPrintRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigRespVO;
@@ -135,6 +136,19 @@ public class ExportDocController {
     public CommonResult<Boolean> resyncFromSource(@RequestParam("id") Long id) {
         exportDocService.resyncFromSource(id);
         return success(true);
+    }
+
+    @GetMapping({"/{id}/print-data", "/print-data"})
+    @Operation(summary = "获得出口单证打印数据（豁免脱敏）")
+    @Parameter(name = "id", description = "单证套ID", required = true, example = "1024")
+    @Parameter(name = "template", description = "打印模板：PI|CI|PL", required = false, example = "PI")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:export-doc:print')")
+    public CommonResult<ExportDocPrintRespVO> getExportDocPrintData(
+            @PathVariable(value = "id", required = false) Long pathId,
+            @RequestParam(value = "id", required = false) Long queryId,
+            @RequestParam(value = "template", required = false) String template) {
+        Long id = pathId != null ? pathId : queryId;
+        return success(exportDocService.getExportDocPrintData(id, template));
     }
 
 }

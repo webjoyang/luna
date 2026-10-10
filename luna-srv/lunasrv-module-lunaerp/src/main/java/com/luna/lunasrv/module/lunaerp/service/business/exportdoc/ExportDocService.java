@@ -108,4 +108,13 @@ public interface ExportDocService {
      */
     void resyncFromSource(Long id);
 
+    /**
+     * 获取出口单证打印数据（独立 VO，豁免脱敏，含拼好的 qrUrl + 银行全量字段 + 汇总合计）
+     *
+     * @param id 单证套ID
+     * @param template 打印模板：PI / CI / PL
+     * @return 打印数据
+     */
+    com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocPrintRespVO getExportDocPrintData(Long id, String template);
+
 }

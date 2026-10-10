@@ -1,19 +1,25 @@
 package com.luna.lunasrv.module.lunaerp.service.business.exportdoc;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
 import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocPrintRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigSaveReqVO;
+import com.mzt.logapi.context.LogRecordContext;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.exportdoc.ExportDocItemDO;
@@ -95,6 +101,9 @@ public class ExportDocServiceImpl implements ExportDocService {
 
     @Resource
     private ShipmentRollMapper shipmentRollMapper;
+
+    @Resource
+    private ConfigApi configApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -593,6 +602,158 @@ public class ExportDocServiceImpl implements ExportDocService {
 
         exportDocItemMapper.deleteByDocId(id);
         saveItems(id, mergedItems);
+    }
+
+    @Override
+    @LogRecord(type = "打印", subType = "EXPORT_DOC_PRINT", bizNo = "{{#id}}", success = "打印出口单证【{{#id}}】-【{{#template}}】")
+    public ExportDocPrintRespVO getExportDocPrintData(Long id, String template) {
+        // 1. 校验单据存在（DRAFT 与 FINALIZED 均可打印）
+        ExportDocDO doc = validateExportDocExists(id);
+
+        // 2. 留痕上下文
+        LogRecordContext.putVariable("id", doc.getId());
+        LogRecordContext.putVariable("template", StringUtils.hasText(template) ? template : "ALL");
+
+        // 3. 基础字段拷贝（豁免脱敏）
+        ExportDocPrintRespVO vo = BeanUtils.toBean(doc, ExportDocPrintRespVO.class);
+
+        // 4. 卖方银行与抬头字段（租户配置 -> PI meta 可覆盖）
+        ExportSellerConfigDO sellerConfig = exportSellerConfigMapper.selectByTenant();
+        if (sellerConfig != null) {
+            vo.setSellerBankName(sellerConfig.getBankName());
+            vo.setSellerBankAccount(sellerConfig.getBankAccount());
+            vo.setSellerBankSwift(sellerConfig.getBankSwift());
+            vo.setSellerBankAddress(sellerConfig.getBankAddress());
+            if (!StringUtils.hasText(vo.getSellerName())) {
+                vo.setSellerName(sellerConfig.getSellerName());
+            }
+            if (!StringUtils.hasText(vo.getSellerAddress())) {
+                vo.setSellerAddress(sellerConfig.getSellerAddress());
+            }
+        }
+        if ("PI".equalsIgnoreCase(template) && StringUtils.hasText(doc.getPiMeta())) {
+            try {
+                JSONObject piObj = JSONUtil.parseObj(doc.getPiMeta());
+                if (StringUtils.hasText(piObj.getStr("bankName"))) {
+                    vo.setSellerBankName(piObj.getStr("bankName"));
+                }
+                if (StringUtils.hasText(piObj.getStr("bankAccount"))) {
+                    vo.setSellerBankAccount(piObj.getStr("bankAccount"));
+                }
+                if (StringUtils.hasText(piObj.getStr("bankSwift"))) {
+                    vo.setSellerBankSwift(piObj.getStr("bankSwift"));
+                }
+                if (StringUtils.hasText(piObj.getStr("bankAddress"))) {
+                    vo.setSellerBankAddress(piObj.getStr("bankAddress"));
+                }
+            } catch (Exception ignore) {
+                // 忽略异常
+            }
+        }
+
+        // 5. 客户门户验真二维码 URL（未配置时不阻断打印，二维码位由前端渲染提示）
+        String qrUrl = null;
+        String baseUrl = configApi != null ? configApi.getConfigValueByKey("luna.portal.base-url") : null;
+        if (StringUtils.hasText(baseUrl)) {
+            String cleanBaseUrl = baseUrl.trim().replaceAll("/+$", "");
+            qrUrl = cleanBaseUrl + "/portal/export-doc?no=" + doc.getDocNo();
+        }
+        vo.setQrUrl(qrUrl);
+
+        // 6. 货物明细
+        List<ExportDocItemDO> items = exportDocItemMapper.selectListByDocId(id);
+        List<ExportDocItemRespVO> itemVOList = BeanUtils.toBean(items, ExportDocItemRespVO.class);
+        vo.setItems(itemVOList != null ? itemVOList : Collections.emptyList());
+
+        // 7. 汇总合计：手填优先、空则求和
+        BigDecimal sumQuantity = BigDecimal.ZERO;
+        BigDecimal sumAmount = BigDecimal.ZERO;
+        BigDecimal sumNetWeight = BigDecimal.ZERO;
+        BigDecimal sumGrossWeight = BigDecimal.ZERO;
+        int sumPackages = 0;
+        BigDecimal sumVolume = BigDecimal.ZERO;
+
+        boolean hasNetWeight = false;
+        boolean hasGrossWeight = false;
+        boolean hasPackages = false;
+        boolean hasVolume = false;
+
+        if (CollUtil.isNotEmpty(items)) {
+            for (ExportDocItemDO item : items) {
+                if (item.getQuantity() != null) {
+                    sumQuantity = sumQuantity.add(item.getQuantity());
+                }
+                if (item.getAmount() != null) {
+                    sumAmount = sumAmount.add(item.getAmount());
+                }
+                if (item.getNetWeight() != null) {
+                    sumNetWeight = sumNetWeight.add(item.getNetWeight());
+                    hasNetWeight = true;
+                }
+                if (item.getGrossWeight() != null) {
+                    sumGrossWeight = sumGrossWeight.add(item.getGrossWeight());
+                    hasGrossWeight = true;
+                }
+                if (item.getPackages() != null) {
+                    sumPackages += item.getPackages();
+                    hasPackages = true;
+                }
+                if (item.getVolume() != null) {
+                    sumVolume = sumVolume.add(item.getVolume());
+                    hasVolume = true;
+                }
+            }
+        }
+
+        boolean totalCustom = false;
+        BigDecimal finalTotalQuantity = sumQuantity.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal finalTotalAmount = sumAmount.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal finalTotalNetWeight = hasNetWeight ? sumNetWeight.setScale(2, RoundingMode.HALF_UP) : null;
+        BigDecimal finalTotalGrossWeight = hasGrossWeight ? sumGrossWeight.setScale(2, RoundingMode.HALF_UP) : null;
+        Integer finalTotalPackages = hasPackages ? sumPackages : null;
+        BigDecimal finalTotalVolume = hasVolume ? sumVolume.setScale(3, RoundingMode.HALF_UP) : null;
+
+        if (StringUtils.hasText(doc.getPlMeta())) {
+            try {
+                JSONObject plObj = JSONUtil.parseObj(doc.getPlMeta());
+                if (plObj.get("totalPackages") != null) {
+                    finalTotalPackages = plObj.getInt("totalPackages");
+                    totalCustom = true;
+                }
+                if (plObj.get("totalNetWeight") != null) {
+                    finalTotalNetWeight = plObj.getBigDecimal("totalNetWeight");
+                    totalCustom = true;
+                }
+                if (plObj.get("totalGrossWeight") != null) {
+                    finalTotalGrossWeight = plObj.getBigDecimal("totalGrossWeight");
+                    totalCustom = true;
+                }
+                if (plObj.get("totalQuantity") != null) {
+                    finalTotalQuantity = plObj.getBigDecimal("totalQuantity");
+                    totalCustom = true;
+                }
+                if (plObj.get("totalVolume") != null) {
+                    finalTotalVolume = plObj.getBigDecimal("totalVolume");
+                    totalCustom = true;
+                }
+                if (plObj.get("totalAmount") != null) {
+                    finalTotalAmount = plObj.getBigDecimal("totalAmount");
+                    totalCustom = true;
+                }
+            } catch (Exception ignore) {
+                // plMeta 非合法 JSON 时回退服务端求和
+            }
+        }
+
+        vo.setTotalQuantity(finalTotalQuantity);
+        vo.setTotalAmount(finalTotalAmount);
+        vo.setTotalNetWeight(finalTotalNetWeight);
+        vo.setTotalGrossWeight(finalTotalGrossWeight);
+        vo.setTotalPackages(finalTotalPackages);
+        vo.setTotalVolume(finalTotalVolume);
+        vo.setTotalCustom(totalCustom);
+
+        return vo;
     }
 
     private void prefillSellerConfigRespIfEmpty(ExportDocRespVO draft) {

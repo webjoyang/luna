@@ -4,8 +4,10 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocPrintRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportDocSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigRespVO;
@@ -80,6 +82,9 @@ class ExportDocServiceImplTest {
 
     @Mock
     private ShipmentRollMapper shipmentRollMapper;
+
+    @Mock
+    private ConfigApi configApi;
 
     @InjectMocks
     private ExportDocServiceImpl exportDocService;
@@ -852,5 +857,171 @@ class ExportDocServiceImplTest {
         ExportDocItemDO saved2 = savedItems.get(1);
         assertEquals("Silk Chiffon", saved2.getNameCn());
         assertEquals(new BigDecimal("200.00"), saved2.getQuantity());
+    }
+
+    @Test
+    @DisplayName("打印数据：正常组装，含配置的二维码URL和卖方银行全量字段")
+    void testGetExportDocPrintData_success_withQrUrlAndSellerBank() {
+        Long docId = 1L;
+        ExportDocDO doc = new ExportDocDO();
+        doc.setId(docId);
+        doc.setDocNo("ED20260001");
+        doc.setStatus("FINALIZED");
+        doc.setSellerName("OLD SELLER NAME");
+        when(exportDocMapper.selectById(docId)).thenReturn(doc);
+
+        ExportSellerConfigDO sellerConfig = new ExportSellerConfigDO();
+        sellerConfig.setSellerName("CONFIG SELLER");
+        sellerConfig.setBankName("BANK OF CHINA");
+        sellerConfig.setBankAccount("987654321");
+        sellerConfig.setBankSwift("BKCHCNBJ110");
+        sellerConfig.setBankAddress("No. 1 Fuxingmenwai St, Beijing");
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(sellerConfig);
+
+        when(configApi.getConfigValueByKey("luna.portal.base-url")).thenReturn("https://portal.luna.com/");
+
+        ExportDocItemDO item = new ExportDocItemDO();
+        item.setId(10L);
+        item.setDocId(docId);
+        item.setQuantity(new BigDecimal("100.00"));
+        item.setUnitPrice(new BigDecimal("10.00"));
+        item.setAmount(new BigDecimal("1000.00"));
+        when(exportDocItemMapper.selectListByDocId(docId)).thenReturn(Collections.singletonList(item));
+
+        // Act
+        ExportDocPrintRespVO printVO = exportDocService.getExportDocPrintData(docId, "CI");
+
+        // Assert
+        assertNotNull(printVO);
+        assertEquals("ED20260001", printVO.getDocNo());
+        assertEquals("https://portal.luna.com/portal/export-doc?no=ED20260001", printVO.getQrUrl());
+        assertEquals("BANK OF CHINA", printVO.getSellerBankName());
+        assertEquals("987654321", printVO.getSellerBankAccount());
+        assertEquals("BKCHCNBJ110", printVO.getSellerBankSwift());
+        assertEquals("No. 1 Fuxingmenwai St, Beijing", printVO.getSellerBankAddress());
+        assertEquals("OLD SELLER NAME", printVO.getSellerName());
+        assertEquals(1, printVO.getItems().size());
+        assertEquals(new BigDecimal("100.00"), printVO.getTotalQuantity());
+        assertEquals(new BigDecimal("1000.00"), printVO.getTotalAmount());
+        assertFalse(printVO.getTotalCustom());
+    }
+
+    @Test
+    @DisplayName("打印数据：基址未配置时不阻断、qrUrl为null")
+    void testGetExportDocPrintData_baseUrlNotConfigured_noQrUrl() {
+        Long docId = 2L;
+        ExportDocDO doc = new ExportDocDO();
+        doc.setId(docId);
+        doc.setDocNo("ED20260002");
+        doc.setStatus("DRAFT");
+        when(exportDocMapper.selectById(docId)).thenReturn(doc);
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(null);
+        when(configApi.getConfigValueByKey("luna.portal.base-url")).thenReturn(null);
+        when(exportDocItemMapper.selectListByDocId(docId)).thenReturn(Collections.emptyList());
+
+        // Act
+        ExportDocPrintRespVO printVO = exportDocService.getExportDocPrintData(docId, "PI");
+
+        // Assert
+        assertNotNull(printVO);
+        assertNull(printVO.getQrUrl());
+        assertEquals("ED20260002", printVO.getDocNo());
+    }
+
+    @Test
+    @DisplayName("打印数据：PL无手填汇总时按明细求和")
+    void testGetExportDocPrintData_plMetaFallback_sumFromItems() {
+        Long docId = 3L;
+        ExportDocDO doc = new ExportDocDO();
+        doc.setId(docId);
+        doc.setDocNo("ED20260003");
+        doc.setPlMeta(null); // 无手填
+        when(exportDocMapper.selectById(docId)).thenReturn(doc);
+
+        ExportDocItemDO item1 = new ExportDocItemDO();
+        item1.setQuantity(new BigDecimal("50.00"));
+        item1.setAmount(new BigDecimal("500.00"));
+        item1.setNetWeight(new BigDecimal("120.50"));
+        item1.setGrossWeight(new BigDecimal("130.00"));
+        item1.setPackages(10);
+        item1.setVolume(new BigDecimal("1.250"));
+
+        ExportDocItemDO item2 = new ExportDocItemDO();
+        item2.setQuantity(new BigDecimal("30.00"));
+        item2.setAmount(new BigDecimal("300.00"));
+        item2.setNetWeight(new BigDecimal("80.20"));
+        item2.setGrossWeight(new BigDecimal("85.50"));
+        item2.setPackages(8);
+        item2.setVolume(new BigDecimal("0.750"));
+
+        when(exportDocItemMapper.selectListByDocId(docId)).thenReturn(List.of(item1, item2));
+
+        // Act
+        ExportDocPrintRespVO printVO = exportDocService.getExportDocPrintData(docId, "PL");
+
+        // Assert
+        assertEquals(new BigDecimal("80.00"), printVO.getTotalQuantity());
+        assertEquals(new BigDecimal("800.00"), printVO.getTotalAmount());
+        assertEquals(new BigDecimal("200.70"), printVO.getTotalNetWeight());
+        assertEquals(new BigDecimal("215.50"), printVO.getTotalGrossWeight());
+        assertEquals(18, printVO.getTotalPackages());
+        assertEquals(new BigDecimal("2.000"), printVO.getTotalVolume());
+        assertFalse(printVO.getTotalCustom());
+    }
+
+    @Test
+    @DisplayName("打印数据：PL有手填汇总时手填优先覆盖")
+    void testGetExportDocPrintData_plMetaOverride_handWrittenPriority() {
+        Long docId = 4L;
+        ExportDocDO doc = new ExportDocDO();
+        doc.setId(docId);
+        doc.setDocNo("ED20260004");
+        // 手填覆盖净重 205.00，毛重 220.00，箱数 20（尾箱凑整）
+        doc.setPlMeta("{\"totalPackages\":20,\"totalNetWeight\":205.00,\"totalGrossWeight\":220.00}");
+        when(exportDocMapper.selectById(docId)).thenReturn(doc);
+
+        ExportDocItemDO item1 = new ExportDocItemDO();
+        item1.setQuantity(new BigDecimal("50.00"));
+        item1.setAmount(new BigDecimal("500.00"));
+        item1.setNetWeight(new BigDecimal("120.50"));
+        item1.setGrossWeight(new BigDecimal("130.00"));
+        item1.setPackages(10);
+
+        when(exportDocItemMapper.selectListByDocId(docId)).thenReturn(Collections.singletonList(item1));
+
+        // Act
+        ExportDocPrintRespVO printVO = exportDocService.getExportDocPrintData(docId, "PL");
+
+        // Assert
+        assertEquals(20, printVO.getTotalPackages());
+        assertEquals(new BigDecimal("205.00"), printVO.getTotalNetWeight());
+        assertEquals(new BigDecimal("220.00"), printVO.getTotalGrossWeight());
+        assertTrue(printVO.getTotalCustom());
+    }
+
+    @Test
+    @DisplayName("打印数据：PI模板专属元数据可覆盖卖方银行信息")
+    void testGetExportDocPrintData_piMetaBankOverride() {
+        Long docId = 5L;
+        ExportDocDO doc = new ExportDocDO();
+        doc.setId(docId);
+        doc.setDocNo("ED20260005");
+        doc.setPiMeta("{\"bankName\":\"HSBC HK\",\"bankAccount\":\"11223344\",\"bankSwift\":\"HSBCHKHH\"}");
+        when(exportDocMapper.selectById(docId)).thenReturn(doc);
+
+        ExportSellerConfigDO sellerConfig = new ExportSellerConfigDO();
+        sellerConfig.setBankName("DEFAULT BOC");
+        sellerConfig.setBankAccount("00000000");
+        sellerConfig.setBankSwift("BKCHCNBJ");
+        when(exportSellerConfigMapper.selectByTenant()).thenReturn(sellerConfig);
+        when(exportDocItemMapper.selectListByDocId(docId)).thenReturn(Collections.emptyList());
+
+        // Act
+        ExportDocPrintRespVO printVO = exportDocService.getExportDocPrintData(docId, "PI");
+
+        // Assert
+        assertEquals("HSBC HK", printVO.getSellerBankName());
+        assertEquals("11223344", printVO.getSellerBankAccount());
+        assertEquals("HSBCHKHH", printVO.getSellerBankSwift());
     }
 }

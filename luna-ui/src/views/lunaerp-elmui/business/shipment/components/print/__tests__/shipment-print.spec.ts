@@ -20,6 +20,22 @@ vi.mock('@/views/lunaerp-elmui/business/shipment/components/print/PackingList.vu
   default: { name: 'PackingList' }
 }))
 
+vi.mock('@/api/lunaerp-elmui/business/export-doc', () => ({
+  getExportDocPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintPi.vue', () => ({
+  default: { name: 'ExportDocPrintPi' }
+}))
+
+vi.mock('@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintCi.vue', () => ({
+  default: { name: 'ExportDocPrintCi' }
+}))
+
+vi.mock('@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintPl.vue', () => ({
+  default: { name: 'ExportDocPrintPl' }
+}))
+
 import {
   formatRmbUppercase,
   computeGrandTotalAmount,

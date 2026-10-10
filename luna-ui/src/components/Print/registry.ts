@@ -5,6 +5,11 @@ import { getShipmentPrintData } from '@/api/lunaerp-elmui/business/shipment'
 import ShipmentDoc from '@/views/lunaerp-elmui/business/shipment/components/print/ShipmentDoc.vue'
 import PackingList from '@/views/lunaerp-elmui/business/shipment/components/print/PackingList.vue'
 import { shipmentPrintCss } from '@/views/lunaerp-elmui/business/shipment/components/print/print-styles'
+import { getExportDocPrintData } from '@/api/lunaerp-elmui/business/export-doc'
+import ExportDocPrintPi from '@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintPi.vue'
+import ExportDocPrintCi from '@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintCi.vue'
+import ExportDocPrintPl from '@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintPl.vue'
+import { exportDocPrintCss } from '@/views/lunaerp-elmui/business/export-doc/components/print/print-styles'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -60,6 +65,36 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
     component: PackingList,
     fetchApi: (bizId: string | number) => getShipmentPrintData(bizId),
     customCss: shipmentPrintCss
+  },
+  {
+    bizType: 'EXPORT_DOC',
+    templateCode: 'EXPORT_DOC_PI',
+    name: '形式发票 (PI)',
+    paper: 'A4',
+    permission: 'lunaerp:business:export-doc:print',
+    component: ExportDocPrintPi,
+    fetchApi: (bizId: string | number) => getExportDocPrintData(bizId, 'PI'),
+    customCss: exportDocPrintCss
+  },
+  {
+    bizType: 'EXPORT_DOC',
+    templateCode: 'EXPORT_DOC_CI',
+    name: '商业发票 (CI)',
+    paper: 'A4',
+    permission: 'lunaerp:business:export-doc:print',
+    component: ExportDocPrintCi,
+    fetchApi: (bizId: string | number) => getExportDocPrintData(bizId, 'CI'),
+    customCss: exportDocPrintCss
+  },
+  {
+    bizType: 'EXPORT_DOC',
+    templateCode: 'EXPORT_DOC_PL',
+    name: '装箱单 (PL)',
+    paper: 'A4',
+    permission: 'lunaerp:business:export-doc:print',
+    component: ExportDocPrintPl,
+    fetchApi: (bizId: string | number) => getExportDocPrintData(bizId, 'PL'),
+    customCss: exportDocPrintCss
   }
 ]
 

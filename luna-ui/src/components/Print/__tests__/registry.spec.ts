@@ -20,6 +20,22 @@ vi.mock('@/views/lunaerp-elmui/business/shipment/components/print/PackingList.vu
   default: { name: 'PackingList' }
 }))
 
+vi.mock('@/api/lunaerp-elmui/business/export-doc', () => ({
+  getExportDocPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintPi.vue', () => ({
+  default: { name: 'ExportDocPrintPi' }
+}))
+
+vi.mock('@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintCi.vue', () => ({
+  default: { name: 'ExportDocPrintCi' }
+}))
+
+vi.mock('@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintPl.vue', () => ({
+  default: { name: 'ExportDocPrintPl' }
+}))
+
 import {
   getTemplatesByBizType,
   getTemplate,
@@ -56,6 +72,29 @@ describe('Print Template Registry', () => {
     expect(packingTemplate?.paper).toBe('A4')
     expect(packingTemplate?.permission).toBe('lunaerp:business:shipment:print')
     expect(typeof packingTemplate?.fetchApi).toBe('function')
+  })
+
+  it('should have EXPORT_DOC_PI, EXPORT_DOC_CI, and EXPORT_DOC_PL statically registered for EXPORT_DOC', () => {
+    const exportDocTemplates = getTemplatesByBizType('EXPORT_DOC')
+    expect(exportDocTemplates).toHaveLength(3)
+
+    const piTemplate = exportDocTemplates.find((t) => t.templateCode === 'EXPORT_DOC_PI')
+    expect(piTemplate).toBeDefined()
+    expect(piTemplate?.name).toBe('形式发票 (PI)')
+    expect(piTemplate?.paper).toBe('A4')
+    expect(piTemplate?.permission).toBe('lunaerp:business:export-doc:print')
+
+    const ciTemplate = exportDocTemplates.find((t) => t.templateCode === 'EXPORT_DOC_CI')
+    expect(ciTemplate).toBeDefined()
+    expect(ciTemplate?.name).toBe('商业发票 (CI)')
+    expect(ciTemplate?.paper).toBe('A4')
+    expect(ciTemplate?.permission).toBe('lunaerp:business:export-doc:print')
+
+    const plTemplate = exportDocTemplates.find((t) => t.templateCode === 'EXPORT_DOC_PL')
+    expect(plTemplate).toBeDefined()
+    expect(plTemplate?.name).toBe('装箱单 (PL)')
+    expect(plTemplate?.paper).toBe('A4')
+    expect(plTemplate?.permission).toBe('lunaerp:business:export-doc:print')
   })
 
   it('getTemplate should return default or specific template', () => {
