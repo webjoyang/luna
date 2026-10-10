@@ -63,4 +63,29 @@ public class YarnRecipeBomItemDO extends TenantBaseDO {
      */
     private BigDecimal refPrice;
 
+    /**
+     * 损耗率（百分比数字，如 2.50 表示 2.5%）
+     */
+    private BigDecimal wasteRate;
+
+    /**
+     * 方向（GENERAL 通用 / WARP 经纱 / WEFT 纬纱）
+     */
+    private String direction;
+
+    /**
+     * 密度（经密 / 纬密 / 针织路数）
+     */
+    private BigDecimal density;
+
+    /**
+     * 织缩率（百分比数字，如 5.00 表示 5%）
+     */
+    private BigDecimal crimpRate;
+
+    /**
+     * 每米用量（KG/米）
+     */
+    private BigDecimal consumptionKgPerMeter;
+
 }

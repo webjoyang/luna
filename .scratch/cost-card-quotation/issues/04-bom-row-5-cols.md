@@ -4,10 +4,10 @@
 
 **Blocked by:** 02（SQL 基建）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `YarnRecipeBomItemDO` + VO（SaveReqVO/RespVO）加 5 个新字段，Swagger 注解完备
-- [ ] 现有配比 BOM 管理页表单加 5 个字段维护控件（损耗率/方向/密度/织缩率/每米用量），方向为下拉（GENERAL/WARP/WEFT）
-- [ ] 存量行迁移后 5 列为 null，编辑保存不报错
-- [ ] 单测覆盖 5 字段持久化与默认值（null 不被业务逻辑视为 0）
-- [ ] 验收：能在配比 BOM 管理页录入并保存 5 个新列；重开页面完整回显；存量行打开编辑不报错
+- [x] `YarnRecipeBomItemDO` + VO（SaveReqVO/RespVO）加 5 个新字段，Swagger 注解完备
+- [x] 现有配比 BOM 管理页表单加 5 个字段维护控件（损耗率/方向/密度/织缩率/每米用量），方向为下拉（GENERAL/WARP/WEFT）
+- [x] 存量行迁移后 5 列为 null，编辑保存不报错
+- [x] 单测覆盖 5 字段持久化与默认值（null 不被业务逻辑视为 0）
+- [x] 验收：能在配比 BOM 管理页录入并保存 5 个新列；重开页面完整回显；存量行打开编辑不报错

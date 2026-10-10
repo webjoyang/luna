@@ -164,7 +164,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="参考单价" width="150">
+        <el-table-column label="参考单价" width="140">
           <template #default="{ row }">
             <el-input-number
               v-model="row.refPrice"
@@ -173,6 +173,70 @@
               :step="0.5"
               class="!w-full"
               placeholder="单价"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column label="方向" width="120">
+          <template #default="{ row }">
+            <el-select v-model="row.direction" placeholder="通用" clearable class="!w-full">
+              <el-option label="通用" value="GENERAL" />
+              <el-option label="经纱" value="WARP" />
+              <el-option label="纬纱" value="WEFT" />
+            </el-select>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="损耗率(%)" width="130">
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.wasteRate"
+              :min="0"
+              :max="100"
+              :precision="2"
+              :step="0.5"
+              class="!w-full"
+              placeholder="损耗率"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column label="密度" width="120">
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.density"
+              :min="0"
+              :precision="2"
+              :step="1"
+              class="!w-full"
+              placeholder="经/纬密"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column label="织缩率(%)" width="130">
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.crimpRate"
+              :min="0"
+              :max="100"
+              :precision="2"
+              :step="0.5"
+              class="!w-full"
+              placeholder="织缩率"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column label="每米用量(kg/m)" width="150">
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.consumptionKgPerMeter"
+              :min="0"
+              :precision="6"
+              :step="0.01"
+              class="!w-full"
+              placeholder="每米用量"
             />
           </template>
         </el-table-column>
@@ -247,6 +311,11 @@ interface EditableBomItem {
   spinMethod?: string
   remark?: string
   refPrice?: number
+  wasteRate?: number
+  direction?: string
+  density?: number
+  crimpRate?: number
+  consumptionKgPerMeter?: number
   specCascadeValue?: [number, number]
   _clientKey?: string
 }
@@ -386,6 +455,11 @@ const handleAddRow = () => {
     spinMethod: '',
     remark: '',
     refPrice: undefined,
+    wasteRate: undefined,
+    direction: undefined,
+    density: undefined,
+    crimpRate: undefined,
+    consumptionKgPerMeter: undefined,
     specCascadeValue: undefined
   })
 }
@@ -437,6 +511,11 @@ const loadDetail = async (id: number) => {
       spinMethod: item.spinMethod,
       remark: item.remark,
       refPrice: item.refPrice,
+      wasteRate: item.wasteRate,
+      direction: item.direction,
+      density: item.density,
+      crimpRate: item.crimpRate,
+      consumptionKgPerMeter: item.consumptionKgPerMeter,
       specCascadeValue: [item.yarnTypeId, item.yarnSpecId]
     }))
   } catch {}
@@ -475,7 +554,12 @@ const handleSave = async () => {
         ratio: item.ratio,
         spinMethod: item.spinMethod,
         remark: item.remark,
-        refPrice: item.refPrice
+        refPrice: item.refPrice,
+        wasteRate: item.wasteRate,
+        direction: item.direction,
+        density: item.density,
+        crimpRate: item.crimpRate,
+        consumptionKgPerMeter: item.consumptionKgPerMeter
       }))
     }
 
