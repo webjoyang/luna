@@ -20,6 +20,7 @@ public interface ColorInstructionErrorCodeConstants {
     ErrorCode COLOR_INSTRUCTION_CANNOT_CONFIRM = new ErrorCode(1_030_032_004, "存在未决颜色行或无通过行，不能确认");
     ErrorCode COLOR_INSTRUCTION_REFERENCED_BY_DOWNSTREAM = new ErrorCode(1_030_032_005, "已被下游有效单据引用，不能作废或删除");
     ErrorCode COLOR_INSTRUCTION_COLOR_STATUS_NOT_ALLOW = new ErrorCode(1_030_032_006, "颜色行当前状态不允许修改或删除");
+    ErrorCode COLOR_INSTRUCTION_COLOR_STATUS_NOT_ALLOWED = COLOR_INSTRUCTION_COLOR_STATUS_NOT_ALLOW;
     ErrorCode COLOR_INSTRUCTION_LIGHT_OR_CONFIRM_TYPE_INVALID = new ErrorCode(1_030_032_007, "灯源或确认类型非法");
 
     // ========== 打色颜色行 1-030-032-100 ~ 199 ==========

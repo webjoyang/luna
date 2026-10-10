@@ -151,7 +151,7 @@
           <el-button
             link
             type="primary"
-            @click="openEdit(row.id)"
+            @click="openEdit(row.id, row.status)"
             v-hasPermi="['lunaerp:production:color-instruction:update']"
           >
             <Icon icon="ep:edit" class="mr-1" />编辑
@@ -260,13 +260,21 @@ const resetQuery = () => {
 }
 
 /** 新建 / 编辑页面跳转 */
-const openEdit = (id?: number) => {
-  router.push(id ? `/production/color-instruction/edit/${id}` : '/production/color-instruction/edit')
+const openEdit = (id?: number, status?: string) => {
+  if (!id) {
+    router.push('/production/color-instruction/edit')
+    return
+  }
+  if (status && !['PENDING', 'IN_PROGRESS'].includes(status)) {
+    router.push(`/production/color-instruction/edit?id=${id}&mode=view`)
+  } else {
+    router.push(`/production/color-instruction/edit?id=${id}`)
+  }
 }
 
 /** 查看详情 */
 const openView = (id: number) => {
-  router.push(`/production/color-instruction/edit/${id}?mode=view`)
+  router.push(`/production/color-instruction/edit?id=${id}&mode=view`)
 }
 
 /** 删除操作占位（Issue 05 完整实现） */

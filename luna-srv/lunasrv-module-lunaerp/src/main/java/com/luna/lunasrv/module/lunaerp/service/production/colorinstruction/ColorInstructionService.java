@@ -45,6 +45,13 @@ public interface ColorInstructionService {
     Long createColorInstruction(ColorInstructionSaveReqVO createReqVO);
 
     /**
+     * 更新打色指示单（差异保存颜色行，含行状态守卫与 lineNo 服务端重排）
+     *
+     * @param updateReqVO 更新请求参数
+     */
+    void updateColorInstruction(ColorInstructionSaveReqVO updateReqVO);
+
+    /**
      * 软删除打色指示单（仅 PENDING 状态，级联逻辑删除主表和颜色行）
      *
      * @param id 打色单ID
