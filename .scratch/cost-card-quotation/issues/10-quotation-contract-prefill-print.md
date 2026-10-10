@@ -4,7 +4,7 @@
 
 **Blocked by:** 08（CONFIRMED 状态 + `version_no` 基础，使「最新版本」判定可工作）
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] 报价 Controller 加 `GET /contract-prefill?id=`（仅最新 CONFIRMED 可调，非最新版报 `1_030_034_103`；失效加 warning 标志不拦截）；权限复用 query
 - [ ] 报价 Controller 加 `GET /print-data?id=`（白诺 VO 保证不含成本/毛利字段）；每次调用写打印操作日志；权限 `lunaerp:business:quotation:print`
