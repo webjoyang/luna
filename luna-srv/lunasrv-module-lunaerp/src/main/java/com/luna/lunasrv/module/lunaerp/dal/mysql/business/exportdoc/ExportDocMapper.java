@@ -55,4 +55,27 @@ public interface ExportDocMapper extends BaseMapperX<ExportDocDO> {
             + "FROM lunaerp_business_export_doc WHERE doc_no = #{docNo} LIMIT 1")
     ExportDocDO selectByDocNoIncludingDeleted(@Param("docNo") String docNo);
 
+    /**
+     * 回收站分页查询已软删草稿出口单证套
+     */
+    com.baomidou.mybatisplus.core.metadata.IPage<com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO> selectRecyclePage(
+            com.baomidou.mybatisplus.core.metadata.IPage<com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO> page,
+            @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的草稿单证套记录
+     */
+    ExportDocDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿出口单证套（并发条件更新带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int restoreExportDoc(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                         @Param("updater") String updater, @Param("updateTime") java.time.LocalDateTime updateTime);
+
+    /**
+     * 彻底删除草稿出口单证套（物理删除带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int purgeExportDoc(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
 }

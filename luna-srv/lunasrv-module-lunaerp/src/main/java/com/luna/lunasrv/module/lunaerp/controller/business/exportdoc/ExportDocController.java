@@ -94,4 +94,22 @@ public class ExportDocController {
         return success(true);
     }
 
+    @PutMapping("/finalize")
+    @Operation(summary = "定稿出口单证套（DRAFT -> FINALIZED，校验货物明细非空）")
+    @Parameter(name = "id", description = "单证套编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:export-doc:update')")
+    public CommonResult<Boolean> finalizeExportDoc(@RequestParam("id") Long id) {
+        exportDocService.finalizeExportDoc(id);
+        return success(true);
+    }
+
+    @PutMapping("/revoke")
+    @Operation(summary = "撤销定稿出口单证套（FINALIZED -> DRAFT）")
+    @Parameter(name = "id", description = "单证套编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:export-doc:update')")
+    public CommonResult<Boolean> revokeExportDoc(@RequestParam("id") Long id) {
+        exportDocService.revokeExportDoc(id);
+        return success(true);
+    }
+
 }

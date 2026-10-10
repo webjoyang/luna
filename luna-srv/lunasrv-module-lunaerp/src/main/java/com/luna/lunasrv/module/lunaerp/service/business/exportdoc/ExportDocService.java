@@ -71,4 +71,18 @@ public interface ExportDocService {
      */
     void saveSellerConfig(com.luna.lunasrv.module.lunaerp.controller.business.exportdoc.vo.ExportSellerConfigSaveReqVO saveReqVO);
 
+    /**
+     * 定稿出口单证套（DRAFT -> FINALIZED，校验货物明细非空）
+     *
+     * @param id 单证套ID
+     */
+    void finalizeExportDoc(Long id);
+
+    /**
+     * 撤销定稿出口单证套（FINALIZED -> DRAFT）
+     *
+     * @param id 单证套ID
+     */
+    void revokeExportDoc(Long id);
+
 }

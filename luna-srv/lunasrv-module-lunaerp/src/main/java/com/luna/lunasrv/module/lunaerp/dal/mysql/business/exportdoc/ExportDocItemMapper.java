@@ -38,4 +38,24 @@ public interface ExportDocItemMapper extends BaseMapperX<ExportDocItemDO> {
                 .eq(ExportDocItemDO::getDocId, docId));
     }
 
+    /**
+     * 查询已删除单证套下的明细（用于回收站恢复）
+     */
+    List<ExportDocItemDO> selectDeletedListByDocId(@org.apache.ibatis.annotations.Param("docId") Long docId,
+                                                  @org.apache.ibatis.annotations.Param("tenantId") Long tenantId);
+
+    /**
+     * 级联恢复单证明细（显式 SET deleted=0 WHERE doc_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByDocId(@org.apache.ibatis.annotations.Param("docId") Long docId,
+                       @org.apache.ibatis.annotations.Param("tenantId") Long tenantId,
+                       @org.apache.ibatis.annotations.Param("updater") String updater,
+                       @org.apache.ibatis.annotations.Param("updateTime") java.time.LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除单证明细（显式 DELETE WHERE doc_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByDocId(@org.apache.ibatis.annotations.Param("docId") Long docId,
+                     @org.apache.ibatis.annotations.Param("tenantId") Long tenantId);
+
 }

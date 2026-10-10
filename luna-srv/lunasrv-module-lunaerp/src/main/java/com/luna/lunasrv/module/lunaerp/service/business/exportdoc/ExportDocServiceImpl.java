@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.business.exportdoc;
 
 import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
@@ -244,6 +245,42 @@ public class ExportDocServiceImpl implements ExportDocService {
             }
         } catch (Exception ex) {
             throw exception(EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void finalizeExportDoc(Long id) {
+        ExportDocDO doc = validateExportDocExists(id);
+        if (!"DRAFT".equalsIgnoreCase(doc.getStatus())) {
+            throw exception(EXPORT_DOC_STATUS_NOT_ALLOW);
+        }
+        List<ExportDocItemDO> items = exportDocItemMapper.selectListByDocId(id);
+        if (CollUtil.isEmpty(items)) {
+            throw exception(EXPORT_DOC_ITEM_EMPTY);
+        }
+        int rows = exportDocMapper.update(null, new LambdaUpdateWrapper<ExportDocDO>()
+                .eq(ExportDocDO::getId, id)
+                .eq(ExportDocDO::getStatus, "DRAFT")
+                .set(ExportDocDO::getStatus, "FINALIZED"));
+        if (rows == 0) {
+            throw exception(EXPORT_DOC_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void revokeExportDoc(Long id) {
+        ExportDocDO doc = validateExportDocExists(id);
+        if (!"FINALIZED".equalsIgnoreCase(doc.getStatus())) {
+            throw exception(EXPORT_DOC_STATUS_NOT_ALLOW);
+        }
+        int rows = exportDocMapper.update(null, new LambdaUpdateWrapper<ExportDocDO>()
+                .eq(ExportDocDO::getId, id)
+                .eq(ExportDocDO::getStatus, "FINALIZED")
+                .set(ExportDocDO::getStatus, "DRAFT"));
+        if (rows == 0) {
+            throw exception(EXPORT_DOC_STATUS_NOT_ALLOW);
         }
     }
 

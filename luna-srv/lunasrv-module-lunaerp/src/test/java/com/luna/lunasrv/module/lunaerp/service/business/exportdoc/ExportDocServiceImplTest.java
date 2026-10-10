@@ -492,4 +492,69 @@ class ExportDocServiceImplTest {
         verify(exportSellerConfigMapper).insert(captor.capture());
         assertEquals("TENANT 2 SELLER", captor.getValue().getSellerName());
     }
+
+    @Test
+    @DisplayName("定稿出口单证套：DRAFT 状态且有货物明细，成功定稿为 FINALIZED")
+    void testFinalizeExportDoc_Success() {
+        ExportDocDO draftDoc = new ExportDocDO();
+        draftDoc.setId(10L);
+        draftDoc.setStatus("DRAFT");
+        when(exportDocMapper.selectById(10L)).thenReturn(draftDoc);
+
+        ExportDocItemDO item = new ExportDocItemDO();
+        item.setId(101L);
+        when(exportDocItemMapper.selectListByDocId(10L)).thenReturn(Collections.singletonList(item));
+        when(exportDocMapper.update(isNull(), any())).thenReturn(1);
+
+        assertDoesNotThrow(() -> exportDocService.finalizeExportDoc(10L));
+    }
+
+    @Test
+    @DisplayName("定稿出口单证套：无货物明细报 EXPORT_DOC_ITEM_EMPTY")
+    void testFinalizeExportDoc_EmptyItems_Reject() {
+        ExportDocDO draftDoc = new ExportDocDO();
+        draftDoc.setId(10L);
+        draftDoc.setStatus("DRAFT");
+        when(exportDocMapper.selectById(10L)).thenReturn(draftDoc);
+        when(exportDocItemMapper.selectListByDocId(10L)).thenReturn(Collections.emptyList());
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> exportDocService.finalizeExportDoc(10L));
+        assertEquals(EXPORT_DOC_ITEM_EMPTY.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("定稿出口单证套：非 DRAFT 状态报 EXPORT_DOC_STATUS_NOT_ALLOW")
+    void testFinalizeExportDoc_StatusNotDraft_Reject() {
+        ExportDocDO finalizedDoc = new ExportDocDO();
+        finalizedDoc.setId(10L);
+        finalizedDoc.setStatus("FINALIZED");
+        when(exportDocMapper.selectById(10L)).thenReturn(finalizedDoc);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> exportDocService.finalizeExportDoc(10L));
+        assertEquals(EXPORT_DOC_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("撤销定稿出口单证套：FINALIZED 状态成功回退为 DRAFT")
+    void testRevokeExportDoc_Success() {
+        ExportDocDO finalizedDoc = new ExportDocDO();
+        finalizedDoc.setId(10L);
+        finalizedDoc.setStatus("FINALIZED");
+        when(exportDocMapper.selectById(10L)).thenReturn(finalizedDoc);
+        when(exportDocMapper.update(isNull(), any())).thenReturn(1);
+
+        assertDoesNotThrow(() -> exportDocService.revokeExportDoc(10L));
+    }
+
+    @Test
+    @DisplayName("撤销定稿出口单证套：非 FINALIZED 状态报 EXPORT_DOC_STATUS_NOT_ALLOW")
+    void testRevokeExportDoc_StatusNotFinalized_Reject() {
+        ExportDocDO draftDoc = new ExportDocDO();
+        draftDoc.setId(10L);
+        draftDoc.setStatus("DRAFT");
+        when(exportDocMapper.selectById(10L)).thenReturn(draftDoc);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> exportDocService.revokeExportDoc(10L));
+        assertEquals(EXPORT_DOC_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
 }

@@ -4,11 +4,11 @@
 
 **Blocked by:** 03（Service 骨架 + 状态守卫）, common-foundation 05（RecycleBinHandler SPI + 注册表）
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] `PUT /finalize?id=` DRAFT→FINALIZED，守卫明细非空 EXPORT_DOC_ITEM_EMPTY，条件 UPDATE 防并发
-- [ ] `PUT /revoke?id=` FINALIZED→DRAFT，条件 UPDATE
-- [ ] FINALIZED 只锁编辑/删除不锁打印（DRAFT/FINALIZED 均可打印）
-- [ ] RecycleBinHandler(EXPORT_DOC) 注册：仅 DRAFT 进站、级联恢复 items、不补账、FINALIZED 须先 revoke
-- [ ] 权限 finalize/revoke 复用 `lunaerp:business:export-doc:update`
-- [ ] 单测：定稿守卫（明细空拒绝）、条件更新防并发、回收站级联恢复 items、FINALIZED 不可删
+- [x] `PUT /finalize?id=` DRAFT→FINALIZED，守卫明细非空 EXPORT_DOC_ITEM_EMPTY，条件 UPDATE 防并发
+- [x] `PUT /revoke?id=` FINALIZED→DRAFT，条件 UPDATE
+- [x] FINALIZED 只锁编辑/删除不锁打印（DRAFT/FINALIZED 均可打印）
+- [x] RecycleBinHandler(EXPORT_DOC) 注册：仅 DRAFT 进站、级联恢复 items、不补账、FINALIZED 须先 revoke
+- [x] 权限 finalize/revoke 复用 `lunaerp:business:export-doc:update`
+- [x] 单测：定稿守卫（明细空拒绝）、条件更新防并发、回收站级联恢复 items、FINALIZED 不可删
