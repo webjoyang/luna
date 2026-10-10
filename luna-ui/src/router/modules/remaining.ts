@@ -577,6 +577,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/business/shipment'
         }
+      },
+      {
+        path: 'export-doc/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/business/export-doc/workspace/index.vue'),
+        name: 'LunaerpElmuiBusinessExportDocWorkspace',
+        meta: {
+          title: '出口单证工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/business/export-doc'
+        }
       }
     ]
   },

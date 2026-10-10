@@ -4,12 +4,13 @@
 
 **Blocked by:** 03, 04, 05, 06, 07, 08
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] 列表页：关键词+状态+客户搜索；列：单证套号/买方/合同号/币种/Incoterm/状态/创建时间/操作（查看、编辑[仅草稿]、定稿/回退、删除[仅草稿]、打印）
-- [ ] 三个新建入口：空白/从合同生成/从发货单生成（后两者远程选单调 from-* 接口预填进工作台）
-- [ ] 右上"卖方出口资料"按钮 + 配置弹窗（调 04 的 seller-config 端点）
-- [ ] 工作台编辑页 3 Tab：共享抬头（含"使用租户默认配置"一键带出）/ 货物明细可编辑表格（服务端重算行金额+底部汇总）/ 单据页签 PI/CI/PL 三子 Tab（各编辑专属 meta + 打印按钮）
-- [ ] "重新同步"按钮二次确认（MANUAL 禁用并提示）；调 resync-from-source
-- [ ] 打印按钮 DRAFT/FINALIZED 两态均显示，PrintDispatcher 选版式预览
-- [ ] 工作台前端隐藏路由（仿发货工作台）；API 镜像 `api/lunaerp-elmui/business/export-doc/`
+- [x] 列表页：关键词+状态+客户搜索；列：单证套号/买方/合同号/币种/Incoterm/状态/创建时间/操作（查看、编辑[仅草稿]、定稿/回退、删除[仅草稿]、打印）
+- [x] 三个新建入口：空白/从合同生成/从发货单生成（后两者远程选单调 from-* 接口预填进工作台）
+- [x] 右上"卖方出口资料"按钮 + 配置弹窗（调 04 的 seller-config 端点）
+- [x] 工作台编辑页 3 Tab：共享抬头（含"使用租户默认配置"一键带出）/ 货物明细可编辑表格（服务端重算行金额+底部汇总）/ 单据页签 PI/CI/PL 三子 Tab（各编辑专属 meta + 打印按钮）
+- [x] "重新同步"按钮二次确认（MANUAL 禁用并提示）；调 resync-from-source
+- [x] 打印按钮 DRAFT/FINALIZED 两态均显示，PrintDispatcher 选版式预览
+- [x] 工作台前端隐藏路由（仿发货工作台）；API 镜像 `api/lunaerp-elmui/business/export-doc/`
+
