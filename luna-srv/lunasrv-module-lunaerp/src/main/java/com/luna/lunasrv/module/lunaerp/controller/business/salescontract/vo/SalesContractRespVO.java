@@ -84,6 +84,12 @@ public class SalesContractRespVO {
     @Schema(description = "商品明细列表（按 line_no 升序；分页列表不返回明细）")
     private List<SalesContractItemRespVO> items;
 
+    @Schema(description = "来源报价单ID（可空）", example = "100")
+    private Long sourceQuotationId;
+
+    @Schema(description = "来源报价单号快照（可空）", example = "QT20260001-v1")
+    private String sourceQuotationNo;
+
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
 

@@ -85,6 +85,12 @@ public class SalesContractSaveReqVO {
     @Schema(description = "总金额（服务端按明细权威重算，前端传入值一律忽略覆盖）", example = "0")
     private java.math.BigDecimal totalAmount;
 
+    @Schema(description = "来源报价单ID（可空）", example = "100")
+    private Long sourceQuotationId;
+
+    @Schema(description = "来源报价单号快照（可空）", example = "QT20260001-v1")
+    private String sourceQuotationNo;
+
     @Schema(description = "商品明细列表（整体替换：服务端按数组顺序重排 line_no；为空表示零明细合同）")
     @Valid
     private List<SalesContractItemSaveReqVO> items;

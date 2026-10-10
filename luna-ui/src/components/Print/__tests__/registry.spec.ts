@@ -36,6 +36,14 @@ vi.mock('@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPri
   default: { name: 'ExportDocPrintPl' }
 }))
 
+vi.mock('@/api/lunaerp/business/quotation', () => ({
+  getPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp/business/quotation/print/QuotationPrintTemplate.vue', () => ({
+  default: { name: 'QuotationPrintTemplate' }
+}))
+
 import {
   getTemplatesByBizType,
   getTemplate,
@@ -95,6 +103,18 @@ describe('Print Template Registry', () => {
     expect(plTemplate?.name).toBe('装箱单 (PL)')
     expect(plTemplate?.paper).toBe('A4')
     expect(plTemplate?.permission).toBe('lunaerp:business:export-doc:print')
+  })
+
+  it('should have quotation-default statically registered for QUOTATION', () => {
+    const quotationTemplates = getTemplatesByBizType('QUOTATION')
+    expect(quotationTemplates).toHaveLength(1)
+
+    const tpl = quotationTemplates[0]
+    expect(tpl.templateCode).toBe('quotation-default')
+    expect(tpl.name).toBe('报价单')
+    expect(tpl.paper).toBe('A4')
+    expect(tpl.permission).toBe('lunaerp:business:quotation:print')
+    expect(typeof tpl.fetchApi).toBe('function')
   })
 
   it('getTemplate should return default or specific template', () => {

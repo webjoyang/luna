@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.business.salescontract;
 
 import cn.hutool.core.collection.CollUtil;
+import com.luna.lunasrv.framework.common.enums.CommonStatusEnum;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -10,9 +11,11 @@ import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.Sale
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.quotation.QuotationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.quotation.QuotationMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import jakarta.annotation.Resource;
@@ -31,12 +34,14 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ApprovalErrorCodeConstants.APPROVAL_INSTANCE_STATUS_ERROR;
+import static com.luna.lunasrv.module.lunaerp.enums.CostCardQuotationErrorCodeConstants.*;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SALES_CONTRACT_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SALES_CONTRACT_NO_DUPLICATE;
@@ -108,6 +113,9 @@ public class SalesContractServiceImpl implements SalesContractService {
     @Resource
     private AdminUserApi adminUserApi;
 
+    @Resource
+    private QuotationMapper quotationMapper;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSalesContract(SalesContractSaveReqVO createReqVO) {
@@ -143,6 +151,38 @@ public class SalesContractServiceImpl implements SalesContractService {
         }
         if (!StringUtils.hasText(contract.getCurrency())) {
             contract.setCurrency(DEFAULT_CURRENCY);
+        }
+        // 来源报价单校验与回填
+        if (createReqVO.getSourceQuotationId() != null) {
+            QuotationDO quotation = quotationMapper.selectById(createReqVO.getSourceQuotationId());
+            if (quotation == null) {
+                throw exception(QUOTATION_NOT_EXISTS);
+            }
+            if (!"CONFIRMED".equalsIgnoreCase(quotation.getStatus())) {
+                throw exception(QUOTATION_STATUS_NOT_ALLOWED);
+            }
+            Integer maxVersion = quotationMapper.selectMaxVersionNoByQuotationNo(quotation.getQuotationNo());
+            if (maxVersion != null && !maxVersion.equals(quotation.getVersionNo())) {
+                throw exception(QUOTATION_NOT_LATEST_VERSION);
+            }
+            if (!contract.getCurrency().equalsIgnoreCase(quotation.getCurrency())) {
+                throw exception(QUOTATION_CURRENCY_MISMATCH, quotation.getCurrency());
+            }
+            contract.setSourceQuotationNo(quotation.getQuotationNo() + "-v" + quotation.getVersionNo());
+
+            // 业务员继承：未显式指定时，继承报价单业务员（已停用则回退登录用户）
+            if (createReqVO.getSalespersonUserId() == null && quotation.getSalespersonUserId() != null) {
+                Long inheritUserId = null;
+                if (adminUserApi != null) {
+                    AdminUserRespDTO qUser = adminUserApi.getUser(quotation.getSalespersonUserId());
+                    if (qUser != null && CommonStatusEnum.ENABLE.getStatus().equals(qUser.getStatus())) {
+                        inheritUserId = quotation.getSalespersonUserId();
+                    }
+                }
+                if (inheritUserId != null) {
+                    contract.setSalespersonUserId(inheritUserId);
+                }
+            }
         }
         // 归属人缺省当前登录用户，归属部门服务端推导（ADR-0046）
         if (contract.getSalespersonUserId() == null) {
@@ -197,6 +237,25 @@ public class SalesContractServiceImpl implements SalesContractService {
         }
         if (!StringUtils.hasText(updateObj.getClientName())) {
             updateObj.setClientName(customer.getCompanyName());
+        }
+        // 来源报价单校验与回填
+        if (updateReqVO.getSourceQuotationId() != null) {
+            QuotationDO quotation = quotationMapper.selectById(updateReqVO.getSourceQuotationId());
+            if (quotation == null) {
+                throw exception(QUOTATION_NOT_EXISTS);
+            }
+            if (!"CONFIRMED".equalsIgnoreCase(quotation.getStatus())) {
+                throw exception(QUOTATION_STATUS_NOT_ALLOWED);
+            }
+            Integer maxVersion = quotationMapper.selectMaxVersionNoByQuotationNo(quotation.getQuotationNo());
+            if (maxVersion != null && !maxVersion.equals(quotation.getVersionNo())) {
+                throw exception(QUOTATION_NOT_LATEST_VERSION);
+            }
+            String currentCurrency = StringUtils.hasText(updateObj.getCurrency()) ? updateObj.getCurrency() : existing.getCurrency();
+            if (!currentCurrency.equalsIgnoreCase(quotation.getCurrency())) {
+                throw exception(QUOTATION_CURRENCY_MISMATCH, quotation.getCurrency());
+            }
+            updateObj.setSourceQuotationNo(quotation.getQuotationNo() + "-v" + quotation.getVersionNo());
         }
         // 归属人推导逻辑（Issue 03 / ADR-0046）：
         // 归属人变更 → 同事务重算 dept_id（含清空归属人则两列清空）；归属人未变 → 不动 dept_id

@@ -36,6 +36,14 @@ vi.mock('@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPri
   default: { name: 'ExportDocPrintPl' }
 }))
 
+vi.mock('@/api/lunaerp/business/quotation', () => ({
+  getPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp/business/quotation/print/QuotationPrintTemplate.vue', () => ({
+  default: { name: 'QuotationPrintTemplate' }
+}))
+
 import {
   formatRmbUppercase,
   computeGrandTotalAmount,

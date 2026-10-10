@@ -36,6 +36,14 @@ vi.mock('../ExportDocPrintPl.vue', () => ({
   default: { name: 'ExportDocPrintPl' }
 }))
 
+vi.mock('@/api/lunaerp/business/quotation', () => ({
+  getPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp/business/quotation/print/QuotationPrintTemplate.vue', () => ({
+  default: { name: 'QuotationPrintTemplate' }
+}))
+
 import { getCurrencySymbol, formatAmount, safeParseJson, formatDate } from '../utils'
 import { getTemplatesByBizType, getTemplate } from '@/components/Print/registry'
 

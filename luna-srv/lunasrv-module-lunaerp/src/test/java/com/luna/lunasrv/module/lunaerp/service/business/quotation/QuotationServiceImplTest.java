@@ -465,4 +465,146 @@ public class QuotationServiceImplTest {
         assertEquals(QUOTATION_STATUS_NOT_ALLOWED.getCode(), deleteEx.getCode());
     }
 
+    // ==================== Issue 10: 转合同预填与打印 ====================
+
+    @Test
+    @DisplayName("转合同预填 - 报价单不存在报 100")
+    public void testContractPrefill_NotExists() {
+        when(quotationMapper.selectById(999L)).thenReturn(null);
+        ServiceException ex = assertThrows(ServiceException.class, () -> quotationService.getContractPrefill(999L));
+        assertEquals(QUOTATION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("转合同预填 - 报价单非确认态报 102")
+    public void testContractPrefill_NotConfirmed() {
+        QuotationDO draft = QuotationDO.builder().id(1L).quotationNo("QT20260001").versionNo(1).status("DRAFT").build();
+        when(quotationMapper.selectById(1L)).thenReturn(draft);
+        ServiceException ex = assertThrows(ServiceException.class, () -> quotationService.getContractPrefill(1L));
+        assertEquals(QUOTATION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("转合同预填 - 报价单非最新版本报 103")
+    public void testContractPrefill_NotLatestVersion() {
+        QuotationDO oldConfirmed = QuotationDO.builder().id(1L).quotationNo("QT20260001").versionNo(1).status("CONFIRMED").build();
+        when(quotationMapper.selectById(1L)).thenReturn(oldConfirmed);
+        when(quotationMapper.selectMaxVersionNoByQuotationNo("QT20260001")).thenReturn(2);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> quotationService.getContractPrefill(1L));
+        assertEquals(QUOTATION_NOT_LATEST_VERSION.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("转合同预填 - 成功并带失效警告（过期报价不阻断，expiredWarning=true）")
+    public void testContractPrefill_Success_ExpiredWarning() {
+        QuotationDO confirmed = QuotationDO.builder()
+                .id(1L)
+                .quotationNo("QT20260001")
+                .versionNo(1)
+                .customerId(10L)
+                .clientName("测试客户")
+                .clientContact("张三")
+                .currency("RMB")
+                .salespersonUserId(100L)
+                .status("CONFIRMED")
+                .validFrom(LocalDate.now().minusDays(30))
+                .validTo(LocalDate.now().minusDays(1)) // 已过期
+                .build();
+        when(quotationMapper.selectById(1L)).thenReturn(confirmed);
+        when(quotationMapper.selectMaxVersionNoByQuotationNo("QT20260001")).thenReturn(1);
+
+        AdminUserRespDTO activeUser = new AdminUserRespDTO();
+        activeUser.setId(100L);
+        activeUser.setStatus(com.luna.lunasrv.framework.common.enums.CommonStatusEnum.ENABLE.getStatus());
+        activeUser.setDeptId(20L);
+        when(adminUserApi.getUser(100L)).thenReturn(activeUser);
+
+        QuotationItemDO itemDO = QuotationItemDO.builder()
+                .id(10L)
+                .productCode("P001")
+                .productName("纯棉平布")
+                .customerColor("RED")
+                .composition("100%棉")
+                .width("150cm")
+                .weight("200g/m2")
+                .quantity(new BigDecimal("100.00"))
+                .unitPrice(new BigDecimal("15.50"))
+                .amount(new BigDecimal("1550.00"))
+                .remark("加急")
+                .build();
+        when(quotationItemMapper.selectListByQuotationId(1L)).thenReturn(Collections.singletonList(itemDO));
+
+        QuotationContractPrefillRespVO prefill = quotationService.getContractPrefill(1L);
+        assertNotNull(prefill);
+        assertEquals(1L, prefill.getSourceQuotationId());
+        assertEquals("QT20260001-v1", prefill.getSourceQuotationNo());
+        assertEquals(10L, prefill.getCustomerId());
+        assertEquals("测试客户", prefill.getClientName());
+        assertEquals("RMB", prefill.getCurrency());
+        assertEquals(100L, prefill.getSalespersonUserId());
+        assertEquals(20L, prefill.getDeptId());
+        assertTrue(prefill.getExpiredWarning()); // 失效警告
+        assertEquals(1, prefill.getItems().size());
+
+        QuotationContractPrefillItemRespVO itemResp = prefill.getItems().get(0);
+        assertEquals("P001", itemResp.getProductCode());
+        assertEquals("纯棉平布", itemResp.getProductName());
+        assertEquals(new BigDecimal("100.00"), itemResp.getQuantity());
+        assertEquals(new BigDecimal("15.50"), itemResp.getUnitPrice());
+        assertEquals(BigDecimal.ZERO, itemResp.getOtherFees());
+    }
+
+    @Test
+    @DisplayName("打印数据白诺检验 - 成功获取且反射证明 VO 结构完全不含成本与毛利字段")
+    public void testPrintData_WhiteBoxVerification() {
+        QuotationDO quotation = QuotationDO.builder()
+                .id(1L)
+                .quotationNo("QT20260001")
+                .versionNo(1)
+                .customerId(10L)
+                .clientName("测试客户")
+                .currency("RMB")
+                .exchangeRate(BigDecimal.ONE)
+                .totalQuantity(new BigDecimal("100.00"))
+                .totalAmount(new BigDecimal("1550.00"))
+                .salespersonUserId(100L)
+                .build();
+        when(quotationMapper.selectById(1L)).thenReturn(quotation);
+
+        AdminUserRespDTO user = new AdminUserRespDTO();
+        user.setId(100L);
+        user.setNickname("李业务");
+        when(adminUserApi.getUser(100L)).thenReturn(user);
+
+        QuotationItemDO itemDO = QuotationItemDO.builder()
+                .id(10L)
+                .lineNo(1)
+                .productCode("P001")
+                .productName("纯棉平布")
+                .quantity(new BigDecimal("100.00"))
+                .unitPrice(new BigDecimal("15.50"))
+                .amount(new BigDecimal("1550.00"))
+                .build();
+        when(quotationItemMapper.selectListByQuotationId(1L)).thenReturn(Collections.singletonList(itemDO));
+
+        QuotationPrintRespVO printVO = quotationService.getPrintData(1L);
+        assertNotNull(printVO);
+        assertEquals("QT20260001-v1", printVO.getDisplayNo());
+        assertEquals("李业务", printVO.getSalespersonName());
+        assertEquals(1, printVO.getItems().size());
+
+        // 白诺契约反射检验：QuotationPrintRespVO 与 QuotationPrintItemRespVO 字段绝无 cost 或 margin
+        for (java.lang.reflect.Field field : QuotationPrintRespVO.class.getDeclaredFields()) {
+            String name = field.getName().toLowerCase();
+            assertFalse(name.contains("cost"), "QuotationPrintRespVO 不能含有 cost 相关字段: " + field.getName());
+            assertFalse(name.contains("margin"), "QuotationPrintRespVO 不能含有 margin 相关字段: " + field.getName());
+        }
+        for (java.lang.reflect.Field field : QuotationPrintItemRespVO.class.getDeclaredFields()) {
+            String name = field.getName().toLowerCase();
+            assertFalse(name.contains("cost"), "QuotationPrintItemRespVO 不能含有 cost 相关字段: " + field.getName());
+            assertFalse(name.contains("margin"), "QuotationPrintItemRespVO 不能含有 margin 相关字段: " + field.getName());
+        }
+    }
+
 }

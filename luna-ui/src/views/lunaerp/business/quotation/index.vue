@@ -173,7 +173,7 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" align="center" fixed="right" width="220">
+      <el-table-column label="操作" align="center" fixed="right" width="340">
         <template #default="{ row }">
           <el-button
             link
@@ -216,6 +216,16 @@
           <el-button
             v-if="row.status === 'CONFIRMED'"
             link
+            type="success"
+            @click="handleToContract(row)"
+            v-hasPermi="['lunaerp:business:sales-contract:create']"
+          >
+            生成销售合同
+          </el-button>
+
+          <el-button
+            v-if="row.status === 'CONFIRMED'"
+            link
             type="warning"
             @click="handleRevise(row)"
             v-hasPermi="['lunaerp:business:quotation:create']"
@@ -239,6 +249,15 @@
             @click="handleOpenVersions(row)"
           >
             历史版本
+          </el-button>
+
+          <el-button
+            link
+            type="primary"
+            @click="handlePrint(row)"
+            v-hasPermi="['lunaerp:business:quotation:print']"
+          >
+            打印
           </el-button>
         </template>
       </el-table-column>
@@ -301,6 +320,9 @@
       </el-table-column>
     </el-table>
   </el-drawer>
+
+  <!-- W0 打印分发器 -->
+  <PrintDispatcher ref="printDispatcherRef" biz-type="QUOTATION" />
 </template>
 
 <script lang="ts" setup>
@@ -309,6 +331,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { checkPermi } from '@/utils/permission'
+import { PrintDispatcher } from '@/components/Print'
 import * as QuotationApi from '@/api/lunaerp/business/quotation'
 import type { QuotationVO, QuotationPageReqVO } from '@/api/lunaerp/business/quotation'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
@@ -459,6 +482,19 @@ const handleOpenVersions = async (row: QuotationVO) => {
   } finally {
     versionsLoading.value = false
   }
+}
+
+const printDispatcherRef = ref<InstanceType<typeof PrintDispatcher> | null>(null)
+
+const handleToContract = (row: QuotationVO) => {
+  router.push({
+    path: '/business/sales-contract/edit',
+    query: { quotationId: row.id }
+  })
+}
+
+const handlePrint = (row: QuotationVO) => {
+  printDispatcherRef.value?.open({ bizId: row.id })
 }
 
 onMounted(() => {

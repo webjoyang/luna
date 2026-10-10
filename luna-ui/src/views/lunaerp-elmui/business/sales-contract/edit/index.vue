@@ -5,6 +5,12 @@
         <template #content>
           <span class="header-title">{{ pageTitle }}</span>
           <span v-if="formData.contractNo" class="header-sub">· {{ formData.contractNo }}</span>
+          <span v-if="formData.sourceQuotationNo" class="header-sub">
+            · 来源报价：
+            <el-link type="primary" :underline="false" @click="handleJumpQuotation">
+              {{ formData.sourceQuotationNo }}
+            </el-link>
+          </span>
           <DictTag
             v-if="formData.approvalStatus"
             :type="DICT_TYPE.LUNAERP_APPROVAL_INSTANCE_STATUS"
@@ -14,6 +20,15 @@
         </template>
       </el-page-header>
     </div>
+
+    <el-alert
+      v-if="expiredWarningVisible"
+      title="提示：此销售合同关联的报价单已过有效期，请核对价格后再行签订"
+      type="warning"
+      show-icon
+      closable
+      class="mb-12px"
+    />
 
     <el-form
       ref="formRef"
@@ -138,7 +153,7 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="币种" prop="currency">
-            <el-select v-model="formData.currency" :disabled="isReadOnly" class="!w-full">
+            <el-select v-model="formData.currency" :disabled="isReadOnly || isQuotationSource" class="!w-full">
               <el-option
                 v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_SALES_CONTRACT_CURRENCY)"
                 :key="dict.value"
@@ -418,6 +433,7 @@ import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import * as CustomerContactApi from '@/api/lunaerp-elmui/baseinfo/customer/contact'
 import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
+import * as QuotationApi from '@/api/lunaerp/business/quotation'
 import * as ApprovalInstanceApi from '@/api/approval/instance'
 import { ElMessageBox } from 'element-plus'
 
@@ -454,6 +470,8 @@ const formData = reactive<SalesContractVO>({
   remarks: '',
   status: 'ACTIVE',
   approvalStatus: 'DRAFT',
+  sourceQuotationId: undefined,
+  sourceQuotationNo: '',
   items: [] as SalesContractItemVO[]
 })
 
@@ -622,9 +640,67 @@ const handleProductChange = (row: SalesContractItemVO, val: string) => {
   row.unitPrice = undefined
 }
 
+const isQuotationSource = computed(() => !!formData.sourceQuotationId)
+const expiredWarningVisible = ref(false)
+
+const loadPrefillFromQuotation = async (qId: number) => {
+  loading.value = true
+  try {
+    const prefill = await QuotationApi.getContractPrefill(qId)
+    formData.sourceQuotationId = prefill.sourceQuotationId
+    formData.sourceQuotationNo = prefill.sourceQuotationNo
+    formData.customerId = prefill.customerId
+    formData.clientName = prefill.clientName
+    formData.clientContact = prefill.clientContact || ''
+    formData.currency = prefill.currency
+    formData.tradeType = prefill.tradeType || 'DOMESTIC'
+    if (prefill.salespersonUserId) {
+      formData.salespersonUserId = prefill.salespersonUserId
+    }
+    customerOptions.value = [
+      { id: prefill.customerId, companyName: prefill.clientName } as CustomerVO
+    ]
+    formData.items = (prefill.items || []).map((it) => ({
+      productCode: it.productCode || '',
+      productName: it.productName || '',
+      customerColor: it.customerColor || '',
+      composition: it.composition || '',
+      width: it.width || '',
+      weight: it.weight || '',
+      quantity: it.quantity,
+      unitPrice: it.unitPrice,
+      otherFees: 0,
+      amount: it.amount,
+      remark: it.remark || ''
+    }))
+    if (prefill.expiredWarning) {
+      expiredWarningVisible.value = true
+      message.warning('该报价单已过有效期，请注意核实')
+    }
+  } catch (e: any) {
+    console.error('加载报价预填失败', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleJumpQuotation = () => {
+  if (formData.sourceQuotationId) {
+    router.push({
+      path: '/business/quotation/edit',
+      query: { id: String(formData.sourceQuotationId), readonly: '1' }
+    })
+  }
+}
+
 /** 加载合同（编辑/查看模式） */
 const loadContract = async () => {
-  if (!contractId.value) return
+  if (!contractId.value) {
+    if (route.query.quotationId) {
+      await loadPrefillFromQuotation(Number(route.query.quotationId))
+    }
+    return
+  }
   loading.value = true
   try {
     const data = await SalesContractApi.getSalesContract(Number(contractId.value))

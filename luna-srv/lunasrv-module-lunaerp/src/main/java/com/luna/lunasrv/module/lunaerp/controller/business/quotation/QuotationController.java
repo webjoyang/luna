@@ -111,4 +111,20 @@ public class QuotationController {
         return success(quotationService.getQuotationVersions(quotationNo));
     }
 
+    @GetMapping("/contract-prefill")
+    @Operation(summary = "获取报价单转合同预填数据")
+    @Parameter(name = "id", description = "报价单ID", required = true)
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:quotation:query')")
+    public CommonResult<QuotationContractPrefillRespVO> getContractPrefill(@RequestParam("id") Long id) {
+        return success(quotationService.getContractPrefill(id));
+    }
+
+    @GetMapping("/print-data")
+    @Operation(summary = "获取报价单打印数据")
+    @Parameter(name = "id", description = "报价单ID", required = true)
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:quotation:print')")
+    public CommonResult<QuotationPrintRespVO> getPrintData(@RequestParam("id") Long id) {
+        return success(quotationService.getPrintData(id));
+    }
+
 }

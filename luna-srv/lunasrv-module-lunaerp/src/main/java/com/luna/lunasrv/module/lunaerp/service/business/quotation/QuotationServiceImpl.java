@@ -1,5 +1,6 @@
 package com.luna.lunasrv.module.lunaerp.service.business.quotation;
 
+import com.luna.lunasrv.framework.common.enums.CommonStatusEnum;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
@@ -20,6 +21,8 @@ import com.luna.lunasrv.module.lunaerp.service.business.costcard.pricing.Quotati
 import com.luna.lunasrv.module.lunaerp.service.business.costcard.pricing.QuotationSummaryPricingResult;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
+import com.mzt.logapi.context.LogRecordContext;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -447,6 +450,139 @@ public class QuotationServiceImpl implements QuotationService {
             }
         }
         return respList;
+    }
+
+    @Override
+    public QuotationContractPrefillRespVO getContractPrefill(Long id) {
+        QuotationDO quotation = quotationMapper.selectById(id);
+        if (quotation == null) {
+            throw exception(QUOTATION_NOT_EXISTS);
+        }
+        if (!"CONFIRMED".equalsIgnoreCase(quotation.getStatus())) {
+            throw exception(QUOTATION_STATUS_NOT_ALLOWED);
+        }
+        Integer maxVersion = quotationMapper.selectMaxVersionNoByQuotationNo(quotation.getQuotationNo());
+        if (maxVersion != null && !maxVersion.equals(quotation.getVersionNo())) {
+            throw exception(QUOTATION_NOT_LATEST_VERSION);
+        }
+
+        boolean expiredWarning = quotation.getValidTo() != null && quotation.getValidTo().isBefore(LocalDate.now());
+
+        // 业务员继承：业务员已停用则回退登录用户，部门按其业务员重新推导
+        Long salespersonUserId = null;
+        Long deptId = null;
+        if (quotation.getSalespersonUserId() != null && adminUserApi != null) {
+            AdminUserRespDTO qUser = adminUserApi.getUser(quotation.getSalespersonUserId());
+            if (qUser != null && CommonStatusEnum.ENABLE.getStatus().equals(qUser.getStatus())) {
+                salespersonUserId = quotation.getSalespersonUserId();
+                deptId = qUser.getDeptId();
+            }
+        }
+        if (salespersonUserId == null) {
+            Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+            if (loginUserId != null) {
+                salespersonUserId = loginUserId;
+                if (adminUserApi != null) {
+                    AdminUserRespDTO loginUser = adminUserApi.getUser(loginUserId);
+                    deptId = loginUser != null ? loginUser.getDeptId() : null;
+                }
+            }
+        }
+
+        QuotationContractPrefillRespVO resp = new QuotationContractPrefillRespVO();
+        resp.setSourceQuotationId(quotation.getId());
+        resp.setSourceQuotationNo(quotation.getQuotationNo() + "-v" + quotation.getVersionNo());
+        resp.setCustomerId(quotation.getCustomerId());
+        resp.setClientName(quotation.getClientName());
+        resp.setClientContact(quotation.getClientContact());
+        resp.setPhone(quotation.getPhone());
+        resp.setCurrency(quotation.getCurrency());
+        resp.setTradeType("DOMESTIC");
+        resp.setSalespersonUserId(salespersonUserId);
+        resp.setDeptId(deptId);
+        resp.setExpiredWarning(expiredWarning);
+
+        List<QuotationItemDO> items = quotationItemMapper.selectListByQuotationId(quotation.getId());
+        List<QuotationContractPrefillItemRespVO> itemRespList = new ArrayList<>();
+        if (items != null) {
+            for (QuotationItemDO item : items) {
+                QuotationContractPrefillItemRespVO itemResp = new QuotationContractPrefillItemRespVO();
+                itemResp.setProductCode(item.getProductCode());
+                itemResp.setProductName(item.getProductName());
+                itemResp.setCustomerColor(item.getCustomerColor());
+                itemResp.setComposition(item.getComposition());
+                itemResp.setWidth(item.getWidth());
+                itemResp.setWeight(item.getWeight());
+                itemResp.setQuantity(item.getQuantity());
+                itemResp.setUnitPrice(item.getUnitPrice());
+                itemResp.setOtherFees(BigDecimal.ZERO);
+                itemResp.setAmount(item.getAmount());
+                itemResp.setRemark(item.getRemark());
+                itemRespList.add(itemResp);
+            }
+        }
+        resp.setItems(itemRespList);
+
+        return resp;
+    }
+
+    @Override
+    @LogRecord(type = "QUOTATION", subType = "PRINT", bizNo = "{{#id}}", success = "打印报价单【{{#id}}】")
+    public QuotationPrintRespVO getPrintData(Long id) {
+        QuotationDO quotation = quotationMapper.selectById(id);
+        if (quotation == null) {
+            throw exception(QUOTATION_NOT_EXISTS);
+        }
+        LogRecordContext.putVariable("id", quotation.getId());
+        LogRecordContext.putVariable("no", quotation.getQuotationNo() + "-v" + quotation.getVersionNo());
+
+        QuotationPrintRespVO resp = new QuotationPrintRespVO();
+        resp.setId(quotation.getId());
+        resp.setQuotationNo(quotation.getQuotationNo());
+        resp.setVersionNo(quotation.getVersionNo());
+        resp.setDisplayNo(quotation.getQuotationNo() + "-v" + quotation.getVersionNo());
+        resp.setCustomerId(quotation.getCustomerId());
+        resp.setClientName(quotation.getClientName());
+        resp.setClientContact(quotation.getClientContact());
+        resp.setPhone(quotation.getPhone());
+        resp.setSalespersonUserId(quotation.getSalespersonUserId());
+        if (quotation.getSalespersonUserId() != null && adminUserApi != null) {
+            AdminUserRespDTO user = adminUserApi.getUser(quotation.getSalespersonUserId());
+            resp.setSalespersonName(user != null ? user.getNickname() : null);
+        }
+        resp.setQuotationDate(quotation.getQuotationDate());
+        resp.setValidFrom(quotation.getValidFrom());
+        resp.setValidTo(quotation.getValidTo());
+        resp.setCurrency(quotation.getCurrency());
+        resp.setExchangeRate(quotation.getExchangeRate());
+        resp.setTotalQuantity(quotation.getTotalQuantity());
+        resp.setTotalAmount(quotation.getTotalAmount());
+        resp.setRemarks(quotation.getRemarks());
+
+        List<QuotationItemDO> items = quotationItemMapper.selectListByQuotationId(quotation.getId());
+        List<QuotationPrintItemRespVO> itemRespList = new ArrayList<>();
+        if (items != null) {
+            for (QuotationItemDO item : items) {
+                QuotationPrintItemRespVO itemResp = new QuotationPrintItemRespVO();
+                itemResp.setId(item.getId());
+                itemResp.setLineNo(item.getLineNo());
+                itemResp.setProductCode(item.getProductCode());
+                itemResp.setProductName(item.getProductName());
+                itemResp.setCustomerColor(item.getCustomerColor());
+                itemResp.setComposition(item.getComposition());
+                itemResp.setWidth(item.getWidth());
+                itemResp.setWeight(item.getWeight());
+                itemResp.setUnit(item.getUnit());
+                itemResp.setQuantity(item.getQuantity());
+                itemResp.setUnitPrice(item.getUnitPrice());
+                itemResp.setAmount(item.getAmount());
+                itemResp.setRemark(item.getRemark());
+                itemRespList.add(itemResp);
+            }
+        }
+        resp.setItems(itemRespList);
+
+        return resp;
     }
 
     // ==================== 私有辅助方法 ====================

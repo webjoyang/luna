@@ -131,4 +131,14 @@ public class SalesContractDO extends TenantBaseDO {
      */
     private String paymentTerm;
 
+    /**
+     * 来源报价单ID（可空）
+     */
+    private Long sourceQuotationId;
+
+    /**
+     * 来源报价单号快照（可空）
+     */
+    private String sourceQuotationNo;
+
 }

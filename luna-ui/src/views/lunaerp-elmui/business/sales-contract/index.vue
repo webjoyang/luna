@@ -63,6 +63,19 @@
           <span class="cell-no">{{ row.contractNo }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="来源报价" prop="sourceQuotationNo" min-width="130" align="center">
+        <template #default="{ row }">
+          <el-link
+            v-if="row.sourceQuotationNo"
+            type="primary"
+            :underline="false"
+            @click="router.push(`/business/quotation/edit?id=${row.sourceQuotationId}&readonly=1`)"
+          >
+            {{ row.sourceQuotationNo }}
+          </el-link>
+          <span v-else class="text-gray-400">—</span>
+        </template>
+      </el-table-column>
       <el-table-column label="客户" prop="clientName" min-width="200" show-overflow-tooltip />
       <el-table-column label="贸易类型" prop="tradeType" width="100" align="center">
         <template #default="{ row }">

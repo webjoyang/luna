@@ -43,6 +43,8 @@ export interface SalesContractVO {
   remarks?: string
   status?: string
   approvalStatus?: string
+  sourceQuotationId?: number // 来源报价单ID（可空）
+  sourceQuotationNo?: string // 来源报价单号快照（可空）
   items?: SalesContractItemVO[] // 商品明细列表（整体替换；为空表示零明细合同）
   createTime?: Date | string
 }

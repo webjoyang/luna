@@ -90,4 +90,21 @@ public interface QuotationService {
      */
     List<QuotationRespVO> getQuotationVersions(String quotationNo);
 
+    /**
+     * 获取报价单转销售合同预填数据（仅最新 CONFIRMED 可调，失效加 warning 标志不拦截）- 10 票
+     *
+     * @param id 报价单编号
+     * @return 预填数据
+     */
+    com.luna.lunasrv.module.lunaerp.controller.business.quotation.vo.QuotationContractPrefillRespVO getContractPrefill(Long id);
+
+    /**
+     * 获取报价单打印数据（白诺 VO 保证不含成本/毛利字段）- 10 票
+     *
+     * @param id 报价单编号
+     * @return 打印数据
+     */
+    com.luna.lunasrv.module.lunaerp.controller.business.quotation.vo.QuotationPrintRespVO getPrintData(Long id);
+
 }
+

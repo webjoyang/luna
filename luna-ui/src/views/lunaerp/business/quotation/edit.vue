@@ -46,6 +46,23 @@
           修订报价
         </el-button>
         <el-button
+          v-if="formData.id && formData.status === 'CONFIRMED'"
+          type="success"
+          @click="handleToContract"
+          v-hasPermi="['lunaerp:business:sales-contract:create']"
+        >
+          生成销售合同
+        </el-button>
+        <el-button
+          v-if="formData.id"
+          type="primary"
+          plain
+          @click="handlePrint"
+          v-hasPermi="['lunaerp:business:quotation:print']"
+        >
+          打印
+        </el-button>
+        <el-button
           v-if="formData.id"
           type="info"
           plain
@@ -559,6 +576,9 @@
         </el-table-column>
       </el-table>
     </el-drawer>
+
+    <!-- W0 打印分发器 -->
+    <PrintDispatcher ref="printDispatcherRef" biz-type="QUOTATION" />
   </ContentWrap>
 </template>
 
@@ -569,6 +589,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { checkPermi } from '@/utils/permission'
+import { PrintDispatcher } from '@/components/Print'
 import * as QuotationApi from '@/api/lunaerp/business/quotation'
 import type { QuotationVO, QuotationItemVO } from '@/api/lunaerp/business/quotation'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
@@ -987,6 +1008,8 @@ const loadDetail = async (id: number) => {
   } finally {
     loading.value = false
   }
+}
+
 // 历史版本抽屉
 const versionsDrawerVisible = ref(false)
 const versionsLoading = ref(false)
@@ -1007,6 +1030,19 @@ const handleSwitchVersion = (row: QuotationVO) => {
   versionsDrawerVisible.value = false
   router.push(`/business/quotation/edit?id=${row.id}&readonly=${row.status !== 'DRAFT' ? 1 : 0}`)
   loadDetail(row.id!)
+}
+
+const printDispatcherRef = ref<InstanceType<typeof PrintDispatcher> | null>(null)
+
+const handleToContract = () => {
+  router.push({
+    path: '/business/sales-contract/edit',
+    query: { quotationId: formData.id }
+  })
+}
+
+const handlePrint = () => {
+  printDispatcherRef.value?.open({ bizId: formData.id })
 }
 
 onMounted(async () => {

@@ -115,3 +115,80 @@ export const getNextQuotationNo = () => {
 export const getQuotationVersions = (quotationNo: string) => {
   return request.get<QuotationVO[]>({ url: `/lunaerp/business/quotation/versions?quotationNo=${quotationNo}` })
 }
+
+export interface QuotationContractPrefillItemVO {
+  productCode?: string
+  productName: string
+  customerColor?: string
+  composition?: string
+  width?: string
+  weight?: string
+  quantity: number
+  unitPrice: number
+  otherFees?: number
+  amount?: number
+  remark?: string
+}
+
+export interface QuotationContractPrefillVO {
+  sourceQuotationId: number
+  sourceQuotationNo: string
+  customerId: number
+  clientName: string
+  clientContact?: string
+  phone?: string
+  currency: string
+  tradeType: string
+  salespersonUserId?: number
+  deptId?: number
+  expiredWarning: boolean
+  items: QuotationContractPrefillItemVO[]
+}
+
+export interface QuotationPrintItemVO {
+  id: number
+  lineNo: number
+  productCode?: string
+  productName: string
+  customerColor?: string
+  composition?: string
+  width?: string
+  weight?: string
+  unit?: string
+  quantity: number
+  unitPrice: number
+  amount: number
+  remark?: string
+}
+
+export interface QuotationPrintVO {
+  id: number
+  quotationNo: string
+  versionNo: number
+  displayNo: string
+  customerId: number
+  clientName: string
+  clientContact?: string
+  phone?: string
+  salespersonUserId?: number
+  salespersonName?: string
+  quotationDate: string
+  validFrom: string
+  validTo?: string
+  currency: string
+  exchangeRate: number
+  totalQuantity: number
+  totalAmount: number
+  remarks?: string
+  items: QuotationPrintItemVO[]
+}
+
+// 获取转销售合同预填数据
+export const getContractPrefill = (id: number) => {
+  return request.get<QuotationContractPrefillVO>({ url: `/lunaerp/business/quotation/contract-prefill?id=${id}` })
+}
+
+// 获取打印数据（白诺结构）
+export const getPrintData = (id: number) => {
+  return request.get<QuotationPrintVO>({ url: `/lunaerp/business/quotation/print-data?id=${id}` })
+}

@@ -10,6 +10,8 @@ import ExportDocPrintPi from '@/views/lunaerp-elmui/business/export-doc/componen
 import ExportDocPrintCi from '@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintCi.vue'
 import ExportDocPrintPl from '@/views/lunaerp-elmui/business/export-doc/components/print/ExportDocPrintPl.vue'
 import { exportDocPrintCss } from '@/views/lunaerp-elmui/business/export-doc/components/print/print-styles'
+import { getPrintData as getQuotationPrintData } from '@/api/lunaerp/business/quotation'
+import QuotationPrintTemplate from '@/views/lunaerp/business/quotation/print/QuotationPrintTemplate.vue'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -95,6 +97,15 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
     component: ExportDocPrintPl,
     fetchApi: (bizId: string | number) => getExportDocPrintData(bizId, 'PL'),
     customCss: exportDocPrintCss
+  },
+  {
+    bizType: 'QUOTATION',
+    templateCode: 'quotation-default',
+    name: '报价单',
+    paper: 'A4',
+    permission: 'lunaerp:business:quotation:print',
+    component: QuotationPrintTemplate,
+    fetchApi: (bizId: string | number) => getQuotationPrintData(Number(bizId))
   }
 ]
 
