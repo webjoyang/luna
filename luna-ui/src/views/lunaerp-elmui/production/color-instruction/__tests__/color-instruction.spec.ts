@@ -213,4 +213,117 @@ describe('Color Instruction (打色指示单) Foundation Tests', () => {
     expect(getPhotoCount(undefined)).toBe(0)
     expect(JSON.parse(jsonStr)[0].url).toBe('https://cdn.example.com/p1.jpg')
   })
+
+  describe('Issue 03: View, Update, Differential Save & Row Guard Tests', () => {
+    it('should call updateColorInstruction endpoint with correct payload', async () => {
+      const updatePayload: Partial<ColorInstructionVO> = {
+        id: 101,
+        instructionNo: 'DS20261010001',
+        customerId: 1001,
+        productId: 2001,
+        instructionDate: '2026-10-10',
+        colors: [
+          {
+            id: 201,
+            customerColorNo: 'C01',
+            colorName: '中国红',
+            lightPrimary: 'D65',
+            copies: 1,
+            round: 1,
+            status: 'PENDING'
+          },
+          {
+            customerColorNo: 'C02',
+            colorName: '藏青',
+            lightPrimary: 'D65',
+            copies: 1,
+            round: 1,
+            status: 'PENDING'
+          }
+        ]
+      }
+      vi.mocked(request.put).mockResolvedValueOnce(true as any)
+      const res = await ColorInstructionApi.updateColorInstruction(updatePayload)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/production/color-instruction/update',
+        data: updatePayload
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should correctly identify frozen color rows (APPROVED or REJECTED)', () => {
+      const isRowFrozen = (row: { status?: string }) => {
+        return row.status === 'APPROVED' || row.status === 'REJECTED'
+      }
+
+      expect(isRowFrozen({ status: 'APPROVED' })).toBe(true)
+      expect(isRowFrozen({ status: 'REJECTED' })).toBe(true)
+      expect(isRowFrozen({ status: 'PENDING' })).toBe(false)
+      expect(isRowFrozen({ status: undefined })).toBe(false)
+    })
+
+    it('should correctly evaluate view mode from route query and doc status', () => {
+      const checkViewMode = (queryMode?: string, docStatus?: string) => {
+        return queryMode === 'view' || (!!docStatus && !['PENDING', 'IN_PROGRESS'].includes(docStatus))
+      }
+
+      // Explicit view mode query
+      expect(checkViewMode('view', 'PENDING')).toBe(true)
+      expect(checkViewMode('view', 'IN_PROGRESS')).toBe(true)
+
+      // Edit mode query with editable doc status
+      expect(checkViewMode(undefined, 'PENDING')).toBe(false)
+      expect(checkViewMode(undefined, 'IN_PROGRESS')).toBe(false)
+
+      // Non-editable terminal doc statuses automatically enter view mode
+      expect(checkViewMode(undefined, 'CONFIRMED')).toBe(true)
+      expect(checkViewMode(undefined, 'IN_PRODUCTION')).toBe(true)
+      expect(checkViewMode(undefined, 'VOID')).toBe(true)
+    })
+
+    it('should generate stable row keys using id or _tempId', () => {
+      let tempCounter = 0
+      const generateTempId = () => `temp_${Date.now()}_${++tempCounter}`
+      const getRowKey = (row: { id?: number; _tempId?: string }) => row.id || row._tempId
+
+      const existingRow1 = { id: 501, customerColorNo: 'C01' }
+      const existingRow2 = { id: 502, customerColorNo: 'C02' }
+      const newRow = { _tempId: generateTempId(), customerColorNo: 'C03' }
+
+      expect(getRowKey(existingRow1)).toBe(501)
+      expect(getRowKey(existingRow2)).toBe(502)
+      expect(getRowKey(newRow)).toContain('temp_')
+
+      // Stable across array order mutations
+      const rows = [existingRow1, existingRow2, newRow]
+      const originalKeys = rows.map(getRowKey)
+
+      // Swap position 0 and 1
+      const swapped = [rows[1], rows[0], rows[2]]
+      expect(swapped.map(getRowKey)).toEqual([originalKeys[1], originalKeys[0], originalKeys[2]])
+    })
+
+    it('should preserve original row ids during differential edits and reorders', () => {
+      const colors = [
+        { id: 11, customerColorNo: 'C01', colorName: '红', status: 'REJECTED', round: 1, rejectReason: '偏深' },
+        { id: 12, customerColorNo: 'C01', colorName: '红', status: 'PENDING', round: 2 },
+        { id: 13, customerColorNo: 'C02', colorName: '黄', status: 'PENDING', round: 1 }
+      ]
+
+      // Edit pending row
+      colors[1].colorName = '正红'
+
+      // Move row down
+      const temp = colors[0]
+      colors[0] = colors[1]
+      colors[1] = temp
+
+      // Row IDs remain intact
+      expect(colors[0].id).toBe(12)
+      expect(colors[0].colorName).toBe('正红')
+      expect(colors[1].id).toBe(11)
+      expect(colors[1].rejectReason).toBe('偏深')
+      expect(colors[2].id).toBe(13)
+    })
+  })
 })

@@ -58,6 +58,16 @@ public class ColorInstructionController {
         return success(colorInstructionService.createColorInstruction(createReqVO));
     }
 
+    @PutMapping("/update")
+    @Operation(summary = "更新打色指示单")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:update')")
+    @LogRecord(type = "COLOR_INSTRUCTION", subType = "UPDATE", bizNo = "{{#updateReqVO.id}}",
+            success = "更新打色指示单【{{#updateReqVO.id}}】")
+    public CommonResult<Boolean> updateColorInstruction(@Valid @RequestBody ColorInstructionSaveReqVO updateReqVO) {
+        colorInstructionService.updateColorInstruction(updateReqVO);
+        return success(true);
+    }
+
     @DeleteMapping("/delete")
     @Operation(summary = "删除打色指示单")
     @Parameter(name = "id", description = "打色指示单ID", required = true, example = "1024")

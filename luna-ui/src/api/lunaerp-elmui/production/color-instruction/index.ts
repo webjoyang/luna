@@ -16,6 +16,7 @@ export interface ColorInstructionSummaryVO {
  */
 export interface ColorInstructionColorVO {
   id?: number
+  _tempId?: string
   instructionId?: number
   lineNo?: number
   customerColorNo: string

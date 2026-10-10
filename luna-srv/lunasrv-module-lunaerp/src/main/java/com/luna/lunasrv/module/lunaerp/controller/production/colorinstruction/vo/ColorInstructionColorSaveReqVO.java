@@ -70,4 +70,7 @@ public class ColorInstructionColorSaveReqVO {
     @Schema(description = "行备注")
     private String remark;
 
+    @Schema(description = "是否删除（显式删除标记）")
+    private Boolean deleted;
+
 }
