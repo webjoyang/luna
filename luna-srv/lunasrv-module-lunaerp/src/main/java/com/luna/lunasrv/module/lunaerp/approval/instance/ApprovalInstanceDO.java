@@ -25,6 +25,11 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class ApprovalInstanceDO extends TenantBaseDO {
 
+    public static final String STATUS_APPROVING = "APPROVING";
+    public static final String STATUS_APPROVED = "APPROVED";
+    public static final String STATUS_REJECTED = "REJECTED";
+    public static final String STATUS_CANCELLED = "CANCELLED";
+
     /**
      * 审批实例ID
      */

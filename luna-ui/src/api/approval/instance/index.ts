@@ -73,3 +73,10 @@ export const getInstance = (id: number) => {
 export const getLatestInstanceByBiz = (params: { bizType: string; bizId: number }) => {
   return request.get<ApprovalInstanceRespVO>({ url: '/lunaerp/approval/instance/get-by-biz', params })
 }
+
+export const ApprovalInstanceApi = {
+  submitInstance,
+  withdrawInstance,
+  getInstance,
+  getLatestInstanceByBiz
+}
