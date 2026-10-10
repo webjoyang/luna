@@ -23,6 +23,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -429,6 +430,33 @@ class CustomerServiceImplTest {
         assertEquals(0, result.getSuccessCount());
         assertNotNull(result.getErrorStream());
         verify(customerMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void createCustomer_defaultMarginRatePersistenceAndNullSafety() {
+        // 1. 创建携带默认毛利率 18.5% 的客户
+        CustomerSaveReqVO req1 = new CustomerSaveReqVO();
+        req1.setCompanyName("优选面料客商");
+        req1.setClientType("FORMAL");
+        req1.setDefaultMarginRate(new BigDecimal("0.185000"));
+
+        Long id1 = customerService.createCustomer(req1);
+        assertEquals(1024L, id1);
+
+        // 2. 创建不填默认毛利率的客户，存量/留空为 null，不被视为 0
+        CustomerSaveReqVO req2 = new CustomerSaveReqVO();
+        req2.setCompanyName("普通客户");
+        req2.setClientType("POTENTIAL");
+        req2.setDefaultMarginRate(null);
+
+        customerService.createCustomer(req2);
+
+        org.mockito.ArgumentCaptor<CustomerDO> captor = org.mockito.ArgumentCaptor.forClass(CustomerDO.class);
+        verify(customerMapper, times(2)).insert(captor.capture());
+        CustomerDO saved1 = captor.getAllValues().get(0);
+        assertEquals(new BigDecimal("0.185000"), saved1.getDefaultMarginRate());
+        CustomerDO saved2 = captor.getAllValues().get(1);
+        assertNull(saved2.getDefaultMarginRate());
     }
 
 }

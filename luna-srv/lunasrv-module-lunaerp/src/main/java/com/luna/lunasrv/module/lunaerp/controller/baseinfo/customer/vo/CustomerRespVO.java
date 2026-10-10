@@ -5,6 +5,7 @@ import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Schema(description = "管理后台 - 基本信息-客户信息 Response VO")
@@ -59,6 +60,9 @@ public class CustomerRespVO {
 
     @Schema(description = "状态（ACTIVE 启用 / INACTIVE 停用）")
     private String status;
+
+    @Schema(description = "默认毛利率（小数，如 0.150000 表示 15%，可空）", example = "0.150000")
+    private BigDecimal defaultMarginRate;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

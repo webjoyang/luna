@@ -8,6 +8,8 @@ import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.math.BigDecimal;
+
 /**
  * 基本信息-客户表 DO
  *
@@ -95,4 +97,8 @@ public class CustomerDO extends TenantBaseDO {
      */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long deptId;
+    /**
+     * 默认毛利率（小数，如 0.150000 表示 15%，可空；空回退全局 15%）
+     */
+    private BigDecimal defaultMarginRate;
 }

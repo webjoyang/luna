@@ -125,6 +125,20 @@
           />
         </el-form-item>
       </el-col>
+      <el-col :span="12">
+        <el-form-item label="默认毛利率 (%)" prop="defaultMarginRate">
+          <el-input-number
+            v-model="marginRatePercent"
+            :min="-99"
+            :max="99.9"
+            :step="1"
+            :precision="2"
+            controls-position="right"
+            placeholder="留空回退全局 15%"
+            class="!w-full"
+          />
+        </el-form-item>
+      </el-col>
       <el-col :span="24">
         <el-form-item label="备注" prop="remark">
           <el-input
@@ -177,6 +191,7 @@ const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const submitting = ref(false)
+const marginRatePercent = ref<number | undefined>(undefined)
 
 const formData = reactive<CustomerVO>({
   companyName: '',
@@ -192,6 +207,7 @@ const formData = reactive<CustomerVO>({
   remark: '',
   status: 'ACTIVE',
   salespersonUserId: undefined,
+  defaultMarginRate: undefined,
   nameEn: '',
   addressEn: ''
 })
@@ -209,6 +225,8 @@ const loadCustomer = async () => {
   try {
     const data = await CustomerApi.getCustomer(Number(props.customerId))
     Object.assign(formData, data)
+    marginRatePercent.value =
+      data.defaultMarginRate != null ? Number((data.defaultMarginRate * 100).toFixed(4)) : undefined
   } finally {
     loading.value = false
   }
@@ -218,6 +236,10 @@ const handleSubmit = async () => {
   await formRef.value?.validate()
   submitting.value = true
   try {
+    formData.defaultMarginRate =
+      marginRatePercent.value != null && !Number.isNaN(marginRatePercent.value)
+        ? Number((marginRatePercent.value / 100).toFixed(6))
+        : undefined
     if (isCreateMode.value) {
       const id = await CustomerApi.createCustomer(formData)
       message.success('保存成功')

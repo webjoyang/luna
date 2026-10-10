@@ -4,6 +4,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Schema(description = "管理后台 - 基本信息-客户创建/修改 Request VO")
 @Data
 public class CustomerSaveReqVO {
@@ -57,5 +59,8 @@ public class CustomerSaveReqVO {
 
     @Schema(description = "状态（ACTIVE 启用 / INACTIVE 停用），创建缺省 ACTIVE", example = "ACTIVE")
     private String status;
+
+    @Schema(description = "默认毛利率（小数，如 0.150000 表示 15%，可空）", example = "0.150000")
+    private BigDecimal defaultMarginRate;
 
 }
