@@ -177,5 +177,67 @@ public class ErrorCodeConstantsTest {
         assertEquals(ExportDocErrorCodeConstants.EXPORT_DOC_ITEM_EMPTY, ErrorCodeConstants.EXPORT_DOC_ITEM_EMPTY);
         assertEquals(ExportDocErrorCodeConstants.EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED, ErrorCodeConstants.EXPORT_DOC_SELLER_CONFIG_SAVE_FAILED);
     }
+
+    @Test
+    void testCostCardQuotationErrorCodes() {
+        // 成本卡 1-030-034-000 ~ 099
+        assertEquals(1_030_034_000, CostCardQuotationErrorCodeConstants.COST_CARD_NOT_EXISTS.getCode());
+        assertEquals("成本卡不存在", CostCardQuotationErrorCodeConstants.COST_CARD_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_034_001, CostCardQuotationErrorCodeConstants.COST_CARD_NO_DUPLICATE.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.COST_CARD_NO_DUPLICATE.getMsg().contains("成本卡号"));
+
+        assertEquals(1_030_034_002, CostCardQuotationErrorCodeConstants.COST_CARD_STATUS_NOT_ALLOWED.getCode());
+        assertEquals("成本卡当前状态不允许该操作", CostCardQuotationErrorCodeConstants.COST_CARD_STATUS_NOT_ALLOWED.getMsg());
+
+        assertEquals(1_030_034_003, CostCardQuotationErrorCodeConstants.COST_CARD_MISSING_PRICE.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.COST_CARD_MISSING_PRICE.getMsg().contains("未取到价"));
+
+        assertEquals(1_030_034_004, CostCardQuotationErrorCodeConstants.COST_CARD_RECIPE_BOM_MISSING.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.COST_CARD_RECIPE_BOM_MISSING.getMsg().contains("无有效配比 BOM"));
+
+        assertEquals(1_030_034_005, CostCardQuotationErrorCodeConstants.COST_CARD_KG_METER_CONVERSION_MISSING.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.COST_CARD_KG_METER_CONVERSION_MISSING.getMsg().contains("无法进行千克/米换算"));
+
+        // 报价单 1-030-034-100 ~ 199
+        assertEquals(1_030_034_100, CostCardQuotationErrorCodeConstants.QUOTATION_NOT_EXISTS.getCode());
+        assertEquals("报价单不存在", CostCardQuotationErrorCodeConstants.QUOTATION_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_034_101, CostCardQuotationErrorCodeConstants.QUOTATION_NO_DUPLICATE.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.QUOTATION_NO_DUPLICATE.getMsg().contains("报价单号"));
+
+        assertEquals(1_030_034_102, CostCardQuotationErrorCodeConstants.QUOTATION_STATUS_NOT_ALLOWED.getCode());
+        assertEquals("报价单当前状态不允许该操作", CostCardQuotationErrorCodeConstants.QUOTATION_STATUS_NOT_ALLOWED.getMsg());
+
+        assertEquals(1_030_034_103, CostCardQuotationErrorCodeConstants.QUOTATION_NOT_LATEST_VERSION.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.QUOTATION_NOT_LATEST_VERSION.getMsg().contains("仅最新已确认版本"));
+
+        assertEquals(1_030_034_104, CostCardQuotationErrorCodeConstants.QUOTATION_DRAFT_EXISTS.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.QUOTATION_DRAFT_EXISTS.getMsg().contains("已存在草稿版本"));
+
+        assertEquals(1_030_034_105, CostCardQuotationErrorCodeConstants.QUOTATION_FX_RATE_REQUIRED.getCode());
+        assertEquals("外币报价必须填写汇率", CostCardQuotationErrorCodeConstants.QUOTATION_FX_RATE_REQUIRED.getMsg());
+
+        assertEquals(1_030_034_106, CostCardQuotationErrorCodeConstants.QUOTATION_MARGIN_RATE_INVALID.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.QUOTATION_MARGIN_RATE_INVALID.getMsg().contains("毛利率必须介于"));
+
+        assertEquals(1_030_034_107, CostCardQuotationErrorCodeConstants.QUOTATION_CURRENCY_MISMATCH.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.QUOTATION_CURRENCY_MISMATCH.getMsg().contains("与合同币种不一致"));
+
+        // 纱价追加码 1-030-008-008 ~ 009
+        assertEquals(1_030_008_008, CostCardQuotationErrorCodeConstants.YARN_PRICE_NOT_EXISTS.getCode());
+        assertEquals("纱价记录不存在", CostCardQuotationErrorCodeConstants.YARN_PRICE_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_008_009, CostCardQuotationErrorCodeConstants.YARN_PRICE_DUPLICATE_DATE.getCode());
+        assertTrue(CostCardQuotationErrorCodeConstants.YARN_PRICE_DUPLICATE_DATE.getMsg().contains("已存在记录"));
+
+        // 验证 ErrorCodeConstants 继承了所有 CostCardQuotationErrorCodeConstants 错误码
+        assertEquals(CostCardQuotationErrorCodeConstants.COST_CARD_NOT_EXISTS, ErrorCodeConstants.COST_CARD_NOT_EXISTS);
+        assertEquals(CostCardQuotationErrorCodeConstants.COST_CARD_RECIPE_BOM_MISSING, ErrorCodeConstants.COST_CARD_RECIPE_BOM_MISSING);
+        assertEquals(CostCardQuotationErrorCodeConstants.QUOTATION_NOT_EXISTS, ErrorCodeConstants.QUOTATION_NOT_EXISTS);
+        assertEquals(CostCardQuotationErrorCodeConstants.QUOTATION_CURRENCY_MISMATCH, ErrorCodeConstants.QUOTATION_CURRENCY_MISMATCH);
+        assertEquals(CostCardQuotationErrorCodeConstants.YARN_PRICE_NOT_EXISTS, ErrorCodeConstants.YARN_PRICE_NOT_EXISTS);
+        assertEquals(CostCardQuotationErrorCodeConstants.YARN_PRICE_DUPLICATE_DATE, ErrorCodeConstants.YARN_PRICE_DUPLICATE_DATE);
+    }
 }
 

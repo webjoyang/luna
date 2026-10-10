@@ -97,6 +97,42 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_transport_mode', label: '空运', value: 'AIR', colorType: 'success', cssClass: '' },
     { dictType: 'lunaerp_transport_mode', label: '陆运', value: 'LAND', colorType: 'info', cssClass: '' },
     { dictType: 'lunaerp_transport_mode', label: '快递', value: 'EXPRESS', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_cost_card_status: [
+    { dictType: 'lunaerp_cost_card_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_status', label: '生效', value: 'EFFECTIVE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_status', label: '失效', value: 'EXPIRED', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_cost_card_basis: [
+    { dictType: 'lunaerp_cost_card_basis', label: '按千克', value: 'KG', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_basis', label: '按米', value: 'METER', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_cost_card_fee_type: [
+    { dictType: 'lunaerp_cost_card_fee_type', label: '织造', value: 'WEAVING', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '染色', value: 'DYEING', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '定型', value: 'SETTING', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '检验', value: 'INSPECTION', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '包装', value: 'PACKAGING', colorType: '', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '运费', value: 'FREIGHT', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_cost_fee_unit: [
+    { dictType: 'lunaerp_cost_fee_unit', label: '元/千克', value: 'PER_KG', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_cost_fee_unit', label: '元/米', value: 'PER_METER', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_yarn_price_type: [
+    { dictType: 'lunaerp_yarn_price_type', label: '采购参考价', value: 'PURCHASE', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_yarn_price_type', label: '市场参考价', value: 'MARKET', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_quotation_status: [
+    { dictType: 'lunaerp_quotation_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_quotation_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_quotation_status', label: '已修订', value: 'SUPERSEDED', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_quotation_status', label: '已取消', value: 'CANCELLED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_quotation_status', label: '已失效', value: 'EXPIRED', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_quotation_cost_source: [
+    { dictType: 'lunaerp_quotation_cost_source', label: '成本卡', value: 'CARD', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_quotation_cost_source', label: '手工', value: 'MANUAL', colorType: 'warning', cssClass: '' }
   ]
 }
 
@@ -599,5 +635,14 @@ export enum DICT_TYPE {
   LUNAERP_EXPORT_DOC_STATUS = 'lunaerp_export_doc_status', // 出口单证状态
   LUNAERP_INCOTERM = 'lunaerp_incoterm', // 贸易术语
   LUNAERP_PAYMENT_TERM = 'lunaerp_payment_term', // 付款方式
-  LUNAERP_TRANSPORT_MODE = 'lunaerp_transport_mode' // 运输方式
+  LUNAERP_TRANSPORT_MODE = 'lunaerp_transport_mode', // 运输方式
+
+  // ========== LunaERP - 售前链-成本卡与智能报价模块 ==========
+  LUNAERP_COST_CARD_STATUS = 'lunaerp_cost_card_status', // 成本卡状态
+  LUNAERP_COST_CARD_BASIS = 'lunaerp_cost_card_basis', // 成本卡口径
+  LUNAERP_COST_CARD_FEE_TYPE = 'lunaerp_cost_card_fee_type', // 费用类型
+  LUNAERP_COST_FEE_UNIT = 'lunaerp_cost_fee_unit', // 费用计费口径
+  LUNAERP_YARN_PRICE_TYPE = 'lunaerp_yarn_price_type', // 纱价类型
+  LUNAERP_QUOTATION_STATUS = 'lunaerp_quotation_status', // 报价单状态
+  LUNAERP_QUOTATION_COST_SOURCE = 'lunaerp_quotation_cost_source' // 报价成本来源
 }
