@@ -239,5 +239,12 @@ public class ErrorCodeConstantsTest {
         assertEquals(CostCardQuotationErrorCodeConstants.YARN_PRICE_NOT_EXISTS, ErrorCodeConstants.YARN_PRICE_NOT_EXISTS);
         assertEquals(CostCardQuotationErrorCodeConstants.YARN_PRICE_DUPLICATE_DATE, ErrorCodeConstants.YARN_PRICE_DUPLICATE_DATE);
     }
+
+    @Test
+    void testSchedulingMaterialCheckErrorCodes() {
+        assertEquals(1_030_036_000, ErrorCodeConstants.MACHINE_TASK_LOOM_TIME_CONFLICT.getCode());
+        assertTrue(ErrorCodeConstants.MACHINE_TASK_LOOM_TIME_CONFLICT.getMsg().contains("计划时段冲突"));
+    }
 }
+
 
