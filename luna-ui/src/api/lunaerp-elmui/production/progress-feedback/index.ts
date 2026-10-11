@@ -212,3 +212,43 @@ export const deleteProgressFeedback = (id: number) => {
     url: `/lunaerp/production/progress-feedback/${id}`
   })
 }
+
+// 排缸日历查询请求 VO
+export interface VatCalendarReqVO {
+  month?: string
+  from?: string
+  to?: string
+  dyeingFactoryId?: number
+  status?: string
+}
+
+// 排缸日历缸明细 VO
+export interface VatCalendarVatVO {
+  feedbackId: number
+  dyeingOrderId: number
+  dyeingColorId: number
+  vatNo: string
+  scheduledDate: string
+  status: string
+  quantity?: number
+  pieces?: number
+  unit?: string
+  customerColorNo?: string
+  colorName?: string
+  contractNo?: string
+  dyeingFactoryId?: number
+  dyeingFactoryName?: string
+}
+
+// 排缸日历响应 VO
+export interface VatCalendarRespVO {
+  vats: VatCalendarVatVO[]
+}
+
+// 查询排缸日历月历扁平缸列表
+export const getVatCalendar = (params: VatCalendarReqVO) => {
+  return request.get<VatCalendarRespVO>({
+    url: '/lunaerp/production/progress-feedback/calendar',
+    params
+  })
+}

@@ -1,271 +1,290 @@
 <template>
   <div class="progress-feedback-container">
-    <!-- 顶部统计条 -->
-    <div class="statistics-bar">
-      <div
-        class="stat-card"
-        :class="{ 'is-active': queryParams.status === 'NOT_SCHEDULED' }"
-        @click="handleStatClick('NOT_SCHEDULED')"
-      >
-        <div class="stat-icon unscheduled">
-          <el-icon><DocumentRemove /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ statistics.unscheduledColorCount }}</div>
-          <div class="stat-label">未排缸颜色行</div>
-        </div>
-      </div>
-
-      <div
-        class="stat-card"
-        :class="{ 'is-active': isProgressStatActive }"
-        @click="handleStatClick('IN_PROGRESS')"
-      >
-        <div class="stat-icon in-progress">
-          <el-icon><Odometer /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ statistics.inProgressVatCount }}</div>
-          <div class="stat-label">进行中缸数</div>
-        </div>
-      </div>
-
-      <div
-        class="stat-card"
-        :class="{ 'is-active': queryParams.status === 'COMPLETED' }"
-        @click="handleStatClick('COMPLETED')"
-      >
-        <div class="stat-icon completed">
-          <el-icon><CircleCheck /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ statistics.completedVatCount }}</div>
-          <div class="stat-label">已完成缸数</div>
-        </div>
-      </div>
-
-      <div
-        class="stat-card"
-        :class="{ 'is-active': queryParams.delayedOnly }"
-        @click="handleStatClick('DELAYED')"
-      >
-        <div class="stat-icon delayed">
-          <el-icon><Warning /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ statistics.delayedVatCount }}</div>
-          <div class="stat-label">延期缸数</div>
-        </div>
-      </div>
-
-      <div
-        class="stat-card"
-        :class="{ 'is-active': queryParams.unresolvedOnly }"
-        @click="handleStatClick('UNRESOLVED')"
-      >
-        <div class="stat-icon unresolved">
-          <el-icon><ChatDotSquare /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ statistics.unresolvedVatCount || 0 }}</div>
-          <div class="stat-label">未决问题缸数</div>
-        </div>
-      </div>
+    <!-- 顶部视图切换：缸卡墙 / 排缸日历 -->
+    <div class="view-switch-bar">
+      <el-segmented v-model="activeView" :options="viewOptions" size="default" />
     </div>
 
-    <!-- 筛选栏 -->
-    <el-card class="filter-card" shadow="never">
-      <el-form :model="queryParams" ref="queryFormRef" :inline="true" label-width="78px">
-        <el-form-item label="染色单" prop="dyeingOrderId">
-          <el-select
-            v-model="queryParams.dyeingOrderId"
-            placeholder="搜索染色单"
-            clearable
-            filterable
-            remote
-            :remote-method="searchDyeingOrders"
-            :loading="dyeingOrderLoading"
-            style="width: 220px"
-          >
-            <el-option
-              v-for="item in dyeingOrderOptions"
-              :key="item.id"
-              :label="`#${item.id} ${item.contractNo ? '- ' + item.contractNo : ''} (${item.dyeingFactoryName || ''})`"
-              :value="item.id!"
-            />
-          </el-select>
-        </el-form-item>
+    <!-- 排缸日历视图 -->
+    <VatCalendar v-if="activeView === 'calendar'" />
 
-        <el-form-item label="销售合同" prop="contractNo">
-          <el-input
-            v-model="queryParams.contractNo"
-            placeholder="请输入合同号"
-            clearable
-            @keyup.enter="handleQuery"
-          />
-        </el-form-item>
-
-        <el-form-item label="承染厂" prop="dyeingFactoryId">
-          <el-select
-            v-model="queryParams.dyeingFactoryId"
-            placeholder="搜索承染方"
-            clearable
-            filterable
-            remote
-            :remote-method="searchSuppliers"
-            :loading="supplierLoading"
-            style="width: 200px"
-          >
-            <el-option
-              v-for="item in supplierOptions"
-              :key="item.id"
-              :label="item.companyName"
-              :value="item.id!"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="进度状态" prop="status">
-          <el-select
-            v-model="queryParams.status"
-            placeholder="全部状态"
-            clearable
-            style="width: 140px"
-          >
-            <el-option
-              v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_PROGRESS_FEEDBACK_STATUS)"
-              :key="dict.value"
-              :label="dict.label"
-              :value="dict.value"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="关键词" prop="keyword">
-          <el-input
-            v-model="queryParams.keyword"
-            placeholder="色号/颜色/缸号/合同"
-            clearable
-            @keyup.enter="handleQuery"
-          />
-        </el-form-item>
-
-        <el-form-item label="仅看延期" prop="delayedOnly">
-          <el-switch v-model="queryParams.delayedOnly" @change="handleQuery" />
-        </el-form-item>
-
-        <el-form-item label="仅看未决" prop="unresolvedOnly">
-          <el-switch v-model="queryParams.unresolvedOnly" @change="handleQuery" />
-        </el-form-item>
-
-        <el-form-item label="含已完成" prop="includeCompleted">
-          <el-switch v-model="queryParams.includeCompleted" @change="handleQuery" />
-        </el-form-item>
-
-        <el-form-item label="含已失效" prop="includeDeleted">
-          <el-switch v-model="queryParams.includeDeleted" @change="handleQuery" />
-        </el-form-item>
-
-        <el-form-item>
-          <el-button type="primary" :icon="Search" @click="handleQuery">查询</el-button>
-          <el-button :icon="Refresh" @click="resetQuery">重置</el-button>
-          <el-button
-            v-hasPermi="['lunaerp:production:progress-feedback:create']"
-            type="success"
-            plain
-            :icon="Plus"
-            @click="handleCreateVatStandalone"
-          >
-            新建缸
-          </el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- 物料单元快速定位条（按染色单/合同+产品聚合） -->
-    <div v-if="materialUnits.length > 0" class="material-locator-card">
-      <div class="locator-header">
-        <div class="header-left">
-          <el-icon class="locator-icon"><Position /></el-icon>
-          <span class="locator-title">物料单元快速定位</span>
-          <span class="locator-tip">（按染色单/合同+产品聚合，点击切换并滚动定位至目标颜色行节）</span>
+    <!-- 缸卡墙视图 -->
+    <div v-show="activeView === 'wall'" class="wall-view-content">
+      <!-- 顶部统计条 -->
+      <div class="statistics-bar">
+        <div
+          class="stat-card"
+          :class="{ 'is-active': queryParams.status === 'NOT_SCHEDULED' }"
+          @click="handleStatClick('NOT_SCHEDULED')"
+        >
+          <div class="stat-icon unscheduled">
+            <el-icon><DocumentRemove /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">{{ statistics.unscheduledColorCount }}</div>
+            <div class="stat-label">未排缸颜色行</div>
+          </div>
         </div>
-        <div class="header-right">
-          <el-button
-            v-if="queryParams.dyeingOrderId"
-            size="small"
-            text
-            type="primary"
+
+        <div
+          class="stat-card"
+          :class="{ 'is-active': isProgressStatActive }"
+          @click="handleStatClick('IN_PROGRESS')"
+        >
+          <div class="stat-icon in-progress">
+            <el-icon><Odometer /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">{{ statistics.inProgressVatCount }}</div>
+            <div class="stat-label">进行中缸数</div>
+          </div>
+        </div>
+
+        <div
+          class="stat-card"
+          :class="{ 'is-active': queryParams.status === 'COMPLETED' }"
+          @click="handleStatClick('COMPLETED')"
+        >
+          <div class="stat-icon completed">
+            <el-icon><CircleCheck /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">{{ statistics.completedVatCount }}</div>
+            <div class="stat-label">已完成缸数</div>
+          </div>
+        </div>
+
+        <div
+          class="stat-card"
+          :class="{ 'is-active': queryParams.delayedOnly }"
+          @click="handleStatClick('DELAYED')"
+        >
+          <div class="stat-icon delayed">
+            <el-icon><Warning /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">{{ statistics.delayedVatCount }}</div>
+            <div class="stat-label">延期缸数</div>
+          </div>
+        </div>
+
+        <div
+          class="stat-card"
+          :class="{ 'is-active': queryParams.unresolvedOnly }"
+          @click="handleStatClick('UNRESOLVED')"
+        >
+          <div class="stat-icon unresolved">
+            <el-icon><ChatDotSquare /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">{{ statistics.unresolvedVatCount || 0 }}</div>
+            <div class="stat-label">未决问题缸数</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 筛选栏 -->
+      <el-card class="filter-card" shadow="never">
+        <el-form :model="queryParams" ref="queryFormRef" :inline="true" label-width="78px">
+          <el-form-item label="染色单" prop="dyeingOrderId">
+            <el-select
+              v-model="queryParams.dyeingOrderId"
+              placeholder="搜索染色单"
+              clearable
+              filterable
+              remote
+              :remote-method="searchDyeingOrders"
+              :loading="dyeingOrderLoading"
+              style="width: 220px"
+            >
+              <el-option
+                v-for="item in dyeingOrderOptions"
+                :key="item.id"
+                :label="`#${item.id} ${item.contractNo ? '- ' + item.contractNo : ''} (${item.dyeingFactoryName || ''})`"
+                :value="item.id!"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="销售合同" prop="contractNo">
+            <el-input
+              v-model="queryParams.contractNo"
+              placeholder="请输入合同号"
+              clearable
+              @keyup.enter="handleQuery"
+            />
+          </el-form-item>
+
+          <el-form-item label="承染厂" prop="dyeingFactoryId">
+            <el-select
+              v-model="queryParams.dyeingFactoryId"
+              placeholder="搜索承染方"
+              clearable
+              filterable
+              remote
+              :remote-method="searchSuppliers"
+              :loading="supplierLoading"
+              style="width: 200px"
+            >
+              <el-option
+                v-for="item in supplierOptions"
+                :key="item.id"
+                :label="item.companyName"
+                :value="item.id!"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="进度状态" prop="status">
+            <el-select
+              v-model="queryParams.status"
+              placeholder="全部状态"
+              clearable
+              style="width: 140px"
+            >
+              <el-option
+                v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_PROGRESS_FEEDBACK_STATUS)"
+                :key="dict.value"
+                :label="dict.label"
+                :value="dict.value"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="关键词" prop="keyword">
+            <el-input
+              v-model="queryParams.keyword"
+              placeholder="色号/颜色/缸号/合同"
+              clearable
+              @keyup.enter="handleQuery"
+            />
+          </el-form-item>
+
+          <el-form-item label="仅看延期" prop="delayedOnly">
+            <el-switch v-model="queryParams.delayedOnly" @change="handleQuery" />
+          </el-form-item>
+
+          <el-form-item label="仅看未决" prop="unresolvedOnly">
+            <el-switch v-model="queryParams.unresolvedOnly" @change="handleQuery" />
+          </el-form-item>
+
+          <el-form-item label="含已完成" prop="includeCompleted">
+            <el-switch v-model="queryParams.includeCompleted" @change="handleQuery" />
+          </el-form-item>
+
+          <el-form-item label="含已失效" prop="includeDeleted">
+            <el-switch v-model="queryParams.includeDeleted" @change="handleQuery" />
+          </el-form-item>
+
+          <el-form-item>
+            <el-button type="primary" :icon="Search" @click="handleQuery">查询</el-button>
+            <el-button :icon="Refresh" @click="resetQuery">重置</el-button>
+            <el-button
+              v-hasPermi="['lunaerp:production:progress-feedback:create']"
+              type="success"
+              plain
+              :icon="Plus"
+              @click="handleCreateVatStandalone"
+            >
+              新建缸
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-card>
+
+      <!-- 物料单元快速定位条（按染色单/合同+产品聚合） -->
+      <div v-if="materialUnits.length > 0" class="material-locator-card">
+        <div class="locator-header">
+          <div class="header-left">
+            <el-icon class="locator-icon"><Position /></el-icon>
+            <span class="locator-title">物料单元快速定位</span>
+            <span class="locator-tip"
+              >（按染色单/合同+产品聚合，点击切换并滚动定位至目标颜色行节）</span
+            >
+          </div>
+          <div class="header-right">
+            <el-button
+              v-if="queryParams.dyeingOrderId"
+              size="small"
+              text
+              type="primary"
+              @click="handleSelectMaterialUnit(undefined)"
+            >
+              显示全部物料 ({{ totalMaterialCount }})
+            </el-button>
+          </div>
+        </div>
+        <div class="locator-scroll-box">
+          <div
+            class="locator-item"
+            :class="{ 'is-active': !queryParams.dyeingOrderId }"
             @click="handleSelectMaterialUnit(undefined)"
           >
-            显示全部物料 ({{ totalMaterialCount }})
-          </el-button>
-        </div>
-      </div>
-      <div class="locator-scroll-box">
-        <div
-          class="locator-item"
-          :class="{ 'is-active': !queryParams.dyeingOrderId }"
-          @click="handleSelectMaterialUnit(undefined)"
-        >
-          <span class="item-title">全部物料</span>
-          <span class="item-badge">{{ totalMaterialCount }}</span>
-        </div>
-        <div
-          v-for="unit in materialUnits"
-          :key="unit.dyeingOrderId"
-          class="locator-item"
-          :class="{
-            'is-active': queryParams.dyeingOrderId === unit.dyeingOrderId,
-            'is-delayed': unit.hasDelayed,
-            'is-unresolved': unit.hasUnresolved
-          }"
-          :title="`${unit.contractNo || '未绑定合同'} · ${unit.productName || unit.productCode || '未知产品'} · ${unit.dyeingFactoryName || '-'}`"
-          @click="handleSelectMaterialUnit(unit.dyeingOrderId)"
-        >
-          <div class="item-top">
-            <span class="order-id">#{{ unit.dyeingOrderId }}</span>
-            <span class="contract-no" v-if="unit.contractNo">{{ unit.contractNo }}</span>
-            <span class="factory-name" v-if="unit.dyeingFactoryName">· {{ unit.dyeingFactoryName }}</span>
+            <span class="item-title">全部物料</span>
+            <span class="item-badge">{{ totalMaterialCount }}</span>
           </div>
-          <div class="item-bottom">
-            <span class="product-name">{{ unit.productName || unit.productCode || '无产品信息' }}</span>
-            <span v-if="unit.colorCount" class="color-count">{{ unit.colorCount }}色</span>
-            <span v-if="unit.hasDelayed" class="status-dot delayed" title="含延期缸">延期</span>
-            <span v-if="unit.hasUnresolved" class="status-dot unresolved" title="含未决问题">未决</span>
+          <div
+            v-for="unit in materialUnits"
+            :key="unit.dyeingOrderId"
+            class="locator-item"
+            :class="{
+              'is-active': queryParams.dyeingOrderId === unit.dyeingOrderId,
+              'is-delayed': unit.hasDelayed,
+              'is-unresolved': unit.hasUnresolved
+            }"
+            :title="`${unit.contractNo || '未绑定合同'} · ${unit.productName || unit.productCode || '未知产品'} · ${unit.dyeingFactoryName || '-'}`"
+            @click="handleSelectMaterialUnit(unit.dyeingOrderId)"
+          >
+            <div class="item-top">
+              <span class="order-id">#{{ unit.dyeingOrderId }}</span>
+              <span class="contract-no" v-if="unit.contractNo">{{ unit.contractNo }}</span>
+              <span class="factory-name" v-if="unit.dyeingFactoryName"
+                >· {{ unit.dyeingFactoryName }}</span
+              >
+            </div>
+            <div class="item-bottom">
+              <span class="product-name">{{
+                unit.productName || unit.productCode || '无产品信息'
+              }}</span>
+              <span v-if="unit.colorCount" class="color-count">{{ unit.colorCount }}色</span>
+              <span v-if="unit.hasDelayed" class="status-dot delayed" title="含延期缸">延期</span>
+              <span v-if="unit.hasUnresolved" class="status-dot unresolved" title="含未决问题"
+                >未决</span
+              >
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 缸卡墙内容区 -->
-    <div v-loading="loading" class="wall-content">
-      <template v-if="sectionList.length > 0">
-        <ColorSection
-          v-for="section in sectionList"
-          :key="section.dyeingColorId"
-          :section="section"
-          @create-vat="handleCreateVatForSection"
-          @open-detail="handleOpenVatDetail"
-          @open-feedback="handleOpenFeedback"
-          @refresh="handleRefresh"
-        />
-
-        <!-- 分页条 -->
-        <div class="pagination-wrapper">
-          <el-pagination
-            v-model:current-page="queryParams.pageNo"
-            v-model:page-size="queryParams.pageSize"
-            :page-sizes="[10, 20, 50]"
-            :total="total"
-            layout="total, sizes, prev, pager, next, jumper"
-            @size-change="handleSizeChange"
-            @current-change="handleCurrentChange"
+      <!-- 缸卡墙内容区 -->
+      <div v-loading="loading" class="wall-content">
+        <template v-if="sectionList.length > 0">
+          <ColorSection
+            v-for="section in sectionList"
+            :key="section.dyeingColorId"
+            :section="section"
+            @create-vat="handleCreateVatForSection"
+            @open-detail="handleOpenVatDetail"
+            @open-feedback="handleOpenFeedback"
+            @refresh="handleRefresh"
           />
-        </div>
-      </template>
 
-      <el-empty v-else-if="!loading" description="暂无进度反馈数据" :image-size="120" />
+          <!-- 分页条 -->
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="queryParams.pageNo"
+              v-model:page-size="queryParams.pageSize"
+              :page-sizes="[10, 20, 50]"
+              :total="total"
+              layout="total, sizes, prev, pager, next, jumper"
+              @size-change="handleSizeChange"
+              @current-change="handleCurrentChange"
+            />
+          </div>
+        </template>
+
+        <el-empty v-else-if="!loading" description="暂无进度反馈数据" :image-size="120" />
+      </div>
     </div>
 
     <!-- 新建缸弹窗 -->
@@ -301,6 +320,7 @@ import ColorSection from './components/ColorSection.vue'
 import VatCreateDialog from './components/VatCreateDialog.vue'
 import VatDetailDrawer from './components/VatDetailDrawer.vue'
 import FeedbackDialog from './components/FeedbackDialog.vue'
+import VatCalendar from './components/VatCalendar.vue'
 import {
   getProgressFeedbackPage,
   getProgressFeedbackStatistics,
@@ -311,6 +331,13 @@ import {
 } from '@/api/lunaerp-elmui/production/progress-feedback'
 
 defineOptions({ name: 'LunaerpElmuiProductionProgressFeedback' })
+
+// 视图切换：缸卡墙（默认）/ 排缸日历
+const activeView = ref<'wall' | 'calendar'>('wall')
+const viewOptions = [
+  { label: '缸卡墙', value: 'wall' },
+  { label: '排缸日历', value: 'calendar' }
+]
 
 const loading = ref(false)
 const sectionList = ref<ProgressFeedbackColorSectionVO[]>([])
@@ -661,6 +688,16 @@ onMounted(() => {
   padding: 20px;
 }
 
+.view-switch-bar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 16px;
+}
+
+.wall-view-content {
+  width: 100%;
+}
+
 .statistics-bar {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -836,7 +873,8 @@ onMounted(() => {
         border-color: #409eff;
         box-shadow: 0 0 0 1px #409eff;
 
-        .order-id, .contract-no {
+        .order-id,
+        .contract-no {
           color: #409eff;
           font-weight: 600;
         }
