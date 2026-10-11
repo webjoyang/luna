@@ -104,6 +104,16 @@ public class StockInDO extends TenantBaseDO {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String inspectionOrderNo;
     /**
+     * 关联纱线采购单ID（lunaerp_production_yarn_order.id，可选，零回写）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long yarnOrderId;
+    /**
+     * 关联纱线采购单号快照（可选）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String yarnOrderNo;
+    /**
      * 金额合计（服务端重算，明细金额之和）
      */
     private BigDecimal totalAmount;

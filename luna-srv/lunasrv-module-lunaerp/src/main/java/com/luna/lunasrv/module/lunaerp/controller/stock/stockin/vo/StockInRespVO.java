@@ -63,6 +63,12 @@ public class StockInRespVO {
     @Schema(description = "关联检验单号快照", example = "INS-20260927-001")
     private String inspectionOrderNo;
 
+    @Schema(description = "关联纱线采购单ID", example = "800")
+    private Long yarnOrderId;
+
+    @Schema(description = "关联纱线采购单号快照", example = "YP20260924001")
+    private String yarnOrderNo;
+
     @Schema(description = "金额合计（明细金额之和，服务端重算）", example = "50000.00")
     private BigDecimal totalAmount;
 

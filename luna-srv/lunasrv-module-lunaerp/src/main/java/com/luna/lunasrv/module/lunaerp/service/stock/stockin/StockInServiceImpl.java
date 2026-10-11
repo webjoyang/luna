@@ -17,6 +17,8 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.Gre
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnorder.YarnOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder.YarnOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemPlacementDO;
@@ -166,6 +168,9 @@ public class StockInServiceImpl implements StockInService {
 
     @Resource
     private GreigeTypeMapper greigeTypeMapper;
+
+    @Resource
+    private YarnOrderMapper yarnOrderMapper;
 
     @Resource
     private ProductMapper productMapper;
@@ -603,6 +608,17 @@ public class StockInServiceImpl implements StockInService {
         } else {
             stockIn.setGreigeTypeName(null);
         }
+
+        // 7. 纱线采购单（可选，零回写）
+        if (reqVO.getYarnOrderId() != null) {
+            YarnOrderDO yarnOrder = yarnOrderMapper.selectById(reqVO.getYarnOrderId());
+            if (yarnOrder == null) {
+                throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "纱线采购单");
+            }
+            stockIn.setYarnOrderNo(yarnOrder.getOrderNo());
+        } else {
+            stockIn.setYarnOrderNo(null);
+        }
     }
 
     /**
@@ -960,7 +976,7 @@ public class StockInServiceImpl implements StockInService {
                 : (reqVO.getInDate() != null && reqVO.getInDate().length > 1 ? reqVO.getInDate()[1] : null);
         wrapper.betweenIfPresent(StockInDO::getInDate, dateStart, dateEnd);
 
-        // keyword：命中 in_no / supplier_name / contract_no 之一，或明细产品编码/名称
+        // keyword：命中 in_no / supplier_name / contract_no / yarn_order_no 之一，或明细产品编码/名称
         String keyword = reqVO.getKeyword() == null ? "" : reqVO.getKeyword().trim();
         if (StringUtils.hasText(keyword)) {
             String like = "%" + keyword + "%";
@@ -968,7 +984,8 @@ public class StockInServiceImpl implements StockInService {
             wrapper.and(w -> {
                 w.apply("LOWER(in_no) LIKE LOWER({0})", like)
                         .or().apply("LOWER(supplier_name) LIKE LOWER({0})", like)
-                        .or().apply("LOWER(contract_no) LIKE LOWER({0})", like);
+                        .or().apply("LOWER(contract_no) LIKE LOWER({0})", like)
+                        .or().apply("LOWER(yarn_order_no) LIKE LOWER({0})", like);
                 if (tenantId != null) {
                     w.or().apply("id IN (SELECT stock_in_id FROM lunaerp_stock_in_item WHERE tenant_id = {1} AND deleted = 0 AND (LOWER(product_code) LIKE LOWER({0}) OR LOWER(product_name) LIKE LOWER({0}) OR LOWER(yarn_spec_name) LIKE LOWER({0})))", like, tenantId);
                 } else {

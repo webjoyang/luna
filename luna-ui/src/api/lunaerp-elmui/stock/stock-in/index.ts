@@ -61,6 +61,8 @@ export interface StockInVO {
   greigeTypeName?: string
   inspectionOrderId?: number
   inspectionOrderNo?: string
+  yarnOrderId?: number
+  yarnOrderNo?: string
   totalAmount?: number
   inDate: string
   remark?: string

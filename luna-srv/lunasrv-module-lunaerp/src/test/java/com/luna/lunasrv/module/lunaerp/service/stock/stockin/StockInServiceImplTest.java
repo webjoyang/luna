@@ -11,6 +11,8 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.Supplier
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnorder.YarnOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder.YarnOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouse.WarehouseDO;
@@ -118,6 +120,9 @@ class StockInServiceImplTest {
 
     @Mock
     private GreigeTypeMapper greigeTypeMapper;
+
+    @Mock
+    private YarnOrderMapper yarnOrderMapper;
 
     @Mock
     private ProductMapper productMapper;
@@ -235,8 +240,9 @@ class StockInServiceImplTest {
         req.setGreigeOrderId(40L);
         req.setDyeingOrderId(50L);
         req.setGreigeTypeId(60L);
+        req.setYarnOrderId(70L);
 
-        // Mock 仓库/供应商/合同/胚布单/染色单/胚布品种
+        // Mock 仓库/供应商/合同/胚布单/染色单/胚布品种/纱线采购单
         when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
         SupplierDO supplier = new SupplierDO();
         supplier.setId(20L);
@@ -261,6 +267,11 @@ class StockInServiceImplTest {
         greigeType.setId(60L);
         greigeType.setName("40S 纯棉单面");
         when(greigeTypeMapper.selectById(60L)).thenReturn(greigeType);
+
+        YarnOrderDO yarnOrder = new YarnOrderDO();
+        yarnOrder.setId(70L);
+        yarnOrder.setOrderNo("YP20260924001");
+        when(yarnOrderMapper.selectById(70L)).thenReturn(yarnOrder);
 
         ProductDO product = new ProductDO();
         product.setId(1L);
@@ -287,6 +298,8 @@ class StockInServiceImplTest {
         assertEquals("CH20260001", saved.getContractNo());
         assertEquals("PB0924001", saved.getGreigeOrderNo());
         assertEquals("40S 纯棉单面", saved.getGreigeTypeName());
+        assertEquals(70L, saved.getYarnOrderId());
+        assertEquals("YP20260924001", saved.getYarnOrderNo());
         assertEquals(new BigDecimal("2500.00"), saved.getTotalAmount());
 
         // 验证明细保存
@@ -395,6 +408,18 @@ class StockInServiceImplTest {
         assertEquals(STOCK_IN_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
     }
 
+    @Test
+    void createStockIn_yarnOrderNotExists_throwsException() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        req.setYarnOrderId(999L);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(yarnOrderMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockIn(req));
+        assertEquals(STOCK_IN_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("纱线采购单"));
+    }
+
     // ==================== 修改与状态守卫 ====================
 
     @Test
@@ -445,6 +470,59 @@ class StockInServiceImplTest {
 
         ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.updateStockIn(req));
         assertEquals(STOCK_IN_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void updateStockIn_yarnOrder_clearedAndUpdated_success() {
+        // Case A: Update with new yarn order reference
+        StockInSaveReqVO req = buildCreateReqVO();
+        req.setId(100L);
+        req.setInNo("IN-20260924-001");
+        req.setYarnOrderId(71L);
+
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        existing.setInNo("IN-20260924-001");
+        existing.setYarnOrderId(70L);
+        existing.setYarnOrderNo("YP20260924001");
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+
+        ProductDO product = new ProductDO();
+        product.setId(1L);
+        product.setCode("P-1001");
+        product.setName("纯棉汗布");
+        when(productMapper.selectById(1L)).thenReturn(product);
+
+        YarnOrderDO yarnOrder71 = new YarnOrderDO();
+        yarnOrder71.setId(71L);
+        yarnOrder71.setOrderNo("YP20260924002");
+        when(yarnOrderMapper.selectById(71L)).thenReturn(yarnOrder71);
+
+        stockInService.updateStockIn(req);
+
+        ArgumentCaptor<StockInDO> updateCaptor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).updateById(updateCaptor.capture());
+        StockInDO updated = updateCaptor.getValue();
+        assertEquals(71L, updated.getYarnOrderId());
+        assertEquals("YP20260924002", updated.getYarnOrderNo());
+
+        // Zero write-back: verify yarnOrderMapper has NO updates, inserts, deletes
+        verify(yarnOrderMapper, never()).insert(any(YarnOrderDO.class));
+        verify(yarnOrderMapper, never()).updateById(any(YarnOrderDO.class));
+        verify(yarnOrderMapper, never()).deleteById(anyLong());
+
+        // Case B: Clear yarn order reference (req.yarnOrderId = null)
+        reset(stockInMapper);
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        req.setYarnOrderId(null);
+        stockInService.updateStockIn(req);
+
+        verify(stockInMapper).updateById(updateCaptor.capture());
+        StockInDO cleared = updateCaptor.getValue();
+        assertNull(cleared.getYarnOrderId());
+        assertNull(cleared.getYarnOrderNo());
     }
 
     // ==================== 删除与状态守卫 ====================
