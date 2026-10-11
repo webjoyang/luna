@@ -110,6 +110,13 @@ public class GreigeOrderSaveReqVO {
     @Schema(description = "生产模式（字典 lunaerp_greige_production_mode：SELF 自织 / OUTSOURCE 外发，缺省 OUTSOURCE）", example = "OUTSOURCE")
     private String productionMode;
 
+    @Schema(description = "打色指示单ID（逻辑关联可空）", example = "1024")
+    private Long colorInstructionId;
+
+    @Schema(description = "打色单号快照", example = "DS20261010001")
+    @Size(max = 32, message = "打色单号长度不能超过 32 位")
+    private String colorInstructionNo;
+
     @Schema(description = "颜色投胚分配行列表（整体替换：服务端按数组顺序重排 line_no、"
             + "权威重算投胚需求 = 成品量÷(1−损耗率)；为 null/空表示零颜色单据，合法）")
     @Valid
