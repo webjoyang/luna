@@ -1,13 +1,19 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.finance.supplierrecon;
 
 import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.supplierrecon.vo.SupplierReconPageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.supplierrecon.SupplierReconDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -39,6 +45,24 @@ public interface SupplierReconMapper extends BaseMapperX<SupplierReconDO> {
     List<SupplierReconDO> selectListByReconNoPrefixIncludingDeleted(@Param("prefix") String prefix);
 
     /**
+     * 供应商对账单分页查询
+     */
+    default PageResult<SupplierReconDO> selectPage(SupplierReconPageReqVO reqVO) {
+        LambdaQueryWrapperX<SupplierReconDO> wrapper = new LambdaQueryWrapperX<>();
+        wrapper.eqIfPresent(SupplierReconDO::getSupplierId, reqVO.getSupplierId())
+                .eqIfPresent(SupplierReconDO::getStatus, reqVO.getStatus())
+                .geIfPresent(SupplierReconDO::getPeriodStart, reqVO.getPeriodStart())
+                .leIfPresent(SupplierReconDO::getPeriodEnd, reqVO.getPeriodEnd());
+        String keyword = reqVO.getKeyword() == null ? "" : reqVO.getKeyword().trim();
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> w.like(SupplierReconDO::getReconNo, keyword)
+                    .or().like(SupplierReconDO::getSupplierName, keyword));
+        }
+        wrapper.orderByDesc(SupplierReconDO::getId);
+        return selectPage(reqVO, wrapper);
+    }
+
+    /**
      * 按供应商ID与状态集合查询对账单列表
      */
     default List<SupplierReconDO> selectListBySupplierIdAndStatuses(Long supplierId, Collection<String> statuses) {
@@ -60,5 +84,31 @@ public interface SupplierReconMapper extends BaseMapperX<SupplierReconDO> {
         return selectList(new LambdaQueryWrapperX<SupplierReconDO>()
                 .in(SupplierReconDO::getStatus, statuses));
     }
+
+    /**
+     * 回收站分页查询已软删草稿对账单
+     */
+    IPage<RecycleItemRespVO> selectRecyclePage(IPage<?> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的草稿对账单
+     */
+    SupplierReconDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿对账单
+     */
+    int restoreSupplierRecon(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                             @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除草稿对账单
+     */
+    int purgeSupplierRecon(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 检查对账单是否存在活跃业务引用
+     */
+    Long selectActiveReferenceCount(@Param("reconId") Long reconId, @Param("tenantId") Long tenantId);
 
 }

@@ -5,7 +5,9 @@ import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.supplierrecon.SupplierReconItemDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -56,5 +58,21 @@ public interface SupplierReconItemMapper extends BaseMapperX<SupplierReconItemDO
                 .eq(SupplierReconItemDO::getSourceRefId, sourceRefId)
                 .eqIfPresent(SupplierReconItemDO::getSourceRefItemId, sourceRefItemId));
     }
+
+    /**
+     * 查询已删除对账单下的明细
+     */
+    List<SupplierReconItemDO> selectDeletedListByReconId(@Param("reconId") Long reconId, @Param("tenantId") Long tenantId);
+
+    /**
+     * 级联恢复对账单明细
+     */
+    int restoreByReconId(@Param("reconId") Long reconId, @Param("tenantId") Long tenantId,
+                         @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除对账单明细
+     */
+    int purgeByReconId(@Param("reconId") Long reconId, @Param("tenantId") Long tenantId);
 
 }

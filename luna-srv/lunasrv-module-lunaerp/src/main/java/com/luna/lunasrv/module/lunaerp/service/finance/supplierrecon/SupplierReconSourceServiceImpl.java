@@ -72,6 +72,11 @@ public class SupplierReconSourceServiceImpl implements SupplierReconSourceServic
 
     @Override
     public SupplierReconCandidatesRespVO getCandidateItems(Long supplierId, LocalDate periodStart, LocalDate periodEnd) {
+        return getCandidateItems(supplierId, periodStart, periodEnd, null);
+    }
+
+    @Override
+    public SupplierReconCandidatesRespVO getCandidateItems(Long supplierId, LocalDate periodStart, LocalDate periodEnd, Long excludeReconId) {
         if (supplierId == null) {
             return new SupplierReconCandidatesRespVO(new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         }
@@ -79,8 +84,8 @@ public class SupplierReconSourceServiceImpl implements SupplierReconSourceServic
             return new SupplierReconCandidatesRespVO(new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         }
 
-        // 1. 查询被 DRAFT / CONFIRMED 对账单引用的防重指纹（CANCELLED 对账单释放回池）
-        Set<String> occupiedFingerprints = getOccupiedFingerprints(supplierId);
+        // 1. 查询被 DRAFT / CONFIRMED 对账单引用的防重指纹（CANCELLED 对账单释放回池，排除 excludeReconId）
+        Set<String> occupiedFingerprints = getOccupiedFingerprints(supplierId, excludeReconId);
 
         // 2. 加工费候选（PROCESS）：COMPLETED 检验单按承检方汇总
         List<SupplierReconCandidateItemRespVO> processCandidates = getProcessCandidates(supplierId, periodStart, periodEnd, occupiedFingerprints);
@@ -99,11 +104,19 @@ public class SupplierReconSourceServiceImpl implements SupplierReconSourceServic
     /**
      * 查询指定供应商名下有效对账单（DRAFT / CONFIRMED）已占用的指纹集合
      */
-    private Set<String> getOccupiedFingerprints(Long supplierId) {
+    private Set<String> getOccupiedFingerprints(Long supplierId, Long excludeReconId) {
         List<SupplierReconDO> activeRecons = supplierReconMapper.selectListBySupplierIdAndStatuses(
                 supplierId,
                 Arrays.asList(SupplierReconStatusEnum.DRAFT.getValue(), SupplierReconStatusEnum.CONFIRMED.getValue())
         );
+        if (CollUtil.isEmpty(activeRecons)) {
+            return Collections.emptySet();
+        }
+        if (excludeReconId != null) {
+            activeRecons = activeRecons.stream()
+                    .filter(r -> !excludeReconId.equals(r.getId()))
+                    .toList();
+        }
         if (CollUtil.isEmpty(activeRecons)) {
             return Collections.emptySet();
         }
