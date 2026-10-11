@@ -18,6 +18,9 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.Pro
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.progressfeedback.note.ProgressFeedbackNoteMapper;
 import com.luna.lunasrv.module.lunaerp.enums.production.progressfeedback.ProgressFeedbackStatusEnum;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackAdvanceReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCalendarReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCalendarRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCalendarVatVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackUpdateReqVO;
@@ -41,6 +44,8 @@ import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_VAT_NO_DUPLICATE;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_VAT_NOT_EXISTS;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -242,6 +247,136 @@ public class ProgressFeedbackServiceImpl implements ProgressFeedbackService {
                 .delayedVatCount(delayedVatCount)
                 .unresolvedVatCount(unresolvedVatCount)
                 .build();
+    }
+
+    @Override
+    public ProgressFeedbackCalendarRespVO getCalendar(ProgressFeedbackCalendarReqVO reqVO) {
+        if (reqVO == null) {
+            reqVO = new ProgressFeedbackCalendarReqVO();
+        }
+
+        // 1. 计算日期区间 [startDate, endDate]
+        LocalDate startDate;
+        LocalDate endDate;
+        if (reqVO.getFrom() != null && reqVO.getTo() != null) {
+            startDate = reqVO.getFrom();
+            endDate = reqVO.getTo();
+        } else if (StringUtils.hasText(reqVO.getMonth())) {
+            try {
+                YearMonth ym = YearMonth.parse(reqVO.getMonth().trim());
+                startDate = ym.atDay(1);
+                endDate = ym.atEndOfMonth();
+            } catch (DateTimeParseException e) {
+                throw invalidParamException("月份格式不正确，应为 yyyy-MM");
+            }
+        } else if (reqVO.getFrom() != null) {
+            startDate = reqVO.getFrom();
+            endDate = reqVO.getFrom();
+        } else if (reqVO.getTo() != null) {
+            startDate = reqVO.getTo();
+            endDate = reqVO.getTo();
+        } else {
+            YearMonth ym = YearMonth.from(todayProvider.get());
+            startDate = ym.atDay(1);
+            endDate = ym.atEndOfMonth();
+        }
+
+        if (startDate.isAfter(endDate)) {
+            return new ProgressFeedbackCalendarRespVO(Collections.emptyList());
+        }
+
+        // 2. 查询落在区间内的反馈缸（支持 status 过滤）
+        List<ProgressFeedbackDO> vats = progressFeedbackMapper.selectCalendarList(startDate, endDate, reqVO.getStatus());
+        if (CollUtil.isEmpty(vats)) {
+            return new ProgressFeedbackCalendarRespVO(Collections.emptyList());
+        }
+
+        // 内存双重防御：确保区间、状态与软删除过滤在 Mock 单测中依然生效
+        LocalDate finalStart = startDate;
+        LocalDate finalEnd = endDate;
+        String reqStatus = reqVO.getStatus();
+        vats = vats.stream()
+                .filter(v -> v.getDeleted() == null || !v.getDeleted())
+                .filter(v -> v.getScheduledDate() != null)
+                .filter(v -> !v.getScheduledDate().isBefore(finalStart) && !v.getScheduledDate().isAfter(finalEnd))
+                .filter(v -> !StringUtils.hasText(reqStatus) || Objects.equals(v.getStatus(), reqStatus))
+                .collect(Collectors.toList());
+
+        if (CollUtil.isEmpty(vats)) {
+            return new ProgressFeedbackCalendarRespVO(Collections.emptyList());
+        }
+
+        // 3. 批量查询关联染色单与颜色明细（零展示快照）
+        Set<Long> orderIds = vats.stream()
+                .map(ProgressFeedbackDO::getDyeingOrderId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<Long> colorIds = vats.stream()
+                .map(ProgressFeedbackDO::getDyeingColorId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        if (orderIds.isEmpty()) {
+            return new ProgressFeedbackCalendarRespVO(Collections.emptyList());
+        }
+
+        List<DyeingOrderDO> orders = dyeingOrderMapper.selectListByIds(orderIds);
+        // 仅 ACTIVE 与 COMPLETED 染色单（CANCELLED/DRAFT 等排除），未软删，且匹配可选承染厂过滤
+        Long factoryFilter = reqVO.getDyeingFactoryId();
+        Map<Long, DyeingOrderDO> orderMap = (orders != null ? orders : Collections.<DyeingOrderDO>emptyList()).stream()
+                .filter(o -> o.getDeleted() == null || !o.getDeleted())
+                .filter(o -> "ACTIVE".equals(o.getStatus()) || "COMPLETED".equals(o.getStatus()))
+                .filter(o -> factoryFilter == null || Objects.equals(o.getDyeingFactoryId(), factoryFilter))
+                .collect(Collectors.toMap(DyeingOrderDO::getId, o -> o, (a, b) -> a));
+
+        if (orderMap.isEmpty()) {
+            return new ProgressFeedbackCalendarRespVO(Collections.emptyList());
+        }
+
+        List<DyeingColorDO> colors = colorIds.isEmpty() ? Collections.emptyList() : dyeingColorMapper.selectListByIds(colorIds);
+        Map<Long, DyeingColorDO> colorMap = (colors != null ? colors : Collections.<DyeingColorDO>emptyList()).stream()
+                .filter(c -> c.getDeleted() == null || !c.getDeleted())
+                .collect(Collectors.toMap(DyeingColorDO::getId, c -> c, (a, b) -> a));
+
+        // 4. 组装扁平缸列表
+        List<ProgressFeedbackCalendarVatVO> vatVOList = new ArrayList<>();
+        for (ProgressFeedbackDO vat : vats) {
+            DyeingOrderDO order = orderMap.get(vat.getDyeingOrderId());
+            if (order == null) {
+                // 染色单不满足条件（非 ACTIVE/COMPLETED、已软删、承染厂不匹配等）
+                continue;
+            }
+            DyeingColorDO color = colorMap.get(vat.getDyeingColorId());
+
+            ProgressFeedbackCalendarVatVO vo = new ProgressFeedbackCalendarVatVO();
+            vo.setFeedbackId(vat.getId());
+            vo.setDyeingOrderId(vat.getDyeingOrderId());
+            vo.setDyeingColorId(vat.getDyeingColorId());
+            vo.setVatNo(vat.getVatNo());
+            vo.setScheduledDate(vat.getScheduledDate());
+            vo.setStatus(vat.getStatus());
+            vo.setQuantity(vat.getQuantity());
+            vo.setPieces(vat.getPieces());
+
+            if (color != null) {
+                vo.setUnit(color.getDyeingInputUnit());
+                vo.setCustomerColorNo(color.getCustomerColorNo());
+                vo.setColorName(color.getColorName());
+            }
+
+            vo.setContractNo(order.getContractNo());
+            vo.setDyeingFactoryId(order.getDyeingFactoryId());
+            vo.setDyeingFactoryName(order.getDyeingFactoryName());
+
+            vatVOList.add(vo);
+        }
+
+        // 5. 排序：按 scheduledDate 升序、vatNo 升序、feedbackId 升序
+        vatVOList.sort(Comparator.comparing(ProgressFeedbackCalendarVatVO::getScheduledDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ProgressFeedbackCalendarVatVO::getVatNo, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ProgressFeedbackCalendarVatVO::getFeedbackId, Comparator.nullsLast(Comparator.naturalOrder())));
+
+        return new ProgressFeedbackCalendarRespVO(vatVOList);
     }
 
     @Override
