@@ -184,3 +184,26 @@ export function rollbackBar(
   bar.startDate = oldStart
   bar.endDate = oldEnd
 }
+
+/**
+ * 组装跨单机台任务分页查询参数 (Issue 08)
+ * 保证不强加 weavingOrderId 限制，天然支持跨单聚合分页
+ */
+export function buildTaskPageQuery(params: {
+  pageNo: number
+  pageSize: number
+  loomId?: number
+  status?: string
+  conflictOnly?: boolean
+  code?: string
+}) {
+  return {
+    pageNo: params.pageNo,
+    pageSize: params.pageSize,
+    loomId: params.loomId || undefined,
+    status: params.status || undefined,
+    conflictOnly: params.conflictOnly ? true : undefined,
+    code: params.code?.trim() || undefined
+  }
+}
+

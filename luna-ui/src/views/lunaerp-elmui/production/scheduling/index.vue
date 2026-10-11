@@ -211,15 +211,192 @@
           </div>
         </el-tab-pane>
 
-        <!-- 任务列表 Tab（Issue 08 预留容器与入口） -->
+        <!-- 任务列表 Tab（跨单机台任务列表） -->
         <el-tab-pane label="跨单任务列表" name="tasks">
-          <div id="scheduling-task-list-pane">
-            <!-- 由 Issue 08 实现跨单任务列表组件 -->
-            <slot name="task-list">
-              <div class="py-10 text-center text-gray-400">
-                跨单任务列表加载中...
-              </div>
-            </slot>
+          <!-- 任务列表筛选工具条 -->
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div class="flex flex-wrap items-center gap-3">
+              <el-input
+                v-model="taskFilter.code"
+                placeholder="搜索任务编号"
+                clearable
+                class="!w-200px"
+                @keyup.enter="handleTaskSearch"
+                @clear="handleTaskSearch"
+              >
+                <template #prefix>
+                  <Icon icon="ep:search" />
+                </template>
+              </el-input>
+
+              <el-select
+                v-model="taskFilter.loomId"
+                placeholder="机台筛选"
+                clearable
+                filterable
+                class="!w-180px"
+                @change="handleTaskSearch"
+              >
+                <el-option
+                  v-for="l in loomList"
+                  :key="l.id"
+                  :label="l.model ? `${l.loomNo} (${l.model})` : l.loomNo"
+                  :value="l.id"
+                />
+              </el-select>
+
+              <el-select
+                v-model="taskFilter.status"
+                placeholder="状态筛选"
+                clearable
+                class="!w-160px"
+                @change="handleTaskSearch"
+              >
+                <el-option label="待开始 (PENDING)" value="PENDING" />
+                <el-option label="生产中 (IN_PROGRESS)" value="IN_PROGRESS" />
+                <el-option label="暂停异常 (HALTED)" value="HALTED" />
+                <el-option label="已完工 (COMPLETED)" value="COMPLETED" />
+              </el-select>
+
+              <el-checkbox
+                v-model="taskFilter.conflictOnly"
+                @change="handleTaskSearch"
+              >
+                <span class="flex items-center gap-1 font-medium text-red-500">
+                  <Icon icon="ep:warning-filled" />
+                  只看冲突红标任务
+                </span>
+              </el-checkbox>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <el-button type="primary" @click="handleTaskSearch">
+                <Icon icon="ep:search" class="mr-5px" /> 搜索
+              </el-button>
+              <el-button @click="handleTaskReset">
+                <Icon icon="ep:refresh" class="mr-5px" /> 重置
+              </el-button>
+            </div>
+          </div>
+
+          <!-- 跨单机台任务表格 -->
+          <el-table
+            v-loading="taskLoading"
+            :data="taskList"
+            border
+            stripe
+            size="default"
+            class="w-full"
+          >
+            <el-table-column label="任务编号" prop="code" min-width="170">
+              <template #default="{ row }">
+                <span class="font-mono font-medium">{{ row.code }}</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="关联织造单" prop="weavingOrderCode" min-width="140">
+              <template #default="{ row }">
+                <el-link
+                  v-if="row.weavingOrderId"
+                  type="primary"
+                  @click="jumpToWeavingOrder(row.weavingOrderId)"
+                >
+                  {{ row.weavingOrderCode || `织造单 #${row.weavingOrderId}` }}
+                </el-link>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="产品" min-width="140">
+              <template #default="{ row }">
+                <span v-if="row.productName">{{ row.productName }}</span>
+                <span v-if="row.productCode" class="text-xs text-gray-400 block">({{ row.productCode }})</span>
+                <span v-if="!row.productName && !row.productCode">-</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="织机机台" prop="loomNo" min-width="110" align="center">
+              <template #default="{ row }">
+                <span class="font-semibold">{{ row.loomNo || getLoomName(row.loomId) }}</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="挡车工" prop="workerName" min-width="100" align="center">
+              <template #default="{ row }">
+                <span>{{ row.workerName || '-' }}</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="计划匹数" prop="plannedQty" width="90" align="right">
+              <template #default="{ row }">
+                <span class="font-medium">{{ row.plannedQty ?? 0 }}</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="实织匹数" prop="actualQty" width="90" align="right">
+              <template #default="{ row }">
+                <span>{{ row.actualQty ?? 0 }}</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="计划起止" min-width="190" align="center">
+              <template #default="{ row }">
+                <span v-if="row.plannedStart || row.plannedEnd">
+                  {{ row.plannedStart || '-' }} 至 {{ row.plannedEnd || '-' }}
+                </span>
+                <span v-else class="text-gray-400">未排日期</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="状态" prop="status" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag :type="getStatusTagType(row.status)">
+                  {{ getStatusLabel(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="冲突标记" prop="conflict" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.conflict" type="danger" effect="dark">
+                  冲突红标
+                </el-tag>
+                <el-tag v-else type="success" size="small">
+                  正常
+                </el-tag>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="操作" width="150" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  @click="openEditTaskDialog(row)"
+                >
+                  编辑
+                </el-button>
+                <el-button
+                  link
+                  type="info"
+                  size="small"
+                  @click="jumpToWeavingOrder(row.weavingOrderId)"
+                >
+                  去工作台
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <!-- 分页 -->
+          <div class="mt-4 flex justify-end">
+            <Pagination
+              :total="taskTotal"
+              v-model:page="taskPageParams.pageNo"
+              v-model:limit="taskPageParams.pageSize"
+              @pagination="loadTaskList"
+            />
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -429,7 +606,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElNotification, type FormInstance } from 'element-plus'
 import { GGanttChart, GGanttRow } from '@infectoone/vue-ganttastic'
@@ -444,6 +621,8 @@ import {
 import {
   createMachineTask,
   updateMachineTask,
+  getMachineTaskPage,
+  type MachineTaskVO,
   type MachineTaskSaveReqVO
 } from '@/api/lunaerp-elmui/production/machine-task'
 import { getLoomListAll, type LoomVO } from '@/api/lunaerp-elmui/production/loom'
@@ -452,6 +631,7 @@ import {
   buildGanttRows,
   getDefaultWindow,
   rollbackBar,
+  buildTaskPageQuery,
   type FormattedGanttBar,
   type LoomGanttRow
 } from './helper'
@@ -497,6 +677,26 @@ const pendingPool = reactive<{
 }>({
   unDatedTasks: [],
   unScheduledOrders: []
+})
+
+// 跨单任务列表状态 (Issue 08)
+const taskLoading = ref(false)
+const taskList = ref<MachineTaskVO[]>([])
+const taskTotal = ref(0)
+const taskPageParams = reactive({
+  pageNo: 1,
+  pageSize: 10
+})
+const taskFilter = reactive<{
+  code: string
+  loomId: number | undefined
+  status: string
+  conflictOnly: boolean
+}>({
+  code: '',
+  loomId: undefined,
+  status: '',
+  conflictOnly: false
 })
 
 // 抽屉详情
@@ -586,6 +786,9 @@ const handleDateRangeChange = (val: [string, string]) => {
 const handleSearch = () => {
   loadGantt()
   loadPool()
+  if (activeTab.value === 'tasks') {
+    loadTaskList()
+  }
 }
 
 const handleReset = () => {
@@ -597,6 +800,9 @@ const handleReset = () => {
   queryParams.statuses = []
   loadGantt()
   loadPool()
+  if (activeTab.value === 'tasks') {
+    handleTaskReset()
+  }
 }
 
 // 加载甘特数据
@@ -807,6 +1013,7 @@ const submitDispatch = async () => {
       dispatchVisible.value = false
       loadGantt()
       loadPool()
+      loadTaskList()
     } catch (error: any) {
       // 保持弹窗打开，回显冲突信息
       conflictErrorMessage.value = error?.message || '派工冲突，请检查机台时段'
@@ -815,6 +1022,65 @@ const submitDispatch = async () => {
     }
   })
 }
+
+// 加载跨单任务列表 (Issue 08)
+const loadTaskList = async () => {
+  taskLoading.value = true
+  try {
+    const query = buildTaskPageQuery({
+      pageNo: taskPageParams.pageNo,
+      pageSize: taskPageParams.pageSize,
+      loomId: taskFilter.loomId,
+      status: taskFilter.status,
+      conflictOnly: taskFilter.conflictOnly,
+      code: taskFilter.code
+    })
+    const res = await getMachineTaskPage(query)
+    taskList.value = res.list || []
+    taskTotal.value = res.total || 0
+  } catch (err) {
+    console.error('加载跨单任务列表失败:', err)
+  } finally {
+    taskLoading.value = false
+  }
+}
+
+const handleTaskSearch = () => {
+  taskPageParams.pageNo = 1
+  loadTaskList()
+}
+
+const handleTaskReset = () => {
+  taskFilter.code = ''
+  taskFilter.loomId = undefined
+  taskFilter.status = ''
+  taskFilter.conflictOnly = false
+  taskPageParams.pageNo = 1
+  loadTaskList()
+}
+
+// 打开编辑任务弹窗（来自任务列表）
+const openEditTaskDialog = (row: MachineTaskVO) => {
+  conflictErrorMessage.value = ''
+  dispatchForm.id = row.id
+  dispatchForm.weavingOrderId = row.weavingOrderId
+  dispatchForm.loomId = row.loomId
+  dispatchForm.dateRange =
+    row.plannedStart && row.plannedEnd
+      ? [row.plannedStart, row.plannedEnd]
+      : null
+  dispatchForm.plannedQty = row.plannedQty || 1
+  dispatchForm.workerName = row.workerName || ''
+  dispatchForm.remark = row.remark || ''
+  dispatchVisible.value = true
+}
+
+// 监听 Tab 切换，切换到任务列表时加载数据
+watch(activeTab, (tab) => {
+  if (tab === 'tasks') {
+    loadTaskList()
+  }
+})
 
 onMounted(() => {
   loadBaseData()
