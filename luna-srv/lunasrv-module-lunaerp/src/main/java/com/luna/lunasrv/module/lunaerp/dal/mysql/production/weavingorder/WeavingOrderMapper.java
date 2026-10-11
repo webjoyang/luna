@@ -115,4 +115,15 @@ public interface WeavingOrderMapper extends BaseMapperX<WeavingOrderDO> {
                 .in(WeavingOrderDO::getGreigeOrderId, greigeOrderIds));
     }
 
+    /**
+     * 查询全部待排产（DRAFT）或生产中（ACTIVE）状态的织造单（齐套试算用，ADR-0041）
+     *
+     * @return 织造单列表
+     */
+    default List<WeavingOrderDO> selectActiveOrDraftList() {
+        return selectList(new LambdaQueryWrapperX<WeavingOrderDO>()
+                .in(WeavingOrderDO::getStatus, java.util.Arrays.asList("DRAFT", "ACTIVE"))
+                .orderByDesc(WeavingOrderDO::getId));
+    }
+
 }

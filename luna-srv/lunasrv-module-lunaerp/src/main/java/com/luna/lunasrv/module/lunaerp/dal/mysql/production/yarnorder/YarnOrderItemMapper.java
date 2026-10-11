@@ -2,6 +2,7 @@ package com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder;
 
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnorder.YarnInTransitDTO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnorder.YarnOrderItemDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -9,6 +10,7 @@ import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -82,5 +84,21 @@ public interface YarnOrderItemMapper extends BaseMapperX<YarnOrderItemDO> {
             + "AND order_id IN (SELECT id FROM lunaerp_production_yarn_order WHERE status IN ('ACTIVE', 'COMPLETED') AND deleted = 0) "
             + "ORDER BY update_time DESC, id DESC LIMIT 1")
     BigDecimal selectRecentUnitPriceBySpecId(@Param("yarnSpecId") Long yarnSpecId);
+
+    /**
+     * 批量统计指定纱线规格在处于 ACTIVE 状态的采购单中的在途采购量（SUM(purchase_qty)）（ADR-0041）。
+     *
+     * @param yarnSpecIds 纱线规格ID集合
+     * @return 各纱线规格在途量聚合列表
+     */
+    @Select("<script>"
+            + "SELECT item.yarn_spec_id AS yarnSpecId, COALESCE(SUM(item.purchase_qty), 0) AS inTransitQty "
+            + "FROM lunaerp_production_yarn_order_item item "
+            + "JOIN lunaerp_production_yarn_order ord ON ord.id = item.order_id AND ord.deleted = 0 "
+            + "WHERE item.deleted = 0 AND ord.status = 'ACTIVE' "
+            + "AND item.yarn_spec_id IN <foreach collection='yarnSpecIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "GROUP BY item.yarn_spec_id"
+            + "</script>")
+    List<YarnInTransitDTO> sumInTransitByYarnSpecIds(@Param("yarnSpecIds") Collection<Long> yarnSpecIds);
 
 }

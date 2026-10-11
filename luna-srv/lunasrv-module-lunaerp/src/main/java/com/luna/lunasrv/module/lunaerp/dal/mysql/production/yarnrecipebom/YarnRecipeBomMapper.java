@@ -46,6 +46,20 @@ public interface YarnRecipeBomMapper extends BaseMapperX<YarnRecipeBomDO> {
     }
 
     /**
+     * 按产品ID列表查询配比BOM
+     *
+     * @param productIds 产品档案ID集合
+     * @return 配比BOM列表
+     */
+    default java.util.List<YarnRecipeBomDO> selectListByProductIds(java.util.Collection<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<YarnRecipeBomDO>()
+                .in(YarnRecipeBomDO::getProductId, productIds));
+    }
+
+    /**
      * 按产品ID查询配比BOM，【包含已逻辑删除的行】。
      *
      * 唯一索引 (tenant_id, product_id) 包含软删行；

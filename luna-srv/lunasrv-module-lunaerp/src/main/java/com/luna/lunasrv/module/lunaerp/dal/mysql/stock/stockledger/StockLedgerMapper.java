@@ -11,6 +11,7 @@ import com.luna.lunasrv.module.lunaerp.controller.stock.stockledger.vo.Inventory
 import com.luna.lunasrv.module.lunaerp.controller.stock.stockledger.vo.InventoryBalanceRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.stock.stockledger.vo.StockLedgerPageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.YarnStockBalanceDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -89,6 +90,26 @@ public interface StockLedgerMapper extends BaseMapperX<StockLedgerDO> {
             "WHERE warehouse_id = #{warehouseId} AND yarn_spec_id = #{yarnSpecId} AND deleted = 0")
     BigDecimal sumQuantityByWarehouseAndYarnSpec(@Param("warehouseId") Long warehouseId,
                                                  @Param("yarnSpecId") Long yarnSpecId);
+
+    /**
+     * 批量统计指定纱线规格集合的实时可用余额（SUM(quantity)），支持可选仓库筛选（ADR-0041）。
+     *
+     * @param yarnSpecIds 纱线规格ID集合
+     * @param warehouseIds 仓库ID集合（可选，为空时全仓合计）
+     * @return 各纱线规格库存余额聚合列表
+     */
+    @Select("<script>"
+            + "SELECT yarn_spec_id AS yarnSpecId, COALESCE(SUM(quantity), 0) AS balance "
+            + "FROM lunaerp_stock_ledger "
+            + "WHERE deleted = 0 AND item_type = 'YARN_SPEC' "
+            + "AND yarn_spec_id IN <foreach collection='yarnSpecIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "<if test='warehouseIds != null and !warehouseIds.isEmpty()'> "
+            + "  AND warehouse_id IN <foreach collection='warehouseIds' item='wId' open='(' separator=',' close=')'>#{wId}</foreach> "
+            + "</if> "
+            + "GROUP BY yarn_spec_id"
+            + "</script>")
+    List<YarnStockBalanceDTO> sumBalanceByYarnSpecIds(@Param("yarnSpecIds") Collection<Long> yarnSpecIds,
+                                                      @Param("warehouseIds") Collection<Long> warehouseIds);
 
     /**
      * 统计指定仓库下某产品在特定单位下的当前库存可用余额（SUM(quantity)）
