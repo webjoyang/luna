@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (SQL 基建 + DO 字段变更/按钮权限)
 
-**Status:** complete
+**Status:** resolved
 
 - [x] `POST /lunaerp/production/release-production/create-finished-inspection?dyeingOrderId=`：
   - 从染色单带出 productId、customerId、contractId、dyeingOrderId
@@ -14,3 +14,7 @@
 - [x] `@LogRecord` 记录生成操作
 - [x] 权限受 `lunaerp:production:release-production:release` 控制，无权限按钮不显示
 - [x] Service 单测覆盖：正常生成带出字段、重复创建报 005、染色单不存在/非 COMPLETED 的守卫
+
+## Comments
+- Implemented in `d22b6c47`
+- Merged into `feat/release-production` in `b71cd5bb`
