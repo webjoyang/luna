@@ -4,6 +4,7 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionRespVO;
 
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionColorRejectRestrikeReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionSaveReqVO;
 
 /**
@@ -57,5 +58,27 @@ public interface ColorInstructionService {
      * @param id 打色单ID
      */
     void deleteColorInstruction(Long id);
+
+    /**
+     * 开始打色（PENDING -> IN_PROGRESS）
+     *
+     * @param id 打色单ID
+     */
+    void startColorInstruction(Long id);
+
+    /**
+     * 通过打色颜色行（PENDING -> APPROVED，便利规则：单据 PENDING 自动转 IN_PROGRESS）
+     *
+     * @param lineId 颜色行ID
+     */
+    void approveColorLine(Long lineId);
+
+    /**
+     * 驳回重打打色颜色行（PENDING/APPROVED -> REJECTED 并克隆 round+1 新行，重排 lineNo）
+     *
+     * @param reqVO 驳回重打参数
+     * @return 新增克隆颜色行ID
+     */
+    Long rejectRestrikeColorLine(ColorInstructionColorRejectRestrikeReqVO reqVO);
 
 }

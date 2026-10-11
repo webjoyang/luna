@@ -11,7 +11,17 @@
           </div>
         </template>
       </el-page-header>
-      <div class="header-actions">
+      <div class="header-actions flex items-center space-x-2">
+        <el-button
+          v-if="formData.status === 'PENDING' && id"
+          type="success"
+          plain
+          :loading="startLoading"
+          v-hasPermi="['lunaerp:production:color-instruction:update']"
+          @click="handleStart"
+        >
+          开始打色
+        </el-button>
         <el-button v-if="isViewMode" @click="handleBack">返回</el-button>
         <template v-else>
           <el-button @click="handleBack">取消</el-button>
@@ -390,45 +400,66 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="110" align="center" fixed="right" v-if="!isViewMode">
+          <el-table-column label="操作" width="220" align="center" fixed="right" v-if="!isViewMode">
             <template #default="{ row, $index }">
               <div class="flex items-center justify-center space-x-1">
-                <el-button
-                  link
-                  :disabled="$index === 0"
-                  @click="moveRowUp($index)"
-                  title="上移"
-                >
-                  <Icon icon="ep:top" />
-                </el-button>
-                <el-button
-                  link
-                  :disabled="!formData.colors || $index === formData.colors.length - 1"
-                  @click="moveRowDown($index)"
-                  title="下移"
-                >
-                  <Icon icon="ep:bottom" />
-                </el-button>
-                <el-tooltip
-                  v-if="isRowFrozen(row)"
-                  content="已审批/已驳回行已冻结，不可删除"
-                  placement="top"
-                >
-                  <span>
-                    <el-button link type="danger" disabled>
-                      <Icon icon="ep:delete" />
-                    </el-button>
-                  </span>
-                </el-tooltip>
-                <el-button
-                  v-else
-                  link
-                  type="danger"
-                  @click="handleDeleteColorRow($index)"
-                  title="删除"
-                >
-                  <Icon icon="ep:delete" />
-                </el-button>
+                <!-- 存在已持久化 ID 且允许操作状态 -->
+                <template v-if="row.id && ['PENDING', 'IN_PROGRESS'].includes(formData.status)">
+                  <el-button
+                    v-if="row.status === 'PENDING'"
+                    link
+                    type="success"
+                    size="small"
+                    v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+                    @click="handleApproveRow(row)"
+                  >
+                    通过
+                  </el-button>
+                  <el-button
+                    v-if="row.status === 'PENDING' || row.status === 'APPROVED'"
+                    link
+                    type="warning"
+                    size="small"
+                    v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+                    @click="handleRejectRestrikeRow(row)"
+                  >
+                    驳回重打
+                  </el-button>
+                </template>
+
+                <!-- 排序与删除操作（仅未冻结行可用） -->
+                <template v-if="!isRowFrozen(row)">
+                  <el-button
+                    link
+                    size="small"
+                    :disabled="$index === 0"
+                    @click="moveRowUp($index)"
+                    title="上移"
+                  >
+                    <Icon icon="ep:top" />
+                  </el-button>
+                  <el-button
+                    link
+                    size="small"
+                    :disabled="!formData.colors || $index === formData.colors.length - 1"
+                    @click="moveRowDown($index)"
+                    title="下移"
+                  >
+                    <Icon icon="ep:bottom" />
+                  </el-button>
+                  <el-button
+                    link
+                    type="danger"
+                    size="small"
+                    @click="handleDeleteColorRow($index)"
+                    title="删除"
+                  >
+                    <Icon icon="ep:delete" />
+                  </el-button>
+                </template>
+                <template v-else-if="row.status === 'REJECTED'">
+                  <span class="text-xs text-gray-400">已终结</span>
+                </template>
               </div>
             </template>
           </el-table-column>
@@ -478,7 +509,7 @@
 <script lang="ts" setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import dayjs from 'dayjs'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
@@ -503,6 +534,7 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 const saveLoading = ref(false)
 const nextNoLoading = ref(false)
+const startLoading = ref(false)
 
 let tempIdCounter = 0
 const generateTempId = () => `temp_${Date.now()}_${++tempIdCounter}`
@@ -556,7 +588,10 @@ const isRowFrozen = (row: ColorInstructionColorVO) => {
 }
 
 const tableRowClassName = ({ row }: { row: ColorInstructionColorVO }) => {
-  if (isRowFrozen(row)) {
+  if (row.status === 'REJECTED') {
+    return 'row-rejected'
+  }
+  if (row.status === 'APPROVED') {
     return 'row-frozen'
   }
   return ''
@@ -808,6 +843,91 @@ const handleConfirmPhotos = () => {
   photosDialogVisible.value = false
 }
 
+// 开始打色（PENDING -> IN_PROGRESS）
+const handleStart = async () => {
+  if (!id.value) return
+  try {
+    await ElMessageBox.confirm('确认开始打色吗？开始后单据状态将转为打色中。', '开始打色', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'info'
+    })
+    startLoading.value = true
+    await ColorInstructionApi.startColorInstruction(Number(id.value))
+    ElMessage.success('开始打色成功')
+    await loadDetail(Number(id.value))
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('Failed to start color instruction:', error)
+    }
+  } finally {
+    startLoading.value = false
+  }
+}
+
+// 通过打色行（PENDING -> APPROVED）
+const handleApproveRow = async (row: ColorInstructionColorVO) => {
+  if (!row.id) {
+    ElMessage.warning('请先保存打色单再执行通过操作')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认通过颜色【${row.customerColorNo} - ${row.colorName}】吗？`, '通过颜色行', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'success'
+    })
+    loading.value = true
+    await ColorInstructionApi.approveColorLine(row.id)
+    ElMessage.success('颜色行已通过')
+    if (id.value) {
+      await loadDetail(Number(id.value))
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('Failed to approve color row:', error)
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// 驳回重打（PENDING/APPROVED -> REJECTED 并生成 round+1 新行）
+const handleRejectRestrikeRow = async (row: ColorInstructionColorVO) => {
+  if (!row.id) {
+    ElMessage.warning('请先保存打色单再执行驳回重打操作')
+    return
+  }
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `确认驳回颜色【${row.customerColorNo} - ${row.colorName}】并开启下一轮打色吗？请输入驳回意见：`,
+      '驳回重打',
+      {
+        confirmButtonText: '确定驳回',
+        cancelButtonText: '取消',
+        inputPlaceholder: '请输入驳回意见（如：色光偏深、需回调等）',
+        inputPattern: /\S+/,
+        inputErrorMessage: '驳回意见不能为空'
+      }
+    )
+    loading.value = true
+    await ColorInstructionApi.rejectRestrikeColorLine({
+      id: row.id,
+      rejectReason: value
+    })
+    ElMessage.success('已驳回并生成下一轮打色行')
+    if (id.value) {
+      await loadDetail(Number(id.value))
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('Failed to reject restrike color row:', error)
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
 // 返回
 const handleBack = () => {
   router.push('/production/color-instruction')
@@ -950,5 +1070,18 @@ onMounted(async () => {
 }
 :deep(.row-frozen td) {
   color: #606266;
+}
+:deep(.row-rejected) {
+  background-color: #fafafa !important;
+}
+:deep(.row-rejected td) {
+  color: #909399 !important;
+  text-decoration: line-through;
+}
+:deep(.row-rejected .el-tag),
+:deep(.row-rejected .reject-reason-text),
+:deep(.row-rejected .el-button),
+:deep(.row-rejected .font-mono) {
+  text-decoration: none !important;
 }
 </style>
