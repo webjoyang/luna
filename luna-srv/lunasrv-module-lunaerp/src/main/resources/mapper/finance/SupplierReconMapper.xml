@@ -58,4 +58,32 @@
           AND tenant_id = #{tenantId}
     </select>
 
+    <!-- 条件更新对账单为已确认（并发防重，影响行数为0报001） -->
+    <update id="updateToConfirmed">
+        UPDATE lunaerp_finance_supplier_recon
+        SET status = 'CONFIRMED',
+            confirmed_by = #{userId},
+            confirmed_at = #{now},
+            updater = CAST(#{userId} AS VARCHAR),
+            update_time = #{now}
+        WHERE id = #{id}
+          AND status = 'DRAFT'
+          AND deleted = 0
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 条件更新对账单为已作废（并发防重，影响行数为0报001） -->
+    <update id="updateToCancelled">
+        UPDATE lunaerp_finance_supplier_recon
+        SET status = 'CANCELLED',
+            cancelled_by = #{userId},
+            cancelled_at = #{now},
+            updater = CAST(#{userId} AS VARCHAR),
+            update_time = #{now}
+        WHERE id = #{id}
+          AND status = 'CONFIRMED'
+          AND deleted = 0
+          AND tenant_id = #{tenantId}
+    </update>
+
 </mapper>

@@ -64,4 +64,26 @@ public interface SupplierReconService {
      */
     void deleteRecon(Long id);
 
+    /**
+     * 确认供应商对账单
+     *
+     * @param id 对账单ID
+     */
+    void confirmRecon(Long id);
+
+    /**
+     * 作废供应商对账单
+     *
+     * @param id 对账单ID
+     */
+    void cancelRecon(Long id);
+
+    /**
+     * 获取供应商对账单打印数据（豁免金额脱敏）
+     *
+     * @param id 对账单ID
+     * @return 打印数据
+     */
+    SupplierReconPrintRespVO getPrintData(Long id);
+
 }

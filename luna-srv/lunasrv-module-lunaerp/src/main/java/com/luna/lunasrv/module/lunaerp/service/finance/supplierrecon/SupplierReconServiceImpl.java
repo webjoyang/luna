@@ -27,12 +27,18 @@ import org.springframework.validation.annotation.Validated;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.system.api.user.AdminUserApi;
+import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants.*;
@@ -67,6 +73,9 @@ public class SupplierReconServiceImpl implements SupplierReconService {
 
     @Resource
     private PaymentApplyMapper paymentApplyMapper;
+
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @Override
     public PageResult<SupplierReconRespVO> getReconPage(SupplierReconPageReqVO pageReqVO) {
@@ -511,6 +520,153 @@ public class SupplierReconServiceImpl implements SupplierReconService {
 
         supplierReconMapper.deleteById(id);
         supplierReconItemMapper.deleteByReconId(id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "SUPPLIER_RECON", subType = "CONFIRM", bizNo = "{{#id}}", success = "确认供应商对账单【{{#id}}】")
+    public void confirmRecon(Long id) {
+        SupplierReconDO recon = supplierReconMapper.selectById(id);
+        if (recon == null) {
+            throw exception(SUPPLIER_RECON_NOT_EXISTS);
+        }
+        if (!SupplierReconStatusEnum.DRAFT.getValue().equals(recon.getStatus())) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+
+        List<SupplierReconItemDO> items = supplierReconItemMapper.selectListByReconId(id);
+        if (CollUtil.isEmpty(items)
+                || recon.getTotalAmount() == null
+                || recon.getTotalAmount().compareTo(BigDecimal.ZERO) == 0) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        Long userId = loginUserId != null ? loginUserId : 1L;
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (tenantId == null) {
+            tenantId = recon.getTenantId() != null ? recon.getTenantId() : 1L;
+        }
+        LocalDateTime now = LocalDateTime.now();
+
+        int affected = supplierReconMapper.updateToConfirmed(id, tenantId, userId, now);
+        if (affected == 0) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "SUPPLIER_RECON", subType = "CANCEL", bizNo = "{{#id}}", success = "作废供应商对账单【{{#id}}】")
+    public void cancelRecon(Long id) {
+        SupplierReconDO recon = supplierReconMapper.selectById(id);
+        if (recon == null) {
+            throw exception(SUPPLIER_RECON_NOT_EXISTS);
+        }
+        if (!SupplierReconStatusEnum.CONFIRMED.getValue().equals(recon.getStatus())) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+
+        List<PaymentApplyDO> applies = paymentApplyMapper.selectListByReconId(id);
+        if (CollUtil.isNotEmpty(applies)) {
+            boolean hasActiveApply = applies.stream().anyMatch(apply -> {
+                String status = apply.getApprovalStatus();
+                return "PENDING".equalsIgnoreCase(status)
+                        || "APPROVING".equalsIgnoreCase(status)
+                        || "APPROVED".equalsIgnoreCase(status);
+            });
+            if (hasActiveApply) {
+                throw exception(SUPPLIER_RECON_HAS_PAYMENT_APPLY);
+            }
+        }
+
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        Long userId = loginUserId != null ? loginUserId : 1L;
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (tenantId == null) {
+            tenantId = recon.getTenantId() != null ? recon.getTenantId() : 1L;
+        }
+        LocalDateTime now = LocalDateTime.now();
+
+        int affected = supplierReconMapper.updateToCancelled(id, tenantId, userId, now);
+        if (affected == 0) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+    }
+
+    @Override
+    public SupplierReconPrintRespVO getPrintData(Long id) {
+        SupplierReconDO recon = supplierReconMapper.selectById(id);
+        if (recon == null) {
+            throw exception(SUPPLIER_RECON_NOT_EXISTS);
+        }
+
+        String confirmedByName = null;
+        if (recon.getConfirmedBy() != null && adminUserApi != null) {
+            try {
+                AdminUserRespDTO user = adminUserApi.getUser(recon.getConfirmedBy());
+                if (user != null) {
+                    confirmedByName = user.getNickname();
+                }
+            } catch (Exception e) {
+                log.warn("获取对账单确认人信息失败: confirmedBy={}", recon.getConfirmedBy(), e);
+            }
+        }
+
+        List<SupplierReconItemDO> items = supplierReconItemMapper.selectListByReconId(id);
+        List<SupplierReconPrintItemRespVO> printItems = CollUtil.isEmpty(items)
+                ? Collections.emptyList()
+                : items.stream().map(this::convertItemToPrintRespVO).toList();
+
+        return SupplierReconPrintRespVO.builder()
+                .companyTitle("供应商对账单")
+                .id(recon.getId())
+                .reconNo(recon.getReconNo())
+                .supplierId(recon.getSupplierId())
+                .supplierName(recon.getSupplierName())
+                .periodStart(recon.getPeriodStart())
+                .periodEnd(recon.getPeriodEnd())
+                .status(recon.getStatus())
+                .totalAmount(recon.getTotalAmount())
+                .confirmedBy(recon.getConfirmedBy())
+                .confirmedByName(confirmedByName)
+                .confirmedAt(recon.getConfirmedAt())
+                .cancelledBy(recon.getCancelledBy())
+                .cancelledAt(recon.getCancelledAt())
+                .remark(recon.getRemark())
+                .printTime(LocalDateTime.now())
+                .items(printItems)
+                .build();
+    }
+
+    private SupplierReconPrintItemRespVO convertItemToPrintRespVO(SupplierReconItemDO item) {
+        String qtyUnit = null;
+        if (PricingBasisEnum.METER.getValue().equalsIgnoreCase(item.getPricingBasis())) {
+            qtyUnit = "M";
+        } else if (PricingBasisEnum.KG.getValue().equalsIgnoreCase(item.getPricingBasis())) {
+            qtyUnit = "KG";
+        }
+
+        return SupplierReconPrintItemRespVO.builder()
+                .id(item.getId())
+                .lineType(item.getLineType())
+                .inspectionOrderNo(item.getInspectionOrderNo())
+                .inspectionType(item.getInspectionType())
+                .stockInNo(item.getStockInNo())
+                .yarnOrderNo(item.getYarnOrderNo())
+                .productCode(item.getProductCode())
+                .productName(item.getProductName())
+                .batchNo(item.getBatchNo())
+                .qtyKg(item.getQtyKg())
+                .qtyM(item.getQtyM())
+                .qtyUnit(qtyUnit)
+                .pricingBasis(item.getPricingBasis())
+                .billQty(item.getBillQty())
+                .unitPrice(item.getUnitPrice())
+                .lineAmount(item.getLineAmount())
+                .adjustReason(item.getAdjustReason())
+                .remark(item.getRemark())
+                .build();
     }
 
     /**
