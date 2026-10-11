@@ -11,6 +11,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.greigeorder.vo.Grei
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.vo.InspectionOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.releaseproduction.vo.*;
+import java.time.LocalDate;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
@@ -103,6 +104,7 @@ class ReleaseProductionServiceImplTest {
         c.setCustomerId(2001L);
         c.setClientName("优衣纺织");
         c.setStatus(status);
+        c.setDeliveryDate(LocalDate.of(2026, 11, 1));
         return c;
     }
 
@@ -153,6 +155,8 @@ class ReleaseProductionServiceImplTest {
         assertEquals(contractId, result.getContractId());
         assertEquals("CH20260001", result.getContractNo());
         assertEquals("优衣纺织", result.getClientName());
+        assertEquals("ACTIVE", result.getStatus());
+        assertEquals(LocalDate.of(2026, 11, 1), result.getDeliveryDate());
 
         assertEquals(2, result.getLines().size());
         ReleaseContractLineVO line1 = result.getLines().get(0);
