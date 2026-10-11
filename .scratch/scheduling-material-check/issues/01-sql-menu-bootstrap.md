@@ -4,9 +4,18 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **参考**：本目录上级 spec.md §8（菜单与权限）
 
-- [ ] SQL 执行后超管角色可见并进入两菜单；无该权限的角色菜单不可见
-- [ ] 零 DDL：无建表/加列/字典/序列，命名遵循 `lunaerp-production-*.sql` 既有惯例
+- [x] SQL 执行后超管角色可见并进入两菜单；无该权限的角色菜单不可见
+- [x] 零 DDL：无建表/加列/字典/序列，命名遵循 `lunaerp-production-*.sql` 既有惯例
+
+## Comments
+- **SQL 基建与角色授权落地**（Commit: `9f9a233a`）：
+  - 新增 SQL 脚本 `luna-srv/sql/postgresql/lunaerp-production-scheduling-material-check.sql`。
+  - 注册菜单 10510（排产中心，sort 12，parent_id 10200 生产管理，组件 `lunaerp-elmui/production/scheduling/index`，图标 `ep:calendar`，权限码 `lunaerp:production:weaving-order-task:query`）。
+  - 注册菜单 10520（齐套检查，sort 13，parent_id 10200 生产管理，组件 `lunaerp-elmui/production/material-check/index`，图标 `ep:files`，权限码 `lunaerp:production:material-check:query`）。
+  - 超管与管理员角色（`super_admin`, `admin` / `role_id IN (1, 2)`）完成角色菜单授权（`system_role_menu`），包含 `system_role_menu_seq` 兼容性保护。
+  - 保证脚本幂等可重复执行（先 `DELETE` 再 `INSERT`，关联授权 `ON CONFLICT DO NOTHING`）。
+  - 遵循零 DDL 原则：无建表、无加列、无字典、无序列。

@@ -67,6 +67,11 @@ public class MachineTaskServiceImpl implements MachineTaskService {
      */
     private static final String STATUS_COMPLETED = "COMPLETED";
 
+    /**
+     * 占用织机时段的任务状态集合（ADR-0041）
+     */
+    private static final List<String> OCCUPIED_STATUSES = List.of(DEFAULT_STATUS, STATUS_IN_PROGRESS, STATUS_HALTED);
+
     @Resource
     private MachineTaskMapper machineTaskMapper;
 
@@ -94,6 +99,9 @@ public class MachineTaskServiceImpl implements MachineTaskService {
 
         // 4. 排期日期校验（end ≥ start）
         validateDateRange(createReqVO.getPlannedStart(), createReqVO.getPlannedEnd());
+
+        // 4.1 同织机计划时段冲突校验（ADR-0041）
+        validateLoomTimeConflict(null, loom, createReqVO.getPlannedStart(), createReqVO.getPlannedEnd());
 
         // 5. 组装实体
         MachineTaskDO task = BeanUtils.toBean(createReqVO, MachineTaskDO.class);
@@ -143,6 +151,9 @@ public class MachineTaskServiceImpl implements MachineTaskService {
         // 4. 计划匹数与排期校验
         validatePlannedQty(updateReqVO.getPlannedQty());
         validateDateRange(updateReqVO.getPlannedStart(), updateReqVO.getPlannedEnd());
+
+        // 4.1 同织机计划时段冲突校验（ADR-0041）
+        validateLoomTimeConflict(exist.getId(), loom, updateReqVO.getPlannedStart(), updateReqVO.getPlannedEnd());
 
         // 5. 任务编号变更查重（若手填修改）
         if (StringUtils.hasText(updateReqVO.getCode()) && !updateReqVO.getCode().trim().equals(exist.getCode())) {
@@ -304,6 +315,58 @@ public class MachineTaskServiceImpl implements MachineTaskService {
     private void validateDateRange(LocalDate start, LocalDate end) {
         if (start != null && end != null && end.isBefore(start)) {
             throw exception(MACHINE_TASK_DATE_RANGE_INVALID);
+        }
+    }
+
+    /**
+     * 校验同织机计划时段冲突（ADR-0041）
+     *
+     * 规则：
+     * 1. 本次提交有效区间：effStart = coalesce(plannedStart, plannedEnd)，effEnd = coalesce(plannedEnd, plannedStart)；
+     *    两端皆空则跳过冲突校验（进待排池，不占时段）。
+     * 2. 参与冲突任务：同租户、未删、同织机、状态 ∈ PENDING/IN_PROGRESS/HALTED、起止日期至少一个非空；update 排除自身。
+     * 3. 闭区间相交判定（同日即冲突）：existing.effStart ≤ effEnd AND existing.effEnd ≥ effStart。
+     * 4. 命中首条冲突即抛 1_030_036_000，消息含织机编号、冲突任务起止日期、冲突任务编号。
+     *
+     * @param excludeTaskId 排除的任务ID（更新时传当前任务ID，创建时传 null）
+     * @param loom 织机DO
+     * @param plannedStart 计划开始日期
+     * @param plannedEnd 计划结束日期
+     */
+    private void validateLoomTimeConflict(Long excludeTaskId, LoomDO loom, LocalDate plannedStart, LocalDate plannedEnd) {
+        LocalDate effStart = plannedStart != null ? plannedStart : plannedEnd;
+        LocalDate effEnd = plannedEnd != null ? plannedEnd : plannedStart;
+        // 两端皆空跳过冲突校验（进待排池，不占时段）
+        if (effStart == null && effEnd == null) {
+            return;
+        }
+
+        List<MachineTaskDO> candidates = machineTaskMapper.selectOccupiedTasksByLoomId(loom.getId());
+        if (CollUtil.isEmpty(candidates)) {
+            return;
+        }
+
+        for (MachineTaskDO existTask : candidates) {
+            // update 时排除自身
+            if (excludeTaskId != null && excludeTaskId.equals(existTask.getId())) {
+                continue;
+            }
+            // 过滤状态（仅 PENDING / IN_PROGRESS / HALTED 参与）
+            if (!OCCUPIED_STATUSES.contains(existTask.getStatus())) {
+                continue;
+            }
+            // 库内任务有效区间（coalesce 单端日期，两端皆空跳过）
+            LocalDate existEffStart = existTask.getPlannedStart() != null ? existTask.getPlannedStart() : existTask.getPlannedEnd();
+            LocalDate existEffEnd = existTask.getPlannedEnd() != null ? existTask.getPlannedEnd() : existTask.getPlannedStart();
+            if (existEffStart == null && existEffEnd == null) {
+                continue;
+            }
+
+            // 闭区间相交判定：existEffStart <= effEnd && existEffEnd >= effStart（同日即冲突）
+            if (!existEffStart.isAfter(effEnd) && !existEffEnd.isBefore(effStart)) {
+                String loomNo = StringUtils.hasText(loom.getLoomNo()) ? loom.getLoomNo() : existTask.getLoomNo();
+                throw exception(MACHINE_TASK_LOOM_TIME_CONFLICT, loomNo, existEffStart, existEffEnd, existTask.getCode());
+            }
         }
     }
 
