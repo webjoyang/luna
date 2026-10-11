@@ -117,4 +117,15 @@ public class ColorInstructionController {
         return success(true);
     }
 
+    @GetMapping({"/{id}/print-data", "/print-data"})
+    @Operation(summary = "获得打色指示单套打数据")
+    @Parameter(name = "id", description = "打色指示单ID", required = false, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:print')")
+    public CommonResult<ColorInstructionPrintRespVO> getColorInstructionPrintData(
+            @PathVariable(value = "id", required = false) Long pathId,
+            @RequestParam(value = "id", required = false) Long queryId) {
+        Long id = pathId != null ? pathId : queryId;
+        return success(colorInstructionService.getColorInstructionPrintData(id));
+    }
+
 }

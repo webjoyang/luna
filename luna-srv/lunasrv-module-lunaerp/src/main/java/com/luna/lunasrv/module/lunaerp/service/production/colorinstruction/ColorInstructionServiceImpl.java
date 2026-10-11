@@ -15,6 +15,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.color.ColorInstructionColorMapper;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
@@ -927,6 +928,30 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
                 .round(c.getRound() != null ? c.getRound() : 1)
                 .status(c.getStatus())
                 .build()).collect(Collectors.toList());
+    }
+
+    @Override
+    @LogRecord(type = "打印", subType = "PRINT", bizNo = "{{#id}}", success = "打印打色单【{{#id}}】")
+    public ColorInstructionPrintRespVO getColorInstructionPrintData(Long id) {
+        if (id == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        ColorInstructionDO instruction = colorInstructionMapper.selectById(id);
+        if (instruction == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        List<ColorInstructionColorDO> colorDOList = colorInstructionColorMapper.selectListByInstructionId(id);
+        if (colorDOList != null && colorDOList.size() > 1) {
+            colorDOList.sort(Comparator.comparing(
+                    c -> c.getLineNo() != null ? c.getLineNo() : Integer.MAX_VALUE));
+        }
+
+        List<ColorInstructionPrintColorRespVO> colors = BeanUtils.toBean(colorDOList, ColorInstructionPrintColorRespVO.class);
+        ColorInstructionPrintRespVO respVO = BeanUtils.toBean(instruction, ColorInstructionPrintRespVO.class);
+        respVO.setColors(colors != null ? colors : Collections.emptyList());
+        respVO.setPrintTime(LocalDateTime.now());
+        return respVO;
     }
 
 }

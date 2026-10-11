@@ -138,7 +138,7 @@
           <span v-else class="text-gray-400">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" align="center" fixed="right">
+      <el-table-column label="操作" width="240" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -156,6 +156,12 @@
           >
             <Icon icon="ep:edit" class="mr-1" />编辑
           </el-button>
+          <PrintDispatcher
+            biz-type="COLOR_INSTRUCTION"
+            :biz-id="row.id"
+            button-link
+            v-hasPermi="['lunaerp:production:color-instruction:print']"
+          />
           <el-button
             link
             type="danger"
@@ -186,6 +192,7 @@ import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
+import { PrintDispatcher } from '@/components/Print'
 import * as ColorInstructionApi from '@/api/lunaerp-elmui/production/color-instruction'
 import type { ColorInstructionVO, ColorInstructionPageReqVO } from '@/api/lunaerp-elmui/production/color-instruction'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
