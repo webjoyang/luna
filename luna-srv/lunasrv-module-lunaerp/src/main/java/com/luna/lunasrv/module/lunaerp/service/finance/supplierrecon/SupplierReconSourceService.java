@@ -24,7 +24,20 @@ public interface SupplierReconSourceService {
      * @param periodEnd 对账区间结束日期（含端点）
      * @return 候选明细集合（包含加工费候选行与采购货款候选行，已排除被 DRAFT/CONFIRMED 对账单引用的指纹）
      */
-    SupplierReconCandidatesRespVO getCandidateItems(Long supplierId, LocalDate periodStart, LocalDate periodEnd);
+    default SupplierReconCandidatesRespVO getCandidateItems(Long supplierId, LocalDate periodStart, LocalDate periodEnd) {
+        return getCandidateItems(supplierId, periodStart, periodEnd, null);
+    }
+
+    /**
+     * 获取指定供应商在指定对账区间内的候选明细集合（支持排除指定对账单以实现草稿重取）
+     *
+     * @param supplierId 供应商ID
+     * @param periodStart 对账区间开始日期（含端点）
+     * @param periodEnd 对账区间结束日期（含端点）
+     * @param excludeReconId 排除的对账单ID（可为 null，重取草稿时传入当前对账单ID以允许重新取回自身明细）
+     * @return 候选明细集合
+     */
+    SupplierReconCandidatesRespVO getCandidateItems(Long supplierId, LocalDate periodStart, LocalDate periodEnd, Long excludeReconId);
 
     /**
      * 生成防重复取数指纹
