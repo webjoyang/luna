@@ -117,6 +117,7 @@ public class GreigeOrderRespVO {
     @Schema(description = "更新时间")
     private LocalDateTime updateTime;
 
+
     @Schema(description = "颜色投胚分配行列表（仅详情接口按 line_no 升序嵌套返回，分页列表不返回）")
     private List<GreigeOrderColorRespVO> colors;
 

@@ -107,6 +107,7 @@ public class DyeingOrderRespVO {
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
 
+
     @Schema(description = "颜色明细列表（详情接口嵌套返回，按 line_no 排序；列表接口不返回）")
     private List<DyeingColorRespVO> colors;
 

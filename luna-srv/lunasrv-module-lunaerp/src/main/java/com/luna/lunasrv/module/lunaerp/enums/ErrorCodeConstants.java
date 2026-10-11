@@ -21,8 +21,9 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-032-xxx 段（打色指示单：主表 000–099、颜色行 100–199，见 ColorInstructionErrorCodeConstants）
  *                  与 1-030-033-xxx 段（出口单证：单证套 000–099、明细 100–199、卖方配置 200–299，见 ExportDocErrorCodeConstants）
  *                  与 1-030-034-xxx 段（成本卡与报价：成本卡 000–099、报价单 100–199、纱价追加 1-030-008-008/009，见 CostCardQuotationErrorCodeConstants）
+ *                  与 1-030-035-xxx 段（下达生产编排：见 ReleaseProductionErrorCodeConstants）
  */
-public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, ColorInstructionErrorCodeConstants {
+public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, ColorInstructionErrorCodeConstants, ReleaseProductionErrorCodeConstants {
 
     // ========== 产品模块 1-030-001-000 ==========
     ErrorCode PRODUCT_NOT_EXISTS = new ErrorCode(1_030_001_000, "产品不存在");
