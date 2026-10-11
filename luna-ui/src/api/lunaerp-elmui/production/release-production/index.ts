@@ -1,44 +1,43 @@
 import request from '@/config/axios'
 
-/**
- * 生产管理 - 下达生产编排 API
- */
-
-// 合同行信息 VO
+/** 销售合同下达生产合同行 VO */
 export interface ReleaseContractLineVO {
   contractLineId: number
   lineNo?: number
+  productId?: number
   productCode?: string
   productName?: string
   composition?: string
   width?: string
   gsm?: string
   customerColor?: string
-  contractQty?: number
-  releasedQty?: number
-  remainingQty?: number
+  contractQty: number
+  releasedQty: number
+  remainingQty: number
   defaultLossRate?: number
 }
 
-// 已有打色单 VO
+/** 销售合同下达生产已有打色单 VO */
 export interface ReleaseExistingColorInstructionVO {
   id: number
-  instructionNo?: string
-  status?: string
+  instructionNo: string
+  status: string
   productCode?: string
   productName?: string
 }
 
-// 预填响应 VO
+/** 销售合同下达生产预填 Response VO */
 export interface ReleaseFromContractRespVO {
   contractId: number
-  contractNo?: string
-  clientName?: string
+  contractNo: string
+  clientName: string
+  deliveryDate?: string
+  status?: string
   lines: ReleaseContractLineVO[]
   existingColorInstructions: ReleaseExistingColorInstructionVO[]
 }
 
-// 新建打色单颜色 VO
+/** 新建打色单颜色行 VO */
 export interface ReleaseNewColorVO {
   contractLineId?: number
   customerColorNo?: string
@@ -48,13 +47,13 @@ export interface ReleaseNewColorVO {
   colorCardRef?: string
 }
 
-// 新建打色单 VO
+/** 新建打色单 VO */
 export interface ReleaseNewColorInstructionVO {
-  labFactoryId?: number
+  labFactoryId?: number | null
   colors: ReleaseNewColorVO[]
 }
 
-// 分组行 VO
+/** 下达生产分组明细行 VO */
 export interface ReleaseGroupLineVO {
   contractLineId: number
   customerColor?: string
@@ -62,21 +61,21 @@ export interface ReleaseGroupLineVO {
   lossRate?: number
 }
 
-// 分组 VO
+/** 下达生产产品分组 VO */
 export interface ReleaseGroupVO {
+  productId?: number
   productCode?: string
   productName?: string
-  productId?: number
   composition?: string
   width?: string
   gsm?: string
-  colorInstructionMode?: 'EXISTING' | 'NEW' | 'NONE'
-  existingColorInstructionId?: number
-  newColorInstruction?: ReleaseNewColorInstructionVO
+  colorInstructionMode: 'EXISTING' | 'NEW' | 'NONE' | string
+  existingColorInstructionId?: number | null
+  newColorInstruction?: ReleaseNewColorInstructionVO | null
   lines: ReleaseGroupLineVO[]
 }
 
-// 下达请求 VO
+/** 下达生产 Request VO */
 export interface ReleaseProductionReqVO {
   contractId: number
   greigeFactoryId: number
@@ -84,39 +83,36 @@ export interface ReleaseProductionReqVO {
   groups: ReleaseGroupVO[]
 }
 
-// 简单单据 VO
+/** 下达生产生成的单据精简 VO */
 export interface ReleaseOrderSimpleVO {
   id: number
   orderNo?: string
 }
 
-// 简单检验单 VO
+/** 下达生产生成的检验单精简 VO */
 export interface ReleaseInspectionSimpleVO {
   id: number
   code?: string
   type?: string
 }
 
-// 下达响应 VO
+/** 下达生产 Response VO */
 export interface ReleaseProductionRespVO {
-  greigeOrders?: ReleaseOrderSimpleVO[]
-  dyeingOrders?: ReleaseOrderSimpleVO[]
-  inspectionOrders?: ReleaseInspectionSimpleVO[]
-  colorInstructions?: ReleaseOrderSimpleVO[]
+  greigeOrders: ReleaseOrderSimpleVO[]
+  dyeingOrders: ReleaseOrderSimpleVO[]
+  inspectionOrders: ReleaseInspectionSimpleVO[]
+  colorInstructions: ReleaseOrderSimpleVO[]
 }
 
-/**
- * 从销售合同预填下达生产信息
- */
+/** 从销售合同预填下达生产信息 */
 export const getReleaseFromContract = (contractId: number) => {
   return request.get<ReleaseFromContractRespVO>({
-    url: `/lunaerp/production/release-production/from-contract?contractId=${contractId}`
+    url: '/lunaerp/production/release-production/from-contract',
+    params: { contractId }
   })
 }
 
-/**
- * 下达生产
- */
+/** 下达生产（创建胚布单、染色单、检验单并更新合同行已下达量） */
 export const releaseProduction = (data: ReleaseProductionReqVO) => {
   return request.post<ReleaseProductionRespVO>({
     url: '/lunaerp/production/release-production/release',

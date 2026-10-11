@@ -32,7 +32,8 @@ describe('Issue 04: 成品检验单便利生成 (create-finished-inspection)', (
       vi.mocked(request.get).mockResolvedValueOnce({ contractId: 100, lines: [] } as any)
       await ReleaseProductionApi.getReleaseFromContract(100)
       expect(request.get).toHaveBeenCalledWith({
-        url: '/lunaerp/production/release-production/from-contract?contractId=100'
+        url: '/lunaerp/production/release-production/from-contract',
+        params: { contractId: 100 }
       })
 
       vi.mocked(request.post).mockResolvedValueOnce({ greigeOrders: [] } as any)
