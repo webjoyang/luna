@@ -884,7 +884,21 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         LambdaQueryWrapperX<ColorInstructionDO> wrapper = new LambdaQueryWrapperX<>();
         wrapper.likeIfPresent(ColorInstructionDO::getInstructionNo, reqVO.getInstructionNo());
         wrapper.eqIfPresent(ColorInstructionDO::getCustomerId, reqVO.getCustomerId());
-        wrapper.eqIfPresent(ColorInstructionDO::getStatus, reqVO.getStatus());
+        if (reqVO.getStatuses() != null && !reqVO.getStatuses().isEmpty()) {
+            wrapper.in(ColorInstructionDO::getStatus, reqVO.getStatuses());
+        } else {
+            wrapper.eqIfPresent(ColorInstructionDO::getStatus, reqVO.getStatus());
+        }
+
+        // keyword: 单号/客户名/产品名/产品编号模糊匹配
+        if (StringUtils.hasText(reqVO.getKeyword())) {
+            String like = "%" + reqVO.getKeyword().trim() + "%";
+            wrapper.and(w -> w
+                    .apply("LOWER(instruction_no) LIKE LOWER({0})", like)
+                    .or().apply("LOWER(client_name) LIKE LOWER({0})", like)
+                    .or().apply("LOWER(product_name) LIKE LOWER({0})", like)
+                    .or().apply("LOWER(product_code) LIKE LOWER({0})", like));
+        }
 
         // 产品编号或名称模糊
         if (StringUtils.hasText(reqVO.getProductCodeOrName())) {

@@ -96,6 +96,12 @@ public class GreigeOrderRespVO {
     @Schema(description = "生产模式（字典 lunaerp_greige_production_mode：SELF 自织 / OUTSOURCE 外发）", requiredMode = Schema.RequiredMode.REQUIRED, example = "OUTSOURCE")
     private String productionMode;
 
+    @Schema(description = "打色指示单ID", example = "5001")
+    private Long colorInstructionId;
+
+    @Schema(description = "打色单号快照", example = "DS20261010001")
+    private String colorInstructionNo;
+
     @Schema(description = "织造执行进度（自织单实时聚合其下有效织造单进度，不落库；外发单为 null）")
     private GreigeOrderWeavingProgressVO weavingProgress;
 

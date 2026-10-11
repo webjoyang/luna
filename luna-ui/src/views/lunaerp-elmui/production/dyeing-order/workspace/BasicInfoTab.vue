@@ -69,6 +69,36 @@
         </el-form-item>
       </el-col>
       <el-col :span="12">
+        <el-form-item label="打色指示单" prop="colorInstructionId">
+          <el-select
+            v-model="formData.colorInstructionId"
+            placeholder="输入单号/客户/产品搜索打色单（可空）"
+            clearable
+            filterable
+            remote
+            reserve-keyword
+            :remote-method="searchColorInstructions"
+            :loading="colorInstructionLoading"
+            class="!w-full"
+            @change="handleColorInstructionChange"
+          >
+            <el-option
+              v-for="item in colorInstructionOptions"
+              :key="item.id"
+              :label="`[${item.instructionNo}] ${item.clientName || ''} - ${item.productName || ''}`"
+              :value="item.id!"
+            >
+              <div class="flex items-center justify-between">
+                <span>[{{ item.instructionNo }}] {{ item.clientName || '无客户' }} - {{ item.productName || '无产品' }}</span>
+                <span v-if="formatColorSummary(item)" class="text-gray-400 text-xs ml-2">
+                  {{ formatColorSummary(item) }}
+                </span>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
         <el-form-item label="单据日期" prop="orderDate">
           <el-date-picker
             v-model="formData.orderDate"
@@ -401,6 +431,8 @@ import * as SalesContractApi from '@/api/lunaerp-elmui/business/sales-contract'
 import type { SalesContractVO } from '@/api/lunaerp-elmui/business/sales-contract'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
+import * as ColorInstructionApi from '@/api/lunaerp-elmui/production/color-instruction'
+import type { ColorInstructionVO } from '@/api/lunaerp-elmui/production/color-instruction'
 
 defineOptions({ name: 'DyeingOrderBasicInfoTab' })
 
@@ -429,6 +461,8 @@ const formRef = ref<FormInstance>()
 const formData = ref<DyeingOrderVO>({
   salesContractId: undefined,
   contractNo: '',
+  colorInstructionId: undefined,
+  colorInstructionNo: '',
   customerId: undefined,
   clientName: '',
   dyeingFactoryId: undefined as any,
@@ -630,6 +664,41 @@ const handleSupplierChange = (val?: number) => {
   }
 }
 
+// 打色指示单远程搜索
+const colorInstructionOptions = ref<ColorInstructionVO[]>([])
+const colorInstructionLoading = ref(false)
+
+const formatColorSummary = (item: ColorInstructionVO): string => {
+  if (!item.colorSummary || item.colorSummary.length === 0) return ''
+  return item.colorSummary.map((c) => c.customerColorNo || c.colorName).filter(Boolean).join('、')
+}
+
+const searchColorInstructions = async (query: string) => {
+  colorInstructionLoading.value = true
+  try {
+    const res = await ColorInstructionApi.getColorInstructionPage({
+      pageNo: 1,
+      pageSize: 20,
+      keyword: query || undefined,
+      statuses: ['CONFIRMED', 'IN_PRODUCTION']
+    })
+    colorInstructionOptions.value = res.list || []
+  } finally {
+    colorInstructionLoading.value = false
+  }
+}
+
+const handleColorInstructionChange = (val?: number) => {
+  if (!val) {
+    formData.value.colorInstructionId = undefined
+    formData.value.colorInstructionNo = ''
+    return
+  }
+  const found = colorInstructionOptions.value.find((c) => c.id === val)
+  formData.value.colorInstructionId = found?.id
+  formData.value.colorInstructionNo = found?.instructionNo || ''
+}
+
 // 详情加载
 const loadDetail = async () => {
   if (!props.orderId) return
@@ -668,18 +737,40 @@ const loadDetail = async () => {
         }
       ]
     }
+    if (res.colorInstructionId) {
+      colorInstructionOptions.value = [
+        {
+          id: res.colorInstructionId,
+          instructionNo: res.colorInstructionNo || '',
+          clientName: res.clientName || '',
+          productName: res.productName || ''
+        } as ColorInstructionVO
+      ]
+      ColorInstructionApi.getColorInstruction(res.colorInstructionId)
+        .then((ci) => {
+          if (ci) {
+            colorInstructionOptions.value = [ci]
+          }
+        })
+        .catch(() => {})
+    }
   } finally {
     loading.value = false
   }
 }
 
 onMounted(() => {
+  if (isCreateMode.value) {
+    searchColorInstructions('')
+  }
   loadDetail()
 })
 
 // 保存/下达
 const buildSubmitData = (status: 'DRAFT' | 'ACTIVE'): DyeingOrderVO => ({
   ...formData.value,
+  colorInstructionId: formData.value.colorInstructionId ?? undefined,
+  colorInstructionNo: formData.value.colorInstructionNo?.trim() || undefined,
   status,
   colors: colorRows.value.map((row) => ({
     id: row.id != null ? row.id : undefined,
