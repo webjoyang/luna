@@ -299,6 +299,9 @@ public class ErrorCodeConstantsTest {
         assertEquals(1_030_023_007, FinanceErrorCodeConstants.PAYMENT_AMOUNT_INVALID.getCode());
         assertEquals("付款金额不合法", FinanceErrorCodeConstants.PAYMENT_AMOUNT_INVALID.getMsg());
 
+        assertEquals(1_030_023_008, FinanceErrorCodeConstants.PAYMENT_NOT_EXISTS.getCode());
+        assertEquals("收付款单不存在", FinanceErrorCodeConstants.PAYMENT_NOT_EXISTS.getMsg());
+
         // 验证 ErrorCodeConstants 继承了所有 FinanceErrorCodeConstants 错误码
         assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_NOT_EXISTS, ErrorCodeConstants.SUPPLIER_RECON_NOT_EXISTS);
         assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED, ErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED);
@@ -317,6 +320,7 @@ public class ErrorCodeConstantsTest {
         assertEquals(FinanceErrorCodeConstants.PAYMENT_PREPAY_BALANCE_NOT_ENOUGH, ErrorCodeConstants.PAYMENT_PREPAY_BALANCE_NOT_ENOUGH);
         assertEquals(FinanceErrorCodeConstants.PAYMENT_ACCOUNT_NOT_AVAILABLE, ErrorCodeConstants.PAYMENT_ACCOUNT_NOT_AVAILABLE);
         assertEquals(FinanceErrorCodeConstants.PAYMENT_AMOUNT_INVALID, ErrorCodeConstants.PAYMENT_AMOUNT_INVALID);
+        assertEquals(FinanceErrorCodeConstants.PAYMENT_NOT_EXISTS, ErrorCodeConstants.PAYMENT_NOT_EXISTS);
     }
 }
 
