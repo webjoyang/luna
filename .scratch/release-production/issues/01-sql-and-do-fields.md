@@ -4,12 +4,16 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `lunaerp_business_sales_contract_item` 加 `released_qty` numeric(18,2) NOT NULL DEFAULT 0（已下达生产数量）
-- [ ] `lunaerp_production_greige_order_color` 加 `contract_line_id` int8 可空、`contract_line_no` int4 可空
-- [ ] `lunaerp_production_dyeing_color` 加 `contract_line_id` int8 可空、`contract_line_no` int4 可空
-- [ ] 销售合同菜单 10110 下注册按钮权限 10114：`lunaerp:production:release-production:query` 与 `:release`（按钮挂合同菜单、权限码归生产域）
-- [ ] 后端 DO 同步加字段：`SalesContractItemDO.releasedQty`、`GreigeOrderColorDO.contractLineId/contractLineNo`、`DyeingColorDO.contractLineId/contractLineNo`
-- [ ] ALTER 语句 DO 块判列存在，脚本可重复执行
-- [ ] 加列不影响既有数据（released_qty 缺省 0，关联列可空）
+- [x] `lunaerp_business_sales_contract_item` 加 `released_qty` numeric(18,2) NOT NULL DEFAULT 0（已下达生产数量）
+- [x] `lunaerp_production_greige_order_color` 加 `contract_line_id` int8 可空、`contract_line_no` int4 可空
+- [x] `lunaerp_production_dyeing_color` 加 `contract_line_id` int8 可空、`contract_line_no` int4 可空
+- [x] 销售合同菜单 10110 下注册按钮权限 10114：`lunaerp:production:release-production:query` 与 `:release`（按钮挂合同菜单、权限码归生产域）
+- [x] 后端 DO 同步加字段：`SalesContractItemDO.releasedQty`、`GreigeOrderColorDO.contractLineId/contractLineNo`、`DyeingColorDO.contractLineId/contractLineNo`
+- [x] ALTER 语句 DO 块判列存在，脚本可重复执行
+- [x] 加列不影响既有数据（released_qty 缺省 0，关联列可空）
+
+## Comments
+- Implemented in `6020ab59`
+- Merged into `feat/release-production` in `0b4af039`
