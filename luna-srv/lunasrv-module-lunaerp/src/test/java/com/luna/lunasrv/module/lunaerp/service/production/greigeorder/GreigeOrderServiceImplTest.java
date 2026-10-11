@@ -21,6 +21,9 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeM
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -41,6 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_REFERENCE_NOT_FOUND;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
@@ -89,6 +93,9 @@ class GreigeOrderServiceImplTest {
 
     @Mock
     private GreigeOrderWeavingProgressProvider weavingProgressProvider;
+
+    @Mock
+    private ColorInstructionMapper colorInstructionMapper;
 
     @InjectMocks
     private GreigeOrderServiceImpl greigeOrderService;
@@ -1246,6 +1253,163 @@ class GreigeOrderServiceImplTest {
         order.setId(id);
         order.setOrderNo(orderNo);
         return order;
+    }
+
+    private ColorInstructionDO stubColorInstruction(Long id, String no, String status, Long productId, Long customerId) {
+        ColorInstructionDO instruction = new ColorInstructionDO();
+        instruction.setId(id);
+        instruction.setInstructionNo(no);
+        instruction.setStatus(status);
+        instruction.setProductId(productId);
+        instruction.setCustomerId(customerId);
+        instruction.setDeleted(false);
+        instruction.setTenantId(1L);
+        when(colorInstructionMapper.selectById(id)).thenReturn(instruction);
+        return instruction;
+    }
+
+    // ==================== 下游引用打色单保存校验（06 票） ====================
+
+    @Test
+    void createGreigeOrder_colorInstructionNotFound_throwsException() {
+        stubSupplier(1L, "海宁坯布厂");
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColorInstructionId(999L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(GREIGE_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("打色指示单"));
+    }
+
+    @Test
+    void createGreigeOrder_colorInstructionSoftDeleted_throwsException() {
+        stubSupplier(1L, "海宁坯布厂");
+        ColorInstructionDO instruction = stubColorInstruction(100L, "DS20261010001", "CONFIRMED", 10L, 20L);
+        instruction.setDeleted(true); // 软删除
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColorInstructionId(100L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(GREIGE_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("打色指示单"));
+    }
+
+    @Test
+    void createGreigeOrder_colorInstructionCrossTenant_throwsException() {
+        stubSupplier(1L, "海宁坯布厂");
+        ColorInstructionDO instruction = stubColorInstruction(100L, "DS20261010001", "CONFIRMED", 10L, 20L);
+        instruction.setTenantId(9999L); // 他租户
+
+        TenantContextHolder.setTenantId(1L);
+        try {
+            GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+            reqVO.setColorInstructionId(100L);
+
+            ServiceException ex = assertThrows(ServiceException.class,
+                    () -> greigeOrderService.createGreigeOrder(reqVO));
+            assertEquals(GREIGE_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+            assertTrue(ex.getMessage().contains("打色指示单"));
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    @Test
+    void createGreigeOrder_colorInstructionStatusInvalid_throwsException() {
+        stubSupplier(1L, "海宁坯布厂");
+        for (String invalidStatus : List.of("PENDING", "IN_PROGRESS", "VOID")) {
+            stubColorInstruction(100L, "DS20261010001", invalidStatus, 10L, 20L);
+            GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+            reqVO.setColorInstructionId(100L);
+
+            ServiceException ex = assertThrows(ServiceException.class,
+                    () -> greigeOrderService.createGreigeOrder(reqVO),
+                    "状态为 " + invalidStatus + " 时应拦截");
+            assertEquals(GREIGE_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+            assertTrue(ex.getMessage().contains("打色指示单状态不是已确认或已投产"));
+        }
+    }
+
+    @Test
+    void createGreigeOrder_colorInstructionProductMismatch_throwsException() {
+        stubSupplier(1L, "海宁坯布厂");
+        stubProduct(10L, "P01", "全棉");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", 20L, 30L); // product 20L != 10L
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductId(10L);
+        reqVO.setColorInstructionId(100L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(GREIGE_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("打色指示单产品与胚布单产品不一致"));
+    }
+
+    @Test
+    void createGreigeOrder_colorInstructionCustomerMismatch_throwsException() {
+        stubSupplier(1L, "海宁坯布厂");
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(50L);
+        contract.setCustomerId(88L); // customer 88L
+        when(salesContractMapper.selectById(50L)).thenReturn(contract);
+
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", 10L, 99L); // customer 99L != 88L
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setSalesContractId(50L);
+        reqVO.setColorInstructionId(100L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> greigeOrderService.createGreigeOrder(reqVO));
+        assertEquals(GREIGE_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("打色指示单客户与销售合同客户不一致"));
+    }
+
+    @Test
+    void createGreigeOrder_withConfirmedOrInProductionColorInstruction_succeedsAndSnapshotsNo() {
+        stubSupplier(1L, "海宁坯布厂");
+        stubProduct(10L, "P01", "全棉");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", 10L, 20L);
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductId(10L);
+        reqVO.setColorInstructionId(100L);
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        GreigeOrderDO inserted = captor.getValue();
+        assertEquals(100L, inserted.getColorInstructionId());
+        assertEquals("DS20261010001", inserted.getColorInstructionNo(), "应快照打色单号");
+    }
+
+    @Test
+    void updateGreigeOrder_clearingColorInstructionId_clearsSnapshotNo() {
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919777");
+        existing.setColorInstructionId(100L);
+        existing.setColorInstructionNo("DS20261010001");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of());
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setColorInstructionId(null); // 清空打色指示单引用
+        reqVO.setColorInstructionNo(null);
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).updateById(captor.capture());
+        GreigeOrderDO updated = captor.getValue();
+        assertNull(updated.getColorInstructionId());
+        assertNull(updated.getColorInstructionNo(), "清空打色指示单引用时快照应置空");
     }
 
 }

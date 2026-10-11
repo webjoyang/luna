@@ -160,5 +160,15 @@ public class GreigeOrderDO extends TenantBaseDO {
      * 生产模式（字典 lunaerp_greige_production_mode：SELF 自织 / OUTSOURCE 外发），缺省 OUTSOURCE
      */
     private String productionMode;
+    /**
+     * 打色指示单ID（lunaerp_production_color_instruction.id，逻辑关联可空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long colorInstructionId;
+    /**
+     * 打色单号快照（可空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String colorInstructionNo;
 
 }

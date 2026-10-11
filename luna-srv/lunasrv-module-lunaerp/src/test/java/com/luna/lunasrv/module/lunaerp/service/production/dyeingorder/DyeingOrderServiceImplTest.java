@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -44,6 +45,10 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_REFERENCE_NOT_FOUND;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_COLOR_HAS_VATS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -79,6 +84,9 @@ class DyeingOrderServiceImplTest {
 
     @Mock
     private SalesContractMapper salesContractMapper;
+
+    @Mock
+    private ColorInstructionMapper colorInstructionMapper;
 
     @InjectMocks
     private DyeingOrderServiceImpl dyeingOrderService;
@@ -1084,6 +1092,161 @@ class DyeingOrderServiceImplTest {
         vo.setDyeingInputUnit("KG");
         vo.setContractQty(qty);
         return vo;
+    }
+
+    private ColorInstructionDO stubColorInstruction(Long id, String no, String status, String productCode, Long customerId) {
+        ColorInstructionDO instruction = new ColorInstructionDO();
+        instruction.setId(id);
+        instruction.setInstructionNo(no);
+        instruction.setStatus(status);
+        instruction.setProductCode(productCode);
+        instruction.setCustomerId(customerId);
+        instruction.setDeleted(false);
+        instruction.setTenantId(1L);
+        when(colorInstructionMapper.selectById(id)).thenReturn(instruction);
+        return instruction;
+    }
+
+    // ==================== 下游引用打色单保存校验（06 票） ====================
+
+    @Test
+    void createDyeingOrder_colorInstructionNotFound_throwsException() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColorInstructionId(999L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.createDyeingOrder(reqVO));
+        assertEquals(DYEING_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("打色指示单"));
+    }
+
+    @Test
+    void createDyeingOrder_colorInstructionSoftDeleted_throwsException() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        ColorInstructionDO instruction = stubColorInstruction(100L, "DS20261010001", "CONFIRMED", "P01", 201L);
+        instruction.setDeleted(true);
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColorInstructionId(100L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.createDyeingOrder(reqVO));
+        assertEquals(DYEING_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("打色指示单"));
+    }
+
+    @Test
+    void createDyeingOrder_colorInstructionCrossTenant_throwsException() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        ColorInstructionDO instruction = stubColorInstruction(100L, "DS20261010001", "CONFIRMED", "P01", 201L);
+        instruction.setTenantId(9999L);
+
+        TenantContextHolder.setTenantId(1L);
+        try {
+            DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+            reqVO.setColorInstructionId(100L);
+
+            ServiceException ex = assertThrows(ServiceException.class,
+                    () -> dyeingOrderService.createDyeingOrder(reqVO));
+            assertEquals(DYEING_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+            assertTrue(ex.getMessage().contains("打色指示单"));
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    @Test
+    void createDyeingOrder_colorInstructionStatusInvalid_throwsException() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        for (String invalidStatus : List.of("PENDING", "IN_PROGRESS", "VOID")) {
+            stubColorInstruction(100L, "DS20261010001", invalidStatus, "P01", 201L);
+            DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+            reqVO.setColorInstructionId(100L);
+
+            ServiceException ex = assertThrows(ServiceException.class,
+                    () -> dyeingOrderService.createDyeingOrder(reqVO),
+                    "状态为 " + invalidStatus + " 时应拦截");
+            assertEquals(DYEING_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+            assertTrue(ex.getMessage().contains("打色指示单状态不是已确认或已投产"));
+        }
+    }
+
+    @Test
+    void createDyeingOrder_colorInstructionCustomerMismatch_throwsException() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", "P01", 999L); // customer 999L != 201L
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColorInstructionId(100L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.createDyeingOrder(reqVO));
+        assertEquals(DYEING_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("打色指示单客户与销售合同客户不一致"));
+    }
+
+    @Test
+    void createDyeingOrder_colorInstructionProductMismatch_throwsException() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", "PROD-B", 201L); // product PROD-B != P01
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductCode("P01");
+        reqVO.setColorInstructionId(100L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> dyeingOrderService.createDyeingOrder(reqVO));
+        assertEquals(DYEING_ORDER_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("打色指示单产品与染色单产品不一致"));
+    }
+
+    @Test
+    void createDyeingOrder_withConfirmedOrInProductionColorInstruction_succeedsAndSnapshotsNo() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", "P001", 201L);
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductCode("P001");
+        reqVO.setColorInstructionId(100L);
+
+        dyeingOrderService.createDyeingOrder(reqVO);
+
+        ArgumentCaptor<DyeingOrderDO> captor = ArgumentCaptor.forClass(DyeingOrderDO.class);
+        verify(dyeingOrderMapper).insert(captor.capture());
+        DyeingOrderDO inserted = captor.getValue();
+        assertEquals(100L, inserted.getColorInstructionId());
+        assertEquals("DS20261010001", inserted.getColorInstructionNo(), "应快照打色单号");
+    }
+
+    @Test
+    void updateDyeingOrder_clearingColorInstructionId_clearsSnapshotNo() {
+        stubExistingOrder(1001L, "DRAFT");
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        when(dyeingColorMapper.selectListByOrderId(1001L)).thenReturn(List.of());
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+        reqVO.setColorInstructionId(null); // 清空
+        reqVO.setColorInstructionNo(null);
+
+        dyeingOrderService.updateDyeingOrder(reqVO);
+
+        ArgumentCaptor<DyeingOrderDO> captor = ArgumentCaptor.forClass(DyeingOrderDO.class);
+        verify(dyeingOrderMapper).updateById(captor.capture());
+        DyeingOrderDO updated = captor.getValue();
+        assertNull(updated.getColorInstructionId());
+        assertNull(updated.getColorInstructionNo(), "清空打色指示单引用时快照应置空");
     }
 
 }

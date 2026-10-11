@@ -74,6 +74,36 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
+          <el-form-item label="打色指示单" prop="colorInstructionId">
+            <el-select
+              v-model="formData.colorInstructionId"
+              placeholder="输入单号/客户/产品搜索打色单（可空）"
+              clearable
+              filterable
+              remote
+              reserve-keyword
+              :remote-method="searchColorInstructions"
+              :loading="colorInstructionLoading"
+              class="!w-full"
+              @change="handleColorInstructionChange"
+            >
+              <el-option
+                v-for="item in colorInstructionOptions"
+                :key="item.id"
+                :label="`[${item.instructionNo}] ${item.clientName || ''} - ${item.productName || ''}`"
+                :value="item.id!"
+              >
+                <div class="flex items-center justify-between">
+                  <span>[{{ item.instructionNo }}] {{ item.clientName || '无客户' }} - {{ item.productName || '无产品' }}</span>
+                  <span v-if="formatColorSummary(item)" class="text-gray-400 text-xs ml-2">
+                    {{ formatColorSummary(item) }}
+                  </span>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
           <el-form-item label="单据日期" prop="orderDate">
             <el-date-picker
               v-model="formData.orderDate"
@@ -497,6 +527,8 @@ import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
 import * as GreigeTypeApi from '@/api/lunaerp/baseinfo/greige-type'
 import type { GreigeTypeSimpleVO } from '@/api/lunaerp/baseinfo/greige-type'
+import * as ColorInstructionApi from '@/api/lunaerp-elmui/production/color-instruction'
+import type { ColorInstructionVO } from '@/api/lunaerp-elmui/production/color-instruction'
 
 defineOptions({ name: 'LunaerpElmuiProductionGreigeOrderEdit' })
 
@@ -513,6 +545,8 @@ const formData = reactive<GreigeOrderVO>({
   orderNo: '',
   salesContractId: undefined,
   contractNo: '',
+  colorInstructionId: undefined,
+  colorInstructionNo: '',
   productId: undefined,
   greigeFactoryId: undefined as unknown as number,
   greigeFactoryName: '',
@@ -757,6 +791,42 @@ const handleContractChange = (contractId: number | undefined) => {
   formData.contractNo = contract?.contractNo || ''
 }
 
+// ==================== 打色指示单远程搜索（可空引用） ====================
+
+const colorInstructionLoading = ref(false)
+const colorInstructionOptions = ref<ColorInstructionVO[]>([])
+
+const formatColorSummary = (item: ColorInstructionVO): string => {
+  if (!item.colorSummary || item.colorSummary.length === 0) return ''
+  return item.colorSummary.map((c) => c.customerColorNo || c.colorName).filter(Boolean).join('、')
+}
+
+const searchColorInstructions = async (query: string) => {
+  colorInstructionLoading.value = true
+  try {
+    const data = await ColorInstructionApi.getColorInstructionPage({
+      pageNo: 1,
+      pageSize: 20,
+      keyword: query || undefined,
+      statuses: ['CONFIRMED', 'IN_PRODUCTION']
+    })
+    colorInstructionOptions.value = data.list || []
+  } finally {
+    colorInstructionLoading.value = false
+  }
+}
+
+const handleColorInstructionChange = (instructionId: number | undefined) => {
+  if (!instructionId) {
+    formData.colorInstructionId = undefined
+    formData.colorInstructionNo = ''
+    return
+  }
+  const item = colorInstructionOptions.value.find((c) => c.id === instructionId)
+  formData.colorInstructionId = item?.id
+  formData.colorInstructionNo = item?.instructionNo || ''
+}
+
 // ==================== 产品档案远程搜索（回填品种规格后再改） ====================
 
 const productLoading = ref(false)
@@ -866,6 +936,23 @@ const loadGreigeOrder = async () => {
         { id: data.salesContractId, contractNo: data.contractNo || '' } as SalesContractVO
       ]
     }
+    if (data.colorInstructionId) {
+      colorInstructionOptions.value = [
+        {
+          id: data.colorInstructionId,
+          instructionNo: data.colorInstructionNo || '',
+          clientName: '',
+          productName: data.productName || ''
+        } as ColorInstructionVO
+      ]
+      ColorInstructionApi.getColorInstruction(data.colorInstructionId)
+        .then((ci) => {
+          if (ci) {
+            colorInstructionOptions.value = [ci]
+          }
+        })
+        .catch(() => {})
+    }
     if (data.productId) {
       productOptions.value = [
         {
@@ -892,6 +979,8 @@ const handleSubmit = async () => {
       productionMode: formData.productionMode || 'OUTSOURCE',
       orderNo: formData.orderNo?.trim() || undefined, // 留空走后端自动号
       contractNo: formData.contractNo?.trim() || undefined,
+      colorInstructionId: formData.colorInstructionId ?? undefined,
+      colorInstructionNo: formData.colorInstructionNo?.trim() || undefined,
       greigeFactoryId:
         formData.productionMode === 'SELF'
           ? (formData.greigeFactoryId ?? (null as unknown as number))
@@ -938,11 +1027,12 @@ const handleBack = () => {
 onMounted(() => {
   loadGreigeTypes()
   if (isCreateMode.value) {
-    // 新建：预取一批供应商/合同/产品候选，保证下拉一打开就有内容可看
+    // 新建：预取一批供应商/合同/产品/打色单候选，保证下拉一打开就有内容可看
     searchSuppliers('', 'greige')
     searchSuppliers('', 'dyeing')
     searchContracts('')
     searchProducts('')
+    searchColorInstructions('')
   } else {
     // 编辑/查看：按 id 回填全部字段（远程下拉用快照预置选中态）
     loadGreigeOrder()
