@@ -117,11 +117,6 @@ public class GreigeOrderRespVO {
     @Schema(description = "更新时间")
     private LocalDateTime updateTime;
 
-    @Schema(description = "打色指示单ID", example = "1024")
-    private Long colorInstructionId;
-
-    @Schema(description = "打色单号快照", example = "DS20261010001")
-    private String colorInstructionNo;
 
     @Schema(description = "颜色投胚分配行列表（仅详情接口按 line_no 升序嵌套返回，分页列表不返回）")
     private List<GreigeOrderColorRespVO> colors;
