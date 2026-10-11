@@ -65,4 +65,18 @@ public interface StockInItemMapper extends BaseMapperX<StockInItemDO> {
                 .in(StockInItemDO::getInspectionOrderItemId, inspectionOrderItemIds));
     }
 
+    /**
+     * 按入库单ID集合批量查询入库明细列表
+     *
+     * @param stockInIds 入库单ID集合
+     * @return 入库明细列表
+     */
+    default List<StockInItemDO> selectListByStockInIds(java.util.Collection<Long> stockInIds) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(stockInIds)) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(new com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX<StockInItemDO>()
+                .in(StockInItemDO::getStockInId, stockInIds));
+    }
+
 }
