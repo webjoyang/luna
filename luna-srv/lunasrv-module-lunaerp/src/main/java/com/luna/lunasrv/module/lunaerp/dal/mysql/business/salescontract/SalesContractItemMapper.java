@@ -5,7 +5,9 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
@@ -69,5 +71,15 @@ public interface SalesContractItemMapper extends BaseMapperX<SalesContractItemDO
         return selectList(new LambdaQueryWrapperX<SalesContractItemDO>()
                 .in(SalesContractItemDO::getContractId, contractIds));
     }
+
+    /**
+     * 条件累加合同行已下达生产数量（超下达拦截：released_qty + delta <= quantity）。
+     *
+     * @param id 合同行ID
+     * @param delta 增量数量
+     * @return 影响行数（0 表示超下达或行不存在/已删除）
+     */
+    @Update("UPDATE lunaerp_business_sales_contract_item SET released_qty = released_qty + #{delta} WHERE id = #{id} AND released_qty + #{delta} <= quantity AND deleted = 0")
+    int updateReleasedQtyIncrement(@Param("id") Long id, @Param("delta") BigDecimal delta);
 
 }

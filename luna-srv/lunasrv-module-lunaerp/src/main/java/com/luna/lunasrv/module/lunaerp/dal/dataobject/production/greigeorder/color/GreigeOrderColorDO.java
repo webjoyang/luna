@@ -59,5 +59,13 @@ public class GreigeOrderColorDO extends TenantBaseDO {
      * 行备注
      */
     private String remark;
+    /**
+     * 来源合同行 ID（lunaerp_business_sales_contract_item.id，可空）
+     */
+    private Long contractLineId;
+    /**
+     * 来源合同行号快照（可空）
+     */
+    private Integer contractLineNo;
 
 }
