@@ -24,6 +24,8 @@ export interface GreigeOrderVO {
   orderNo?: string
   salesContractId?: number
   contractNo?: string
+  colorInstructionId?: number
+  colorInstructionNo?: string
   greigeFactoryId?: number | null // 承织坯布厂（供应商 id），外发必填，自织可空
   greigeFactoryName?: string // 坯布厂公司名快照，保存供应商档案时复制
   dyeingFactoryId?: number // 指定染厂（供应商 id），可空

@@ -33,4 +33,10 @@ public class GreigeOrderColorRespVO {
     @Schema(description = "行备注", example = "加急")
     private String remark;
 
+    @Schema(description = "来源合同行ID", example = "1001")
+    private Long contractLineId;
+
+    @Schema(description = "来源合同行号快照", example = "1")
+    private Integer contractLineNo;
+
 }

@@ -82,5 +82,9 @@ public class SalesContractItemDO extends TenantBaseDO {
      * 行备注
      */
     private String remark;
+    /**
+     * 已下达生产数量（缺省 0）
+     */
+    private BigDecimal releasedQty;
 
 }

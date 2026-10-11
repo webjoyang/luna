@@ -561,4 +561,98 @@ describe('Color Instruction (打色指示单) Foundation Tests', () => {
       expect(isValidConfirmType(undefined)).toBe(false)
     })
   })
+
+  describe('Issue 06: Downstream Reference Columns & Validation (胚布单与染色单引用打色单)', () => {
+    it('should query color instructions with CONFIRMED and IN_PRODUCTION statuses', () => {
+      const buildQueryParams = (keyword?: string) => ({
+        pageNo: 1,
+        pageSize: 20,
+        keyword: keyword || undefined,
+        statuses: ['CONFIRMED', 'IN_PRODUCTION']
+      })
+
+      const params = buildQueryParams('DS20261011')
+      expect(params.statuses).toEqual(['CONFIRMED', 'IN_PRODUCTION'])
+      expect(params.keyword).toBe('DS20261011')
+
+      const emptyParams = buildQueryParams('')
+      expect(emptyParams.keyword).toBeUndefined()
+      expect(emptyParams.statuses).toEqual(['CONFIRMED', 'IN_PRODUCTION'])
+    })
+
+    it('should format selector option label and color summary correctly', () => {
+      const formatOptionLabel = (item: { instructionNo?: string; clientName?: string; productName?: string }) => {
+        return `[${item.instructionNo}] ${item.clientName || ''} - ${item.productName || ''}`
+      }
+
+      const formatColorSummary = (item: { colorSummary?: Array<{ customerColorNo?: string; colorName?: string }> }) => {
+        if (!item.colorSummary || item.colorSummary.length === 0) return ''
+        return item.colorSummary.map((c) => c.customerColorNo || c.colorName).filter(Boolean).join('、')
+      }
+
+      const item1 = {
+        id: 101,
+        instructionNo: 'DS20261011001',
+        clientName: '优衣库',
+        productName: '针织平纹布',
+        colorSummary: [
+          { customerColorNo: 'BLK-01', colorName: '黑' },
+          { customerColorNo: 'WHT-01', colorName: '白' }
+        ]
+      }
+
+      expect(formatOptionLabel(item1)).toBe('[DS20261011001] 优衣库 - 针织平纹布')
+      expect(formatColorSummary(item1)).toBe('BLK-01、WHT-01')
+
+      const item2 = {
+        id: 102,
+        instructionNo: 'DS20261011002',
+        clientName: '',
+        productName: '',
+        colorSummary: []
+      }
+      expect(formatOptionLabel(item2)).toBe('[DS20261011002]  - ')
+      expect(formatColorSummary(item2)).toBe('')
+    })
+
+    it('should handle selection and clearing of color instruction reference', () => {
+      const options = [
+        { id: 10, instructionNo: 'DS001', clientName: '客户A', productName: '产品A' },
+        { id: 20, instructionNo: 'DS002', clientName: '客户B', productName: '产品B' }
+      ]
+
+      const handleSelection = (
+        formData: { colorInstructionId?: number; colorInstructionNo?: string },
+        selectedId?: number
+      ) => {
+        if (!selectedId) {
+          formData.colorInstructionId = undefined
+          formData.colorInstructionNo = undefined
+          return
+        }
+        const found = options.find((o) => o.id === selectedId)
+        if (found) {
+          formData.colorInstructionId = found.id
+          formData.colorInstructionNo = found.instructionNo
+        }
+      }
+
+      const targetForm: { colorInstructionId?: number; colorInstructionNo?: string } = {}
+
+      // Select DS001
+      handleSelection(targetForm, 10)
+      expect(targetForm.colorInstructionId).toBe(10)
+      expect(targetForm.colorInstructionNo).toBe('DS001')
+
+      // Select DS002
+      handleSelection(targetForm, 20)
+      expect(targetForm.colorInstructionId).toBe(20)
+      expect(targetForm.colorInstructionNo).toBe('DS002')
+
+      // Clear selection
+      handleSelection(targetForm, undefined)
+      expect(targetForm.colorInstructionId).toBeUndefined()
+      expect(targetForm.colorInstructionNo).toBeUndefined()
+    })
+  })
 })

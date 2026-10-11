@@ -37,4 +37,10 @@ public class DyeingColorSaveReqVO {
     @Schema(description = "合同数量（从合同明细带出，只读对比）", example = "500.00")
     private BigDecimal contractQty;
 
+    @Schema(description = "来源合同行ID", example = "1001")
+    private Long contractLineId;
+
+    @Schema(description = "来源合同行号快照", example = "1")
+    private Integer contractLineNo;
+
 }

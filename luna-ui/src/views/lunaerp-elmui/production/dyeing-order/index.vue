@@ -107,6 +107,11 @@
           <span class="cell-contract">{{ row.contractNo || '—' }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="打色单号" prop="colorInstructionNo" min-width="130">
+        <template #default="{ row }">
+          <span>{{ row.colorInstructionNo || '—' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="客户名称" prop="clientName" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">{{ row.clientName || '—' }}</template>
       </el-table-column>

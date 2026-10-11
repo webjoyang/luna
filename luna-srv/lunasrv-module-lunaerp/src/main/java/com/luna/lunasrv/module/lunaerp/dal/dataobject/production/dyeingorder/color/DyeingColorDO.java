@@ -71,5 +71,15 @@ public class DyeingColorDO extends TenantBaseDO {
      */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal contractQty;
+    /**
+     * 来源合同行 ID（可空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long contractLineId;
+    /**
+     * 来源合同行号快照（可空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Integer contractLineNo;
 
 }

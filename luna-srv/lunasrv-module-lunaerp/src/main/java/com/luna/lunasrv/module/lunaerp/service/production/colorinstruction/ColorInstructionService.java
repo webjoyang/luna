@@ -97,4 +97,11 @@ public interface ColorInstructionService {
      */
     ColorInstructionPrintRespVO getColorInstructionPrintData(Long id);
 
+    /**
+     * 标记打色指示单为已投产（下游单据自动触发，条件更新 CONFIRMED -> IN_PRODUCTION，幂等静默）
+     *
+     * @param id 打色指示单ID
+     */
+    void markInProduction(Long id);
+
 }

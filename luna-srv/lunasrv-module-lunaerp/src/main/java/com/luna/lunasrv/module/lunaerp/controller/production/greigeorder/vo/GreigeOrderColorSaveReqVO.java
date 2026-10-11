@@ -30,4 +30,10 @@ public class GreigeOrderColorSaveReqVO {
     @Size(max = 256, message = "行备注长度不能超过 256 位")
     private String remark;
 
+    @Schema(description = "来源合同行ID", example = "1001")
+    private Long contractLineId;
+
+    @Schema(description = "来源合同行号快照", example = "1")
+    private Integer contractLineNo;
+
 }

@@ -51,4 +51,7 @@ public class SalesContractItemRespVO {
     @Schema(description = "行备注", example = "加急")
     private String remark;
 
+    @Schema(description = "已下达生产数量", example = "50.00")
+    private BigDecimal releasedQty;
+
 }

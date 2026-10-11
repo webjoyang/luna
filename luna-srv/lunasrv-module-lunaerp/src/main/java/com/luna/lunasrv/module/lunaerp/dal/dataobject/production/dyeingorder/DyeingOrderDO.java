@@ -163,5 +163,15 @@ public class DyeingOrderDO extends TenantBaseDO {
      * 染色单状态（字典 lunaerp_dyeing_order_status：DRAFT/ACTIVE/COMPLETED/CANCELLED），创建缺省 DRAFT
      */
     private String status;
+    /**
+     * 打色指示单ID（lunaerp_production_color_instruction.id，逻辑关联可空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long colorInstructionId;
+    /**
+     * 打色单号快照（可空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String colorInstructionNo;
 
 }
