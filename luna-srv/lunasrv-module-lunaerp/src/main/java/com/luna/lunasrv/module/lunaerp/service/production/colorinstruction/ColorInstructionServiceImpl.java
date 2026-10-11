@@ -1,5 +1,6 @@
 package com.luna.lunasrv.module.lunaerp.service.production.colorinstruction;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
@@ -10,11 +11,15 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.color.ColorInstructionColorDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.color.ColorInstructionColorMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -74,6 +79,12 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
 
     @Resource
     private SupplierMapper supplierMapper;
+
+    @Resource
+    private GreigeOrderMapper greigeOrderMapper;
+
+    @Resource
+    private DyeingOrderMapper dyeingOrderMapper;
 
     @Override
     public PageResult<ColorInstructionRespVO> getColorInstructionPage(ColorInstructionPageReqVO reqVO) {
@@ -808,6 +819,80 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         }
     }
 
+    @Override
+    public boolean hasActiveDownstreamRef(Long id) {
+        if (id == null) {
+            return false;
+        }
+        Long greigeCount = greigeOrderMapper.selectCount(new LambdaQueryWrapper<GreigeOrderDO>()
+                .eq(GreigeOrderDO::getColorInstructionId, id)
+                .ne(GreigeOrderDO::getStatus, "CANCELLED"));
+        if (greigeCount != null && greigeCount > 0) {
+            return true;
+        }
+        Long dyeingCount = dyeingOrderMapper.selectCount(new LambdaQueryWrapper<DyeingOrderDO>()
+                .eq(DyeingOrderDO::getColorInstructionId, id)
+                .ne(DyeingOrderDO::getStatus, "CANCELLED"));
+        return dyeingCount != null && dyeingCount > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackColorInstruction(ColorInstructionRollbackReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        Long id = reqVO.getId();
+        ColorInstructionDO instruction = colorInstructionMapper.selectById(id);
+        if (instruction == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        if (!"CONFIRMED".equals(instruction.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+        if (hasActiveDownstreamRef(id)) {
+            throw exception(COLOR_INSTRUCTION_ACTIVE_DOWNSTREAM_EXISTS);
+        }
+        int rows = colorInstructionMapper.update(null, new LambdaUpdateWrapper<ColorInstructionDO>()
+                .eq(ColorInstructionDO::getId, id)
+                .eq(ColorInstructionDO::getStatus, "CONFIRMED")
+                .set(ColorInstructionDO::getStatus, "IN_PROGRESS"));
+        if (rows == 0) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void voidColorInstruction(ColorInstructionVoidReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        Long id = reqVO.getId();
+        ColorInstructionDO instruction = colorInstructionMapper.selectById(id);
+        if (instruction == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        String status = instruction.getStatus();
+        if ("IN_PRODUCTION".equals(status) || "VOID".equals(status)) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+        if (!Set.of("PENDING", "IN_PROGRESS", "CONFIRMED").contains(status)) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+        if (hasActiveDownstreamRef(id)) {
+            throw exception(COLOR_INSTRUCTION_ACTIVE_DOWNSTREAM_EXISTS);
+        }
+        int rows = colorInstructionMapper.update(null, new LambdaUpdateWrapper<ColorInstructionDO>()
+                .eq(ColorInstructionDO::getId, id)
+                .in(ColorInstructionDO::getStatus, List.of("PENDING", "IN_PROGRESS", "CONFIRMED"))
+                .set(ColorInstructionDO::getStatus, "VOID")
+                .set(ColorInstructionDO::getVoidReason, reqVO.getVoidReason()));
+        if (rows == 0) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+    }
+
     /**
      * 生成打色单号：DS + 8位年月日 + 3位日流水（超 999 自然扩位）。
      * 扫描同前缀全部单据（含已删除行，ADR-0006），按最大后缀 + 1。
@@ -966,6 +1051,19 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         respVO.setColors(colors != null ? colors : Collections.emptyList());
         respVO.setPrintTime(LocalDateTime.now());
         return respVO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void markInProduction(Long id) {
+        if (id == null) {
+            return;
+        }
+        int rows = colorInstructionMapper.update(null, new LambdaUpdateWrapper<ColorInstructionDO>()
+                .eq(ColorInstructionDO::getId, id)
+                .eq(ColorInstructionDO::getStatus, "CONFIRMED")
+                .set(ColorInstructionDO::getStatus, "IN_PRODUCTION"));
+        log.info("[markInProduction] 打色指示单【{}】投产条件更新，影响行数: {}", id, rows);
     }
 
 }

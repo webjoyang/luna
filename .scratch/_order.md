@@ -4,7 +4,7 @@
 - [x] 02，supplier-info-module，[supplier-info-module/spec.md](supplier-info-module/spec.md)
 - [x] 03，product-info-align，[product-info-align/spec.md](product-info-align/spec.md)
 - [x] 04，sales-contract-mvp，[sales-contract-mvp/spec.md](sales-contract-mvp/spec.md)
-- [ ] 05，color-instruction，[color-instruction/spec.md](color-instruction/spec.md)
+- [x] 05，color-instruction，[color-instruction/spec.md](color-instruction/spec.md)
 - [x] 06，yarn-order-mvp，[yarn-order-mvp/spec.md](yarn-order-mvp/spec.md)
 - [x] 07，greige-order-mvp，[greige-order-mvp/spec.md](greige-order-mvp/spec.md)
 - [x] 08，dyeing-order-mvp，[dyeing-order-mvp/spec.md](dyeing-order-mvp/spec.md)

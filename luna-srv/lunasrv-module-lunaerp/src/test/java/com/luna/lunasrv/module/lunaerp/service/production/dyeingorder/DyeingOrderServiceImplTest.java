@@ -48,6 +48,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_REFERENCE_NOT_FOUND;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_COLOR_HAS_VATS;
@@ -87,6 +88,9 @@ class DyeingOrderServiceImplTest {
 
     @Mock
     private ColorInstructionMapper colorInstructionMapper;
+
+    @Mock
+    private ColorInstructionService colorInstructionService;
 
     @InjectMocks
     private DyeingOrderServiceImpl dyeingOrderService;
@@ -1247,6 +1251,112 @@ class DyeingOrderServiceImplTest {
         DyeingOrderDO updated = captor.getValue();
         assertNull(updated.getColorInstructionId());
         assertNull(updated.getColorInstructionNo(), "清空打色指示单引用时快照应置空");
+    }
+
+    // ==================== 投产自动触发（07 票） ====================
+
+    @Test
+    void createDyeingOrder_draft_withColorInstructionId_doesNotTriggerMarkInProduction() {
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", "P001", 201L);
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductCode("P001");
+        reqVO.setColorInstructionId(100L);
+        // 缺省状态为 DRAFT
+
+        dyeingOrderService.createDyeingOrder(reqVO);
+
+        // DRAFT 保存严禁触发 markInProduction
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void effectDyeingOrder_withColorInstructionId_triggersMarkInProduction() {
+        DyeingOrderDO order = new DyeingOrderDO();
+        order.setId(1001L);
+        order.setStatus("DRAFT");
+        order.setColorInstructionId(100L);
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(order);
+
+        dyeingOrderService.effectDyeingOrder(1001L);
+
+        // 下达动作（DRAFT -> ACTIVE）且存在打色单引用时触发
+        verify(colorInstructionService).markInProduction(100L);
+        verify(dyeingOrderMapper).update(isNull(), any());
+    }
+
+    @Test
+    void effectDyeingOrder_withoutColorInstructionId_doesNotTriggerMarkInProduction() {
+        DyeingOrderDO order = new DyeingOrderDO();
+        order.setId(1001L);
+        order.setStatus("DRAFT");
+        order.setColorInstructionId(null);
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(order);
+
+        dyeingOrderService.effectDyeingOrder(1001L);
+
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void updateDyeingOrder_active_patchColorInstructionId_triggersMarkInProduction() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(1001L);
+        existing.setStatus("ACTIVE");
+        existing.setOrderDate(LocalDate.of(2026, 9, 19));
+        existing.setColorInstructionId(null); // 原引用为空
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(existing);
+        when(dyeingColorMapper.selectListByOrderId(1001L)).thenReturn(List.of());
+
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", "P001", 201L);
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+        reqVO.setProductCode("P001");
+        reqVO.setColorInstructionId(100L); // 补填引用
+
+        dyeingOrderService.updateDyeingOrder(reqVO);
+
+        // 已为 ACTIVE 补填打色单引用触发投产
+        verify(colorInstructionService).markInProduction(100L);
+    }
+
+    @Test
+    void updateDyeingOrder_draft_withColorInstructionId_doesNotTriggerMarkInProduction() {
+        stubExistingOrder(1001L, "DRAFT");
+        when(dyeingColorMapper.selectListByOrderId(1001L)).thenReturn(List.of());
+
+        stubContract(101L, "CH20260001", 201L, "测试客户");
+        stubSupplier(301L, "海宁染整厂");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", "P001", 201L);
+
+        DyeingOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1001L);
+        reqVO.setProductCode("P001");
+        reqVO.setColorInstructionId(100L);
+
+        dyeingOrderService.updateDyeingOrder(reqVO);
+
+        // DRAFT 态 update 严禁触发 markInProduction
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void cancelDyeingOrder_withColorInstructionId_doesNotRollbackOrTouchColorInstruction() {
+        DyeingOrderDO order = new DyeingOrderDO();
+        order.setId(1001L);
+        order.setStatus("ACTIVE");
+        order.setColorInstructionId(100L);
+        when(dyeingOrderMapper.selectById(1001L)).thenReturn(order);
+
+        dyeingOrderService.cancelDyeingOrder(1001L);
+
+        // 下游单据作废/取消严禁回退或触发打色指示单
+        verify(colorInstructionService, never()).markInProduction(any());
     }
 
 }

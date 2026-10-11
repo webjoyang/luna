@@ -5,8 +5,11 @@ import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionRespVO;
 
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionColorRejectRestrikeReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionConfirmReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPrintRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionRollbackReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionVoidReqVO;
 
 /**
  * 生产管理 - 打色指示单 Service 接口
@@ -87,7 +90,48 @@ public interface ColorInstructionService {
      *
      * @param reqVO 确认参数
      */
-    void confirmColorInstruction(com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionConfirmReqVO reqVO);
+    void confirmColorInstruction(ColorInstructionConfirmReqVO reqVO);
+
+    /**
+     * 检查打色指示单是否存在下游有效业务引用（胚布单/染色单，status ≠ CANCELLED 且未删除）
+     *
+     * @param id 打色单ID
+     * @return 存在有效下游引用返回 true
+     */
+    boolean hasActiveDownstreamRef(Long id);
+
+    /**
+     * 回退打色指示单（CONFIRMED -> IN_PROGRESS，无下游引用时允许，行状态不回退）
+     *
+     * @param reqVO 回退请求参数
+     */
+    void rollbackColorInstruction(ColorInstructionRollbackReqVO reqVO);
+
+    /**
+     * 回退打色指示单（便捷重载）
+     *
+     * @param id 打色单ID
+     */
+    default void rollbackColorInstruction(Long id) {
+        rollbackColorInstruction(new ColorInstructionRollbackReqVO(id));
+    }
+
+    /**
+     * 作废打色指示单（PENDING/IN_PROGRESS/CONFIRMED -> VOID，无下游引用时允许，记录作废原因）
+     *
+     * @param reqVO 作废请求参数
+     */
+    void voidColorInstruction(ColorInstructionVoidReqVO reqVO);
+
+    /**
+     * 作废打色指示单（便捷重载）
+     *
+     * @param id 打色单ID
+     * @param voidReason 作废原因
+     */
+    default void voidColorInstruction(Long id, String voidReason) {
+        voidColorInstruction(new ColorInstructionVoidReqVO(id, voidReason));
+    }
 
     /**
      * 获得打色指示单套打数据（独立 VO，无金额字段，豁免脱敏）
@@ -96,5 +140,12 @@ public interface ColorInstructionService {
      * @return 打色指示单套打数据
      */
     ColorInstructionPrintRespVO getColorInstructionPrintData(Long id);
+
+    /**
+     * 标记打色指示单为已投产（下游单据自动触发，条件更新 CONFIRMED -> IN_PRODUCTION，幂等静默）
+     *
+     * @param id 打色指示单ID
+     */
+    void markInProduction(Long id);
 
 }

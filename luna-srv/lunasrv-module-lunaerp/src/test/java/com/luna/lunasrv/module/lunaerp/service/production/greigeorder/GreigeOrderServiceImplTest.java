@@ -24,6 +24,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesCon
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -96,6 +97,9 @@ class GreigeOrderServiceImplTest {
 
     @Mock
     private ColorInstructionMapper colorInstructionMapper;
+
+    @Mock
+    private ColorInstructionService colorInstructionService;
 
     @InjectMocks
     private GreigeOrderServiceImpl greigeOrderService;
@@ -1410,6 +1414,77 @@ class GreigeOrderServiceImplTest {
         GreigeOrderDO updated = captor.getValue();
         assertNull(updated.getColorInstructionId());
         assertNull(updated.getColorInstructionNo(), "清空打色指示单引用时快照应置空");
+    }
+
+    // ==================== 投产自动触发（07 票） ====================
+
+    @Test
+    void createGreigeOrder_withColorInstructionId_triggersMarkInProduction() {
+        stubSupplier(1L, "海宁坯布厂");
+        stubProduct(10L, "P01", "全棉");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", 10L, 20L);
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setProductId(10L);
+        reqVO.setColorInstructionId(100L);
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        verify(colorInstructionService).markInProduction(100L);
+    }
+
+    @Test
+    void createGreigeOrder_withoutColorInstructionId_doesNotTriggerMarkInProduction() {
+        stubSupplier(1L, "海宁坯布厂");
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setColorInstructionId(null);
+
+        greigeOrderService.createGreigeOrder(reqVO);
+
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void updateGreigeOrder_patchNewColorInstructionId_triggersMarkInProduction() {
+        stubSupplier(1L, "海宁坯布厂");
+        stubProduct(10L, "P01", "全棉");
+        stubColorInstruction(200L, "DS20261010002", "CONFIRMED", 10L, 20L);
+
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919777");
+        existing.setColorInstructionId(null); // 原引用为空
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of());
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setProductId(10L);
+        reqVO.setColorInstructionId(200L); // 补填引用
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        verify(colorInstructionService).markInProduction(200L);
+    }
+
+    @Test
+    void updateGreigeOrder_sameColorInstructionId_doesNotTriggerMarkInProduction() {
+        stubSupplier(1L, "海宁坯布厂");
+        stubProduct(10L, "P01", "全棉");
+        stubColorInstruction(100L, "DS20261010001", "CONFIRMED", 10L, 20L);
+
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919777");
+        existing.setColorInstructionId(100L); // 原引用为 100L
+        existing.setColorInstructionNo("DS20261010001");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+        when(greigeOrderColorMapper.selectListByOrderId(1L)).thenReturn(List.of());
+
+        GreigeOrderSaveReqVO reqVO = validCreateReqVO();
+        reqVO.setId(1L);
+        reqVO.setProductId(10L);
+        reqVO.setColorInstructionId(100L); // 未改变
+
+        greigeOrderService.updateGreigeOrder(reqVO);
+
+        verify(colorInstructionService, never()).markInProduction(any());
     }
 
 }
