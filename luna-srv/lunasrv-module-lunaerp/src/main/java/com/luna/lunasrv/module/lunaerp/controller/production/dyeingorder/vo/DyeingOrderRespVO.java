@@ -95,6 +95,12 @@ public class DyeingOrderRespVO {
     @Schema(description = "染色单状态：DRAFT/ACTIVE/COMPLETED/CANCELLED", requiredMode = Schema.RequiredMode.REQUIRED, example = "DRAFT")
     private String status;
 
+    @Schema(description = "打色指示单ID", example = "5001")
+    private Long colorInstructionId;
+
+    @Schema(description = "打色单号快照", example = "DS20261010001")
+    private String colorInstructionNo;
+
     @Schema(description = "创建人", example = "admin")
     private String creator;
 

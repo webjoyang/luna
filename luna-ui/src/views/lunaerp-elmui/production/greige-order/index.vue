@@ -59,6 +59,11 @@
         </template>
       </el-table-column>
       <el-table-column label="合同号" prop="contractNo" min-width="130" />
+      <el-table-column label="打色单号" prop="colorInstructionNo" min-width="130">
+        <template #default="{ row }">
+          <span>{{ row.colorInstructionNo || '-' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="产品名称" prop="productName" min-width="160" show-overflow-tooltip />
       <el-table-column label="坯布厂" prop="greigeFactoryName" min-width="170" show-overflow-tooltip>
         <template #default="{ row }">

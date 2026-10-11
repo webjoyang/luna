@@ -110,10 +110,10 @@ public class GreigeOrderSaveReqVO {
     @Schema(description = "生产模式（字典 lunaerp_greige_production_mode：SELF 自织 / OUTSOURCE 外发，缺省 OUTSOURCE）", example = "OUTSOURCE")
     private String productionMode;
 
-    @Schema(description = "打色指示单ID（逻辑关联可空）", example = "1024")
+    @Schema(description = "打色指示单ID（逻辑关联，可空）", example = "5001")
     private Long colorInstructionId;
 
-    @Schema(description = "打色单号快照", example = "DS20261010001")
+    @Schema(description = "打色单号快照（为空时后端用打色单档案单号回填）", example = "DS20261010001")
     @Size(max = 32, message = "打色单号长度不能超过 32 位")
     private String colorInstructionNo;
 

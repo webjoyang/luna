@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS lunaerp_production_dyeing_order (
     other_req                varchar(1000) NULL,
     remark                   varchar(1000) NULL,
     status                   varchar(16)   NOT NULL DEFAULT 'DRAFT',
+    color_instruction_id     int8          NULL,
+    color_instruction_no     varchar(32)   NULL,
     creator                  varchar(64)   NULL DEFAULT '',
     create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater                  varchar(64)   NULL DEFAULT '',

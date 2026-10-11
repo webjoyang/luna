@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS lunaerp_production_greige_order (
     remark                   varchar(1000) NULL,
     status                   varchar(16)   NOT NULL DEFAULT 'ACTIVE',
     production_mode          varchar(16)   NOT NULL DEFAULT 'OUTSOURCE',
+    color_instruction_id     int8          NULL,
+    color_instruction_no     varchar(32)   NULL,
     creator                  varchar(64)   NULL DEFAULT '',
     create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater                  varchar(64)   NULL DEFAULT '',

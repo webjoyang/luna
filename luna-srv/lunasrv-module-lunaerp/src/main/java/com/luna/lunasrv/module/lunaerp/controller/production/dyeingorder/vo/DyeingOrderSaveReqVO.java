@@ -118,10 +118,10 @@ public class DyeingOrderSaveReqVO {
     @Schema(description = "染色单状态（字典 lunaerp_dyeing_order_status），缺省 DRAFT", example = "DRAFT")
     private String status;
 
-    @Schema(description = "打色指示单ID（逻辑关联可空）", example = "1024")
+    @Schema(description = "打色指示单ID（逻辑关联，可空）", example = "5001")
     private Long colorInstructionId;
 
-    @Schema(description = "打色单号快照", example = "DS20261010001")
+    @Schema(description = "打色单号快照（为空时后端用打色单档案单号回填）", example = "DS20261010001")
     @Size(max = 32, message = "打色单号长度不能超过 32 位")
     private String colorInstructionNo;
 
