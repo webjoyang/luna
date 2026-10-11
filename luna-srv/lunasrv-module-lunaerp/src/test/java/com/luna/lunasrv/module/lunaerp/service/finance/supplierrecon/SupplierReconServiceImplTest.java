@@ -23,8 +23,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.luna.lunasrv.module.system.api.user.AdminUserApi;
+import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -53,6 +57,9 @@ class SupplierReconServiceImplTest {
 
     @Mock
     private PaymentApplyMapper paymentApplyMapper;
+
+    @Mock
+    private AdminUserApi adminUserApi;
 
     @InjectMocks
     private SupplierReconServiceImpl supplierReconService;
@@ -469,6 +476,343 @@ class SupplierReconServiceImplTest {
         ArgumentCaptor<SupplierReconDO> captor = ArgumentCaptor.forClass(SupplierReconDO.class);
         verify(supplierReconMapper).updateById(captor.capture());
         assertEquals(new BigDecimal("350.00"), captor.getValue().getTotalAmount());
+    }
+
+    // ==================== Issue 04: 对账单确认/作废守卫 + 打印数据接口 ====================
+
+    /**
+     * 10. 并发双确认：第一次成功，第二次条件更新影响 0 行报 001
+     */
+    @Test
+    void confirmRecon_concurrentDoubleConfirm_secondFailsWith001() {
+        SupplierReconDO recon = SupplierReconDO.builder()
+                .id(100L)
+                .reconNo("SR20261011100")
+                .supplierId(SUPPLIER_ID)
+                .status(SupplierReconStatusEnum.DRAFT.getValue())
+                .totalAmount(new BigDecimal("1250.00"))
+                .build();
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+
+        SupplierReconItemDO item = SupplierReconItemDO.builder()
+                .id(1L)
+                .reconId(100L)
+                .lineType(SupplierReconLineTypeEnum.PROCESS.getValue())
+                .lineAmount(new BigDecimal("1250.00"))
+                .build();
+        when(supplierReconItemMapper.selectListByReconId(100L)).thenReturn(Collections.singletonList(item));
+
+        // 第一次成功：影响 1 行
+        when(supplierReconMapper.updateToConfirmed(eq(100L), any(), any(), any())).thenReturn(1);
+        assertDoesNotThrow(() -> supplierReconService.confirmRecon(100L));
+
+        // 第二次（并发冲突，已被确认导致影响 0 行）：报 001
+        when(supplierReconMapper.updateToConfirmed(eq(100L), any(), any(), any())).thenReturn(0);
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.confirmRecon(100L));
+        assertEquals(1_030_022_001, ex.getCode());
+    }
+
+    /**
+     * 11. 零金额或空明细对账单拒绝确认报 001
+     */
+    @Test
+    void confirmRecon_zeroAmountOrEmptyItems_rejectedWith001() {
+        // 金额为 0
+        SupplierReconDO zeroRecon = SupplierReconDO.builder()
+                .id(101L)
+                .status(SupplierReconStatusEnum.DRAFT.getValue())
+                .totalAmount(BigDecimal.ZERO)
+                .build();
+        when(supplierReconMapper.selectById(101L)).thenReturn(zeroRecon);
+        when(supplierReconItemMapper.selectListByReconId(101L))
+                .thenReturn(Collections.singletonList(SupplierReconItemDO.builder().id(1L).reconId(101L).build()));
+
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> supplierReconService.confirmRecon(101L));
+        assertEquals(1_030_022_001, ex1.getCode());
+
+        // 明细为空
+        SupplierReconDO emptyItemsRecon = SupplierReconDO.builder()
+                .id(102L)
+                .status(SupplierReconStatusEnum.DRAFT.getValue())
+                .totalAmount(new BigDecimal("100.00"))
+                .build();
+        when(supplierReconMapper.selectById(102L)).thenReturn(emptyItemsRecon);
+        when(supplierReconItemMapper.selectListByReconId(102L)).thenReturn(Collections.emptyList());
+
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> supplierReconService.confirmRecon(102L));
+        assertEquals(1_030_022_001, ex2.getCode());
+
+        // 金额为 null
+        SupplierReconDO nullAmountRecon = SupplierReconDO.builder()
+                .id(103L)
+                .status(SupplierReconStatusEnum.DRAFT.getValue())
+                .totalAmount(null)
+                .build();
+        when(supplierReconMapper.selectById(103L)).thenReturn(nullAmountRecon);
+        when(supplierReconItemMapper.selectListByReconId(103L))
+                .thenReturn(Collections.singletonList(SupplierReconItemDO.builder().id(2L).reconId(103L).build()));
+
+        ServiceException ex3 = assertThrows(ServiceException.class, () -> supplierReconService.confirmRecon(103L));
+        assertEquals(1_030_022_001, ex3.getCode());
+    }
+
+    /**
+     * 12. 确认后冻结语义：已确认单据 update/reFetch/delete 以及再次 confirm 全部报 001
+     */
+    @Test
+    void confirmRecon_freezesRecon_subsequentOperationsBlockedWith001() {
+        SupplierReconDO confirmedRecon = SupplierReconDO.builder()
+                .id(104L)
+                .reconNo("SR20261011104")
+                .status(SupplierReconStatusEnum.CONFIRMED.getValue())
+                .totalAmount(new BigDecimal("5000.00"))
+                .build();
+        when(supplierReconMapper.selectById(104L)).thenReturn(confirmedRecon);
+
+        // 再次确认报 001
+        ServiceException exConfirm = assertThrows(ServiceException.class, () -> supplierReconService.confirmRecon(104L));
+        assertEquals(1_030_022_001, exConfirm.getCode());
+
+        // update 报 001
+        SupplierReconSaveReqVO updateReq = SupplierReconSaveReqVO.builder().id(104L).build();
+        ServiceException exUpdate = assertThrows(ServiceException.class, () -> supplierReconService.updateRecon(updateReq));
+        assertEquals(1_030_022_001, exUpdate.getCode());
+
+        // re-fetch 报 001
+        ServiceException exReFetch = assertThrows(ServiceException.class, () -> supplierReconService.reFetchRecon(104L));
+        assertEquals(1_030_022_001, exReFetch.getCode());
+
+        // delete 报 001
+        ServiceException exDelete = assertThrows(ServiceException.class, () -> supplierReconService.deleteRecon(104L));
+        assertEquals(1_030_022_001, exDelete.getCode());
+    }
+
+    /**
+     * 13. 作废守卫状态矩阵：
+     * - PENDING -> 报 006
+     * - APPROVING -> 报 006
+     * - APPROVED -> 报 006
+     * - REJECTED -> 成功
+     * - CANCELLED -> 成功
+     * - 无挂靠申请 -> 成功
+     */
+    @Test
+    void cancelRecon_paymentApplyStatusMatrix_guardsCorrectly() {
+        SupplierReconDO confirmedRecon = SupplierReconDO.builder()
+                .id(200L)
+                .reconNo("SR20261011200")
+                .status(SupplierReconStatusEnum.CONFIRMED.getValue())
+                .totalAmount(new BigDecimal("6000.00"))
+                .build();
+        when(supplierReconMapper.selectById(200L)).thenReturn(confirmedRecon);
+
+        // 1. PENDING -> 报 006
+        PaymentApplyDO applyPending = PaymentApplyDO.builder().id(1L).reconId(200L).approvalStatus("PENDING").build();
+        when(paymentApplyMapper.selectListByReconId(200L)).thenReturn(Collections.singletonList(applyPending));
+        ServiceException exPending = assertThrows(ServiceException.class, () -> supplierReconService.cancelRecon(200L));
+        assertEquals(1_030_022_006, exPending.getCode());
+
+        // 2. APPROVING -> 报 006
+        PaymentApplyDO applyApproving = PaymentApplyDO.builder().id(2L).reconId(200L).approvalStatus("APPROVING").build();
+        when(paymentApplyMapper.selectListByReconId(200L)).thenReturn(Collections.singletonList(applyApproving));
+        ServiceException exApproving = assertThrows(ServiceException.class, () -> supplierReconService.cancelRecon(200L));
+        assertEquals(1_030_022_006, exApproving.getCode());
+
+        // 3. APPROVED -> 报 006
+        PaymentApplyDO applyApproved = PaymentApplyDO.builder().id(3L).reconId(200L).approvalStatus("APPROVED").build();
+        when(paymentApplyMapper.selectListByReconId(200L)).thenReturn(Collections.singletonList(applyApproved));
+        ServiceException exApproved = assertThrows(ServiceException.class, () -> supplierReconService.cancelRecon(200L));
+        assertEquals(1_030_022_006, exApproved.getCode());
+
+        // 4. REJECTED -> 成功作废
+        PaymentApplyDO applyRejected = PaymentApplyDO.builder().id(4L).reconId(200L).approvalStatus("REJECTED").build();
+        when(paymentApplyMapper.selectListByReconId(200L)).thenReturn(Collections.singletonList(applyRejected));
+        when(supplierReconMapper.updateToCancelled(eq(200L), any(), any(), any())).thenReturn(1);
+        assertDoesNotThrow(() -> supplierReconService.cancelRecon(200L));
+
+        // 5. CANCELLED -> 成功作废
+        PaymentApplyDO applyCancelled = PaymentApplyDO.builder().id(5L).reconId(200L).approvalStatus("CANCELLED").build();
+        when(paymentApplyMapper.selectListByReconId(200L)).thenReturn(Collections.singletonList(applyCancelled));
+        assertDoesNotThrow(() -> supplierReconService.cancelRecon(200L));
+
+        // 6. 无挂靠申请 -> 成功作废
+        when(paymentApplyMapper.selectListByReconId(200L)).thenReturn(Collections.emptyList());
+        assertDoesNotThrow(() -> supplierReconService.cancelRecon(200L));
+    }
+
+    /**
+     * 14. 作废单据并发或行数为0报 001
+     */
+    @Test
+    void cancelRecon_concurrencyZeroRowsAffected_throws001() {
+        SupplierReconDO confirmedRecon = SupplierReconDO.builder()
+                .id(205L)
+                .status(SupplierReconStatusEnum.CONFIRMED.getValue())
+                .build();
+        when(supplierReconMapper.selectById(205L)).thenReturn(confirmedRecon);
+        when(paymentApplyMapper.selectListByReconId(205L)).thenReturn(Collections.emptyList());
+        when(supplierReconMapper.updateToCancelled(eq(205L), any(), any(), any())).thenReturn(0);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.cancelRecon(205L));
+        assertEquals(1_030_022_001, ex.getCode());
+    }
+
+    /**
+     * 15. 终态 CANCELLED 单据不可再次确认或作废（报 001）
+     */
+    @Test
+    void cancelledRecon_cannotBeConfirmedOrCancelledAgain_throws001() {
+        SupplierReconDO cancelledRecon = SupplierReconDO.builder()
+                .id(206L)
+                .status(SupplierReconStatusEnum.CANCELLED.getValue())
+                .build();
+        when(supplierReconMapper.selectById(206L)).thenReturn(cancelledRecon);
+
+        ServiceException exConfirm = assertThrows(ServiceException.class, () -> supplierReconService.confirmRecon(206L));
+        assertEquals(1_030_022_001, exConfirm.getCode());
+
+        ServiceException exCancel = assertThrows(ServiceException.class, () -> supplierReconService.cancelRecon(206L));
+        assertEquals(1_030_022_001, exCancel.getCode());
+    }
+
+    /**
+     * 16. 作废对账单释放指纹：验证 updateToCancelled 触发
+     */
+    @Test
+    void cancelRecon_releasesFingerprints_verified() {
+        SupplierReconDO recon = SupplierReconDO.builder()
+                .id(207L)
+                .status(SupplierReconStatusEnum.CONFIRMED.getValue())
+                .build();
+        recon.setTenantId(1L);
+        when(supplierReconMapper.selectById(207L)).thenReturn(recon);
+        when(paymentApplyMapper.selectListByReconId(207L)).thenReturn(Collections.emptyList());
+        when(supplierReconMapper.updateToCancelled(eq(207L), eq(1L), any(), any())).thenReturn(1);
+
+        supplierReconService.cancelRecon(207L);
+
+        verify(supplierReconMapper).updateToCancelled(eq(207L), eq(1L), any(), any());
+    }
+
+    /**
+     * 17. 打印数据组装：抬头、供应商、区间、三类行、合计、确认人与时间、打印时间（豁免脱敏）
+     */
+    @Test
+    void getPrintData_success_assemblesAllFieldsAndExemptFromSensitive() {
+        SupplierReconDO recon = SupplierReconDO.builder()
+                .id(301L)
+                .reconNo("SR20261011301")
+                .supplierId(SUPPLIER_ID)
+                .supplierName(SUPPLIER_NAME)
+                .periodStart(START)
+                .periodEnd(END)
+                .status(SupplierReconStatusEnum.CONFIRMED.getValue())
+                .totalAmount(new BigDecimal("14800.00"))
+                .confirmedBy(88L)
+                .confirmedAt(LocalDateTime.of(2026, 10, 11, 10, 0, 0))
+                .remark("9月对账确认套打")
+                .build();
+        when(supplierReconMapper.selectById(301L)).thenReturn(recon);
+
+        // Mock 用户 API 获取确认人姓名
+        AdminUserRespDTO adminUser = new AdminUserRespDTO();
+        adminUser.setId(88L);
+        adminUser.setNickname("张主管");
+        when(adminUserApi.getUser(88L)).thenReturn(adminUser);
+
+        // 构造三类行：PROCESS、PURCHASE、ADJUST
+        SupplierReconItemDO processItem = SupplierReconItemDO.builder()
+                .id(1L)
+                .reconId(301L)
+                .lineType(SupplierReconLineTypeEnum.PROCESS.getValue())
+                .inspectionOrderId(101L)
+                .inspectionOrderNo("INS-20260901")
+                .inspectionType("GREIGE")
+                .productCode("FAB-001")
+                .productName("胚布A")
+                .qtyKg(new BigDecimal("100.00"))
+                .qtyM(new BigDecimal("500.00"))
+                .pricingBasis(PricingBasisEnum.METER.getValue())
+                .billQty(new BigDecimal("500.00"))
+                .unitPrice(new BigDecimal("10.0000"))
+                .lineAmount(new BigDecimal("5000.00"))
+                .build();
+
+        SupplierReconItemDO purchaseItem = SupplierReconItemDO.builder()
+                .id(2L)
+                .reconId(301L)
+                .lineType(SupplierReconLineTypeEnum.PURCHASE.getValue())
+                .stockInId(201L)
+                .stockInNo("IN-20260902")
+                .yarnOrderNo("YO-20260901")
+                .productCode("YARN-32")
+                .productName("32支全棉纱")
+                .batchNo("B202609")
+                .qtyKg(new BigDecimal("1000.00"))
+                .pricingBasis(PricingBasisEnum.KG.getValue())
+                .billQty(new BigDecimal("1000.00"))
+                .unitPrice(new BigDecimal("10.0000"))
+                .lineAmount(new BigDecimal("10000.00"))
+                .build();
+
+        SupplierReconItemDO adjustItem = SupplierReconItemDO.builder()
+                .id(3L)
+                .reconId(301L)
+                .lineType(SupplierReconLineTypeEnum.ADJUST.getValue())
+                .lineAmount(new BigDecimal("-200.00"))
+                .adjustReason("色差质量扣款")
+                .remark("扣减200元")
+                .build();
+
+        when(supplierReconItemMapper.selectListByReconId(301L))
+                .thenReturn(Arrays.asList(processItem, purchaseItem, adjustItem));
+
+        SupplierReconPrintRespVO printData = supplierReconService.getPrintData(301L);
+
+        assertNotNull(printData);
+        assertEquals("供应商对账单", printData.getCompanyTitle());
+        assertEquals(301L, printData.getId());
+        assertEquals("SR20261011301", printData.getReconNo());
+        assertEquals(SUPPLIER_ID, printData.getSupplierId());
+        assertEquals(SUPPLIER_NAME, printData.getSupplierName());
+        assertEquals(START, printData.getPeriodStart());
+        assertEquals(END, printData.getPeriodEnd());
+        assertEquals(SupplierReconStatusEnum.CONFIRMED.getValue(), printData.getStatus());
+        assertEquals(new BigDecimal("14800.00"), printData.getTotalAmount());
+        assertEquals(88L, printData.getConfirmedBy());
+        assertEquals("张主管", printData.getConfirmedByName());
+        assertEquals(LocalDateTime.of(2026, 10, 11, 10, 0, 0), printData.getConfirmedAt());
+        assertEquals("9月对账确认套打", printData.getRemark());
+        assertNotNull(printData.getPrintTime());
+
+        assertEquals(3, printData.getItems().size());
+
+        SupplierReconPrintItemRespVO pItem = printData.getItems().get(0);
+        assertEquals(SupplierReconLineTypeEnum.PROCESS.getValue(), pItem.getLineType());
+        assertEquals("INS-20260901", pItem.getInspectionOrderNo());
+        assertEquals("M", pItem.getQtyUnit());
+        assertEquals(new BigDecimal("5000.00"), pItem.getLineAmount());
+
+        SupplierReconPrintItemRespVO puItem = printData.getItems().get(1);
+        assertEquals(SupplierReconLineTypeEnum.PURCHASE.getValue(), puItem.getLineType());
+        assertEquals("IN-20260902", puItem.getStockInNo());
+        assertEquals("KG", puItem.getQtyUnit());
+        assertEquals(new BigDecimal("10000.00"), puItem.getLineAmount());
+
+        SupplierReconPrintItemRespVO aItem = printData.getItems().get(2);
+        assertEquals(SupplierReconLineTypeEnum.ADJUST.getValue(), aItem.getLineType());
+        assertEquals(new BigDecimal("-200.00"), aItem.getLineAmount());
+        assertEquals("色差质量扣款", aItem.getAdjustReason());
+    }
+
+    /**
+     * 18. 打印数据获取不存在的对账单报 000
+     */
+    @Test
+    void getPrintData_reconNotExists_throws000() {
+        when(supplierReconMapper.selectById(999L)).thenReturn(null);
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.getPrintData(999L));
+        assertEquals(1_030_022_000, ex.getCode());
     }
 
 }

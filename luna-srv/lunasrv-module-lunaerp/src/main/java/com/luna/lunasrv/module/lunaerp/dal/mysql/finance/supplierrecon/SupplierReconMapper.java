@@ -111,4 +111,16 @@ public interface SupplierReconMapper extends BaseMapperX<SupplierReconDO> {
      */
     Long selectActiveReferenceCount(@Param("reconId") Long reconId, @Param("tenantId") Long tenantId);
 
+    /**
+     * 条件更新对账单状态为已确认（并发防重）
+     */
+    int updateToConfirmed(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                          @Param("userId") Long userId, @Param("now") LocalDateTime now);
+
+    /**
+     * 条件更新对账单状态为已作废（并发防重）
+     */
+    int updateToCancelled(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                          @Param("userId") Long userId, @Param("now") LocalDateTime now);
+
 }

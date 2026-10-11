@@ -79,4 +79,30 @@ public class SupplierReconController {
         return success(true);
     }
 
+    @PutMapping("/confirm")
+    @Operation(summary = "确认供应商对账单")
+    @Parameter(name = "id", description = "编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:supplierrecon:confirm')")
+    public CommonResult<Boolean> confirmRecon(@RequestParam("id") Long id) {
+        supplierReconService.confirmRecon(id);
+        return success(true);
+    }
+
+    @PutMapping("/cancel")
+    @Operation(summary = "作废供应商对账单")
+    @Parameter(name = "id", description = "编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:supplierrecon:confirm')")
+    public CommonResult<Boolean> cancelRecon(@RequestParam("id") Long id) {
+        supplierReconService.cancelRecon(id);
+        return success(true);
+    }
+
+    @GetMapping("/print-data")
+    @Operation(summary = "获得供应商对账单打印数据")
+    @Parameter(name = "id", description = "编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:supplierrecon:print')")
+    public CommonResult<SupplierReconPrintRespVO> getPrintData(@RequestParam("id") Long id) {
+        return success(supplierReconService.getPrintData(id));
+    }
+
 }
