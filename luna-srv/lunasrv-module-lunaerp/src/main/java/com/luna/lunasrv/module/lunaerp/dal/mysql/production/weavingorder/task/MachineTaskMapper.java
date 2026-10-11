@@ -115,6 +115,26 @@ public interface MachineTaskMapper extends BaseMapperX<MachineTaskDO> {
                 .eqIfPresent(MachineTaskDO::getWorkerUserId, reqVO.getWorkerUserId())
                 .eqIfPresent(MachineTaskDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(MachineTaskDO::getCode, reqVO.getCode())
+                .orderByAsc(MachineTaskDO::getPlannedStart)
+                .orderByDesc(MachineTaskDO::getId));
+    }
+
+    /**
+     * 分页查询机台任务（支持限定指定 ID 集合，如冲突任务过滤；排序按 planned_start 升、id 降）
+     *
+     * @param reqVO 分页查询条件
+     * @param includeIds 限定包含的 ID 集合（为 null 则不限定）
+     * @return 分页结果
+     */
+    default PageResult<MachineTaskDO> selectPageWithIds(MachineTaskPageReqVO reqVO, java.util.Collection<Long> includeIds) {
+        return selectPage(reqVO, new LambdaQueryWrapperX<MachineTaskDO>()
+                .eqIfPresent(MachineTaskDO::getWeavingOrderId, reqVO.getWeavingOrderId())
+                .eqIfPresent(MachineTaskDO::getLoomId, reqVO.getLoomId())
+                .eqIfPresent(MachineTaskDO::getWorkerUserId, reqVO.getWorkerUserId())
+                .eqIfPresent(MachineTaskDO::getStatus, reqVO.getStatus())
+                .likeIfPresent(MachineTaskDO::getCode, reqVO.getCode())
+                .inIfPresent(MachineTaskDO::getId, includeIds)
+                .orderByAsc(MachineTaskDO::getPlannedStart)
                 .orderByDesc(MachineTaskDO::getId));
     }
 
@@ -125,8 +145,18 @@ public interface MachineTaskMapper extends BaseMapperX<MachineTaskDO> {
      * @return 任务列表
      */
     default List<MachineTaskDO> selectOccupiedTasksByLoomId(Long loomId) {
+        return selectOccupiedTasksByLoomIds(loomId != null ? List.of(loomId) : null);
+    }
+
+    /**
+     * 查询指定织机列表（或全部织机）下占用态（PENDING / IN_PROGRESS / HALTED）且已排日期的机台任务
+     *
+     * @param loomIds 织机ID集合（为 null 时查询全部）
+     * @return 任务列表
+     */
+    default List<MachineTaskDO> selectOccupiedTasksByLoomIds(java.util.Collection<Long> loomIds) {
         return selectList(new LambdaQueryWrapperX<MachineTaskDO>()
-                .eq(MachineTaskDO::getLoomId, loomId)
+                .inIfPresent(MachineTaskDO::getLoomId, loomIds)
                 .in(MachineTaskDO::getStatus, List.of("PENDING", "IN_PROGRESS", "HALTED"))
                 .and(w -> w.isNotNull(MachineTaskDO::getPlannedStart).or().isNotNull(MachineTaskDO::getPlannedEnd))
                 .orderByAsc(MachineTaskDO::getPlannedStart)
