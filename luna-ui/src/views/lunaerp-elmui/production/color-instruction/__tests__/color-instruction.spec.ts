@@ -655,4 +655,90 @@ describe('Color Instruction (打色指示单) Foundation Tests', () => {
       expect(targetForm.colorInstructionNo).toBeUndefined()
     })
   })
+
+  describe('Issue 08: Rollback, Void & Terminal Guard (回退、作废与终态守卫)', () => {
+    it('should invoke rollbackColorInstruction API correctly', async () => {
+      ;(request.put as any).mockResolvedValueOnce({ data: true })
+
+      const res = await ColorInstructionApi.rollbackColorInstruction(100)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/production/color-instruction/rollback',
+        data: { id: 100 }
+      })
+      expect(res).toEqual({ data: true })
+    })
+
+    it('should invoke voidColorInstruction API correctly', async () => {
+      ;(request.put as any).mockResolvedValueOnce({ data: true })
+
+      const payload = { id: 100, voidReason: '客户取消订单' }
+      const res = await ColorInstructionApi.voidColorInstruction(payload)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/production/color-instruction/void',
+        data: payload
+      })
+      expect(res).toEqual({ data: true })
+    })
+
+    it('should determine rollback button visibility (only CONFIRMED & id)', () => {
+      const isRollbackVisible = (status?: string, id?: string | number) => {
+        return status === 'CONFIRMED' && !!id
+      }
+
+      expect(isRollbackVisible('CONFIRMED', 100)).toBe(true)
+      expect(isRollbackVisible('PENDING', 100)).toBe(false)
+      expect(isRollbackVisible('IN_PROGRESS', 100)).toBe(false)
+      expect(isRollbackVisible('IN_PRODUCTION', 100)).toBe(false)
+      expect(isRollbackVisible('VOID', 100)).toBe(false)
+      expect(isRollbackVisible('CONFIRMED', undefined)).toBe(false)
+      expect(isRollbackVisible('CONFIRMED', '')).toBe(false)
+    })
+
+    it('should determine void button visibility (PENDING, IN_PROGRESS, CONFIRMED & id)', () => {
+      const isVoidVisible = (status?: string, id?: string | number) => {
+        return !!status && ['PENDING', 'IN_PROGRESS', 'CONFIRMED'].includes(status) && !!id
+      }
+
+      expect(isVoidVisible('PENDING', 100)).toBe(true)
+      expect(isVoidVisible('IN_PROGRESS', 100)).toBe(true)
+      expect(isVoidVisible('CONFIRMED', 100)).toBe(true)
+      expect(isVoidVisible('IN_PRODUCTION', 100)).toBe(false)
+      expect(isVoidVisible('VOID', 100)).toBe(false)
+      expect(isVoidVisible('PENDING', undefined)).toBe(false)
+    })
+
+    it('should enforce terminal state guards: read-only form and only print/back buttons for IN_PRODUCTION and VOID', () => {
+      const terminalStatuses = ['IN_PRODUCTION', 'VOID']
+
+      const isViewMode = (status?: string, mode?: string) => {
+        return mode === 'view' || (!!status && !['PENDING', 'IN_PROGRESS'].includes(status))
+      }
+
+      const getVisibleActionButtons = (status?: string, id?: number) => {
+        const buttons: string[] = []
+        if (status === 'PENDING' && id) buttons.push('start')
+        if (status === 'IN_PROGRESS' && id) buttons.push('confirm')
+        if (status === 'CONFIRMED' && id) buttons.push('rollback')
+        if (['PENDING', 'IN_PROGRESS', 'CONFIRMED'].includes(status || '') && id) buttons.push('void')
+        if (id) buttons.push('print')
+        if (isViewMode(status)) {
+          buttons.push('back')
+        } else {
+          buttons.push('cancel', 'save')
+        }
+        return buttons
+      }
+
+      for (const status of terminalStatuses) {
+        expect(isViewMode(status)).toBe(true)
+        const visibleActions = getVisibleActionButtons(status, 100)
+        expect(visibleActions).toEqual(['print', 'back'])
+        expect(visibleActions).not.toContain('start')
+        expect(visibleActions).not.toContain('confirm')
+        expect(visibleActions).not.toContain('rollback')
+        expect(visibleActions).not.toContain('void')
+        expect(visibleActions).not.toContain('save')
+      }
+    })
+  })
 })

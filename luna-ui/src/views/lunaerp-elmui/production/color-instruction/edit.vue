@@ -32,7 +32,27 @@
         >
           确认
         </el-button>
-                <PrintDispatcher
+        <el-button
+          v-if="formData.status === 'CONFIRMED' && id"
+          type="warning"
+          plain
+          :loading="rollbackLoading"
+          v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+          @click="handleRollback"
+        >
+          回退
+        </el-button>
+        <el-button
+          v-if="['PENDING', 'IN_PROGRESS', 'CONFIRMED'].includes(formData.status || '') && id"
+          type="danger"
+          plain
+          :loading="voidLoading"
+          v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+          @click="openVoidDialog"
+        >
+          作废
+        </el-button>
+        <PrintDispatcher
           v-if="id"
           biz-type="COLOR_INSTRUCTION"
           :biz-id="id"
@@ -272,6 +292,11 @@
           <el-col :span="8" v-if="formData.customerFeedback">
             <el-form-item label="反馈意见">
               <span class="text-sm text-gray-600">{{ formData.customerFeedback }}</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8" v-if="formData.voidReason">
+            <el-form-item label="作废原因">
+              <span class="text-sm text-red-500 font-medium">{{ formData.voidReason }}</span>
             </el-form-item>
           </el-col>
         </el-row>
@@ -576,6 +601,37 @@
         <el-button type="primary" :loading="confirmSubmitting" @click="handleConfirmSubmit">确定确认</el-button>
       </template>
     </el-dialog>
+
+    <!-- 作废打色单弹窗 -->
+    <el-dialog
+      v-model="voidDialogVisible"
+      title="作废打色单"
+      width="500px"
+      append-to-body
+      destroy-on-close
+    >
+      <el-form
+        ref="voidFormRef"
+        :model="voidFormData"
+        :rules="voidFormRules"
+        label-width="100px"
+      >
+        <el-form-item label="作废原因" prop="voidReason">
+          <el-input
+            v-model="voidFormData.voidReason"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入作废原因（必填）"
+            maxlength="200"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="voidDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="voidSubmitting" @click="handleVoidSubmit">确定作废</el-button>
+      </template>
+    </el-dialog>
   </ContentWrap>
 </template>
 
@@ -622,6 +678,20 @@ const confirmFormData = reactive<{
 })
 const confirmFormRules = reactive<FormRules>({
   confirmType: [{ required: true, message: '请选择确认类型', trigger: 'change' }]
+})
+
+const rollbackLoading = ref(false)
+const voidLoading = ref(false)
+const voidDialogVisible = ref(false)
+const voidSubmitting = ref(false)
+const voidFormRef = ref<FormInstance>()
+const voidFormData = reactive<{
+  voidReason: string
+}>({
+  voidReason: ''
+})
+const voidFormRules = reactive<FormRules>({
+  voidReason: [{ required: true, message: '请输入作废原因', trigger: 'blur' }]
 })
 
 let tempIdCounter = 0
@@ -701,6 +771,9 @@ const formData = reactive<Partial<ColorInstructionVO>>({
   composition: '',
   width: '',
   gsm: '',
+  confirmType: undefined,
+  customerFeedback: '',
+  voidReason: '',
   remark: '',
   colors: []
 })
@@ -1042,6 +1115,60 @@ const handleConfirmSubmit = async () => {
     console.error('Failed to confirm color instruction:', error)
   } finally {
     confirmSubmitting.value = false
+  }
+}
+
+// 回退打色指示单（CONFIRMED -> IN_PROGRESS，二次确认）
+const handleRollback = async () => {
+  if (!id.value) return
+  try {
+    await ElMessageBox.confirm(
+      '确认回退该打色指示单吗？回退后状态将转为打色中（IN_PROGRESS），已有通过行将保留。',
+      '回退打色指示单',
+      {
+        confirmButtonText: '确定回退',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    rollbackLoading.value = true
+    await ColorInstructionApi.rollbackColorInstruction(Number(id.value))
+    ElMessage.success('打色指示单已成功回退至打色中')
+    await loadDetail(Number(id.value))
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('Failed to rollback color instruction:', error)
+    }
+  } finally {
+    rollbackLoading.value = false
+  }
+}
+
+// 打开作废打色单弹窗
+const openVoidDialog = () => {
+  voidFormData.voidReason = ''
+  voidDialogVisible.value = true
+}
+
+// 提交作废打色单
+const handleVoidSubmit = async () => {
+  if (!voidFormRef.value || !id.value) return
+  const valid = await voidFormRef.value.validate()
+  if (!valid) return
+
+  voidSubmitting.value = true
+  try {
+    await ColorInstructionApi.voidColorInstruction({
+      id: Number(id.value),
+      voidReason: voidFormData.voidReason
+    })
+    ElMessage.success('打色指示单已作废')
+    voidDialogVisible.value = false
+    await loadDetail(Number(id.value))
+  } catch (error: any) {
+    console.error('Failed to void color instruction:', error)
+  } finally {
+    voidSubmitting.value = false
   }
 }
 

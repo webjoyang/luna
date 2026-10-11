@@ -161,6 +161,20 @@ export const confirmColorInstruction = (data: ColorInstructionConfirmReqVO) => {
 }
 
 /**
+ * 回退打色指示单（CONFIRMED -> IN_PROGRESS，二次确认）
+ */
+export const rollbackColorInstruction = (id: number) => {
+  return request.put({ url: '/lunaerp/production/color-instruction/rollback', data: { id } })
+}
+
+/**
+ * 作废打色指示单（PENDING/IN_PROGRESS/CONFIRMED -> VOID，填作废原因）
+ */
+export const voidColorInstruction = (data: { id: number; voidReason: string }) => {
+  return request.put({ url: '/lunaerp/production/color-instruction/void', data })
+}
+
+/**
  * 打色指示单套打颜色行 VO
  */
 export interface ColorInstructionPrintColorVO {
