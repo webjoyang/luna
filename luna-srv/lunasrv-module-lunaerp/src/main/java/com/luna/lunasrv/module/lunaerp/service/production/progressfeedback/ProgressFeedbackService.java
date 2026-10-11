@@ -7,6 +7,8 @@ import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackStatisticsRespVO;
 
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackAdvanceReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCalendarReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCalendarRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackUpdateReqVO;
 
@@ -42,6 +44,14 @@ public interface ProgressFeedbackService {
      * @return 统计条数据
      */
     ProgressFeedbackStatisticsRespVO getProgressFeedbackStatistics(ProgressFeedbackPageReqVO reqVO);
+
+    /**
+     * 获得排缸日历扁平缸数据
+     *
+     * @param reqVO 筛选条件（month 或 from/to，可选 status、dyeingFactoryId）
+     * @return 扁平缸列表响应
+     */
+    ProgressFeedbackCalendarRespVO getCalendar(ProgressFeedbackCalendarReqVO reqVO);
 
     /**
      * 新建反馈缸

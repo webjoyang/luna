@@ -93,5 +93,19 @@ public interface DyeingOrderMapper extends BaseMapperX<DyeingOrderDO> {
                 .in(DyeingOrderDO::getSalesContractId, contractIds));
     }
 
+    /**
+     * 按染色单ID集合批量查询染色单
+     *
+     * @param ids 染色单ID集合
+     * @return 染色单列表
+     */
+    default List<DyeingOrderDO> selectListByIds(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<DyeingOrderDO>()
+                .in(DyeingOrderDO::getId, ids));
+    }
+
 }
 
