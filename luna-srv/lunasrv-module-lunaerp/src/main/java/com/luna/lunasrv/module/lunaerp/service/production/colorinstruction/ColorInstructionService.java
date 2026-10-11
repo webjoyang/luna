@@ -81,4 +81,11 @@ public interface ColorInstructionService {
      */
     Long rejectRestrikeColorLine(ColorInstructionColorRejectRestrikeReqVO reqVO);
 
+    /**
+     * 确认打色指示单（三道守卫校验、confirmType内部枚举校验、条件更新防并发）
+     *
+     * @param reqVO 确认参数
+     */
+    void confirmColorInstruction(com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionConfirmReqVO reqVO);
+
 }

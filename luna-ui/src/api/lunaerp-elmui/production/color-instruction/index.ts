@@ -142,3 +142,20 @@ export const rejectRestrikeColorLine = (data: { id: number; rejectReason?: strin
   return request.put({ url: '/lunaerp/production/color-instruction/color/reject-restrike', data })
 }
 
+/**
+ * 确认打色指示单请求 VO
+ */
+export interface ColorInstructionConfirmReqVO {
+  id: number
+  confirmType: string
+  customerFeedback?: string
+}
+
+/**
+ * 确认打色指示单（IN_PROGRESS -> CONFIRMED，三道守卫校验）
+ */
+export const confirmColorInstruction = (data: ColorInstructionConfirmReqVO) => {
+  return request.put({ url: '/lunaerp/production/color-instruction/confirm', data })
+}
+
+

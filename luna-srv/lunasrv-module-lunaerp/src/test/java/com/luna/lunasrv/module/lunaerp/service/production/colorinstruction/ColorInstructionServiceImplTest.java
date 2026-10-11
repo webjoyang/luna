@@ -17,6 +17,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.color.ColorInstructionColorMapper;
+import com.luna.lunasrv.framework.security.core.LoginUser;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,8 @@ import org.mockito.ArgumentMatcher;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -1298,6 +1301,233 @@ class ColorInstructionServiceImplTest {
 
         assertEquals(2, lineNoMap.get(1L), "同色号相邻且次新轮次：C01 R1 应重排为 lineNo 2");
         assertEquals(3, lineNoMap.get(2L), "后组颜色：C02 R1 应重排为 lineNo 3");
+    }
+
+    // ==================== 05 票：确认动作与三道守卫 ====================
+
+    @Test
+    void confirmColorInstruction_notExists_throws1030032000() {
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+
+        ColorInstructionConfirmReqVO reqVO = ColorInstructionConfirmReqVO.builder()
+                .id(999L)
+                .confirmType("CUSTOMER")
+                .customerFeedback("OK")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.confirmColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING", "CONFIRMED", "IN_PRODUCTION", "VOID"})
+    void confirmColorInstruction_guard1_statusNotAllowed_throws1030032002(String status) {
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus(status);
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+
+        ColorInstructionConfirmReqVO reqVO = ColorInstructionConfirmReqVO.builder()
+                .id(101L)
+                .confirmType("CUSTOMER")
+                .customerFeedback("OK")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.confirmColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOW.getCode(), ex.getCode(),
+                "单据非 IN_PROGRESS 态（如 PENDING 或 CONFIRMED 重复确认）应抛 1_030_032_002");
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void confirmColorInstruction_guard2_hasPendingRows_throws1030032004() {
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+
+        // 包含 1 行 APPROVED 和 1 行 PENDING（未决行）
+        ColorInstructionColorDO approvedRow = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("APPROVED").build();
+        ColorInstructionColorDO pendingRow = ColorInstructionColorDO.builder()
+                .id(2L).instructionId(101L).lineNo(2).customerColorNo("C02").colorName("蓝")
+                .round(1).status("PENDING").build();
+        when(colorInstructionColorMapper.selectListByInstructionId(101L))
+                .thenReturn(List.of(approvedRow, pendingRow));
+
+        ColorInstructionConfirmReqVO reqVO = ColorInstructionConfirmReqVO.builder()
+                .id(101L)
+                .confirmType("CUSTOMER")
+                .customerFeedback("部分通过，仍有未决行")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.confirmColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_PENDING_OR_NO_APPROVED_COLOR.getCode(), ex.getCode(),
+                "存在未决 PENDING 行应抛 1_030_032_004");
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void confirmColorInstruction_guard3_noApprovedRows_allRejected_throws1030032004() {
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+
+        // 全部行均为 REJECTED（无任何 APPROVED 行）
+        ColorInstructionColorDO rejectedRow1 = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("REJECTED").build();
+        ColorInstructionColorDO rejectedRow2 = ColorInstructionColorDO.builder()
+                .id(2L).instructionId(101L).lineNo(2).customerColorNo("C02").colorName("蓝")
+                .round(1).status("REJECTED").build();
+        when(colorInstructionColorMapper.selectListByInstructionId(101L))
+                .thenReturn(List.of(rejectedRow1, rejectedRow2));
+
+        ColorInstructionConfirmReqVO reqVO = ColorInstructionConfirmReqVO.builder()
+                .id(101L)
+                .confirmType("CUSTOMER")
+                .customerFeedback("全部驳回试图确认")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.confirmColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_PENDING_OR_NO_APPROVED_COLOR.getCode(), ex.getCode(),
+                "无 APPROVED 行（全部驳回）应抛 1_030_032_004");
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"INVALID", "OTHER", "", " "})
+    void confirmColorInstruction_invalidConfirmType_throws1030032007(String invalidType) {
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+
+        ColorInstructionColorDO approvedRow = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("APPROVED").build();
+        when(colorInstructionColorMapper.selectListByInstructionId(101L))
+                .thenReturn(List.of(approvedRow));
+
+        ColorInstructionConfirmReqVO reqVO = ColorInstructionConfirmReqVO.builder()
+                .id(101L)
+                .confirmType(invalidType)
+                .customerFeedback("非法确认类型")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.confirmColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_LIGHT_OR_CONFIRM_TYPE_INVALID.getCode(), ex.getCode(),
+                "confirmType 非法值应抛 1_030_032_007");
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void confirmColorInstruction_concurrency_zeroRows_throws1030032002() {
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+
+        ColorInstructionColorDO approvedRow = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("APPROVED").build();
+        when(colorInstructionColorMapper.selectListByInstructionId(101L))
+                .thenReturn(List.of(approvedRow));
+
+        // 并发被抢先修改，影响行数为 0
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(0);
+
+        ColorInstructionConfirmReqVO reqVO = ColorInstructionConfirmReqVO.builder()
+                .id(101L)
+                .confirmType("CUSTOMER")
+                .customerFeedback("并发确认")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.confirmColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOW.getCode(), ex.getCode(),
+                "条件更新影响行数 0 应抛 1_030_032_002");
+    }
+
+    @Test
+    void confirmColorInstruction_success_writesConfirmedFields_andStatusConfirmed() {
+        setLoginUser(888L);
+
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+
+        // 成功路径：IN_PROGRESS、无 PENDING 行、有 APPROVED 行（部分 APPROVED、部分 REJECTED 允许确认）
+        ColorInstructionColorDO approvedRow = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(2).status("APPROVED").build();
+        ColorInstructionColorDO rejectedRow = ColorInstructionColorDO.builder()
+                .id(2L).instructionId(101L).lineNo(2).customerColorNo("C01").colorName("红")
+                .round(1).status("REJECTED").build();
+        when(colorInstructionColorMapper.selectListByInstructionId(101L))
+                .thenReturn(List.of(approvedRow, rejectedRow));
+
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        ColorInstructionConfirmReqVO reqVO = ColorInstructionConfirmReqVO.builder()
+                .id(101L)
+                .confirmType("CUSTOMER")
+                .customerFeedback("客户确认通过第2轮大红，同意按此投产")
+                .build();
+
+        assertDoesNotThrow(() -> colorInstructionService.confirmColorInstruction(reqVO));
+
+        ArgumentCaptor<Wrapper<ColorInstructionDO>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(colorInstructionMapper).update(isNull(), captor.capture());
+        Wrapper<ColorInstructionDO> wrapper = captor.getValue();
+
+        // 校验条件更新 SQL 片段：WHERE status='IN_PROGRESS'
+        assertTrue(wrapper.getSqlSegment().contains("status ="), "条件更新必须带 status 校验");
+        // 校验 SET 字段：status='CONFIRMED', confirm_type, customer_feedback, confirmed_by, confirmed_at
+        String sqlSet = wrapper.getSqlSet();
+        assertTrue(sqlSet.contains("status"), "应更新 status");
+        assertTrue(sqlSet.contains("confirm_type"), "应写入 confirm_type");
+        assertTrue(sqlSet.contains("customer_feedback"), "应写入 customer_feedback");
+        assertTrue(sqlSet.contains("confirmed_by"), "应写入 confirmed_by");
+        assertTrue(sqlSet.contains("confirmed_at"), "应写入 confirmed_at");
+    }
+
+    @Test
+    void confirmColorInstruction_internalConfirm_success() {
+        setLoginUser(999L);
+
+        ColorInstructionDO doc = instruction(101L, "DS20261010001");
+        doc.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(101L)).thenReturn(doc);
+
+        ColorInstructionColorDO approvedRow = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(1).status("APPROVED").build();
+        when(colorInstructionColorMapper.selectListByInstructionId(101L))
+                .thenReturn(List.of(approvedRow));
+
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        ColorInstructionConfirmReqVO reqVO = ColorInstructionConfirmReqVO.builder()
+                .id(101L)
+                .confirmType("INTERNAL")
+                .customerFeedback(null) // 反馈意见可空
+                .build();
+
+        assertDoesNotThrow(() -> colorInstructionService.confirmColorInstruction(reqVO));
+
+        ArgumentCaptor<Wrapper<ColorInstructionDO>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(colorInstructionMapper).update(isNull(), captor.capture());
+        assertTrue(captor.getValue().getSqlSet().contains("confirm_type"));
+    }
+
+    private void setLoginUser(Long userId) {
+        LoginUser loginUser = new LoginUser().setId(userId);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(loginUser, null, Collections.emptyList()));
     }
 
 }
