@@ -21,7 +21,18 @@
       </el-page-header>
     </div>
 
-    <el-alert
+    <el-tabs
+      v-if="contractId"
+      v-model="activeTab"
+      class="contract-tabs mb-12px"
+      @tab-change="handleTabChange"
+    >
+      <el-tab-pane label="合同详情" name="detail" />
+      <el-tab-pane label="生产" name="production" />
+    </el-tabs>
+
+    <div v-show="!contractId || activeTab === 'detail'">
+      <el-alert
       v-if="expiredWarningVisible"
       title="提示：此销售合同关联的报价单已过有效期，请核对价格后再行签订"
       type="warning"
@@ -419,6 +430,11 @@
         <el-button @click="handleBack">返回</el-button>
       </div>
     </el-form>
+    </div>
+
+    <div v-if="contractId && activeTab === 'production'">
+      <ReleaseProductionTab :contract-id="contractId" />
+    </div>
   </ContentWrap>
 </template>
 
@@ -436,6 +452,7 @@ import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
 import * as QuotationApi from '@/api/lunaerp/business/quotation'
 import * as ApprovalInstanceApi from '@/api/approval/instance'
 import { ElMessageBox } from 'element-plus'
+import ReleaseProductionTab from '../workspace/tabs/ReleaseProductionTab.vue'
 
 defineOptions({ name: 'LunaerpElmuiBusinessSalesContractEdit' })
 
@@ -485,6 +502,31 @@ const isCreateMode = computed(() => !contractId.value)
 const isViewMode = computed(() => route.query.mode === 'view')
 const isApproving = computed(() => formData.approvalStatus === 'APPROVING')
 const isReadOnly = computed(() => isViewMode.value || isApproving.value)
+
+/** 当前激活 Tab：合同详情 / 生产（支持 URL query ?tab=production 激活） */
+const activeTab = ref(route.query.tab === 'production' ? 'production' : 'detail')
+
+const handleTabChange = (tabName: any) => {
+  if (route.query.tab !== tabName) {
+    router.replace({
+      query: {
+        ...route.query,
+        tab: tabName === 'detail' ? undefined : tabName
+      }
+    })
+  }
+}
+
+watch(
+  () => route.query.tab,
+  (val) => {
+    if (val === 'production') {
+      activeTab.value = 'production'
+    } else {
+      activeTab.value = 'detail'
+    }
+  }
+)
 
 const pageTitle = computed(() => {
   if (isCreateMode.value) return '新建销售合同'

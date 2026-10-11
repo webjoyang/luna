@@ -24,6 +24,12 @@ public class ReleaseFromContractRespVO {
     @Schema(description = "客户名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "某某纺织")
     private String clientName;
 
+    @Schema(description = "交货日期", example = "2026-11-01")
+    private java.time.LocalDate deliveryDate;
+
+    @Schema(description = "合同状态", example = "ACTIVE")
+    private String status;
+
     @Schema(description = "合同行明细列表")
     private List<ReleaseContractLineVO> lines;
 

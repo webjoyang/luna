@@ -143,6 +143,8 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
                 .contractId(contract.getId())
                 .contractNo(contract.getContractNo())
                 .clientName(contract.getClientName())
+                .deliveryDate(contract.getDeliveryDate())
+                .status(contract.getStatus())
                 .lines(lineVOs)
                 .existingColorInstructions(existingColorInstructions)
                 .build();
