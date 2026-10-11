@@ -57,6 +57,14 @@ vi.mock('../components/print/ColorInstructionSheet.vue', () => ({
   default: { name: 'ColorInstructionSheet', props: { data: {}, list: {} } }
 }))
 
+vi.mock('@/api/lunaerp-elmui/finance/supplier-recon', () => ({
+  getSupplierReconPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierReconPrintTemplate.vue', () => ({
+  default: { name: 'SupplierReconPrintTemplate' }
+}))
+
 import * as ColorInstructionApi from '@/api/lunaerp-elmui/production/color-instruction'
 import request from '@/config/axios'
 import ColorInstructionSheet from '../components/print/ColorInstructionSheet.vue'

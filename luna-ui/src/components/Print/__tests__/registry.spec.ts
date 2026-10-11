@@ -52,6 +52,14 @@ vi.mock('@/views/lunaerp-elmui/production/color-instruction/components/print/Col
   default: { name: 'ColorInstructionSheet' }
 }))
 
+vi.mock('@/api/lunaerp-elmui/finance/supplier-recon', () => ({
+  getSupplierReconPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierReconPrintTemplate.vue', () => ({
+  default: { name: 'SupplierReconPrintTemplate' }
+}))
+
 import {
   getTemplatesByBizType,
   getTemplate,
@@ -134,6 +142,18 @@ describe('Print Template Registry', () => {
     expect(tpl.name).toBe('打色指示单')
     expect(tpl.paper).toBe('A4')
     expect(tpl.permission).toBe('lunaerp:production:color-instruction:print')
+    expect(typeof tpl.fetchApi).toBe('function')
+  })
+
+  it('should have VENDOR_RECON_A4 statically registered for VENDOR_RECON', () => {
+    const vendorTemplates = getTemplatesByBizType('VENDOR_RECON')
+    expect(vendorTemplates).toHaveLength(1)
+
+    const tpl = vendorTemplates[0]
+    expect(tpl.templateCode).toBe('VENDOR_RECON_A4')
+    expect(tpl.name).toBe('供应商对账单')
+    expect(tpl.paper).toBe('A4')
+    expect(tpl.permission).toBe('lunaerp:finance:supplierrecon:print')
     expect(typeof tpl.fetchApi).toBe('function')
   })
 

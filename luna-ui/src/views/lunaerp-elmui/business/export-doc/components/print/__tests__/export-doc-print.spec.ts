@@ -52,6 +52,14 @@ vi.mock('@/views/lunaerp-elmui/production/color-instruction/components/print/Col
   default: { name: 'ColorInstructionSheet' }
 }))
 
+vi.mock('@/api/lunaerp-elmui/finance/supplier-recon', () => ({
+  getSupplierReconPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierReconPrintTemplate.vue', () => ({
+  default: { name: 'SupplierReconPrintTemplate' }
+}))
+
 import { getCurrencySymbol, formatAmount, safeParseJson, formatDate } from '../utils'
 import { getTemplatesByBizType, getTemplate } from '@/components/Print/registry'
 

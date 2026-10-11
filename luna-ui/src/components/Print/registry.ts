@@ -14,6 +14,8 @@ import { getPrintData as getQuotationPrintData } from '@/api/lunaerp/business/qu
 import QuotationPrintTemplate from '@/views/lunaerp/business/quotation/print/QuotationPrintTemplate.vue'
 import * as colorInstructionApi from '@/api/lunaerp-elmui/production/color-instruction'
 import ColorInstructionSheet from '@/views/lunaerp-elmui/production/color-instruction/components/print/ColorInstructionSheet.vue'
+import { getSupplierReconPrintData } from '@/api/lunaerp-elmui/finance/supplier-recon'
+import SupplierReconPrintTemplate from '@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierReconPrintTemplate.vue'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -117,6 +119,15 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
     permission: 'lunaerp:production:color-instruction:print',
     component: ColorInstructionSheet,
     fetchApi: (id: string | number) => colorInstructionApi.getPrintData(Number(id))
+  },
+  {
+    bizType: 'VENDOR_RECON',
+    templateCode: 'VENDOR_RECON_A4',
+    name: '供应商对账单',
+    paper: 'A4',
+    permission: 'lunaerp:finance:supplierrecon:print',
+    component: SupplierReconPrintTemplate,
+    fetchApi: (bizId) => getSupplierReconPrintData(bizId)
   }
 ]
 
