@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.enums;
 
 import com.luna.lunasrv.framework.common.exception.ErrorCode;
+import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
 
 /**
  * LunaERP 错误码枚举类
@@ -17,13 +18,15 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-017-xxx 段（进度反馈：反馈缸与反馈记录共用）
  *                  与 1-030-018-xxx 段（发染记录）
  *                  与 1-030-019-xxx 段（生产进度查询，只读预留）
+ *                  与 1-030-022-xxx 段（供应商对账，见 FinanceErrorCodeConstants）
+ *                  与 1-030-023-xxx 段（收付款与核销，见 FinanceErrorCodeConstants）
  *                  与 1-030-031-xxx 段（商业地基通用件：回收站 000–099、Excel 导入 100–199，见 CommonErrorCodeConstants）
  *                  与 1-030-032-xxx 段（打色指示单：主表 000–099、颜色行 100–199，见 ColorInstructionErrorCodeConstants）
  *                  与 1-030-033-xxx 段（出口单证：单证套 000–099、明细 100–199、卖方配置 200–299，见 ExportDocErrorCodeConstants）
  *                  与 1-030-034-xxx 段（成本卡与报价：成本卡 000–099、报价单 100–199、纱价追加 1-030-008-008/009，见 CostCardQuotationErrorCodeConstants）
  *                  与 1-030-035-xxx 段（下达生产编排：见 ReleaseProductionErrorCodeConstants）
  */
-public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, ColorInstructionErrorCodeConstants, ReleaseProductionErrorCodeConstants {
+public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, ColorInstructionErrorCodeConstants, ReleaseProductionErrorCodeConstants, FinanceErrorCodeConstants {
 
     // ========== 产品模块 1-030-001-000 ==========
     ErrorCode PRODUCT_NOT_EXISTS = new ErrorCode(1_030_001_000, "产品不存在");
