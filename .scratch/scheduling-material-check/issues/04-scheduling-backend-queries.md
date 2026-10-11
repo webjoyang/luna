@@ -4,7 +4,7 @@
 
 **Blocked by:** 02: 机台任务同织机时段冲突硬校验（后端）——甘特 conflict 口径须与冲突校验同源
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **参考**：本目录上级 spec.md §3、§7；ADR-0041
 

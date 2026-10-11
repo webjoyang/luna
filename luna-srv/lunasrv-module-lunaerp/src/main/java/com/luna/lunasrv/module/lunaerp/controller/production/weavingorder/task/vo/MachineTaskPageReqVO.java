@@ -27,4 +27,7 @@ public class MachineTaskPageReqVO extends PageParam {
     @Schema(description = "任务编号关键词", example = "MT-ZZ")
     private String code;
 
+    @Schema(description = "是否仅看冲突任务", example = "true")
+    private Boolean conflictOnly;
+
 }

@@ -23,8 +23,11 @@ import org.springframework.validation.annotation.Validated;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
+import com.luna.lunasrv.module.lunaerp.service.production.scheduling.SchedulingConflictUtils;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
 
@@ -249,10 +252,22 @@ public class MachineTaskServiceImpl implements MachineTaskService {
         MachineTaskDO exist = validateMachineTaskExists(id);
         MachineTaskRespVO resp = BeanUtils.toBean(exist, MachineTaskRespVO.class);
 
-        // 附带超量警告计算
+        // 附带超量警告计算与织造单快照
         WeavingOrderDO weavingOrder = weavingOrderMapper.selectById(exist.getWeavingOrderId());
         if (weavingOrder != null) {
             resp.setWarning(calculateWarning(weavingOrder, exist.getId(), exist.getPlannedQty()));
+            resp.setWeavingOrderCode(weavingOrder.getCode());
+            resp.setProductCode(weavingOrder.getProductCode());
+            resp.setProductName(weavingOrder.getProductName());
+        }
+
+        // 计算 conflict 标记
+        if (exist.getLoomId() != null) {
+            List<MachineTaskDO> occupiedTasks = machineTaskMapper.selectOccupiedTasksByLoomId(exist.getLoomId());
+            Set<Long> conflictTaskIds = SchedulingConflictUtils.findConflictTaskIds(occupiedTasks);
+            resp.setConflict(conflictTaskIds.contains(exist.getId()));
+        } else {
+            resp.setConflict(false);
         }
 
         return resp;
@@ -260,8 +275,65 @@ public class MachineTaskServiceImpl implements MachineTaskService {
 
     @Override
     public PageResult<MachineTaskRespVO> getMachineTaskPage(MachineTaskPageReqVO pageReqVO) {
-        PageResult<MachineTaskDO> pageResult = machineTaskMapper.selectPage(pageReqVO);
-        return BeanUtils.toBean(pageResult, MachineTaskRespVO.class);
+        PageResult<MachineTaskDO> pageResult;
+        Set<Long> conflictTaskIds;
+
+        if (Boolean.TRUE.equals(pageReqVO.getConflictOnly())) {
+            List<Long> loomIdsFilter = pageReqVO.getLoomId() != null ? List.of(pageReqVO.getLoomId()) : null;
+            List<MachineTaskDO> occupiedTasks = machineTaskMapper.selectOccupiedTasksByLoomIds(loomIdsFilter);
+            conflictTaskIds = SchedulingConflictUtils.findConflictTaskIds(occupiedTasks);
+            if (CollUtil.isEmpty(conflictTaskIds)) {
+                return new PageResult<>(Collections.emptyList(), 0L);
+            }
+            pageResult = machineTaskMapper.selectPageWithIds(pageReqVO, conflictTaskIds);
+        } else {
+            pageResult = machineTaskMapper.selectPage(pageReqVO);
+            if (pageResult == null || CollUtil.isEmpty(pageResult.getList())) {
+                return new PageResult<>(Collections.emptyList(), pageResult != null ? pageResult.getTotal() : 0L);
+            }
+            Set<Long> pageLoomIds = pageResult.getList().stream()
+                    .map(MachineTaskDO::getLoomId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+            if (CollUtil.isNotEmpty(pageLoomIds)) {
+                List<MachineTaskDO> occupiedTasks = machineTaskMapper.selectOccupiedTasksByLoomIds(pageLoomIds);
+                conflictTaskIds = SchedulingConflictUtils.findConflictTaskIds(occupiedTasks);
+            } else {
+                conflictTaskIds = Collections.emptySet();
+            }
+        }
+
+        if (pageResult == null || CollUtil.isEmpty(pageResult.getList())) {
+            return new PageResult<>(Collections.emptyList(), pageResult != null ? pageResult.getTotal() : 0L);
+        }
+
+        List<MachineTaskDO> tasks = pageResult.getList();
+        List<MachineTaskRespVO> respList = BeanUtils.toBean(tasks, MachineTaskRespVO.class);
+
+        // 批量查询织造单快照（避免 N+1）
+        Set<Long> orderIds = tasks.stream()
+                .map(MachineTaskDO::getWeavingOrderId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, WeavingOrderDO> orderMap = Collections.emptyMap();
+        if (CollUtil.isNotEmpty(orderIds)) {
+            List<WeavingOrderDO> orders = weavingOrderMapper.selectBatchIds(orderIds);
+            if (CollUtil.isNotEmpty(orders)) {
+                orderMap = orders.stream().collect(Collectors.toMap(WeavingOrderDO::getId, Function.identity()));
+            }
+        }
+
+        for (MachineTaskRespVO resp : respList) {
+            WeavingOrderDO order = orderMap.get(resp.getWeavingOrderId());
+            if (order != null) {
+                resp.setWeavingOrderCode(order.getCode());
+                resp.setProductCode(order.getProductCode());
+                resp.setProductName(order.getProductName());
+            }
+            resp.setConflict(conflictTaskIds != null && conflictTaskIds.contains(resp.getId()));
+        }
+
+        return new PageResult<>(respList, pageResult.getTotal());
     }
 
     @Override
