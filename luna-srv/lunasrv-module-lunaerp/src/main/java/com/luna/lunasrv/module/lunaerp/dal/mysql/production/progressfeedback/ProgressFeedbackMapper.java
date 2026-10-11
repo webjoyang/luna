@@ -5,6 +5,7 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.progressfeedback.ProgressFeedbackDO;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -80,6 +81,24 @@ public interface ProgressFeedbackMapper extends BaseMapperX<ProgressFeedbackDO> 
         return selectOne(new LambdaQueryWrapperX<ProgressFeedbackDO>()
                 .eq(ProgressFeedbackDO::getDyeingColorId, colorId)
                 .eq(ProgressFeedbackDO::getVatNo, vatNo));
+    }
+
+    /**
+     * 按排缸日期区间与可选状态查询反馈缸（排缸日历用，§5.1）
+     *
+     * @param startDate 起始日期
+     * @param endDate   截止日期
+     * @param status    可选状态
+     * @return 反馈缸列表
+     */
+    default List<ProgressFeedbackDO> selectCalendarList(LocalDate startDate, LocalDate endDate, String status) {
+        return selectList(new LambdaQueryWrapperX<ProgressFeedbackDO>()
+                .geIfPresent(ProgressFeedbackDO::getScheduledDate, startDate)
+                .leIfPresent(ProgressFeedbackDO::getScheduledDate, endDate)
+                .eqIfPresent(ProgressFeedbackDO::getStatus, status)
+                .orderByAsc(ProgressFeedbackDO::getScheduledDate)
+                .orderByAsc(ProgressFeedbackDO::getVatNo)
+                .orderByAsc(ProgressFeedbackDO::getId));
     }
 
 }

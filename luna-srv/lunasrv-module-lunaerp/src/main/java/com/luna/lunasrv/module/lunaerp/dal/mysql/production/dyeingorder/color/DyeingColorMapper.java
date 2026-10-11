@@ -76,4 +76,18 @@ public interface DyeingColorMapper extends BaseMapperX<DyeingColorDO> {
                 .in(DyeingColorDO::getDyeingOrderId, orderIds));
     }
 
+    /**
+     * 按明细ID集合批量查询颜色明细
+     *
+     * @param ids 明细ID集合
+     * @return 颜色明细列表
+     */
+    default List<DyeingColorDO> selectListByIds(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<DyeingColorDO>()
+                .in(DyeingColorDO::getId, ids));
+    }
+
 }

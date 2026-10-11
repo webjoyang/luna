@@ -3,6 +3,8 @@ package com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback;
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackAdvanceReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCalendarReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCalendarRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackColorSectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackCreateReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.progressfeedback.vo.ProgressFeedbackDetailRespVO;
@@ -69,6 +71,14 @@ public class ProgressFeedbackController {
     public CommonResult<ProgressFeedbackStatisticsRespVO> getProgressFeedbackStatistics(
             ProgressFeedbackPageReqVO reqVO) {
         return success(progressFeedbackService.getProgressFeedbackStatistics(reqVO));
+    }
+
+    @GetMapping("/calendar")
+    @Operation(summary = "获得排缸日历扁平缸数据")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:progress-feedback:query')")
+    public CommonResult<ProgressFeedbackCalendarRespVO> getProgressFeedbackCalendar(
+            @Valid ProgressFeedbackCalendarReqVO reqVO) {
+        return success(progressFeedbackService.getCalendar(reqVO));
     }
 
     @PostMapping("/create")
