@@ -16,10 +16,16 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.color.DyeingColorDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.DyeingColorMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
 import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import com.luna.lunasrv.module.lunaerp.service.production.dyeingorder.DyeingOrderService;
 import com.luna.lunasrv.module.lunaerp.service.production.greigeorder.GreigeOrderService;
@@ -39,6 +45,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_NOT_EXISTS;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_STATUS_NOT_ALLOWED;
 import static com.luna.lunasrv.module.lunaerp.enums.ReleaseProductionErrorCodeConstants.*;
 
 /**
@@ -73,6 +81,15 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
 
     @Resource
     private InspectionOrderService inspectionOrderService;
+
+    @Resource
+    private DyeingOrderMapper dyeingOrderMapper;
+
+    @Resource
+    private DyeingColorMapper dyeingColorMapper;
+
+    @Resource
+    private InspectionOrderMapper inspectionOrderMapper;
 
     @Override
     public ReleaseFromContractRespVO getReleaseFromContract(Long contractId) {
@@ -423,6 +440,62 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
         }
 
         return resp;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createFinishedInspection(Long dyeingOrderId) {
+        // 1. 染色单校验：必须存在且状态为 COMPLETED
+        if (dyeingOrderId == null) {
+            throw exception(DYEING_ORDER_NOT_EXISTS);
+        }
+        DyeingOrderDO order = dyeingOrderMapper.selectById(dyeingOrderId);
+        if (order == null) {
+            throw exception(DYEING_ORDER_NOT_EXISTS);
+        }
+        if (!"COMPLETED".equalsIgnoreCase(order.getStatus())) {
+            throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
+        }
+
+        // 2. 查重校验：已存在同 dyeingOrderId 的 FINISHED 且未删除检验单则报错
+        Long count = inspectionOrderMapper.selectCount(new LambdaQueryWrapperX<InspectionOrderDO>()
+                .eq(InspectionOrderDO::getDyeingOrderId, dyeingOrderId)
+                .eq(InspectionOrderDO::getType, "FINISHED"));
+        if (count != null && count > 0) {
+            throw exception(FINISHED_INSPECTION_ALREADY_EXISTS);
+        }
+
+        // 3. 计算目标重量：染色单所有颜色明细 quantity 合计
+        List<DyeingColorDO> colors = dyeingColorMapper.selectListByOrderId(dyeingOrderId);
+        BigDecimal targetWeight = BigDecimal.ZERO;
+        if (CollUtil.isNotEmpty(colors)) {
+            targetWeight = colors.stream()
+                    .map(DyeingColorDO::getQuantity)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        // 4. 解析产品ID
+        Long productId = null;
+        if (StringUtils.hasText(order.getProductCode())) {
+            ProductDO product = productMapper.selectByCode(order.getProductCode());
+            if (product != null) {
+                productId = product.getId();
+            }
+        }
+
+        // 5. 调用 InspectionOrderService 创建成品检验单
+        InspectionOrderSaveReqVO reqVO = new InspectionOrderSaveReqVO();
+        reqVO.setType("FINISHED");
+        reqVO.setStatus("DRAFT");
+        reqVO.setPackageMode("ROLL");
+        reqVO.setProductId(productId);
+        reqVO.setDyeingOrderId(order.getId());
+        reqVO.setSalesContractId(order.getSalesContractId());
+        reqVO.setTargetWeight(targetWeight);
+        reqVO.setOrderDate(LocalDate.now());
+
+        return inspectionOrderService.createInspectionOrder(reqVO);
     }
 
 }

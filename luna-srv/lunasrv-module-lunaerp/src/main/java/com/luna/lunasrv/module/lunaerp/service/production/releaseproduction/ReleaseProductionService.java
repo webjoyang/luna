@@ -27,4 +27,11 @@ public interface ReleaseProductionService {
      */
     ReleaseProductionRespVO releaseProduction(ReleaseProductionReqVO reqVO);
 
+    /**
+     * 从染色单生成成品检验单
+     *
+     * @param dyeingOrderId 染色单ID
+     * @return 生成的检验单ID
+     */
+    Long createFinishedInspection(Long dyeingOrderId);
 }

@@ -69,4 +69,19 @@ class ReleaseProductionControllerTest {
         verify(releaseProductionService).releaseProduction(reqVO);
     }
 
+    @Test
+    @DisplayName("createFinishedInspection: 调用 service 并返回生成的检验单 ID")
+    void testCreateFinishedInspection() {
+        Long dyeingOrderId = 55L;
+        Long expectedInspectionId = 88L;
+        when(releaseProductionService.createFinishedInspection(dyeingOrderId)).thenReturn(expectedInspectionId);
+
+        CommonResult<Long> result = controller.createFinishedInspection(dyeingOrderId);
+
+        assertNotNull(result);
+        assertTrue(result.isSuccess());
+        assertEquals(expectedInspectionId, result.getData());
+        verify(releaseProductionService).createFinishedInspection(dyeingOrderId);
+    }
+
 }

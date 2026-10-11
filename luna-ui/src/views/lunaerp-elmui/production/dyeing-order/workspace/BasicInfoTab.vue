@@ -39,7 +39,11 @@
       </el-col>
       <el-col :span="12">
         <el-form-item label="客户名称">
-          <el-input :model-value="formData.clientName || '—'" disabled placeholder="选合同后自动带出" />
+          <el-input
+            :model-value="formData.clientName || '—'"
+            disabled
+            placeholder="选合同后自动带出"
+          />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -89,7 +93,10 @@
               :value="item.id!"
             >
               <div class="flex items-center justify-between">
-                <span>[{{ item.instructionNo }}] {{ item.clientName || '无客户' }} - {{ item.productName || '无产品' }}</span>
+                <span
+                  >[{{ item.instructionNo }}] {{ item.clientName || '无客户' }} -
+                  {{ item.productName || '无产品' }}</span
+                >
                 <span v-if="formatColorSummary(item)" class="text-gray-400 text-xs ml-2">
                   {{ formatColorSummary(item) }}
                 </span>
@@ -249,13 +256,7 @@
           <span>{{ row.contractQty != null ? Number(row.contractQty).toFixed(2) : '—' }}</span>
         </template>
       </el-table-column>
-      <el-table-column
-        v-if="!isReadOnly"
-        label="操作"
-        width="80"
-        align="center"
-        fixed="right"
-      >
+      <el-table-column v-if="!isReadOnly" label="操作" width="80" align="center" fixed="right">
         <template #default="{ $index }">
           <el-button type="danger" link @click="removeColor($index)">删除</el-button>
         </template>
@@ -265,9 +266,8 @@
       <el-button type="primary" plain @click="addColor">新增颜色行</el-button>
     </div>
     <div class="items-summary">
-      合计：本单染色数量 <b>{{ formatQty(totalQuantity) }}</b>
-      ／ 投染数 <b>{{ formatQty(totalInputQty) }}</b>
-      ／ 匹数 <b>{{ totalPieces }}</b>
+      合计：本单染色数量 <b>{{ formatQty(totalQuantity) }}</b> ／ 投染数
+      <b>{{ formatQty(totalInputQty) }}</b> ／ 匹数 <b>{{ totalPieces }}</b>
     </div>
 
     <!-- 第三区：技术规格与色牢度 -->
@@ -417,16 +417,30 @@
           取消
         </el-button>
       </template>
+
+      <!-- 已完成态 (COMPLETED)：[生成成品检验单] -->
+      <template v-else-if="formData.status === 'COMPLETED'">
+        <el-button
+          type="primary"
+          :loading="submitLoading"
+          @click="handleCreateFinishedInspection"
+          v-hasPermi="['lunaerp:production:release-production:release']"
+        >
+          生成成品检验单
+        </el-button>
+      </template>
     </div>
   </el-form>
 </template>
 
 <script lang="ts" setup>
+import { useRouter } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { formatDate } from '@/utils/formatTime'
 import * as DyeingOrderApi from '@/api/lunaerp-elmui/production/dyeing-order'
 import type { DyeingOrderVO, DyeingColorVO } from '@/api/lunaerp-elmui/production/dyeing-order'
+import * as ReleaseProductionApi from '@/api/lunaerp-elmui/production/release-production'
 import * as SalesContractApi from '@/api/lunaerp-elmui/business/sales-contract'
 import type { SalesContractVO } from '@/api/lunaerp-elmui/business/sales-contract'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
@@ -435,6 +449,8 @@ import * as ColorInstructionApi from '@/api/lunaerp-elmui/production/color-instr
 import type { ColorInstructionVO } from '@/api/lunaerp-elmui/production/color-instruction'
 
 defineOptions({ name: 'DyeingOrderBasicInfoTab' })
+
+const router = useRouter()
 
 const props = defineProps<{
   orderId?: string | number | null
@@ -670,7 +686,10 @@ const colorInstructionLoading = ref(false)
 
 const formatColorSummary = (item: ColorInstructionVO): string => {
   if (!item.colorSummary || item.colorSummary.length === 0) return ''
-  return item.colorSummary.map((c) => c.customerColorNo || c.colorName).filter(Boolean).join('、')
+  return item.colorSummary
+    .map((c) => c.customerColorNo || c.colorName)
+    .filter(Boolean)
+    .join('、')
 }
 
 const searchColorInstructions = async (query: string) => {
@@ -810,7 +829,11 @@ const handleSave = async (status: 'DRAFT' | 'ACTIVE') => {
 const hasActions = computed(() => {
   if (props.isViewMode) return false
   if (isCreateMode.value) return true
-  return formData.value.status === 'DRAFT' || formData.value.status === 'ACTIVE'
+  return (
+    formData.value.status === 'DRAFT' ||
+    formData.value.status === 'ACTIVE' ||
+    formData.value.status === 'COMPLETED'
+  )
 })
 
 const handleEffect = async () => {
@@ -873,6 +896,24 @@ const handleCancelOrder = async () => {
     await DyeingOrderApi.cancelDyeingOrder(Number(props.orderId))
     message.success('染色单已取消')
     await loadDetail()
+  } finally {
+    submitLoading.value = false
+  }
+}
+
+const handleCreateFinishedInspection = async () => {
+  if (!props.orderId) return
+  submitLoading.value = true
+  try {
+    const inspectionOrderId = await ReleaseProductionApi.createFinishedInspection(
+      Number(props.orderId)
+    )
+    message.success('生成成品检验单成功')
+    if (inspectionOrderId) {
+      router.push(`/production/inspection-order/workspace/${inspectionOrderId}`)
+    } else {
+      router.push('/production/inspection-order')
+    }
   } finally {
     submitLoading.value = false
   }
