@@ -142,3 +142,65 @@ export const rejectRestrikeColorLine = (data: { id: number; rejectReason?: strin
   return request.put({ url: '/lunaerp/production/color-instruction/color/reject-restrike', data })
 }
 
+/**
+ * 打色指示单套打颜色行 VO
+ */
+export interface ColorInstructionPrintColorVO {
+  id?: number
+  instructionId?: number
+  lineNo?: number
+  customerColorNo: string
+  colorName: string
+  factoryColorNo?: string
+  colorHex?: string
+  lightPrimary: string
+  lightSecondary?: string
+  colorCardRef?: string
+  samplePhotos?: string
+  copies?: number
+  round: number
+  status: string
+  rejectReason?: string
+  remark?: string
+}
+
+/**
+ * 打色指示单套打 VO（独立 VO，无金额字段，豁免脱敏）
+ */
+export interface ColorInstructionPrintVO {
+  id: number
+  instructionNo: string
+  customerId: number
+  clientName: string
+  contactPerson?: string
+  productId: number
+  productCode: string
+  productName: string
+  labFactoryId?: number | null
+  labFactoryName?: string
+  composition?: string
+  width?: string
+  gsm?: string
+  instructionDate: string
+  deliveryDate?: string
+  status: string
+  confirmType?: string
+  customerFeedback?: string
+  confirmedBy?: number
+  confirmedAt?: string
+  voidReason?: string
+  remark?: string
+  creator?: string
+  createTime?: string
+  printTime?: string
+  colors?: ColorInstructionPrintColorVO[]
+}
+
+/**
+ * 获取打色指示单套打数据（独立 VO，无金额字段，豁免脱敏）
+ */
+export const getPrintData = (id: number): Promise<ColorInstructionPrintVO> => {
+  return request.get({ url: `/lunaerp/production/color-instruction/${id}/print-data` })
+}
+
+
