@@ -76,6 +76,8 @@ export interface ColorInstructionPageReqVO {
   productCodeOrName?: string
   customerColorNo?: string
   status?: string
+  statuses?: string[]
+  keyword?: string
   instructionDateRange?: string[]
 }
 

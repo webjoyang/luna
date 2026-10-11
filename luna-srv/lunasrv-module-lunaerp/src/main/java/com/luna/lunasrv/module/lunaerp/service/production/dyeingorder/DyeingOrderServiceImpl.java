@@ -15,6 +15,9 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.Dye
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.color.DyeingColorDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.DyeingColorMapper;
 import jakarta.annotation.Resource;
@@ -65,6 +68,9 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
     @Resource
     private SalesContractMapper salesContractMapper;
 
+    @Resource
+    private ColorInstructionMapper colorInstructionMapper;
+
     @Override
     public PageResult<DyeingOrderRespVO> getDyeingOrderPage(DyeingOrderPageReqVO reqVO) {
         // 构造查询条件
@@ -83,7 +89,7 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         // 2. 组装 DO
         DyeingOrderDO order = BeanUtils.toBean(createReqVO, DyeingOrderDO.class);
         // 3. 快照回填 + 缺省值（状态缺省 DRAFT、日期缺省当天、快照回填）
-        fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory());
+        fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory(), refs.colorInstruction());
         // 4. 保存主表
         dyeingOrderMapper.insert(order);
         // 5. 颜色明细：按提交顺序重排 line_no（从 1 开始），回填 dyeingOrderId（零明细合法）
@@ -111,7 +117,7 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         if (!"DRAFT".equals(existing.getStatus())) {
             throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
         }
-        // 3. 引用校验：销售合同必填且存在；承染方供应商必填且存在
+        // 3. 引用校验：销售合同必填且存在；承染方供应商必填且存在；打色单可空且校验合法性
         ValidatedRefs refs = validateReferences(updateReqVO);
         // 4. 组装 DO
         DyeingOrderDO order = BeanUtils.toBean(updateReqVO, DyeingOrderDO.class);
@@ -121,7 +127,7 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         if (order.getOrderDate() == null) {
             order.setOrderDate(existing.getOrderDate());
         }
-        fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory());
+        fillSnapshotsAndDefaults(order, refs.contract(), refs.dyeingFactory(), refs.colorInstruction());
         // 6. 整体更新（可空字段清空随 DO 的 updateStrategy=ALWAYS 一并落库）
         dyeingOrderMapper.updateById(order);
         // 7. 颜色明细差异保存（ADR-0032）：
@@ -231,13 +237,13 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
     }
 
     /**
-     * 引用校验结果：销售合同与承染方供应商档案，供快照回填
+     * 引用校验结果：销售合同、承染方供应商档案与打色指示单档案，供快照回填
      */
-    private record ValidatedRefs(SalesContractDO contract, SupplierDO dyeingFactory) {
+    private record ValidatedRefs(SalesContractDO contract, SupplierDO dyeingFactory, ColorInstructionDO colorInstruction) {
     }
 
     /**
-     * 引用校验：销售合同必填且存在；承染方供应商必填且存在，任一不存在抛 DYEING_ORDER_REFERENCE_NOT_FOUND
+     * 引用校验：销售合同必填且存在；承染方供应商必填且存在；打色指示单可空，任一不存在或不合法抛 DYEING_ORDER_REFERENCE_NOT_FOUND
      */
     private ValidatedRefs validateReferences(DyeingOrderSaveReqVO reqVO) {
         SalesContractDO contract = salesContractMapper.selectById(reqVO.getSalesContractId());
@@ -248,16 +254,39 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         if (dyeingFactory == null) {
             throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "承染方");
         }
-        return new ValidatedRefs(contract, dyeingFactory);
+        ColorInstructionDO colorInstruction = null;
+        if (reqVO.getColorInstructionId() != null) {
+            colorInstruction = colorInstructionMapper.selectById(reqVO.getColorInstructionId());
+            if (colorInstruction == null || Boolean.TRUE.equals(colorInstruction.getDeleted())) {
+                throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
+            }
+            Long currentTenantId = TenantContextHolder.getTenantId();
+            if (currentTenantId != null && colorInstruction.getTenantId() != null && !currentTenantId.equals(colorInstruction.getTenantId())) {
+                throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
+            }
+            if (!"CONFIRMED".equals(colorInstruction.getStatus()) && !"IN_PRODUCTION".equals(colorInstruction.getStatus())) {
+                throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "打色指示单状态不是已确认或已投产");
+            }
+            if (contract.getCustomerId() != null && colorInstruction.getCustomerId() != null
+                    && !contract.getCustomerId().equals(colorInstruction.getCustomerId())) {
+                throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "打色指示单客户与销售合同客户不一致");
+            }
+            if (StringUtils.hasText(reqVO.getProductCode()) && StringUtils.hasText(colorInstruction.getProductCode())
+                    && !reqVO.getProductCode().trim().equalsIgnoreCase(colorInstruction.getProductCode().trim())) {
+                throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "打色指示单产品与染色单产品不一致");
+            }
+        }
+        return new ValidatedRefs(contract, dyeingFactory, colorInstruction);
     }
 
     /**
      * 快照回填 + 缺省值：
      * 合同号快照从销售合同带出；客户ID与客户名快照从销售合同带出；
      * 承染方公司名快照从供应商档案带出；
+     * 关联打色指示单时回填单号快照，清空引用时快照置空；
      * 单据日期缺省今天；状态缺省 DRAFT，传值仅允许 DRAFT/ACTIVE。
      */
-    private void fillSnapshotsAndDefaults(DyeingOrderDO order, SalesContractDO contract, SupplierDO dyeingFactory) {
+    private void fillSnapshotsAndDefaults(DyeingOrderDO order, SalesContractDO contract, SupplierDO dyeingFactory, ColorInstructionDO colorInstruction) {
         if (contract != null) {
             order.setContractNo(contract.getContractNo());
             order.setCustomerId(contract.getCustomerId());
@@ -265,6 +294,11 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         }
         if (dyeingFactory != null) {
             order.setDyeingFactoryName(dyeingFactory.getCompanyName());
+        }
+        if (order.getColorInstructionId() != null && colorInstruction != null) {
+            order.setColorInstructionNo(colorInstruction.getInstructionNo());
+        } else if (order.getColorInstructionId() == null) {
+            order.setColorInstructionNo(null);
         }
         if (order.getOrderDate() == null) {
             order.setOrderDate(LocalDate.now());

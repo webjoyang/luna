@@ -19,6 +19,8 @@ export interface DyeingOrderVO {
   id?: number
   salesContractId?: number
   contractNo?: string
+  colorInstructionId?: number
+  colorInstructionNo?: string
   customerId?: number
   clientName?: string
   dyeingFactoryId: number // 承染方（供应商 id），必填
