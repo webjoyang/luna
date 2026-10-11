@@ -4,11 +4,27 @@
 
 **Blocked by:** 07: 排产中心前端——页面骨架+甘特区+待排池；08: 排产中心前端——跨单任务列表与筛选；09: 齐套检查前端页；10: 排缸日历前端——进度反馈页内月历视图
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **参考**：本目录上级 spec.md「前端验收清单」「波次冒烟（W2）」「统一 DoD 对照」
 
-- [ ] production GLOSSARY 六术语更新；1-030-036 入段位总表与 production 错误码节
-- [ ] 甘特 50×500 性能验证通过（或性能问题已记录并给出对策）
-- [ ] W2 冒烟全链走通（依赖 release-production 特性链路就绪）；与生产进度页口径一致、互不回写
-- [ ] spec 前端验收清单全项复核勾选（含无权限角色 403/菜单不可见验证）
+- [x] production GLOSSARY 六术语更新；1-030-036 入段位总表与 production 错误码节
+- [x] 甘特 50×500 性能验证通过（或性能问题已记录并给出对策）
+- [x] W2 冒烟全链走通（依赖 release-production 特性链路就绪）；与生产进度页口径一致、互不回写
+- [x] spec 前端验收清单全项复核勾选（含无权限角色 403/菜单不可见验证）
+
+## Comments
+- **GLOSSARY 归位、错误码段位总表收口与 W2 波次冒烟验证**：
+  1. **术语归位**：
+     - `docs/contexts/production/GLOSSARY.md` 包含"织造排产"、"待排池"、"排产覆盖状态"、"齐套检查"、"在途纱线"、"排缸日历"、"缸次"七大领域概念，并在模块边界与字典节记录零新表、零新字典设计。
+  2. **错误码归位**：
+     - `docs/contexts/shared/GLOSSARY.md` 错误码总表与明细节收录 `1-030-036` 段位及 `1_030_036_000`（`MACHINE_TASK_LOOM_TIME_CONFLICT`）；
+     - `docs/contexts/production/GLOSSARY.md` 错误码节收录 `1-030-036-xxx`；
+     - 后端常量与测试：`ErrorCodeConstants.java` 与 `ErrorCodeConstantsTest.java` 均已覆盖该错误码并断言绿灯。
+  3. **性能基准验证**：
+     - `gantt-spike.spec.ts` 针对 50 织机 × 500 任务数据规模完成装配与索引基准压测，运行耗时 < 50ms（远低于 3s 阈值）。
+  4. **W2 冒烟与统一 DoD 对照**：
+     - 排产中心派工、甘特拖拽改期/拉伸、时段冲突拦截（000 报错回显并回滚）、待排池两组聚合、跨单任务列表、齐套检查试算（含在途/不含在途两缺口、无 BOM/缺重量分区）、排缸日历扁平缸月历与点击改期交互全链路打通；
+     - 与生产进度页（ADR-0034）互不回写、口径一致；
+     - `spec.md` 前端验收清单全部 12 项完成复核勾选，`spec.md` 状态置为 `Status: resolved`；
+     - `.scratch/_order.md` 第 25 项 `scheduling-material-check` 勾选完成。
