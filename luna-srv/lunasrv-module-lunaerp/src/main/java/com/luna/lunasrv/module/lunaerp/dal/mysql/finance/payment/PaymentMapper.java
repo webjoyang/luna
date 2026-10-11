@@ -1,7 +1,9 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment;
 
+import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.PaymentPageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -42,6 +44,19 @@ public interface PaymentMapper extends BaseMapperX<PaymentDO> {
         return selectList(new LambdaQueryWrapperX<PaymentDO>()
                 .eq(PaymentDO::getSupplierId, supplierId)
                 .eq(PaymentDO::getDirection, direction));
+    }
+
+    /**
+     * 按方向与过滤条件分页查询付款单
+     */
+    default PageResult<PaymentDO> selectPageByDirection(PaymentPageReqVO reqVO, String direction) {
+        return selectPage(reqVO, new LambdaQueryWrapperX<PaymentDO>()
+                .eq(PaymentDO::getDirection, direction)
+                .eqIfPresent(PaymentDO::getSupplierId, reqVO.getSupplierId())
+                .eqIfPresent(PaymentDO::getAccountId, reqVO.getAccountId())
+                .geIfPresent(PaymentDO::getCreateTime, reqVO.getCreateTimeStart())
+                .leIfPresent(PaymentDO::getCreateTime, reqVO.getCreateTimeEnd())
+                .orderByDesc(PaymentDO::getId));
     }
 
 }

@@ -23,7 +23,8 @@ public interface PaymentRefMapper extends BaseMapperX<PaymentRefDO> {
      */
     default List<PaymentRefDO> selectListByPaymentId(Long paymentId) {
         return selectList(new LambdaQueryWrapperX<PaymentRefDO>()
-                .eq(PaymentRefDO::getPaymentId, paymentId));
+                .eq(PaymentRefDO::getPaymentId, paymentId)
+                .orderByAsc(PaymentRefDO::getId));
     }
 
     /**
