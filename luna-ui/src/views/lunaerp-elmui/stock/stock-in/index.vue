@@ -5,7 +5,7 @@
       <el-form-item label="关键词" prop="keyword">
         <el-input
           v-model="queryParams.keyword"
-          placeholder="入库单号 / 供应商 / 合同号 / 产品 / 纱线规格"
+          placeholder="入库单号 / 供应商 / 合同号 / 纱线采购单 / 产品 / 纱线规格"
           clearable
           @keyup.enter="handleQuery"
           class="!w-260px"
@@ -105,6 +105,11 @@
       </el-table-column>
       <el-table-column label="供应商" prop="supplierName" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">{{ row.supplierName || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="关联纱线采购单" prop="yarnOrderNo" min-width="160" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span class="cell-code">{{ row.yarnOrderNo || '—' }}</span>
+        </template>
       </el-table-column>
       <el-table-column label="金额合计" prop="totalAmount" width="120" align="right">
         <template #default="{ row }">

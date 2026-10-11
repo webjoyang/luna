@@ -184,6 +184,8 @@ const formData = ref<StockInVO>({
   dyeingOrderId: undefined,
   greigeTypeId: undefined,
   greigeTypeName: '',
+  yarnOrderId: undefined,
+  yarnOrderNo: '',
   totalAmount: undefined,
   inDate: defaultToday(),
   remark: '',
