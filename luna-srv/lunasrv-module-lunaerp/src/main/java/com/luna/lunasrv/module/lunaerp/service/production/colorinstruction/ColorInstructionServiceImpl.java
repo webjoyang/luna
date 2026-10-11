@@ -968,4 +968,17 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         return respVO;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void markInProduction(Long id) {
+        if (id == null) {
+            return;
+        }
+        int rows = colorInstructionMapper.update(null, new LambdaUpdateWrapper<ColorInstructionDO>()
+                .eq(ColorInstructionDO::getId, id)
+                .eq(ColorInstructionDO::getStatus, "CONFIRMED")
+                .set(ColorInstructionDO::getStatus, "IN_PRODUCTION"));
+        log.info("[markInProduction] 打色指示单【{}】投产条件更新，影响行数: {}", id, rows);
+    }
+
 }

@@ -23,6 +23,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesCon
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import jakarta.annotation.Resource;
@@ -38,6 +39,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -122,6 +124,9 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     @Resource
     private ColorInstructionMapper colorInstructionMapper;
 
+    @Resource
+    private ColorInstructionService colorInstructionService;
+
     @Autowired(required = false)
     private GreigeOrderWeavingProgressProvider weavingProgressProvider;
 
@@ -156,6 +161,10 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         // 6. 保存主表 → 插入颜色行（回填 orderId）
         greigeOrderMapper.insert(order);
         saveColors(order.getId(), colorDOList);
+        // 7. 触发打色指示单自动投产
+        if (createReqVO.getColorInstructionId() != null) {
+            colorInstructionService.markInProduction(createReqVO.getColorInstructionId());
+        }
         return order.getId();
     }
 
@@ -178,7 +187,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     @Transactional(rollbackFor = Exception.class)
     public void updateGreigeOrder(GreigeOrderSaveReqVO updateReqVO) {
         // 1. 存在性校验：目标单据不存在报 GREIGE_ORDER_NOT_EXISTS
-        validateGreigeOrderExists(updateReqVO.getId());
+        GreigeOrderDO existing = validateGreigeOrderExists(updateReqVO.getId());
         // 2. 引用校验（与创建一致：坯布厂必填；染厂/销售合同/胚布品种非空时逐一校验存在，ADR-0007 不校验供应商类型）
         ValidatedRefs refs = validateReferences(updateReqVO);
         // 3. 组装 DO
@@ -198,6 +207,11 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         greigeOrderMapper.updateById(order);
         // 7. 颜色投胚分配差异保存（ADR-0032）：按 id 三分流（update / insert / deleteByIds）
         diffSaveColors(updateReqVO.getId(), updateReqVO.getColors(), order.getSuggestedLoss());
+        // 8. 补填或变更打色单引用（新引用非空且与原引用不同），触发投产
+        if (updateReqVO.getColorInstructionId() != null
+                && !Objects.equals(updateReqVO.getColorInstructionId(), existing.getColorInstructionId())) {
+            colorInstructionService.markInProduction(updateReqVO.getColorInstructionId());
+        }
     }
 
     @Override
@@ -245,10 +259,15 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     /**
      * 校验胚布单存在，不存在抛 1_030_006_000
      */
-    private void validateGreigeOrderExists(Long id) {
-        if (id == null || greigeOrderMapper.selectById(id) == null) {
+    private GreigeOrderDO validateGreigeOrderExists(Long id) {
+        if (id == null) {
             throw exception(GREIGE_ORDER_NOT_EXISTS);
         }
+        GreigeOrderDO order = greigeOrderMapper.selectById(id);
+        if (order == null) {
+            throw exception(GREIGE_ORDER_NOT_EXISTS);
+        }
+        return order;
     }
 
     /**

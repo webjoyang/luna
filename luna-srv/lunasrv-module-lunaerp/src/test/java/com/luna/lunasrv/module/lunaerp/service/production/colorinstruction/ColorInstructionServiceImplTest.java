@@ -1634,4 +1634,34 @@ class ColorInstructionServiceImplTest {
         assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
     }
 
+    // ==================== markInProduction：投产自动触发（07 票） ====================
+
+    @Test
+    void markInProduction_confirmed_updatesToInProduction() {
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        assertDoesNotThrow(() -> colorInstructionService.markInProduction(101L));
+
+        ArgumentCaptor<Wrapper<ColorInstructionDO>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(colorInstructionMapper).update(isNull(), captor.capture());
+        assertNotNull(captor.getValue());
+    }
+
+    @Test
+    void markInProduction_nullId_returnsDirectlyWithoutUpdate() {
+        colorInstructionService.markInProduction(null);
+
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void markInProduction_otherStatusesOrNotExists_silentAndIdempotent() {
+        // 模拟状态为 PENDING/IN_PROGRESS/IN_PRODUCTION/VOID 或不存在时，条件更新影响行数为 0
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(0);
+
+        // 幂等静默，不抛出任何异常
+        assertDoesNotThrow(() -> colorInstructionService.markInProduction(999L));
+        verify(colorInstructionMapper).update(isNull(), any(Wrapper.class));
+    }
+
 }

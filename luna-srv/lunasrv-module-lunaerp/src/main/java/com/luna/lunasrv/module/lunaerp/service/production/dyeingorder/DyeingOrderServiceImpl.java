@@ -18,6 +18,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesCon
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.DyeingColorMapper;
 import jakarta.annotation.Resource;
@@ -31,6 +32,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -71,6 +73,9 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
     @Resource
     private ColorInstructionMapper colorInstructionMapper;
 
+    @Resource
+    private ColorInstructionService colorInstructionService;
+
     @Override
     public PageResult<DyeingOrderRespVO> getDyeingOrderPage(DyeingOrderPageReqVO reqVO) {
         // 构造查询条件
@@ -95,6 +100,10 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         // 5. 颜色明细：按提交顺序重排 line_no（从 1 开始），回填 dyeingOrderId（零明细合法）
         List<DyeingColorDO> colorDOList = buildColorDOList(order.getId(), createReqVO.getColors());
         saveColors(order.getId(), colorDOList);
+        // 6. 若创建时直接为 ACTIVE 状态且引用打色单，触发投产（DRAFT 态严禁触发）
+        if ("ACTIVE".equals(order.getStatus()) && order.getColorInstructionId() != null) {
+            colorInstructionService.markInProduction(order.getColorInstructionId());
+        }
         return order.getId();
     }
 
@@ -113,8 +122,13 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
     public void updateDyeingOrder(DyeingOrderSaveReqVO updateReqVO) {
         // 1. 存在性校验：目标单据不存在报 DYEING_ORDER_NOT_EXISTS
         DyeingOrderDO existing = validateDyeingOrderExists(updateReqVO.getId());
-        // 2. 状态校验：仅 DRAFT 态可更新，非 DRAFT 态更新报 DYEING_ORDER_STATUS_NOT_ALLOWED
-        if (!"DRAFT".equals(existing.getStatus())) {
+        // 2. 状态校验：仅 DRAFT 态可更新；已为 ACTIVE 状态仅允许补填或变更打色单引用（新引用非空且与原引用不同），其他非 DRAFT 态更新报 DYEING_ORDER_STATUS_NOT_ALLOWED
+        boolean isDraft = "DRAFT".equals(existing.getStatus());
+        boolean isActive = "ACTIVE".equals(existing.getStatus());
+        boolean isColorInstructionPatch = isActive
+                && updateReqVO.getColorInstructionId() != null
+                && !Objects.equals(updateReqVO.getColorInstructionId(), existing.getColorInstructionId());
+        if (!isDraft && !isColorInstructionPatch) {
             throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
         }
         // 3. 引用校验：销售合同必填且存在；承染方供应商必填且存在；打色单可空且校验合法性
@@ -122,8 +136,8 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         // 4. 组装 DO
         DyeingOrderDO order = BeanUtils.toBean(updateReqVO, DyeingOrderDO.class);
         order.setId(existing.getId());
-        // 5. 保持 DRAFT 态，保留原有单据日期（若未传），刷新快照与缺省值
-        order.setStatus("DRAFT");
+        // 5. 保持原有状态，保留原有单据日期（若未传），刷新快照与缺省值
+        order.setStatus(existing.getStatus());
         if (order.getOrderDate() == null) {
             order.setOrderDate(existing.getOrderDate());
         }
@@ -133,13 +147,22 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         // 7. 颜色明细差异保存（ADR-0032）：
         //    带 id 且属于本单据的行走 update、无 id 行走 insert、本单据库内有但本次未提交的行走逻辑删除；
         //    删除前触发删除守卫校验（Stage 2 扩展点）；提交行 id 不属于本单据时报错；行号按提交顺序重排。
-        diffSaveColors(updateReqVO.getId(), updateReqVO.getColors());
+        if (isDraft || updateReqVO.getColors() != null) {
+            diffSaveColors(updateReqVO.getId(), updateReqVO.getColors());
+        }
+        // 8. 已为 ACTIVE 状态补填或变更打色单引用时（新引用非空且与原引用不同），触发投产
+        if (isColorInstructionPatch) {
+            colorInstructionService.markInProduction(updateReqVO.getColorInstructionId());
+        }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void effectDyeingOrder(Long id) {
-        transitionStatus(id, "DRAFT", "ACTIVE");
+        DyeingOrderDO order = transitionStatus(id, "DRAFT", "ACTIVE");
+        if (order.getColorInstructionId() != null) {
+            colorInstructionService.markInProduction(order.getColorInstructionId());
+        }
     }
 
     @Override
@@ -171,8 +194,9 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
      * @param id         染色单ID
      * @param fromStatus 前置合法状态
      * @param toStatus   流转目标状态
+     * @return 更新前的单据 DO
      */
-    private void transitionStatus(Long id, String fromStatus, String toStatus) {
+    private DyeingOrderDO transitionStatus(Long id, String fromStatus, String toStatus) {
         DyeingOrderDO order = validateDyeingOrderExists(id);
         if (!fromStatus.equals(order.getStatus())) {
             throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
@@ -180,6 +204,7 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         dyeingOrderMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DyeingOrderDO>()
                 .eq(DyeingOrderDO::getId, id)
                 .set(DyeingOrderDO::getStatus, toStatus));
+        return order;
     }
 
     /**
