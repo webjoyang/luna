@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentApplyMapper">
+
+    <!-- 回收站分页查询已软删草稿/待提交付款申请（手写 XML：显式 WHERE deleted = 1 AND approval_status IN ('PENDING', 'DRAFT') AND tenant_id = #{tenantId}） -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'PAYMENT_APPLY' AS biz_type,
+            id AS biz_id,
+            apply_no AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_finance_payment_apply
+        WHERE deleted = 1
+          AND approval_status IN ('PENDING', 'DRAFT')
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删的草稿/待提交付款申请记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentApplyDO">
+        SELECT *
+        FROM lunaerp_finance_payment_apply
+        WHERE id = #{id}
+          AND deleted = 1
+          AND approval_status IN ('PENDING', 'DRAFT')
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复草稿/待提交付款申请（并发条件更新带 deleted=1 AND approval_status IN ('PENDING', 'DRAFT') AND tenant_id=?） -->
+    <update id="restorePaymentApply">
+        UPDATE lunaerp_finance_payment_apply
+        SET deleted = 0,
+            approval_status = 'PENDING',
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND approval_status IN ('PENDING', 'DRAFT')
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除草稿/待提交付款申请（物理删除带 deleted=1 AND approval_status IN ('PENDING', 'DRAFT') AND tenant_id=?） -->
+    <delete id="purgePaymentApply">
+        DELETE FROM lunaerp_finance_payment_apply
+        WHERE id = #{id}
+          AND deleted = 1
+          AND approval_status IN ('PENDING', 'DRAFT')
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查付款申请是否存在活跃业务引用（未删除的 payment_ref） -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM lunaerp_finance_payment_ref
+        WHERE ref_type = 'PAY_APPLY'
+          AND ref_id = #{applyId}
+          AND deleted = 0
+          AND tenant_id = #{tenantId}
+    </select>
+
+</mapper>
