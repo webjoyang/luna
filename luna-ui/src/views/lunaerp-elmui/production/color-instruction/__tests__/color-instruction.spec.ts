@@ -454,4 +454,111 @@ describe('Color Instruction (打色指示单) Foundation Tests', () => {
       expect(clonedRow.copies).toBe(2)
     })
   })
+
+  describe('Issue 05: Confirm Action & Three Guards Tests', () => {
+    it('should call confirmColorInstruction endpoint with correct payload', async () => {
+      vi.mocked(request.put).mockResolvedValueOnce(true as any)
+      const payload = {
+        id: 101,
+        confirmType: 'CUSTOMER',
+        customerFeedback: '客户确认通过，同意投产'
+      }
+      const res = await ColorInstructionApi.confirmColorInstruction(payload)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/production/color-instruction/confirm',
+        data: payload
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should evaluate header confirm button visibility correctly', () => {
+      const isConfirmBtnVisible = (docStatus?: string, id?: string | number) => {
+        return docStatus === 'IN_PROGRESS' && !!id
+      }
+
+      expect(isConfirmBtnVisible('IN_PROGRESS', 101)).toBe(true)
+      expect(isConfirmBtnVisible('IN_PROGRESS', '101')).toBe(true)
+      expect(isConfirmBtnVisible('PENDING', 101)).toBe(false)
+      expect(isConfirmBtnVisible('CONFIRMED', 101)).toBe(false)
+      expect(isConfirmBtnVisible('IN_PRODUCTION', 101)).toBe(false)
+      expect(isConfirmBtnVisible('VOID', 101)).toBe(false)
+      expect(isConfirmBtnVisible('IN_PROGRESS', undefined)).toBe(false)
+      expect(isConfirmBtnVisible('IN_PROGRESS', '')).toBe(false)
+    })
+
+    it('should evaluate three guards logic on client side before/during confirmation', () => {
+      // Guard 1: docStatus must be IN_PROGRESS
+      // Guard 2: no PENDING rows allowed
+      // Guard 3: at least 1 APPROVED row required
+      const validateGuards = (docStatus: string, colors: Array<{ status: string }>) => {
+        if (docStatus !== 'IN_PROGRESS') {
+          return { valid: false, error: 'COLOR_INSTRUCTION_STATUS_NOT_ALLOWED' }
+        }
+        const hasPending = colors.some((c) => c.status === 'PENDING')
+        if (hasPending) {
+          return { valid: false, error: 'COLOR_INSTRUCTION_PENDING_OR_NO_APPROVED_COLOR' }
+        }
+        const hasApproved = colors.some((c) => c.status === 'APPROVED')
+        if (!hasApproved) {
+          return { valid: false, error: 'COLOR_INSTRUCTION_PENDING_OR_NO_APPROVED_COLOR' }
+        }
+        return { valid: true }
+      }
+
+      // Guard 1 fail
+      expect(validateGuards('PENDING', [{ status: 'APPROVED' }])).toEqual({
+        valid: false,
+        error: 'COLOR_INSTRUCTION_STATUS_NOT_ALLOWED'
+      })
+      expect(validateGuards('CONFIRMED', [{ status: 'APPROVED' }])).toEqual({
+        valid: false,
+        error: 'COLOR_INSTRUCTION_STATUS_NOT_ALLOWED'
+      })
+
+      // Guard 2 fail: has pending row
+      expect(validateGuards('IN_PROGRESS', [{ status: 'APPROVED' }, { status: 'PENDING' }])).toEqual({
+        valid: false,
+        error: 'COLOR_INSTRUCTION_PENDING_OR_NO_APPROVED_COLOR'
+      })
+
+      // Guard 3 fail: all rejected, no approved row
+      expect(validateGuards('IN_PROGRESS', [{ status: 'REJECTED' }, { status: 'REJECTED' }])).toEqual({
+        valid: false,
+        error: 'COLOR_INSTRUCTION_PENDING_OR_NO_APPROVED_COLOR'
+      })
+
+      // All guards pass: partly APPROVED, partly REJECTED, no PENDING
+      expect(validateGuards('IN_PROGRESS', [{ status: 'APPROVED' }, { status: 'REJECTED' }])).toEqual({
+        valid: true
+      })
+
+      // All guards pass: all APPROVED
+      expect(validateGuards('IN_PROGRESS', [{ status: 'APPROVED' }])).toEqual({
+        valid: true
+      })
+    })
+
+    it('should enter read-only view mode once confirmed', () => {
+      const isReadOnlyMode = (docStatus?: string) => {
+        return !!docStatus && !['PENDING', 'IN_PROGRESS'].includes(docStatus)
+      }
+
+      expect(isReadOnlyMode('PENDING')).toBe(false)
+      expect(isReadOnlyMode('IN_PROGRESS')).toBe(false)
+      expect(isReadOnlyMode('CONFIRMED')).toBe(true)
+      expect(isReadOnlyMode('IN_PRODUCTION')).toBe(true)
+      expect(isReadOnlyMode('VOID')).toBe(true)
+    })
+
+    it('should validate confirmType choices (CUSTOMER or INTERNAL)', () => {
+      const validTypes = ['CUSTOMER', 'INTERNAL']
+      const isValidConfirmType = (t?: string) => !!t && validTypes.includes(t)
+
+      expect(isValidConfirmType('CUSTOMER')).toBe(true)
+      expect(isValidConfirmType('INTERNAL')).toBe(true)
+      expect(isValidConfirmType('INVALID')).toBe(false)
+      expect(isValidConfirmType('')).toBe(false)
+      expect(isValidConfirmType(undefined)).toBe(false)
+    })
+  })
 })

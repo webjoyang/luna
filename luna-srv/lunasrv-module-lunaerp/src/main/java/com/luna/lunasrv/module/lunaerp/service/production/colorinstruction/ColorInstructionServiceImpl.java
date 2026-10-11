@@ -17,6 +17,9 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.Col
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.color.ColorInstructionColorMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
+import com.luna.lunasrv.framework.web.core.util.WebFrameworkUtils;
+import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionConfirmTypeEnum;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -24,6 +27,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Function;
@@ -741,6 +745,66 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         }
 
         return newRow.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmColorInstruction(ColorInstructionConfirmReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 1. 存在性与守卫 1 校验：单据状态必须为 IN_PROGRESS
+        // 若状态为 CONFIRMED（重复确认）或其它非 IN_PROGRESS 态，抛出 COLOR_INSTRUCTION_STATUS_NOT_ALLOWED (1_030_032_002)
+        ColorInstructionDO instruction = colorInstructionMapper.selectById(reqVO.getId());
+        if (instruction == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+        if (!"IN_PROGRESS".equals(instruction.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOW);
+        }
+
+        // 2. 颜色行校验：
+        List<ColorInstructionColorDO> colors = colorInstructionColorMapper.selectListByInstructionId(reqVO.getId());
+        // 守卫 2：不得存在任何状态为 PENDING 的行（存在未决行报 1_030_032_004 COLOR_INSTRUCTION_PENDING_OR_NO_APPROVED_COLOR / COLOR_INSTRUCTION_CANNOT_CONFIRM）
+        boolean hasPending = colors.stream().anyMatch(c -> "PENDING".equals(c.getStatus()));
+        if (hasPending) {
+            throw exception(COLOR_INSTRUCTION_CANNOT_CONFIRM);
+        }
+        // 守卫 3：必须至少有 1 行状态为 APPROVED（全部驳回不能确认，报同一错误码 1_030_032_004）
+        boolean hasApproved = colors.stream().anyMatch(c -> "APPROVED".equals(c.getStatus()));
+        if (!hasApproved) {
+            throw exception(COLOR_INSTRUCTION_CANNOT_CONFIRM);
+        }
+
+        // 3. confirmType 校验：必填，必须为 CUSTOMER 或 INTERNAL，非法报 1_030_032_007 COLOR_INSTRUCTION_LIGHT_OR_CONFIRM_TYPE_INVALID
+        if (!StringUtils.hasText(reqVO.getConfirmType())
+                || !ColorInstructionConfirmTypeEnum.isValid(reqVO.getConfirmType().trim())) {
+            throw exception(COLOR_INSTRUCTION_LIGHT_OR_CONFIRM_TYPE_INVALID);
+        }
+
+        // 4. 获取当前用户 ID
+        Long loginUserId = WebFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        }
+
+        // 5. 条件更新防并发：WHERE id=? AND status='IN_PROGRESS' AND tenant_id=? AND deleted=0
+        // 写入 status='CONFIRMED', confirm_type=reqVO.getConfirmType(), customer_feedback=reqVO.getCustomerFeedback(),
+        // confirmed_by=WebFrameworkUtils.getLoginUserId(), confirmed_at=LocalDateTime.now()
+        // 影响行数 0 抛出 1_030_032_002
+        LocalDateTime now = LocalDateTime.now();
+        int rows = colorInstructionMapper.update(null, new LambdaUpdateWrapper<ColorInstructionDO>()
+                .eq(ColorInstructionDO::getId, reqVO.getId())
+                .eq(ColorInstructionDO::getStatus, "IN_PROGRESS")
+                .set(ColorInstructionDO::getStatus, "CONFIRMED")
+                .set(ColorInstructionDO::getConfirmType, reqVO.getConfirmType().trim())
+                .set(ColorInstructionDO::getCustomerFeedback, reqVO.getCustomerFeedback())
+                .set(ColorInstructionDO::getConfirmedBy, loginUserId)
+                .set(ColorInstructionDO::getConfirmedAt, now));
+        if (rows == 0) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOW);
+        }
     }
 
     /**

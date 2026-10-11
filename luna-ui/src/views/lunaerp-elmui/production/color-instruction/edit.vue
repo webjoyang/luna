@@ -22,6 +22,16 @@
         >
           开始打色
         </el-button>
+        <el-button
+          v-if="formData.status === 'IN_PROGRESS' && id"
+          type="primary"
+          plain
+          :loading="confirmLoading"
+          v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+          @click="openConfirmDialog"
+        >
+          确认
+        </el-button>
         <el-button v-if="isViewMode" @click="handleBack">返回</el-button>
         <template v-else>
           <el-button @click="handleBack">取消</el-button>
@@ -236,6 +246,26 @@
                 show-word-limit
                 :disabled="isViewMode"
               />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="24" v-if="formData.confirmType">
+          <el-col :span="8">
+            <el-form-item label="确认类型">
+              <el-tag :type="formData.confirmType === 'INTERNAL' ? 'warning' : 'success'">
+                {{ formData.confirmType === 'INTERNAL' ? '内部确认' : '客户确认' }}
+              </el-tag>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8" v-if="formData.confirmedAt">
+            <el-form-item label="确认时间">
+              <span class="text-sm text-gray-600">{{ formData.confirmedAt }}</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8" v-if="formData.customerFeedback">
+            <el-form-item label="反馈意见">
+              <span class="text-sm text-gray-600">{{ formData.customerFeedback }}</span>
             </el-form-item>
           </el-col>
         </el-row>
@@ -503,6 +533,43 @@
         </template>
       </template>
     </el-dialog>
+
+    <!-- 确认打色单弹窗 -->
+    <el-dialog
+      v-model="confirmDialogVisible"
+      title="确认打色单"
+      width="500px"
+      append-to-body
+      destroy-on-close
+    >
+      <el-form
+        ref="confirmFormRef"
+        :model="confirmFormData"
+        :rules="confirmFormRules"
+        label-width="110px"
+      >
+        <el-form-item label="确认类型" prop="confirmType">
+          <el-radio-group v-model="confirmFormData.confirmType">
+            <el-radio value="CUSTOMER">客户确认</el-radio>
+            <el-radio value="INTERNAL">内部确认</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="客户反馈" prop="customerFeedback">
+          <el-input
+            v-model="confirmFormData.customerFeedback"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入客户或内部反馈意见"
+            maxlength="500"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="confirmDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="confirmSubmitting" @click="handleConfirmSubmit">确定确认</el-button>
+      </template>
+    </el-dialog>
   </ContentWrap>
 </template>
 
@@ -535,6 +602,20 @@ const loading = ref(false)
 const saveLoading = ref(false)
 const nextNoLoading = ref(false)
 const startLoading = ref(false)
+const confirmLoading = ref(false)
+const confirmDialogVisible = ref(false)
+const confirmSubmitting = ref(false)
+const confirmFormRef = ref<FormInstance>()
+const confirmFormData = reactive<{
+  confirmType: string
+  customerFeedback: string
+}>({
+  confirmType: 'CUSTOMER',
+  customerFeedback: ''
+})
+const confirmFormRules = reactive<FormRules>({
+  confirmType: [{ required: true, message: '请选择确认类型', trigger: 'change' }]
+})
 
 let tempIdCounter = 0
 const generateTempId = () => `temp_${Date.now()}_${++tempIdCounter}`
@@ -925,6 +1006,35 @@ const handleRejectRestrikeRow = async (row: ColorInstructionColorVO) => {
     }
   } finally {
     loading.value = false
+  }
+}
+
+// 确认打色单弹窗与提交
+const openConfirmDialog = () => {
+  confirmFormData.confirmType = 'CUSTOMER'
+  confirmFormData.customerFeedback = ''
+  confirmDialogVisible.value = true
+}
+
+const handleConfirmSubmit = async () => {
+  if (!confirmFormRef.value || !id.value) return
+  const valid = await confirmFormRef.value.validate()
+  if (!valid) return
+
+  confirmSubmitting.value = true
+  try {
+    await ColorInstructionApi.confirmColorInstruction({
+      id: Number(id.value),
+      confirmType: confirmFormData.confirmType,
+      customerFeedback: confirmFormData.customerFeedback || undefined
+    })
+    ElMessage.success('打色单确认成功')
+    confirmDialogVisible.value = false
+    await loadDetail(Number(id.value))
+  } catch (error: any) {
+    console.error('Failed to confirm color instruction:', error)
+  } finally {
+    confirmSubmitting.value = false
   }
 }
 
