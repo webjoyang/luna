@@ -32,6 +32,12 @@
         >
           确认
         </el-button>
+                <PrintDispatcher
+          v-if="id"
+          biz-type="COLOR_INSTRUCTION"
+          :biz-id="id"
+          v-hasPermi="['lunaerp:production:color-instruction:print']"
+        />
         <el-button v-if="isViewMode" @click="handleBack">返回</el-button>
         <template v-else>
           <el-button @click="handleBack">取消</el-button>
@@ -581,6 +587,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import dayjs from 'dayjs'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { UploadImgs } from '@/components/UploadFile'
+import { PrintDispatcher } from '@/components/Print'
 import * as ColorInstructionApi from '@/api/lunaerp-elmui/production/color-instruction'
 import type { ColorInstructionVO, ColorInstructionColorVO } from '@/api/lunaerp-elmui/production/color-instruction'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'

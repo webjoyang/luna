@@ -5,6 +5,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionRespVO;
 
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionColorRejectRestrikeReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPrintRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionSaveReqVO;
 
 /**
@@ -87,5 +88,13 @@ public interface ColorInstructionService {
      * @param reqVO 确认参数
      */
     void confirmColorInstruction(com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionConfirmReqVO reqVO);
+
+    /**
+     * 获得打色指示单套打数据（独立 VO，无金额字段，豁免脱敏）
+     *
+     * @param id 打色单ID
+     * @return 打色指示单套打数据
+     */
+    ColorInstructionPrintRespVO getColorInstructionPrintData(Long id);
 
 }

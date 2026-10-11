@@ -1530,4 +1530,108 @@ class ColorInstructionServiceImplTest {
                 new UsernamePasswordAuthenticationToken(loginUser, null, Collections.emptyList()));
     }
 
+    // ==================== Issue 10: 套打数据接口 (print-data) ====================
+
+    @Test
+    void getColorInstructionPrintData_success_includesAllRoundsAndRejectedRows() {
+        ColorInstructionDO parent = instruction(101L, "DS20261010001");
+        parent.setCustomerId(10L);
+        parent.setClientName("博洋家纺");
+        parent.setContactPerson("张经理 13800138000");
+        parent.setProductId(20L);
+        parent.setProductCode("P001");
+        parent.setProductName("全棉斜纹");
+        parent.setLabFactoryId(30L);
+        parent.setLabFactoryName("盛泽打色房");
+        parent.setComposition("100%棉");
+        parent.setWidth("160cm");
+        parent.setGsm("220gsm");
+        parent.setInstructionDate(LocalDate.of(2026, 10, 10));
+        parent.setDeliveryDate(LocalDate.of(2026, 10, 20));
+        parent.setStatus("IN_PROGRESS");
+        parent.setConfirmType("CUSTOMER");
+        parent.setCustomerFeedback("颜色偏深，需微调");
+        parent.setRemark("整批打色加急");
+        parent.setCreator("1");
+
+        when(colorInstructionMapper.selectById(101L)).thenReturn(parent);
+
+        // 模拟包含多轮次及 REJECTED 历史行，乱序返回以验证排序逻辑
+        ColorInstructionColorDO row1 = ColorInstructionColorDO.builder()
+                .id(1L).instructionId(101L).lineNo(1).customerColorNo("C01").colorName("红")
+                .round(2).status("PENDING").lightPrimary("D65").lightSecondary("TL84")
+                .colorHex("#FF0000").colorCardRef("Pantone 1234").copies(2).remark("二轮样").build();
+        ColorInstructionColorDO row2 = ColorInstructionColorDO.builder()
+                .id(2L).instructionId(101L).lineNo(2).customerColorNo("C01").colorName("红")
+                .round(1).status("REJECTED").rejectReason("偏暗需要提亮").lightPrimary("D65").lightSecondary("TL84")
+                .colorHex("#FF0000").colorCardRef("Pantone 1234").copies(2).remark("一轮样").build();
+        ColorInstructionColorDO row3 = ColorInstructionColorDO.builder()
+                .id(3L).instructionId(101L).lineNo(3).customerColorNo("C02").colorName("蓝")
+                .round(1).status("APPROVED").lightPrimary("D65").lightSecondary("TL84")
+                .colorHex("#0000FF").colorCardRef("Pantone 5678").copies(2).remark("一次过").build();
+
+        // 乱序传入 (row3, row1, row2)
+        when(colorInstructionColorMapper.selectListByInstructionId(101L))
+                .thenReturn(new ArrayList<>(List.of(row3, row1, row2)));
+
+        ColorInstructionPrintRespVO printData = colorInstructionService.getColorInstructionPrintData(101L);
+
+        // 1. 验证单据头基础字段及豁免脱敏的联系人
+        assertNotNull(printData);
+        assertEquals(101L, printData.getId());
+        assertEquals("DS20261010001", printData.getInstructionNo());
+        assertEquals("博洋家纺", printData.getClientName());
+        assertEquals("张经理 13800138000", printData.getContactPerson(), "打印豁免脱敏：联系人应全量输出");
+        assertEquals("P001", printData.getProductCode());
+        assertEquals("全棉斜纹", printData.getProductName());
+        assertEquals("盛泽打色房", printData.getLabFactoryName());
+        assertEquals("100%棉", printData.getComposition());
+        assertEquals("160cm", printData.getWidth());
+        assertEquals("220gsm", printData.getGsm());
+        assertEquals(LocalDate.of(2026, 10, 10), printData.getInstructionDate());
+        assertEquals(LocalDate.of(2026, 10, 20), printData.getDeliveryDate());
+        assertEquals("IN_PROGRESS", printData.getStatus());
+        assertEquals("CUSTOMER", printData.getConfirmType());
+        assertEquals("颜色偏深，需微调", printData.getCustomerFeedback());
+        assertEquals("整批打色加急", printData.getRemark());
+        assertNotNull(printData.getPrintTime(), "应包含生成打印数据的时间戳");
+
+        // 2. 验证颜色行：全部轮次均输出（含 REJECTED 行），且严格按 lineNo 排序
+        List<ColorInstructionPrintColorRespVO> colors = printData.getColors();
+        assertNotNull(colors);
+        assertEquals(3, colors.size(), "必须输出全部轮次颜色行（3 行）");
+
+        assertEquals(1, colors.get(0).getLineNo());
+        assertEquals("C01", colors.get(0).getCustomerColorNo());
+        assertEquals(2, colors.get(0).getRound(), "第 1 行应为 C01 的第 2 轮");
+        assertEquals("PENDING", colors.get(0).getStatus());
+
+        assertEquals(2, colors.get(1).getLineNo());
+        assertEquals("C01", colors.get(1).getCustomerColorNo());
+        assertEquals(1, colors.get(1).getRound(), "第 2 行应为 C01 的第 1 轮（历史驳回行）");
+        assertEquals("REJECTED", colors.get(1).getStatus());
+        assertEquals("偏暗需要提亮", colors.get(1).getRejectReason(), "REJECTED 行必须完整保留驳回意见");
+
+        assertEquals(3, colors.get(2).getLineNo());
+        assertEquals("C02", colors.get(2).getCustomerColorNo());
+        assertEquals(1, colors.get(2).getRound());
+        assertEquals("APPROVED", colors.get(2).getStatus());
+    }
+
+    @Test
+    void getColorInstructionPrintData_notExists_throwsException() {
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.getColorInstructionPrintData(999L));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void getColorInstructionPrintData_nullId_throwsException() {
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.getColorInstructionPrintData(null));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
 }
