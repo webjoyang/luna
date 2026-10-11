@@ -19,6 +19,18 @@ public class MachineTaskRespVO {
     @Schema(description = "关联织造单ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
     private Long weavingOrderId;
 
+    @Schema(description = "关联织造单号快照", example = "ZZ2026100701")
+    private String weavingOrderCode;
+
+    @Schema(description = "产品编号快照", example = "P001")
+    private String productCode;
+
+    @Schema(description = "产品名称快照", example = "纯棉汗布")
+    private String productName;
+
+    @Schema(description = "是否冲突（同织机计划时段与他任务重叠）", example = "false")
+    private Boolean conflict;
+
     @Schema(description = "关联织机ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "2048")
     private Long loomId;
 
