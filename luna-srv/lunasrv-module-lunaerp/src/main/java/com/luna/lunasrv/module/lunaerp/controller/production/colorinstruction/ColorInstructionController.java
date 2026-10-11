@@ -117,6 +117,26 @@ public class ColorInstructionController {
         return success(true);
     }
 
+    @PutMapping("/rollback")
+    @Operation(summary = "回退打色指示单")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:confirm')")
+    @LogRecord(type = "回退打色单", subType = "ROLLBACK", bizNo = "{{#reqVO.id}}",
+            success = "回退打色单【{{#reqVO.id}}】")
+    public CommonResult<Boolean> rollbackColorInstruction(@Valid @RequestBody ColorInstructionRollbackReqVO reqVO) {
+        colorInstructionService.rollbackColorInstruction(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/void")
+    @Operation(summary = "作废打色指示单")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:confirm')")
+    @LogRecord(type = "作废打色单", subType = "VOID", bizNo = "{{#reqVO.id}}",
+            success = "作废打色单【{{#reqVO.id}}】")
+    public CommonResult<Boolean> voidColorInstruction(@Valid @RequestBody ColorInstructionVoidReqVO reqVO) {
+        colorInstructionService.voidColorInstruction(reqVO);
+        return success(true);
+    }
+
     @GetMapping({"/{id}/print-data", "/print-data"})
     @Operation(summary = "获得打色指示单套打数据")
     @Parameter(name = "id", description = "打色指示单ID", required = false, example = "1024")

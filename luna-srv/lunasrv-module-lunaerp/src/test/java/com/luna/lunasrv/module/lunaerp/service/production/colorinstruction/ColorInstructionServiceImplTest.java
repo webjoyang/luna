@@ -12,11 +12,15 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.color.ColorInstructionColorDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.color.ColorInstructionColorMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.framework.security.core.LoginUser;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,6 +76,12 @@ class ColorInstructionServiceImplTest {
     @Mock
     private SupplierMapper supplierMapper;
 
+    @Mock
+    private GreigeOrderMapper greigeOrderMapper;
+
+    @Mock
+    private DyeingOrderMapper dyeingOrderMapper;
+
     @InjectMocks
     private ColorInstructionServiceImpl colorInstructionService;
 
@@ -82,6 +92,10 @@ class ColorInstructionServiceImplTest {
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), ColorInstructionDO.class);
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), ColorInstructionColorDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), GreigeOrderDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), DyeingOrderDO.class);
     }
 
     // ==================== 01 票地基测试 ====================
@@ -1632,6 +1646,320 @@ class ColorInstructionServiceImplTest {
         ServiceException ex = assertThrows(ServiceException.class,
                 () -> colorInstructionService.getColorInstructionPrintData(null));
         assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    // ==================== 08 票：回退、作废与终态守卫测试 ====================
+
+    @Test
+    void hasActiveDownstreamRef_nullId_returnsFalse() {
+        assertFalse(colorInstructionService.hasActiveDownstreamRef(null));
+        verifyNoInteractions(greigeOrderMapper, dyeingOrderMapper);
+    }
+
+    @Test
+    void hasActiveDownstreamRef_noDownstream_returnsFalse() {
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+
+        assertFalse(colorInstructionService.hasActiveDownstreamRef(100L));
+    }
+
+    @Test
+    void hasActiveDownstreamRef_greigeOrderActive_returnsTrue() {
+        when(greigeOrderMapper.selectCount(any())).thenReturn(1L);
+
+        assertTrue(colorInstructionService.hasActiveDownstreamRef(100L));
+        verify(dyeingOrderMapper, never()).selectCount(any());
+    }
+
+    @Test
+    void hasActiveDownstreamRef_dyeingOrderActive_returnsTrue() {
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(2L);
+
+        assertTrue(colorInstructionService.hasActiveDownstreamRef(100L));
+    }
+
+    // ---------- rollbackColorInstruction 测试 ----------
+
+    @Test
+    void rollbackColorInstruction_confirmedNoDownstream_success() {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status("CONFIRMED")
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        colorInstructionService.rollbackColorInstruction(100L);
+
+        // 验证条件更新将状态置为 IN_PROGRESS
+        ArgumentCaptor<Wrapper> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(colorInstructionMapper).update(isNull(), captor.capture());
+        assertNotNull(captor.getValue());
+
+        // 验证颜色行未被任何回退修改
+        verifyNoInteractions(colorInstructionColorMapper);
+    }
+
+    @Test
+    void rollbackColorInstruction_withDownstreamGreige_throwsException() {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status("CONFIRMED")
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+        when(greigeOrderMapper.selectCount(any())).thenReturn(1L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.rollbackColorInstruction(100L));
+        assertEquals(COLOR_INSTRUCTION_ACTIVE_DOWNSTREAM_EXISTS.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void rollbackColorInstruction_withDownstreamDyeing_throwsException() {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status("CONFIRMED")
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(1L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.rollbackColorInstruction(100L));
+        assertEquals(COLOR_INSTRUCTION_ACTIVE_DOWNSTREAM_EXISTS.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING", "IN_PROGRESS", "IN_PRODUCTION", "VOID"})
+    void rollbackColorInstruction_nonConfirmedStatuses_throwsException(String status) {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status(status)
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.rollbackColorInstruction(100L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void rollbackColorInstruction_notExists_throwsException() {
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.rollbackColorInstruction(999L));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void rollbackColorInstruction_concurrentConflict_throwsException() {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status("CONFIRMED")
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(0);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.rollbackColorInstruction(100L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    // ---------- voidColorInstruction 测试 ----------
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING", "IN_PROGRESS", "CONFIRMED"})
+    void voidColorInstruction_validStatuses_noDownstream_success(String status) {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status(status)
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO(100L, "客户取消订单");
+        colorInstructionService.voidColorInstruction(reqVO);
+
+        ArgumentCaptor<Wrapper> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(colorInstructionMapper).update(isNull(), captor.capture());
+        assertNotNull(captor.getValue());
+    }
+
+    @Test
+    void voidColorInstruction_withDownstream_throwsException() {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status("IN_PROGRESS")
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+        when(greigeOrderMapper.selectCount(any())).thenReturn(1L);
+
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO(100L, "测试作废");
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.voidColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_ACTIVE_DOWNSTREAM_EXISTS.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void voidColorInstruction_inProduction_throwsException() {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status("IN_PRODUCTION")
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO(100L, "测试作废");
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.voidColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void voidColorInstruction_alreadyVoid_throwsException() {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status("VOID")
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO(100L, "测试作废");
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.voidColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void voidColorInstruction_notExists_throwsException() {
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO(999L, "不存在");
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.voidColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void voidColorInstruction_concurrentConflict_throwsException() {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status("CONFIRMED")
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+        when(colorInstructionMapper.update(isNull(), any(Wrapper.class))).thenReturn(0);
+
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO(100L, "并发冲突");
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.voidColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    // ---------- 终态守卫测试 (IN_PRODUCTION / VOID / CONFIRMED 软删) ----------
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IN_PRODUCTION", "VOID"})
+    void terminalGuard_update_throwsException(String status) {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status(status)
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(100L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.updateColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IN_PRODUCTION", "VOID"})
+    void terminalGuard_void_throwsException(String status) {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status(status)
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO(100L, "作废");
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.voidColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"CONFIRMED", "IN_PRODUCTION", "VOID"})
+    void terminalGuard_delete_throwsException(String status) {
+        ColorInstructionDO instruction = ColorInstructionDO.builder()
+                .id(100L)
+                .status(status)
+                .build();
+        when(colorInstructionMapper.selectById(100L)).thenReturn(instruction);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.deleteColorInstruction(100L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IN_PRODUCTION", "VOID"})
+    void terminalGuard_approveColorLine_throwsException(String status) {
+        ColorInstructionDO parent = ColorInstructionDO.builder()
+                .id(100L)
+                .status(status)
+                .build();
+        ColorInstructionColorDO line = ColorInstructionColorDO.builder()
+                .id(10L)
+                .instructionId(100L)
+                .status("PENDING")
+                .build();
+        when(colorInstructionColorMapper.selectById(10L)).thenReturn(line);
+        when(colorInstructionMapper.selectById(100L)).thenReturn(parent);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.approveColorLine(10L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IN_PRODUCTION", "VOID"})
+    void terminalGuard_rejectRestrikeColorLine_throwsException(String status) {
+        ColorInstructionDO parent = ColorInstructionDO.builder()
+                .id(100L)
+                .status(status)
+                .build();
+        ColorInstructionColorDO line = ColorInstructionColorDO.builder()
+                .id(10L)
+                .instructionId(100L)
+                .status("PENDING")
+                .build();
+        when(colorInstructionColorMapper.selectById(10L)).thenReturn(line);
+        when(colorInstructionMapper.selectById(100L)).thenReturn(parent);
+
+        ColorInstructionColorRejectRestrikeReqVO reqVO = new ColorInstructionColorRejectRestrikeReqVO();
+        reqVO.setId(10L);
+        reqVO.setRejectReason("重打");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> colorInstructionService.rejectRestrikeColorLine(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
     }
 
 }
