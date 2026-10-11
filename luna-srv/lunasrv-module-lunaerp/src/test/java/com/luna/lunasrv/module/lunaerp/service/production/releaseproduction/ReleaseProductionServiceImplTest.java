@@ -16,10 +16,16 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.color.DyeingColorDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.DyeingColorMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
 import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import com.luna.lunasrv.module.lunaerp.service.production.dyeingorder.DyeingOrderService;
 import com.luna.lunasrv.module.lunaerp.service.production.greigeorder.GreigeOrderService;
@@ -34,9 +40,12 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_NOT_EXISTS;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_STATUS_NOT_ALLOWED;
 import static com.luna.lunasrv.module.lunaerp.enums.ReleaseProductionErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -87,6 +96,15 @@ class ReleaseProductionServiceImplTest {
     @Mock
     private InspectionOrderService inspectionOrderService;
 
+    @Mock
+    private DyeingOrderMapper dyeingOrderMapper;
+
+    @Mock
+    private DyeingColorMapper dyeingColorMapper;
+
+    @Mock
+    private InspectionOrderMapper inspectionOrderMapper;
+
     @InjectMocks
     private ReleaseProductionServiceImpl releaseProductionService;
 
@@ -95,6 +113,10 @@ class ReleaseProductionServiceImplTest {
         MockitoAnnotations.openMocks(this);
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), ColorInstructionDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), InspectionOrderDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), DyeingColorDO.class);
     }
 
     private SalesContractDO mockContract(Long id, String contractNo, String status) {
@@ -778,6 +800,100 @@ class ReleaseProductionServiceImplTest {
         ArgumentCaptor<DyeingOrderSaveReqVO> dyeingCaptor = ArgumentCaptor.forClass(DyeingOrderSaveReqVO.class);
         verify(dyeingOrderService).createDyeingOrder(dyeingCaptor.capture());
         assertNull(dyeingCaptor.getValue().getColorInstructionId());
+    }
+
+    @Test
+    @DisplayName("createFinishedInspection: 正常生成成品检验单并正确复制字段与累加重量")
+    void testCreateFinishedInspection_success() {
+        Long dyeingOrderId = 501L;
+
+        DyeingOrderDO order = new DyeingOrderDO();
+        order.setId(dyeingOrderId);
+        order.setStatus("COMPLETED");
+        order.setSalesContractId(100L);
+        order.setProductCode("P001");
+        when(dyeingOrderMapper.selectById(dyeingOrderId)).thenReturn(order);
+
+        // 查重：无已存在的成品检验单
+        when(inspectionOrderMapper.selectCount(any())).thenReturn(0L);
+
+        // 产品档案
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        product.setCode("P001");
+        when(productMapper.selectByCode("P001")).thenReturn(product);
+
+        // 颜色明细：两行
+        DyeingColorDO color1 = new DyeingColorDO();
+        color1.setQuantity(new BigDecimal("120.50"));
+        DyeingColorDO color2 = new DyeingColorDO();
+        color2.setQuantity(new BigDecimal("80.25"));
+        when(dyeingColorMapper.selectListByOrderId(dyeingOrderId)).thenReturn(List.of(color1, color2));
+
+        // 模拟检验单创建
+        when(inspectionOrderService.createInspectionOrder(any())).thenReturn(901L);
+
+        Long inspectionOrderId = releaseProductionService.createFinishedInspection(dyeingOrderId);
+
+        assertEquals(901L, inspectionOrderId);
+
+        ArgumentCaptor<InspectionOrderSaveReqVO> captor = ArgumentCaptor.forClass(InspectionOrderSaveReqVO.class);
+        verify(inspectionOrderService).createInspectionOrder(captor.capture());
+        InspectionOrderSaveReqVO req = captor.getValue();
+        assertEquals("FINISHED", req.getType());
+        assertEquals("DRAFT", req.getStatus());
+        assertEquals("ROLL", req.getPackageMode());
+        assertEquals(201L, req.getProductId());
+        assertEquals(dyeingOrderId, req.getDyeingOrderId());
+        assertEquals(100L, req.getSalesContractId());
+        assertEquals(new BigDecimal("200.75"), req.getTargetWeight());
+        assertEquals(LocalDate.now(), req.getOrderDate());
+    }
+
+    @Test
+    @DisplayName("createFinishedInspection: 染色单不存在抛 DYEING_ORDER_NOT_EXISTS")
+    void testCreateFinishedInspection_dyeingOrderNotFound() {
+        when(dyeingOrderMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> releaseProductionService.createFinishedInspection(999L));
+        assertEquals(DYEING_ORDER_NOT_EXISTS.getCode(), ex.getCode());
+
+        ServiceException exNull = assertThrows(ServiceException.class,
+                () -> releaseProductionService.createFinishedInspection(null));
+        assertEquals(DYEING_ORDER_NOT_EXISTS.getCode(), exNull.getCode());
+    }
+
+    @Test
+    @DisplayName("createFinishedInspection: 染色单非 COMPLETED 态抛 DYEING_ORDER_STATUS_NOT_ALLOWED")
+    void testCreateFinishedInspection_notCompleted() {
+        Long dyeingOrderId = 502L;
+        DyeingOrderDO order = new DyeingOrderDO();
+        order.setId(dyeingOrderId);
+        order.setStatus("ACTIVE");
+        when(dyeingOrderMapper.selectById(dyeingOrderId)).thenReturn(order);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> releaseProductionService.createFinishedInspection(dyeingOrderId));
+        assertEquals(DYEING_ORDER_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("createFinishedInspection: 已存在成品检验单抛 1_030_035_005")
+    void testCreateFinishedInspection_duplicateCheck_throws005() {
+        Long dyeingOrderId = 503L;
+        DyeingOrderDO order = new DyeingOrderDO();
+        order.setId(dyeingOrderId);
+        order.setStatus("COMPLETED");
+        when(dyeingOrderMapper.selectById(dyeingOrderId)).thenReturn(order);
+
+        // 模拟已存在 FINISHED 检验单
+        when(inspectionOrderMapper.selectCount(any())).thenReturn(1L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> releaseProductionService.createFinishedInspection(dyeingOrderId));
+        assertEquals(FINISHED_INSPECTION_ORDER_ALREADY_EXISTS.getCode(), ex.getCode());
+        verify(inspectionOrderService, never()).createInspectionOrder(any());
     }
 
 }

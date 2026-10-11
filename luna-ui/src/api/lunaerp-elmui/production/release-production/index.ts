@@ -119,3 +119,12 @@ export const releaseProduction = (data: ReleaseProductionReqVO) => {
     data
   })
 }
+
+/**
+ * 从染色单生成成品检验单
+ */
+export const createFinishedInspection = (dyeingOrderId: number) => {
+  return request.post<number>({
+    url: `/lunaerp/production/release-production/create-finished-inspection?dyeingOrderId=${dyeingOrderId}`
+  })
+}
