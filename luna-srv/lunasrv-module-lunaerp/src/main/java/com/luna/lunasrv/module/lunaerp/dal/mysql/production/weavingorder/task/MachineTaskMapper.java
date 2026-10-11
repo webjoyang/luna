@@ -118,4 +118,34 @@ public interface MachineTaskMapper extends BaseMapperX<MachineTaskDO> {
                 .orderByDesc(MachineTaskDO::getId));
     }
 
+    /**
+     * 查询指定织机下占用态（PENDING / IN_PROGRESS / HALTED）且已排日期的机台任务
+     *
+     * @param loomId 织机ID
+     * @return 任务列表
+     */
+    default List<MachineTaskDO> selectOccupiedTasksByLoomId(Long loomId) {
+        return selectList(new LambdaQueryWrapperX<MachineTaskDO>()
+                .eq(MachineTaskDO::getLoomId, loomId)
+                .in(MachineTaskDO::getStatus, List.of("PENDING", "IN_PROGRESS", "HALTED"))
+                .and(w -> w.isNotNull(MachineTaskDO::getPlannedStart).or().isNotNull(MachineTaskDO::getPlannedEnd))
+                .orderByAsc(MachineTaskDO::getPlannedStart)
+                .orderByAsc(MachineTaskDO::getId));
+    }
+
+    /**
+     * 查询指定织机下指定状态列表的机台任务
+     *
+     * @param loomId 织机ID
+     * @param statuses 状态列表
+     * @return 任务列表
+     */
+    default List<MachineTaskDO> selectListByLoomIdAndStatuses(Long loomId, java.util.Collection<String> statuses) {
+        return selectList(new LambdaQueryWrapperX<MachineTaskDO>()
+                .eq(MachineTaskDO::getLoomId, loomId)
+                .inIfPresent(MachineTaskDO::getStatus, statuses)
+                .orderByAsc(MachineTaskDO::getPlannedStart)
+                .orderByAsc(MachineTaskDO::getId));
+    }
+
 }

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **参考**：本目录上级 spec.md §2、§9；ADR-0041、ADR-0024
 
