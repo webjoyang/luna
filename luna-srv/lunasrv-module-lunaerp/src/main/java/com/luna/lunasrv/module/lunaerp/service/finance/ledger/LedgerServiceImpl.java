@@ -101,18 +101,6 @@ public class LedgerServiceImpl implements LedgerService {
     }
 
     @Override
-    public void update(LedgerEntryDO entry) {
-        log.error("[update] 经营分录账禁止修改: entry={}", entry);
-        throw exception(LEDGER_IMMUTABLE);
-    }
-
-    @Override
-    public void delete(Long id) {
-        log.error("[delete] 经营分录账禁止删除: id={}", id);
-        throw exception(LEDGER_IMMUTABLE);
-    }
-
-    @Override
     @Transactional(rollbackFor = Exception.class)
     public Long recordArReturnReversal(Long customerId, Long shipmentItemId, BigDecimal returnQty,
                                         BigDecimal origAmount, String currency, BigDecimal exchangeRate,
@@ -291,13 +279,26 @@ public class LedgerServiceImpl implements LedgerService {
             BigDecimal totalCredit = BigDecimal.ZERO;
             BigDecimal historicalBaseBalance = BigDecimal.ZERO;
 
+            // AR 应收相关借方类别（增加应收余额）
+            Set<String> arDebitCategories = Set.of(
+                    FinanceLedgerCategoryEnum.AR_INC.getValue());
+            // AR 应收相关贷方类别（减少应收余额），RECEIPT/ADVANCE 现金分录不计入 AR 余额
+            Set<String> arCreditCategories = Set.of(
+                    FinanceLedgerCategoryEnum.RECEIPT_WRITE_OFF.getValue(),
+                    FinanceLedgerCategoryEnum.ADVANCE_WRITE_OFF.getValue(),
+                    FinanceLedgerCategoryEnum.AR_INC_REVERSAL.getValue(),
+                    FinanceLedgerCategoryEnum.AR_RETURN_REVERSAL.getValue());
+
             for (LedgerEntryDO e : groupEntries) {
                 BigDecimal orig = e.getOriginalAmount() != null ? e.getOriginalAmount() : BigDecimal.ZERO;
                 BigDecimal base = e.getBaseAmount() != null ? e.getBaseAmount() : BigDecimal.ZERO;
-                if (FinanceLedgerDirectionEnum.DEBIT.getValue().equalsIgnoreCase(e.getDirection())) {
+                String cat = e.getCategory();
+                if (cat != null && arDebitCategories.contains(cat)
+                        && FinanceLedgerDirectionEnum.DEBIT.getValue().equalsIgnoreCase(e.getDirection())) {
                     totalDebit = totalDebit.add(orig);
                     historicalBaseBalance = historicalBaseBalance.add(base);
-                } else if (FinanceLedgerDirectionEnum.CREDIT.getValue().equalsIgnoreCase(e.getDirection())) {
+                } else if (cat != null && arCreditCategories.contains(cat)
+                        && FinanceLedgerDirectionEnum.CREDIT.getValue().equalsIgnoreCase(e.getDirection())) {
                     totalCredit = totalCredit.add(orig);
                     historicalBaseBalance = historicalBaseBalance.subtract(base);
                 }

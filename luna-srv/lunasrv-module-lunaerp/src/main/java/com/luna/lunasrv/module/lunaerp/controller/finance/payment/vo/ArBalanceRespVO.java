@@ -62,4 +62,7 @@ public class ArBalanceRespVO {
     @Schema(description = "销售合同号（若有关联合同）", example = "HT20261001")
     private String contractNo;
 
+    @Schema(description = "关联已确认对账单号（若有关联CONFIRMED对账单）", example = "CS20261012001")
+    private String statementNo;
+
 }

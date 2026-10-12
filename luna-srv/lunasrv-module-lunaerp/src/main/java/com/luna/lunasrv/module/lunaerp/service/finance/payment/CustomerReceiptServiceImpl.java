@@ -19,6 +19,10 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentRefMapper;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.statement.CustomerStatementDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.statement.CustomerStatementItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.statement.CustomerStatementItemMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.statement.CustomerStatementMapper;
 import com.luna.lunasrv.module.lunaerp.enums.finance.*;
 import com.luna.lunasrv.module.lunaerp.service.finance.account.AccountService;
 import com.luna.lunasrv.module.lunaerp.service.finance.exchangerate.ExchangeRateService;
@@ -97,6 +101,12 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
 
     @Resource
     private ApprovalInstanceService approvalInstanceService;
+
+    @Resource
+    private CustomerStatementMapper customerStatementMapper;
+
+    @Resource
+    private CustomerStatementItemMapper customerStatementItemMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -364,13 +374,45 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
             return Collections.emptyList();
         }
 
+        // 批量查询分录关联的已确认对账单（Spec1: CONFIRMED 对账单视角）
+        Map<Long, String> entryStatementNoMap = Collections.emptyMap();
+        if (customerStatementItemMapper != null && customerStatementMapper != null) {
+            Set<Long> entryIds = entries.stream().map(LedgerEntryDO::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+            if (CollUtil.isNotEmpty(entryIds)) {
+                List<CustomerStatementItemDO> statementItems = customerStatementItemMapper.selectList(
+                        new LambdaQueryWrapperX<CustomerStatementItemDO>()
+                                .in(CustomerStatementItemDO::getLedgerEntryId, entryIds));
+                if (CollUtil.isNotEmpty(statementItems)) {
+                    Set<Long> statementIds = statementItems.stream()
+                            .map(CustomerStatementItemDO::getStatementId)
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toSet());
+                    if (CollUtil.isNotEmpty(statementIds)) {
+                        List<CustomerStatementDO> statements = customerStatementMapper.selectBatchIds(statementIds);
+                        Map<Long, String> confirmedStatementMap = statements.stream()
+                                .filter(s -> CustomerStatementStatusEnum.CONFIRMED.getValue().equalsIgnoreCase(s.getStatus()))
+                                .collect(Collectors.toMap(CustomerStatementDO::getId, CustomerStatementDO::getStatementNo, (a, b) -> a));
+                        entryStatementNoMap = statementItems.stream()
+                                .filter(item -> confirmedStatementMap.containsKey(item.getStatementId()) && item.getLedgerEntryId() != null)
+                                .collect(Collectors.toMap(CustomerStatementItemDO::getLedgerEntryId,
+                                        item -> confirmedStatementMap.get(item.getStatementId()), (a, b) -> a));
+                    }
+                }
+            }
+        }
+
         List<ArBalanceRespVO> result = new ArrayList<>();
         for (LedgerEntryDO entry : entries) {
             BigDecimal unallocated = calculateUnallocatedBalance(entry, null);
             if (unallocated.compareTo(BigDecimal.ZERO) > 0) {
                 String shipmentNo = null;
                 String contractNo = null;
-                if ("SHIPMENT".equalsIgnoreCase(entry.getRefType()) && entry.getRefId() != null) {
+                // Spec5: SHIPMENT_ITEM/SHIPMENT_FREIGHT 分录的 refId 即为发货单或发货明细 ID，
+                // 统一通过 shipmentMapper.selectById(refId) 查询发货单号和合同号
+                if (entry.getRefId() != null && (
+                        FinanceLedgerRefTypeEnum.SHIPMENT.getValue().equalsIgnoreCase(entry.getRefType())
+                        || FinanceLedgerRefTypeEnum.SHIPMENT_ITEM.getValue().equalsIgnoreCase(entry.getRefType())
+                        || FinanceLedgerRefTypeEnum.SHIPMENT_FREIGHT.getValue().equalsIgnoreCase(entry.getRefType()))) {
                     ShipmentDO shipment = shipmentMapper.selectById(entry.getRefId());
                     if (shipment != null) {
                         shipmentNo = shipment.getShipmentNo();
@@ -396,6 +438,7 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
                         .refId(entry.getRefId())
                         .shipmentNo(shipmentNo)
                         .contractNo(contractNo)
+                        .statementNo(entryStatementNoMap.get(entry.getId()))
                         .build());
             }
         }
@@ -600,7 +643,7 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
                         .bizDate(payment.getReceiptDate())
                         .partyType(FinancePartyTypeEnum.CUSTOMER.getValue())
                         .partyId(payment.getCustomerId())
-                        .accountId(payment.getAccountId())
+                        // ADR-0043: 纯应收分录不携带 accountId，仅资金流动分录（RECEIPT/ADVANCE）设置
                         .category(FinanceLedgerCategoryEnum.RECEIPT_WRITE_OFF.getValue())
                         .direction(FinanceLedgerDirectionEnum.CREDIT.getValue())
                         .currency(payment.getCurrency())
@@ -676,16 +719,27 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
     }
 
     private BigDecimal calculateReversals(Long ledgerEntryId) {
+        // AR_INC_REVERSAL 通过 reversalOfId 挂载（红冲回指原 AR_INC 分录）
         List<LedgerEntryDO> revEntries = ledgerEntryMapper.selectListByReversalOfId(ledgerEntryId);
         BigDecimal sum = BigDecimal.ZERO;
         if (CollUtil.isNotEmpty(revEntries)) {
             for (LedgerEntryDO rev : revEntries) {
-                if (FinanceLedgerCategoryEnum.AR_INC_REVERSAL.getValue().equalsIgnoreCase(rev.getCategory())
-                        || FinanceLedgerCategoryEnum.AR_RETURN_REVERSAL.getValue().equalsIgnoreCase(rev.getCategory())) {
+                if (FinanceLedgerCategoryEnum.AR_INC_REVERSAL.getValue().equalsIgnoreCase(rev.getCategory())) {
                     sum = sum.add(rev.getOriginalAmount() != null ? rev.getOriginalAmount() : BigDecimal.ZERO);
                 }
             }
         }
+
+        // Spec7: AR_RETURN_REVERSAL 通过 refItemId 挂载（退货冲减不使用 reversalOfId）
+        List<LedgerEntryDO> returnRevEntries = ledgerEntryMapper.selectListByRefItemId(ledgerEntryId);
+        if (CollUtil.isNotEmpty(returnRevEntries)) {
+            for (LedgerEntryDO rev : returnRevEntries) {
+                if (FinanceLedgerCategoryEnum.AR_RETURN_REVERSAL.getValue().equalsIgnoreCase(rev.getCategory())) {
+                    sum = sum.add(rev.getOriginalAmount() != null ? rev.getOriginalAmount() : BigDecimal.ZERO);
+                }
+            }
+        }
+
         return sum;
     }
 
@@ -866,6 +920,8 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
 
         // 2. 逐行校验分录客户、币种，并执行并发行级排他锁和余额防超核销检查
         BigDecimal rate = exchangeRateService.getRate(payment.getCurrency(), LocalDate.now());
+        // Spec8: 收集已插入的核销行，待 ADVANCE_WRITE_OFF 分录 ID 确定后统一回填 ledgerEntryId
+        List<PaymentRefDO> insertedRefs = new ArrayList<>();
 
         for (ReceiptRefSaveVO item : reqVO.getItems()) {
             // 加排他行锁防并发超核销
@@ -898,13 +954,14 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
                     .paymentId(payment.getId())
                     .refType(REF_TYPE_AR_ENTRY)
                     .refId(item.getLedgerEntryId())
-                    .ledgerEntryId(item.getLedgerEntryId())
+                    // Spec8: ledgerEntryId 将在 ADVANCE_WRITE_OFF 分录写入后通过 updateById 回填
                     .entryNo(entryLabel)
                     .bizDate(item.getBizDate() != null ? item.getBizDate() : entry.getBizDate())
                     .allocateAmount(item.getAllocateAmount())
                     .baseAmount(baseAmount)
                     .build();
             paymentRefMapper.insert(refDO);
+            insertedRefs.add(refDO);
         }
 
         // 3. 生成 ADVANCE_WRITE_OFF 经营分录（贷记客户往来，冲减应收）
@@ -913,7 +970,7 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
                 .bizDate(LocalDate.now())
                 .partyType(FinancePartyTypeEnum.CUSTOMER.getValue())
                 .partyId(payment.getCustomerId())
-                .accountId(payment.getAccountId())
+                // ADR-0043: 纯应收分录不携带 accountId，仅资金流动分录（RECEIPT/ADVANCE）设置
                 .category(FinanceLedgerCategoryEnum.ADVANCE_WRITE_OFF.getValue())
                 .direction(FinanceLedgerDirectionEnum.CREDIT.getValue())
                 .currency(payment.getCurrency())
@@ -924,7 +981,13 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
                 .refId(payment.getId())
                 .remark(StrUtil.isNotBlank(reqVO.getRemark()) ? reqVO.getRemark() : ("客户预收转核销 - " + payment.getPaymentNo()))
                 .build();
-        ledgerService.append(writeoffEntry);
+        Long writeoffEntryId = ledgerService.append(writeoffEntry);
+
+        // Spec8: 将所有核销行的 ledgerEntryId 回指新建的 ADVANCE_WRITE_OFF 分录
+        for (PaymentRefDO ref : insertedRefs) {
+            ref.setLedgerEntryId(writeoffEntryId);
+            paymentRefMapper.updateById(ref);
+        }
 
         // 4. 更新原预收款单的已核销预收金额记录
         BigDecimal currentPrepayUsed = payment.getPrepayUsedAmount() != null ? payment.getPrepayUsedAmount() : BigDecimal.ZERO;

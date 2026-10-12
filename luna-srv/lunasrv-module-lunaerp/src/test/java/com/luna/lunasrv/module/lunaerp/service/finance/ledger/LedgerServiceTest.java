@@ -132,23 +132,6 @@ class LedgerServiceTest {
     }
 
     @Test
-    @DisplayName("守卫：调用 update 抛出 1_030_020_000 LEDGER_IMMUTABLE")
-    void testUpdate_ThrowsLedgerImmutable() {
-        LedgerEntryDO entry = LedgerEntryDO.builder().id(1001L).remark("试图修改").build();
-        ServiceException ex = assertThrows(ServiceException.class, () -> ledgerService.update(entry));
-        assertEquals(LEDGER_IMMUTABLE.getCode(), ex.getCode());
-        verify(ledgerEntryMapper, never()).updateById(any(LedgerEntryDO.class));
-    }
-
-    @Test
-    @DisplayName("守卫：调用 delete 抛出 1_030_020_000 LEDGER_IMMUTABLE")
-    void testDelete_ThrowsLedgerImmutable() {
-        ServiceException ex = assertThrows(ServiceException.class, () -> ledgerService.delete(1001L));
-        assertEquals(LEDGER_IMMUTABLE.getCode(), ex.getCode());
-        verify(ledgerEntryMapper, never()).deleteById(anyLong());
-    }
-
-    @Test
     @DisplayName("recordArReturnReversal：正确写入 AR_RETURN_REVERSAL 退货冲减贷方分录")
     void testRecordArReturnReversal_Success() {
         when(ledgerEntryMapper.insert(any(LedgerEntryDO.class))).thenAnswer(invocation -> {
@@ -255,6 +238,7 @@ class LedgerServiceTest {
                 .partyType("CUSTOMER")
                 .partyId(101L)
                 .currency("USD")
+                .category(FinanceLedgerCategoryEnum.AR_INC.getValue())
                 .direction("DEBIT")
                 .originalAmount(new BigDecimal("3000.00"))
                 .baseAmount(new BigDecimal("21600.00")) // rate 7.20
@@ -265,6 +249,7 @@ class LedgerServiceTest {
                 .partyType("CUSTOMER")
                 .partyId(101L)
                 .currency("USD")
+                .category(FinanceLedgerCategoryEnum.RECEIPT_WRITE_OFF.getValue())
                 .direction("CREDIT")
                 .originalAmount(new BigDecimal("1000.00"))
                 .baseAmount(new BigDecimal("7200.00")) // rate 7.20
@@ -295,6 +280,70 @@ class LedgerServiceTest {
         assertEquals(new BigDecimal("7.25000000"), resp.getCurrentRate());
         assertEquals(new BigDecimal("14500.00"), resp.getCurrentBaseBalance());
         assertEquals(new BigDecimal("100.00"), resp.getExchangeDiff());
+    }
+
+    // ==================== Cycle 2 RED 测试 ====================
+
+    @Test
+    @DisplayName("Spec6: getCustomerBalanceList 仅汇总 AR 类分录，RECEIPT 现金分录不应计入 AR 余额")
+    void testGetCustomerBalanceList_ExcludesReceiptCashEntries() {
+        // AR_INC 借方：应收 3000
+        LedgerEntryDO arInc = LedgerEntryDO.builder()
+                .id(1L).partyType("CUSTOMER").partyId(101L).currency("CNY")
+                .category(FinanceLedgerCategoryEnum.AR_INC.getValue())
+                .direction(FinanceLedgerDirectionEnum.DEBIT.getValue())
+                .originalAmount(new BigDecimal("3000.00"))
+                .baseAmount(new BigDecimal("3000.00")).build();
+
+        // RECEIPT 贷方：现金流入 1000（不应影响 AR 余额）
+        LedgerEntryDO receipt = LedgerEntryDO.builder()
+                .id(2L).partyType("CUSTOMER").partyId(101L).currency("CNY")
+                .category(FinanceLedgerCategoryEnum.RECEIPT.getValue())
+                .direction(FinanceLedgerDirectionEnum.CREDIT.getValue())
+                .originalAmount(new BigDecimal("1000.00"))
+                .baseAmount(new BigDecimal("1000.00")).build();
+
+        // RECEIPT_WRITE_OFF 贷方：冲减应收 1000
+        LedgerEntryDO writeoff = LedgerEntryDO.builder()
+                .id(3L).partyType("CUSTOMER").partyId(101L).currency("CNY")
+                .category(FinanceLedgerCategoryEnum.RECEIPT_WRITE_OFF.getValue())
+                .direction(FinanceLedgerDirectionEnum.CREDIT.getValue())
+                .originalAmount(new BigDecimal("1000.00"))
+                .baseAmount(new BigDecimal("1000.00")).build();
+
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(arInc, receipt, writeoff));
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("测试客户");
+        when(customerMapper.selectBatchIds(any())).thenReturn(List.of(customer));
+
+        List<LedgerCustomerBalanceRespVO> list = ledgerService.getCustomerBalanceList(101L, "CNY");
+
+        assertNotNull(list);
+        assertEquals(1, list.size());
+        LedgerCustomerBalanceRespVO resp = list.get(0);
+        // totalDebit 应只含 AR_INC: 3000
+        assertEquals(new BigDecimal("3000.00"), resp.getTotalDebit());
+        // totalCredit 应只含 AR 类减少分录(RECEIPT_WRITE_OFF): 1000，不含 RECEIPT 现金分录
+        assertEquals(new BigDecimal("1000.00"), resp.getTotalCredit());
+        // balance = 3000 - 1000 = 2000
+        assertEquals(new BigDecimal("2000.00"), resp.getBalance());
+    }
+
+    // ==================== Cycle 7 RED 测试 ====================
+
+    @Test
+    @DisplayName("S2: LedgerService 接口不应声明 update 或 delete 方法（ADR-0043 禁改禁删）")
+    void testLedgerServiceInterface_HasNoUpdateOrDeleteMethod() {
+        // 反射检查接口方法，确保不存在 update/delete
+        java.lang.reflect.Method[] methods = LedgerService.class.getDeclaredMethods();
+        boolean hasUpdate = java.util.Arrays.stream(methods)
+                .anyMatch(m -> m.getName().equals("update"));
+        boolean hasDelete = java.util.Arrays.stream(methods)
+                .anyMatch(m -> m.getName().equals("delete"));
+        assertFalse(hasUpdate, "LedgerService 接口不应声明 update 方法");
+        assertFalse(hasDelete, "LedgerService 接口不应声明 delete 方法");
     }
 
 }

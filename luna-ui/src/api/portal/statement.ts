@@ -32,6 +32,7 @@ export interface PortalStatementItemRespVO {
   creditAmount: number
   signStatus?: string
   remark?: string
+  reversalFlag?: boolean
 }
 
 export interface PortalStatementDetailRespVO extends PortalStatementRespVO {

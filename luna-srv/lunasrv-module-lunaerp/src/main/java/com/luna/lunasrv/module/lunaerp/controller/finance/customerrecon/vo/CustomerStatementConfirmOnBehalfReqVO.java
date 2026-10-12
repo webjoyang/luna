@@ -17,7 +17,8 @@ public class CustomerStatementConfirmOnBehalfReqVO {
     @NotBlank(message = "线下确认方式不能为空")
     private String confirmMethod;
 
-    @Schema(description = "备注说明", example = "客户业务对接人张三微信文字确认")
+    @Schema(description = "备注说明", requiredMode = Schema.RequiredMode.REQUIRED, example = "客户业务对接人张三微信文字确认")
+    @NotBlank(message = "代客确认线下备注不可为空")
     private String remark;
 
 }

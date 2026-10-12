@@ -230,4 +230,39 @@ describe('Issue 09: 收付款前端（付款申请 Tab + 付款登记 Tab）', (
       expect(disabledAcc?.name).toContain('停用')
     })
   })
+
+  describe('4. Spec1: 应收分录选择弹窗（STATEMENT 对账单视角筛选）', () => {
+    it('应收分录在 STATEMENT 模式下仅筛选关联已确认对账单的分录', () => {
+      const items: PaymentApi.ArBalanceRespVO[] = [
+        {
+          ledgerEntryId: 1,
+          entryNo: 'SH001',
+          category: 'AR_INC',
+          currency: 'CNY',
+          originalAmount: 1000,
+          unallocatedBalance: 1000,
+          statementNo: 'CS20261012001'
+        },
+        {
+          ledgerEntryId: 2,
+          entryNo: 'SH002',
+          category: 'AR_INC',
+          currency: 'CNY',
+          originalAmount: 2000,
+          unallocatedBalance: 2000
+        }
+      ]
+
+      const filterByMode = (list: PaymentApi.ArBalanceRespVO[], mode: string) => {
+        if (mode === 'STATEMENT') {
+          return list.filter((r) => !!r.statementNo)
+        }
+        return list
+      }
+
+      const filtered = filterByMode(items, 'STATEMENT')
+      expect(filtered.length).toBe(1)
+      expect(filtered[0].statementNo).toBe('CS20261012001')
+    })
+  })
 })

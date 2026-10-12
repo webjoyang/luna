@@ -12,6 +12,10 @@ import com.luna.lunasrv.module.lunaerp.portal.controller.portal.statement.vo.*;
 import com.luna.lunasrv.module.lunaerp.portal.core.PortalContext;
 import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.starter.annotation.LogRecord;
+import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper;
+import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceLedgerCategoryEnum;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -50,6 +54,9 @@ public class PortalStatementServiceImpl implements PortalStatementService {
 
     @Resource
     private CustomerStatementItemMapper customerStatementItemMapper;
+
+    @Resource
+    private LedgerEntryMapper ledgerEntryMapper;
 
     @Override
     public List<PortalStatementRespVO> getStatementList(Long customerId, String status) {
@@ -142,9 +149,33 @@ public class PortalStatementServiceImpl implements PortalStatementService {
 
         // 查询对账行明细
         List<CustomerStatementItemDO> itemDOList = customerStatementItemMapper.selectListByStatementId(statement.getId());
+        // Spec2: SENT期源单红冲门户行标红，客户可据此REJECTED
+        Set<Long> reversedLedgerEntryIds = Collections.emptySet();
+        if (ledgerEntryMapper != null && CollUtil.isNotEmpty(itemDOList)) {
+            Set<Long> entryIds = itemDOList.stream()
+                    .map(CustomerStatementItemDO::getLedgerEntryId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+            if (CollUtil.isNotEmpty(entryIds)) {
+                List<LedgerEntryDO> reversals = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                        .in(LedgerEntryDO::getReversalOfId, entryIds)
+                        .eq(LedgerEntryDO::getCategory, FinanceLedgerCategoryEnum.AR_INC_REVERSAL.getValue()));
+                if (CollUtil.isNotEmpty(reversals)) {
+                    reversedLedgerEntryIds = reversals.stream()
+                            .map(LedgerEntryDO::getReversalOfId)
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toSet());
+                }
+            }
+        }
+        Set<Long> finalReversedEntryIds = reversedLedgerEntryIds;
         List<PortalStatementItemRespVO> itemVOList = CollUtil.isEmpty(itemDOList)
                 ? Collections.emptyList()
-                : itemDOList.stream().map(this::convertToItemVO).collect(Collectors.toList());
+                : itemDOList.stream().map(item -> {
+                    PortalStatementItemRespVO vo = convertToItemVO(item);
+                    vo.setReversalFlag(item.getLedgerEntryId() != null && finalReversedEntryIds.contains(item.getLedgerEntryId()));
+                    return vo;
+                }).collect(Collectors.toList());
 
         return PortalStatementDetailRespVO.builder()
                 .id(statement.getId())

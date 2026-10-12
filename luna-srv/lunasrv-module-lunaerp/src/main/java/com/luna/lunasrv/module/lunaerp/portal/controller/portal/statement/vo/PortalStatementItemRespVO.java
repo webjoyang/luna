@@ -49,4 +49,7 @@ public class PortalStatementItemRespVO {
     @Schema(description = "行备注")
     private String remark;
 
+    @Schema(description = "源单红冲标记（SENT期若源分录被红冲则为true）", example = "false")
+    private Boolean reversalFlag;
+
 }

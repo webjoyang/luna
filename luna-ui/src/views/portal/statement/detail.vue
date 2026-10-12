@@ -96,10 +96,12 @@
               v-for="(item, idx) in detail.items"
               :key="item.id || idx"
               class="item-card"
+              :class="{ 'item-card-reversal': item.reversalFlag }"
               data-test="item-card"
             >
               <div class="item-header">
                 <span class="item-date" data-test="item-biz-date">{{ item.bizDate }}</span>
+                <span v-if="item.reversalFlag" class="tag-reversal" data-test="tag-reversal">源单已红冲</span>
                 <span class="item-direction" :class="item.direction === 'DEBIT' ? 'tag-debit' : 'tag-credit'">
                   {{ item.direction === 'DEBIT' ? '借(发货)' : '贷(回款/冲减)' }}
                 </span>
@@ -597,6 +599,20 @@ onMounted(async () => {
   border-radius: 8px;
   padding: 12px 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.item-card-reversal {
+  border: 1.5px solid #f87171 !important;
+  background: #fef2f2 !important;
+}
+
+.tag-reversal {
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .item-header {

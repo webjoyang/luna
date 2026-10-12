@@ -8,7 +8,7 @@
   >
     <div v-loading="loading">
       <el-alert
-        title="提示：系统展示该客户对应币种下尚未完全核销的应收分录（发货应收等），支持发货单、合同、分录三视角筛选。"
+        title="提示：系统展示该客户对应币种下尚未完全核销的应收分录（发货应收等），支持CONFIRMED对账单、发货单、合同、全部分录视角筛选。"
         type="info"
         show-icon
         :closable="false"
@@ -20,6 +20,7 @@
         <el-form-item label="筛选视角">
           <el-radio-group v-model="viewMode" size="small" @change="handleViewModeChange">
             <el-radio-button label="ALL">全部分录</el-radio-button>
+            <el-radio-button label="STATEMENT">按对账单</el-radio-button>
             <el-radio-button label="SHIPMENT">按发货单</el-radio-button>
             <el-radio-button label="CONTRACT">按合同</el-radio-button>
           </el-radio-group>
@@ -28,10 +29,10 @@
         <el-form-item label="关键词">
           <el-input
             v-model="keyword"
-            placeholder="分录号 / 发货单号 / 合同号"
+            placeholder="分录号 / 对账单号 / 发货单号 / 合同号"
             clearable
             size="small"
-            class="!w-220px"
+            class="!w-240px"
           />
         </el-form-item>
       </el-form>
@@ -66,6 +67,12 @@
         <el-table-column label="关联合同" prop="contractNo" min-width="130" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.contractNo" class="font-mono text-gray-700">{{ row.contractNo }}</span>
+            <span v-else class="text-gray-400">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="已确认对账单" prop="statementNo" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.statementNo" class="font-mono text-purple-600">{{ row.statementNo }}</span>
             <span v-else class="text-gray-400">—</span>
           </template>
         </el-table-column>
@@ -123,13 +130,15 @@ const visible = ref(false)
 const loading = ref(false)
 const tableData = ref<ArBalanceRespVO[]>([])
 const selectedRows = ref<ArBalanceRespVO[]>([])
-const viewMode = ref<'ALL' | 'SHIPMENT' | 'CONTRACT'>('ALL')
+const viewMode = ref<'ALL' | 'STATEMENT' | 'SHIPMENT' | 'CONTRACT'>('ALL')
 const keyword = ref('')
 let excludeIds: number[] = []
 
 const filteredTableData = computed(() => {
   let list = tableData.value
-  if (viewMode.value === 'SHIPMENT') {
+  if (viewMode.value === 'STATEMENT') {
+    list = list.filter((r) => !!r.statementNo)
+  } else if (viewMode.value === 'SHIPMENT') {
     list = list.filter((r) => !!r.shipmentNo)
   } else if (viewMode.value === 'CONTRACT') {
     list = list.filter((r) => !!r.contractNo)
@@ -140,6 +149,7 @@ const filteredTableData = computed(() => {
     list = list.filter(
       (r) =>
         (r.entryNo && r.entryNo.toLowerCase().includes(kw)) ||
+        (r.statementNo && r.statementNo.toLowerCase().includes(kw)) ||
         (r.shipmentNo && r.shipmentNo.toLowerCase().includes(kw)) ||
         (r.contractNo && r.contractNo.toLowerCase().includes(kw))
     )

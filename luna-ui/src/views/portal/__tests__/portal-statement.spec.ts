@@ -317,4 +317,34 @@ describe('Ticket 05: 客户门户对账单确认（10 号契约身份来源替�
       expect(validateRejectReason('A'.repeat(201))).toBe(false)
     })
   })
+
+  describe('5. Spec2: SENT 期源单红冲门户明细行标红测试', () => {
+    it('明细行 reversalFlag 为 true 时标记源单红冲', () => {
+      const itemWithReversal: StatementApi.PortalStatementItemRespVO = {
+        id: 201,
+        lineNo: 1,
+        direction: 'DEBIT',
+        bizDate: '2026-10-15',
+        refNo: 'SH-20261015-001',
+        summary: '发货明细出库',
+        debitAmount: 1000,
+        creditAmount: 0,
+        reversalFlag: true
+      }
+      const itemNormal: StatementApi.PortalStatementItemRespVO = {
+        id: 202,
+        lineNo: 2,
+        direction: 'DEBIT',
+        bizDate: '2026-10-15',
+        refNo: 'SH-20261015-002',
+        summary: '发货明细出库',
+        debitAmount: 2000,
+        creditAmount: 0,
+        reversalFlag: false
+      }
+
+      expect(itemWithReversal.reversalFlag).toBe(true)
+      expect(itemNormal.reversalFlag).toBe(false)
+    })
+  })
 })

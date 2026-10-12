@@ -723,4 +723,35 @@ class CustomerStatementServiceImplTest {
         assertTrue(printVO.getQrDegraded());
     }
 
+    // ==================== Cycle 5 RED 测试 ====================
+
+    @Test
+    @DisplayName("Spec3: CustomerStatementConfirmOnBehalfReqVO.remark 必须为非空字符串（Bean Validation）")
+    void testConfirmOnBehalfReqVO_RemarkIsRequired() {
+        // 使用 Jakarta Bean Validation 直接校验 VO
+        jakarta.validation.Validator validator = jakarta.validation.Validation
+                .buildDefaultValidatorFactory().getValidator();
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo
+                .CustomerStatementConfirmOnBehalfReqVO vo =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo
+                        .CustomerStatementConfirmOnBehalfReqVO();
+        vo.setId(1L);
+        vo.setConfirmMethod("微信确认");
+        // remark 不设置（null）
+
+        Set<jakarta.validation.ConstraintViolation<
+                com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo
+                        .CustomerStatementConfirmOnBehalfReqVO>> violations = validator.validate(vo);
+
+        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("remark")),
+                "remark 字段缺少 @NotBlank 约束");
+
+        // 空字符串也不合法
+        vo.setRemark("");
+        violations = validator.validate(vo);
+        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("remark")),
+                "remark 空字符串也应触发 @NotBlank 约束");
+    }
+
 }

@@ -99,6 +99,15 @@ public interface LedgerEntryMapper extends BaseMapperX<LedgerEntryDO> {
     }
 
     /**
+     * 按明细行ID查询分录列表
+     */
+    default List<LedgerEntryDO> selectListByRefItemId(Long refItemId) {
+        return selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eq(LedgerEntryDO::getRefItemId, refItemId)
+                .orderByAsc(LedgerEntryDO::getId));
+    }
+
+    /**
      * 统计指定资金账户引用的分录数量
      */
     default Long selectCountByAccountId(Long accountId) {

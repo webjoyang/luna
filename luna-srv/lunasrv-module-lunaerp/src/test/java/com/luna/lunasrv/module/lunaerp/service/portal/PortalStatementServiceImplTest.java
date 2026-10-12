@@ -61,6 +61,9 @@ public class PortalStatementServiceImplTest {
     @Mock
     private CustomerStatementItemMapper customerStatementItemMapper;
 
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper ledgerEntryMapper;
+
     private static final Long TEST_TENANT_ID = 1L;
     private static final Long OTHER_TENANT_ID = 2L;
     private static final Long TEST_CUSTOMER_A = 1001L;
@@ -72,6 +75,7 @@ public class PortalStatementServiceImplTest {
         MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
         TableInfoHelper.initTableInfo(assistant, CustomerStatementDO.class);
         TableInfoHelper.initTableInfo(assistant, CustomerStatementItemDO.class);
+        TableInfoHelper.initTableInfo(assistant, com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO.class);
     }
 
     @BeforeEach
@@ -532,6 +536,35 @@ public class PortalStatementServiceImplTest {
         assertTrue(json.contains("openingBalance"));
         assertTrue(json.contains("closingBalance"));
         assertTrue(json.contains("items"));
+    }
+
+    @Test
+    @DisplayName("Spec2: SENT 期对账单明细关联分录若已被红冲，reversalFlag 标红为 true")
+    void testPortalStatementDetail_ReversalFlag() {
+        CustomerStatementDO s = createStatement(101L, "CS-001", TEST_CUSTOMER_A, TEST_TENANT_ID, "SENT");
+        when(customerStatementMapper.selectById(101L)).thenReturn(s);
+
+        CustomerStatementItemDO item1 = createItem(201L, 101L, 1, "DEBIT", new BigDecimal("100.00"), BigDecimal.ZERO);
+        item1.setLedgerEntryId(501L);
+        CustomerStatementItemDO item2 = createItem(202L, 101L, 2, "DEBIT", new BigDecimal("200.00"), BigDecimal.ZERO);
+        item2.setLedgerEntryId(502L);
+        when(customerStatementItemMapper.selectListByStatementId(101L)).thenReturn(List.of(item1, item2));
+
+        // 501L 有红冲分录 AR_INC_REVERSAL，502L 无
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO revEntry =
+                com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO.builder()
+                        .id(901L)
+                        .reversalOfId(501L)
+                        .category("AR_INC_REVERSAL")
+                        .build();
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(revEntry));
+
+        PortalStatementDetailRespVO detail = portalStatementService.getStatementDetail(101L, null, null);
+
+        assertNotNull(detail);
+        assertEquals(2, detail.getItems().size());
+        assertTrue(detail.getItems().get(0).getReversalFlag(), "已红冲项 reversalFlag 应为 true");
+        assertFalse(detail.getItems().get(1).getReversalFlag(), "未红冲项 reversalFlag 应为 false");
     }
 
 }

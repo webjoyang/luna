@@ -247,6 +247,7 @@ export interface ArBalanceRespVO {
   refId?: number
   shipmentNo?: string
   contractNo?: string
+  statementNo?: string
 }
 
 /**

@@ -663,4 +663,179 @@ class CustomerReceiptServiceImplTest {
         assertEquals(RECEIPT_NOT_EXISTS.getCode(), ex.getCode());
     }
 
+    // ==================== Cycle 1 RED 测试 ====================
+
+    @Test
+    @DisplayName("S1: RECEIPT_WRITE_OFF 分录的 accountId 必须为 null（ADR-0043）")
+    void testPostReceiptOnApproval_WriteOffEntryHasNullAccountId() {
+        PaymentDO payment = PaymentDO.builder()
+                .id(100L).paymentNo("RC-20261012-001").direction("IN")
+                .status("PENDING").approvalStatus("APPROVING")
+                .customerId(1001L).accountId(2001L).currency("USD")
+                .payAmount(new BigDecimal("1000.00"))
+                .receiptDate(LocalDate.of(2026, 10, 12))
+                .receiptType("RECEIPT").build();
+        when(paymentMapper.selectById(100L)).thenReturn(payment);
+        when(exchangeRateService.getRate("USD", LocalDate.of(2026, 10, 12)))
+                .thenReturn(new BigDecimal("7.25000000"));
+
+        PaymentRefDO ref = PaymentRefDO.builder()
+                .id(1L).paymentId(100L).refType("AR_ENTRY").refId(501L)
+                .ledgerEntryId(501L).entryNo("SH20261012001")
+                .allocateAmount(new BigDecimal("1000.00")).build();
+        when(paymentRefMapper.selectListByPaymentId(100L)).thenReturn(List.of(ref));
+
+        LedgerEntryDO arEntry = LedgerEntryDO.builder()
+                .id(501L).partyType("CUSTOMER").partyId(1001L).currency("USD")
+                .originalAmount(new BigDecimal("1000.00")).build();
+        when(ledgerEntryMapper.selectById(501L)).thenReturn(arEntry);
+        when(ledgerEntryMapper.selectListByReversalOfId(501L)).thenReturn(Collections.emptyList());
+        when(paymentRefMapper.selectListByRefTypeAndRefId("AR_ENTRY", 501L)).thenReturn(List.of(ref));
+        when(ledgerService.append(any())).thenReturn(9001L);
+
+        customerReceiptService.postReceiptOnApproval(100L);
+
+        ArgumentCaptor<LedgerEntryDO> captor = ArgumentCaptor.forClass(LedgerEntryDO.class);
+        verify(ledgerService, times(2)).append(captor.capture());
+        LedgerEntryDO writeOffEntry = captor.getAllValues().get(1); // 第二笔是 RECEIPT_WRITE_OFF
+        assertEquals("RECEIPT_WRITE_OFF", writeOffEntry.getCategory());
+        assertNull(writeOffEntry.getAccountId(), "RECEIPT_WRITE_OFF 分录不应携带 accountId（ADR-0043）");
+    }
+
+    @Test
+    @DisplayName("S1: ADVANCE_WRITE_OFF 分录的 accountId 必须为 null（ADR-0043）")
+    void testAdvanceWriteoff_WriteOffEntryHasNullAccountId() {
+        PaymentDO advancePayment = PaymentDO.builder()
+                .id(500L).paymentNo("RC-20261012-099").direction("IN")
+                .customerId(1001L).accountId(2001L)
+                .payAmount(new BigDecimal("10000.00")).prepayUsedAmount(BigDecimal.ZERO)
+                .receiptType("ADVANCE").currency("CNY").status("COMPLETED").build();
+        when(paymentMapper.selectById(500L)).thenReturn(advancePayment);
+        when(paymentRefMapper.selectListByPaymentId(500L)).thenReturn(Collections.emptyList());
+
+        LedgerEntryDO arEntry = LedgerEntryDO.builder()
+                .id(601L).partyType("CUSTOMER").partyId(1001L).currency("CNY")
+                .category("AR_INC").originalAmount(new BigDecimal("5000.00")).build();
+        when(ledgerEntryMapper.selectOne(any())).thenReturn(arEntry);
+        when(ledgerEntryMapper.selectListByReversalOfId(601L)).thenReturn(Collections.emptyList());
+        when(paymentRefMapper.selectListByRefTypeAndRefId("AR_ENTRY", 601L)).thenReturn(Collections.emptyList());
+        when(exchangeRateService.getRate(eq("CNY"), any())).thenReturn(BigDecimal.ONE);
+        when(ledgerService.append(any())).thenReturn(9002L);
+
+        AdvanceWriteoffReqVO reqVO = AdvanceWriteoffReqVO.builder()
+                .paymentId(500L).remark("预收抵扣")
+                .items(List.of(ReceiptRefSaveVO.builder()
+                        .ledgerEntryId(601L).allocateAmount(new BigDecimal("3000.00"))
+                        .entryNo("SH20261012001").build()))
+                .build();
+
+        customerReceiptService.advanceWriteoff(reqVO);
+
+        ArgumentCaptor<LedgerEntryDO> captor = ArgumentCaptor.forClass(LedgerEntryDO.class);
+        verify(ledgerService).append(captor.capture());
+        LedgerEntryDO writeoffEntry = captor.getValue();
+        assertEquals("ADVANCE_WRITE_OFF", writeoffEntry.getCategory());
+        assertNull(writeoffEntry.getAccountId(), "ADVANCE_WRITE_OFF 分录不应携带 accountId（ADR-0043）");
+    }
+
+    // ==================== Cycle 3 RED 测试 ====================
+
+    @Test
+    @DisplayName("Spec7: calculateReversals 应通过 refItemId 查询 AR_RETURN_REVERSAL 退货冲减分录")
+    void testCalculateUnallocatedBalance_IncludesArReturnReversalByRefItemId() {
+        // AR_INC 原始分录 ID=701, originalAmount=2000
+        LedgerEntryDO arEntry = LedgerEntryDO.builder()
+                .id(701L).partyType("CUSTOMER").partyId(1001L)
+                .currency("CNY").category("AR_INC")
+                .originalAmount(new BigDecimal("2000.00")).build();
+
+        // AR_RETURN_REVERSAL 通过 refItemId=701 挂载，不走 reversalOfId
+        LedgerEntryDO returnRev = LedgerEntryDO.builder()
+                .id(801L).category("AR_RETURN_REVERSAL")
+                .direction("CREDIT").refItemId(701L)
+                .originalAmount(new BigDecimal("500.00")).build();
+
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(arEntry));
+        when(ledgerEntryMapper.selectListByRefItemId(701L)).thenReturn(List.of(returnRev));
+        when(ledgerEntryMapper.selectListByReversalOfId(701L)).thenReturn(Collections.emptyList());
+        when(paymentRefMapper.selectListByRefTypeAndRefId(any(), eq(701L))).thenReturn(Collections.emptyList());
+
+        List<ArBalanceRespVO> result = customerReceiptService.getArBalanceList(1001L, "CNY");
+
+        // 预期: 2000 - 500(退货冲减) = 1500 未核销余额
+        assertFalse(result.isEmpty());
+        assertEquals(new BigDecimal("1500.00"), result.get(0).getUnallocatedBalance());
+    }
+
+    // ==================== Cycle 4 RED 测试 ====================
+
+    @Test
+    @DisplayName("Spec8: 预收转核销 PaymentRef.ledgerEntryId 应指向新建的 ADVANCE_WRITE_OFF 分录")
+    void testAdvanceWriteoff_RefLedgerEntryIdPointsToWriteoffEntry() {
+        PaymentDO advancePayment = PaymentDO.builder()
+                .id(500L).paymentNo("RC-20261012-099").direction("IN")
+                .customerId(1001L).accountId(2001L)
+                .payAmount(new BigDecimal("10000.00")).prepayUsedAmount(BigDecimal.ZERO)
+                .receiptType("ADVANCE").currency("CNY").status("COMPLETED").build();
+        when(paymentMapper.selectById(500L)).thenReturn(advancePayment);
+        when(paymentRefMapper.selectListByPaymentId(500L)).thenReturn(Collections.emptyList());
+
+        LedgerEntryDO arEntry = LedgerEntryDO.builder()
+                .id(601L).partyType("CUSTOMER").partyId(1001L).currency("CNY")
+                .category("AR_INC").originalAmount(new BigDecimal("5000.00")).build();
+        when(ledgerEntryMapper.selectOne(any())).thenReturn(arEntry);
+        when(ledgerEntryMapper.selectListByReversalOfId(601L)).thenReturn(Collections.emptyList());
+        when(paymentRefMapper.selectListByRefTypeAndRefId("AR_ENTRY", 601L)).thenReturn(Collections.emptyList());
+        when(exchangeRateService.getRate(eq("CNY"), any())).thenReturn(BigDecimal.ONE);
+        Long newWriteoffEntryId = 9999L;
+        when(ledgerService.append(any())).thenReturn(newWriteoffEntryId);
+
+        AdvanceWriteoffReqVO reqVO = AdvanceWriteoffReqVO.builder()
+                .paymentId(500L).remark("预收抵扣")
+                .items(List.of(ReceiptRefSaveVO.builder()
+                        .ledgerEntryId(601L).allocateAmount(new BigDecimal("3000.00"))
+                        .entryNo("SH20261012001").build()))
+                .build();
+
+        customerReceiptService.advanceWriteoff(reqVO);
+
+        // 断言 updateById 被调用且 ledgerEntryId 指向新建的 ADVANCE_WRITE_OFF 分录 ID
+        ArgumentCaptor<PaymentRefDO> updateCaptor = ArgumentCaptor.forClass(PaymentRefDO.class);
+        verify(paymentRefMapper).updateById((PaymentRefDO) updateCaptor.capture());
+        assertEquals(newWriteoffEntryId, updateCaptor.getValue().getLedgerEntryId(),
+                "PaymentRef.ledgerEntryId 应指向新建的 ADVANCE_WRITE_OFF 分录，而非 AR 分录");
+    }
+
+    // ==================== Cycle 6 RED 测试 ====================
+
+    @Test
+    @DisplayName("Spec5: getArBalanceList SHIPMENT_ITEM 类型分录应正确回显发货单号")
+    void testGetArBalanceList_ShipmentItemRefTypePopulatesShipmentNo() {
+        LedgerEntryDO entry = LedgerEntryDO.builder()
+                .id(301L).partyType("CUSTOMER").partyId(1001L)
+                .currency("CNY").category("AR_INC")
+                .bizDate(LocalDate.of(2026, 10, 1))
+                .refType("SHIPMENT_ITEM")
+                .refId(401L) // shipment_item_id
+                .originalAmount(new BigDecimal("5000.00")).build();
+
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(entry));
+        when(ledgerEntryMapper.selectListByReversalOfId(301L)).thenReturn(Collections.emptyList());
+        when(paymentRefMapper.selectListByRefTypeAndRefId(any(), eq(301L))).thenReturn(Collections.emptyList());
+
+        // 通过 shipmentMapper.selectById(401L) 查到发货单
+        com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO shipment =
+                new com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO();
+        shipment.setShipmentNo("SH20261012001");
+        shipment.setContractNo("CT20261012001");
+        when(shipmentMapper.selectById(401L)).thenReturn(shipment);
+
+        List<ArBalanceRespVO> result = customerReceiptService.getArBalanceList(1001L, "CNY");
+
+        assertFalse(result.isEmpty());
+        assertEquals("SH20261012001", result.get(0).getShipmentNo(),
+                "SHIPMENT_ITEM 类型分录应正确回显发货单号");
+        assertEquals("CT20261012001", result.get(0).getContractNo());
+    }
+
 }

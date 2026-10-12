@@ -26,20 +26,6 @@ public interface LedgerService {
     Long append(LedgerEntryDO entry);
 
     /**
-     * 更新分录（禁止调用，直接抛出 LEDGER_IMMUTABLE 异常）
-     *
-     * @param entry 分录实体
-     */
-    void update(LedgerEntryDO entry);
-
-    /**
-     * 删除分录（禁止调用，直接抛出 LEDGER_IMMUTABLE 异常）
-     *
-     * @param id 分录ID
-     */
-    void delete(Long id);
-
-    /**
      * 记录销售退货冲减分录（Issue 13 接缝契约）
      *
      * @param customerId 客户ID
