@@ -184,8 +184,10 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
   ],
   lunaerp_finance_statement_status: [
     { dictType: 'lunaerp_finance_statement_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_finance_statement_status', label: '已发送', value: 'SENT', colorType: 'primary', cssClass: '' },
     { dictType: 'lunaerp_finance_statement_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
-    { dictType: 'lunaerp_finance_statement_status', label: '已作废', value: 'CANCELLED', colorType: 'danger', cssClass: '' }
+    { dictType: 'lunaerp_finance_statement_status', label: '已驳回', value: 'REJECTED', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_statement_status', label: '已作废', value: 'VOID', colorType: 'danger', cssClass: '' }
   ],
   lunaerp_finance_receipt_type: [
     { dictType: 'lunaerp_finance_receipt_type', label: '货款收款', value: 'RECEIPT', colorType: 'primary', cssClass: '' },
