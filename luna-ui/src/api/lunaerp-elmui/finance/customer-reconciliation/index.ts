@@ -1,0 +1,202 @@
+import request from '@/config/axios'
+
+/**
+ * 客户对账单主表 VO
+ */
+export interface CustomerStatementVO {
+  id: number
+  statementNo: string
+  customerId: number
+  customerName: string
+  currency: string
+  periodStart: string
+  periodEnd: string
+  openingBalance: number
+  periodDebit: number
+  periodCredit: number
+  closingBalance: number
+  status: string
+  confirmType?: string
+  confirmByName?: string
+  confirmTime?: string
+  confirmIp?: string
+  confirmMethod?: string
+  rejectReason?: string
+  replyRemark?: string
+  remark?: string
+  createTime?: string
+  creator?: string
+}
+
+/**
+ * 客户对账单明细行 VO
+ */
+export interface CustomerStatementItemVO {
+  id: number
+  statementId: number
+  lineNo: number
+  ledgerEntryId?: number
+  direction: 'DEBIT' | 'CREDIT'
+  bizDate: string
+  refType?: string
+  refNo?: string
+  summary?: string
+  debitAmount: number
+  creditAmount: number
+  signStatus?: string
+  remark?: string
+}
+
+/**
+ * 客户对账单详情 VO
+ */
+export interface CustomerStatementDetailVO extends CustomerStatementVO {
+  items: CustomerStatementItemVO[]
+}
+
+/**
+ * 候选分录明细 VO
+ */
+export interface CustomerStatementCandidateItemVO {
+  ledgerEntryId: number
+  bizDate: string
+  direction: 'DEBIT' | 'CREDIT'
+  category: string
+  currency: string
+  refType?: string
+  refId?: number
+  refNo?: string
+  summary?: string
+  amount: number
+  debitAmount: number
+  creditAmount: number
+  signStatus?: string
+  occupied: boolean
+  occupiedStatementNo?: string
+  occupiedStatus?: string
+}
+
+/**
+ * 取数试算请求 VO
+ */
+export interface CustomerStatementPrefetchReqVO {
+  customerId: number
+  currency: string
+  periodStart: string
+  periodEnd: string
+  excludeStatementId?: number
+}
+
+/**
+ * 取数试算响应 VO
+ */
+export interface CustomerStatementPrefetchRespVO {
+  customerId: number
+  customerName: string
+  currency: string
+  periodStart: string
+  periodEnd: string
+  openingBalance: number
+  candidateDebit: number
+  candidateCredit: number
+  estimatedClosingBalance: number
+  items: CustomerStatementCandidateItemVO[]
+}
+
+/**
+ * 创建对账单请求 VO
+ */
+export interface CustomerStatementCreateReqVO {
+  statementNo?: string
+  customerId: number
+  currency: string
+  periodStart: string
+  periodEnd: string
+  selectedEntryIds?: number[]
+  remark?: string
+}
+
+/**
+ * 更新对账单请求 VO
+ */
+export interface CustomerStatementUpdateReqVO {
+  id: number
+  remark?: string
+}
+
+/**
+ * 追加分录请求 VO
+ */
+export interface CustomerStatementAddEntryReqVO {
+  statementId: number
+  ledgerEntryId: number
+}
+
+/**
+ * 分页查询参数 VO
+ */
+export interface CustomerStatementPageReqVO extends PageParam {
+  statementNo?: string
+  customerId?: number
+  customerName?: string
+  currency?: string
+  status?: string
+  periodStart?: string
+  periodEnd?: string
+}
+
+/** 分页查询客户对账单 */
+export const getCustomerStatementPage = (params: CustomerStatementPageReqVO) => {
+  return request.get<{ list: CustomerStatementVO[]; total: number }>({
+    url: '/lunaerp/finance/statement/page',
+    params
+  })
+}
+
+/** 查询客户对账单详情 */
+export const getCustomerStatement = (id: number | string) => {
+  return request.get<CustomerStatementDetailVO>({
+    url: '/lunaerp/finance/statement/get',
+    params: { id }
+  })
+}
+
+/** 对账期间取数预览及试算 */
+export const prefetchCustomerStatementLines = (params: CustomerStatementPrefetchReqVO) => {
+  return request.get<CustomerStatementPrefetchRespVO>({
+    url: '/lunaerp/finance/statement/prefetch-lines',
+    params
+  })
+}
+
+/** 创建草稿客户对账单 */
+export const createCustomerStatement = (data: CustomerStatementCreateReqVO) => {
+  return request.post<number>({
+    url: '/lunaerp/finance/statement/create',
+    data
+  })
+}
+
+/** 更新草稿客户对账单备注 */
+export const updateCustomerStatement = (data: CustomerStatementUpdateReqVO) => {
+  return request.put<boolean>({
+    url: '/lunaerp/finance/statement/update',
+    data
+  })
+}
+
+/** 删除草稿客户对账单（移入回收站） */
+export const deleteCustomerStatement = (id: number | string) => {
+  return request.delete<boolean>({
+    url: '/lunaerp/finance/statement/delete',
+    params: { id }
+  })
+}
+
+/** 草稿手工追加未占用分录 */
+export const addCustomerStatementEntry = (data: CustomerStatementAddEntryReqVO) => {
+  return request.post<boolean>({
+    url: '/lunaerp/finance/statement/add-entry',
+    data
+  })
+}
