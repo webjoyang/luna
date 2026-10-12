@@ -209,5 +209,10 @@ public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalEr
     // ========== 生产管理 - 排产中心/机台任务冲突 1-030-036-000 ==========
     ErrorCode MACHINE_TASK_LOOM_TIME_CONFLICT = new ErrorCode(1_030_036_000, "织机【{}】在 {}~{} 已排任务【{}】，计划时段冲突，请改期或转机");
 
+    // ========== 财务管理 - 客户对账模块 1-030-021-000 ~ 007 ==========
+    ErrorCode STATEMENT_NOT_EXISTS = new ErrorCode(1_030_021_000, "对账单不存在");
+    ErrorCode STATEMENT_STATUS_NOT_ALLOW = new ErrorCode(1_030_021_001, "当前状态不允许该操作");
+
 }
+
 

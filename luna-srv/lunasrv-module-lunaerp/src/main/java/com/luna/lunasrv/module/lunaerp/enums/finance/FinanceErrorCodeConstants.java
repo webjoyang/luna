@@ -13,6 +13,10 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  */
 public interface FinanceErrorCodeConstants {
 
+    // ========== 客户对账模块 1-030-021-000 ~ 007 ==========
+    ErrorCode STATEMENT_NOT_EXISTS = new ErrorCode(1_030_021_000, "对账单不存在");
+    ErrorCode STATEMENT_STATUS_NOT_ALLOW = new ErrorCode(1_030_021_001, "当前状态不允许该操作");
+
     // ========== 供应商对账模块 1-030-022-000 ~ 007 ==========
     ErrorCode SUPPLIER_RECON_NOT_EXISTS = new ErrorCode(1_030_022_000, "对账单不存在");
     ErrorCode SUPPLIER_RECON_STATUS_NOT_ALLOWED = new ErrorCode(1_030_022_001, "当前状态不允许该操作");
