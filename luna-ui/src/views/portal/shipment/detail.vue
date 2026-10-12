@@ -1,5 +1,5 @@
 <template>
-  <PortalLayout title="发货单详情" :customer-name="customerName">
+  <PortalLayout title="发货单详情" :customer-name="customerName" :hide-tab-bar="detail?.signStatus === 'PENDING'">
     <div v-loading="loading || detailLoading" class="portal-shipment-detail-page">
       <!-- 顶部操作条（返回） -->
       <div class="top-nav">
@@ -142,18 +142,95 @@
       <div v-else-if="!detailLoading" class="empty-wrap">
         <el-empty description="未找到发货单数据或无权查看" />
       </div>
+
+      <!-- 底部操作栏（仅待签收 PENDING 状态显示） -->
+      <div v-if="detail && detail.signStatus === 'PENDING'" class="bottom-action-bar" data-test="bottom-action-bar">
+        <el-button
+          type="danger"
+          plain
+          class="action-btn refuse-btn"
+          data-test="btn-refuse"
+          @click="openSignDialog('REFUSED')"
+        >
+          拒收
+        </el-button>
+        <el-button
+          type="primary"
+          class="action-btn sign-btn"
+          data-test="btn-sign"
+          @click="openSignDialog('SIGNED')"
+        >
+          确认签收
+        </el-button>
+      </div>
+
+      <!-- 签收/拒收二次确认弹窗 -->
+      <el-dialog
+        v-model="signDialogVisible"
+        :title="signAction === 'SIGNED' ? '发货单签收登记' : '发货单拒收登记'"
+        width="90%"
+        class="portal-sign-dialog"
+        :append-to-body="true"
+        :close-on-click-modal="false"
+        data-test="sign-dialog"
+      >
+        <el-form
+          ref="signFormRef"
+          :model="signForm"
+          :rules="signRules"
+          label-position="top"
+          class="sign-form"
+        >
+          <el-form-item label="签收人姓名" prop="signedByName" required>
+            <el-input
+              v-model="signForm.signedByName"
+              placeholder="请输入签收人姓名"
+              maxlength="50"
+              clearable
+              data-test="input-signed-by"
+            />
+          </el-form-item>
+          <el-form-item label="备注" prop="signRemark">
+            <el-input
+              v-model="signForm.signRemark"
+              type="textarea"
+              :rows="3"
+              placeholder="可填写签收或拒收备注/原因"
+              maxlength="200"
+              show-word-limit
+              data-test="input-sign-remark"
+            />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button data-test="btn-dialog-cancel" @click="signDialogVisible = false">取消</el-button>
+            <el-button
+              :type="signAction === 'SIGNED' ? 'primary' : 'danger'"
+              :loading="signSubmitting"
+              data-test="btn-dialog-confirm"
+              @click="handleSignSubmit"
+            >
+              {{ signAction === 'SIGNED' ? '确认签收' : '确认拒收' }}
+            </el-button>
+          </span>
+        </template>
+      </el-dialog>
     </div>
   </PortalLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import PortalLayout from '@/views/portal/PortalLayout.vue'
 import { usePortalAuth } from '@/views/portal/usePortalAuth'
 import {
   getPortalShipmentDetail,
-  type PortalShipmentDetailRespVO
+  signPortalShipment,
+  type PortalShipmentDetailRespVO,
+  type PortalShipmentSignReqVO
 } from '@/api/portal/shipment'
 
 const route = useRoute()
@@ -162,6 +239,66 @@ const { customerName, loading, bootstrapToken } = usePortalAuth()
 
 const detail = ref<PortalShipmentDetailRespVO | null>(null)
 const detailLoading = ref(false)
+
+// 签收/拒收弹窗状态与表单
+const signDialogVisible = ref(false)
+const signAction = ref<'SIGNED' | 'REFUSED'>('SIGNED')
+const signSubmitting = ref(false)
+const signFormRef = ref<FormInstance>()
+const signForm = reactive({
+  signedByName: '',
+  signRemark: ''
+})
+
+const signRules: FormRules = {
+  signedByName: [
+    { required: true, message: '签收人姓名不能为空', trigger: 'blur' },
+    {
+      validator: (_rule: any, value: string, callback: any) => {
+        if (!value || !value.trim()) {
+          callback(new Error('签收人姓名不能为空'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ]
+}
+
+const openSignDialog = (action: 'SIGNED' | 'REFUSED') => {
+  signAction.value = action
+  signForm.signedByName = ''
+  signForm.signRemark = ''
+  if (signFormRef.value) {
+    signFormRef.value.clearValidate()
+  }
+  signDialogVisible.value = true
+}
+
+const handleSignSubmit = async () => {
+  if (!signFormRef.value || !detail.value) return
+  const valid = await signFormRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  signSubmitting.value = true
+  try {
+    const payload: PortalShipmentSignReqVO = {
+      id: detail.value.id,
+      signStatus: signAction.value,
+      signedByName: signForm.signedByName.trim(),
+      signRemark: signForm.signRemark ? signForm.signRemark.trim() : undefined
+    }
+    await signPortalShipment(payload)
+    ElMessage.success(signAction.value === 'SIGNED' ? '签收登记成功' : '拒收登记成功')
+    signDialogVisible.value = false
+    await loadDetail()
+  } catch (error) {
+    // 错误由 axios 拦截器或提示统一处理
+  } finally {
+    signSubmitting.value = false
+  }
+}
 
 const getSignStatusTagType = (status?: string): '' | 'success' | 'warning' | 'danger' | 'info' => {
   switch (status) {
@@ -228,7 +365,7 @@ onMounted(async () => {
 
 <style scoped>
 .portal-shipment-detail-page {
-  padding: 4px 0 20px;
+  padding: 4px 0 70px;
 }
 
 .top-nav {
@@ -488,5 +625,43 @@ onMounted(async () => {
 
 .empty-wrap {
   padding: 40px 0;
+}
+
+.bottom-action-bar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  height: 60px;
+  background: #ffffff;
+  border-top: 1px solid #ebeef5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  gap: 12px;
+  z-index: 100;
+  box-sizing: border-box;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.action-btn {
+  flex: 1;
+  height: 42px;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 6px;
+}
+
+.portal-sign-dialog :deep(.el-dialog__body) {
+  padding: 16px 20px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>

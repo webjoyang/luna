@@ -80,4 +80,24 @@ public class PortalShipmentControllerTest {
         assertEquals(no, result.getData().getShipmentNo());
     }
 
+    @Test
+    @DisplayName("签收端点正常委托 Service 并返回 CommonResult")
+    void testSignShipment() {
+        com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentSignReqVO reqVO =
+                com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentSignReqVO.builder()
+                        .id(101L)
+                        .signStatus("SIGNED")
+                        .signedByName("张三")
+                        .signRemark("货物完好")
+                        .build();
+        doNothing().when(portalShipmentService).signShipment(reqVO);
+
+        CommonResult<Boolean> result = controller.signShipment(reqVO);
+
+        assertNotNull(result);
+        assertEquals(0, result.getCode());
+        assertTrue(result.getData());
+        verify(portalShipmentService).signShipment(reqVO);
+    }
+
 }

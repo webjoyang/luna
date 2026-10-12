@@ -75,3 +75,20 @@ export const getPortalShipmentDetail = (params: { id?: number | string; no?: str
     params
   })
 }
+
+export interface PortalShipmentSignReqVO {
+  id: number
+  signStatus: 'SIGNED' | 'REFUSED' | string
+  signedByName: string
+  signRemark?: string
+}
+
+/**
+ * 客户门户发货单签收/拒收登记
+ */
+export const signPortalShipment = (data: PortalShipmentSignReqVO) => {
+  return portalRequest.put<boolean>({
+    url: '/app-api/lunaerp/portal/shipment/sign',
+    data
+  })
+}

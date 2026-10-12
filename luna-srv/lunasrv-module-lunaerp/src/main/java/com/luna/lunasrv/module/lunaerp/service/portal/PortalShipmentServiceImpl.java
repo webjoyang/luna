@@ -9,19 +9,22 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.Shipment
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentDetailItemRespVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentDetailRespVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentPageItemRespVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentPageReqVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentRollRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentUpdateSignReqVO;
+import com.luna.lunasrv.module.lunaerp.enums.business.shipment.ShipmentSignStatusEnum;
+import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.*;
 import com.luna.lunasrv.module.lunaerp.portal.core.PortalContext;
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.ShipmentService;
+import com.mzt.logapi.context.LogRecordContext;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -29,7 +32,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import static com.luna.lunasrv.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SHIPMENT_SIGN_STATUS_INVALID;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SHIPMENT_STATUS_NOT_ALLOW;
 import static com.luna.lunasrv.module.lunaerp.enums.portal.PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED;
 
 /**
@@ -52,6 +58,9 @@ public class PortalShipmentServiceImpl implements PortalShipmentService {
 
     @Resource
     private ShipmentRollMapper shipmentRollMapper;
+
+    @Resource
+    private ShipmentService shipmentService;
 
     @Override
     public PageResult<PortalShipmentPageItemRespVO> getShipmentPage(PortalShipmentPageReqVO reqVO) {
@@ -189,6 +198,69 @@ public class PortalShipmentServiceImpl implements PortalShipmentService {
                 .totalPieces(shipment.getTotalPieces())
                 .items(itemVOList)
                 .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "客户门户", subType = "发货签收", bizNo = "{{#reqVO.id}}",
+            success = "门户客户登记发货单签收【{{#shipmentNo}}】：状态【{{#reqVO.signStatus}}】，签收人【{{#reqVO.signedByName}}】")
+    public void signShipment(PortalShipmentSignReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            log.warn("[signShipment][请求参数或单据ID为空]");
+            throw exception(PORTAL_DATA_ACCESS_DENIED);
+        }
+        if (!StringUtils.hasText(reqVO.getSignedByName())) {
+            log.warn("[signShipment][签收人姓名为空: id={}]", reqVO.getId());
+            throw exception(BAD_REQUEST, "签收人姓名不能为空");
+        }
+
+        // 1. 校验存在性及未删除
+        ShipmentDO shipment = shipmentMapper.selectById(reqVO.getId());
+        if (shipment == null) {
+            log.warn("[signShipment][发货单不存在或已删除: id={}]", reqVO.getId());
+            throw exception(PORTAL_DATA_ACCESS_DENIED);
+        }
+
+        // 留痕上下文变量记录
+        LogRecordContext.putVariable("shipmentNo", shipment.getShipmentNo());
+
+        // 2. 校验客户归属（横向越权防御）
+        Long currentCustomerId = PortalContext.getCustomerId();
+        if (currentCustomerId == null || !currentCustomerId.equals(shipment.getCustomerId())) {
+            log.warn("[signShipment][客户归属不匹配: currentCustomerId={}, shipmentCustomerId={}]",
+                    currentCustomerId, shipment.getCustomerId());
+            throw exception(PORTAL_DATA_ACCESS_DENIED);
+        }
+
+        // 3. 校验租户归属（跨租户防御）
+        Long currentTenantId = TenantContextHolder.getTenantId();
+        if (currentTenantId == null || !currentTenantId.equals(shipment.getTenantId())) {
+            log.warn("[signShipment][租户归属不匹配: currentTenantId={}, shipmentTenantId={}]",
+                    currentTenantId, shipment.getTenantId());
+            throw exception(PORTAL_DATA_ACCESS_DENIED);
+        }
+
+        // 4. 状态守卫：仅已发货态 COMPLETED 允许签收
+        if (!STATUS_COMPLETED.equals(shipment.getStatus())) {
+            log.warn("[signShipment][发货单状态非 COMPLETED: status={}, id={}]", shipment.getStatus(), reqVO.getId());
+            throw exception(SHIPMENT_STATUS_NOT_ALLOW);
+        }
+
+        // 5. 签收状态合法性校验：必须是 SIGNED 或 REFUSED
+        if (!ShipmentSignStatusEnum.SIGNED.getValue().equals(reqVO.getSignStatus())
+                && !ShipmentSignStatusEnum.REFUSED.getValue().equals(reqVO.getSignStatus())) {
+            log.warn("[signShipment][签收状态非法: signStatus={}, id={}]", reqVO.getSignStatus(), reqVO.getId());
+            throw exception(SHIPMENT_SIGN_STATUS_INVALID);
+        }
+
+        // 6. 复用既有签收守卫更新主表签收字段
+        ShipmentUpdateSignReqVO signReqVO = new ShipmentUpdateSignReqVO();
+        signReqVO.setId(shipment.getId());
+        signReqVO.setSignStatus(reqVO.getSignStatus());
+        signReqVO.setSignedByName(reqVO.getSignedByName().trim());
+        signReqVO.setSignedAt(LocalDateTime.now());
+        signReqVO.setSignRemark(reqVO.getSignRemark());
+        shipmentService.updateShipmentSign(signReqVO);
     }
 
 }

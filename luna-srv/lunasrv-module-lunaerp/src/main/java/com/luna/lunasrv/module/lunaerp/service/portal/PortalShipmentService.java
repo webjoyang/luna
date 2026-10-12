@@ -5,6 +5,8 @@ import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.Port
 import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentPageItemRespVO;
 import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentPageReqVO;
 
+import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentSignReqVO;
+
 /**
  * 客户门户 - 发货单服务接口
  *
@@ -28,5 +30,12 @@ public interface PortalShipmentService {
      * @return 发货单详情
      */
     PortalShipmentDetailRespVO getShipmentDetail(Long id, String no);
+
+    /**
+     * 登记发货单签收/拒收
+     *
+     * @param reqVO 签收登记请求
+     */
+    void signShipment(PortalShipmentSignReqVO reqVO);
 
 }
