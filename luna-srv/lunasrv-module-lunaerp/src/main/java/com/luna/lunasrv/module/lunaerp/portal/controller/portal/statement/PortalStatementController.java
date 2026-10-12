@@ -28,7 +28,7 @@ import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 @Tag(name = "客户门户 - 对账单")
 @PermitAll
 @RestController
-@RequestMapping({"/app-api/lunaerp/portal/finance/statement", "/portal/finance/statement"})
+@RequestMapping("/app-api/lunaerp/portal/finance/statement")
 @Validated
 public class PortalStatementController {
 

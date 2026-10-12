@@ -588,11 +588,33 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
                 .build();
         Long savedEntryId = ledgerService.append(ledgerEntry);
 
-        // 5. 更新核销行折算本位币金额
+        // 5. 更新核销行折算本位币金额，并写入 RECEIPT_WRITE_OFF 经营分录
         if (CollUtil.isNotEmpty(refs)) {
             for (PaymentRefDO ref : refs) {
                 BigDecimal refBaseAmt = ref.getAllocateAmount().multiply(rate).setScale(2, RoundingMode.HALF_UP);
                 ref.setBaseAmount(refBaseAmt);
+
+                Long targetArEntryId = ref.getRefId() != null ? ref.getRefId() : ref.getLedgerEntryId();
+                // 补记 RECEIPT_WRITE_OFF 经营分录（贷记客户往来，冲减应收）
+                LedgerEntryDO writeoffEntry = LedgerEntryDO.builder()
+                        .bizDate(payment.getReceiptDate())
+                        .partyType(FinancePartyTypeEnum.CUSTOMER.getValue())
+                        .partyId(payment.getCustomerId())
+                        .accountId(payment.getAccountId())
+                        .category(FinanceLedgerCategoryEnum.RECEIPT_WRITE_OFF.getValue())
+                        .direction(FinanceLedgerDirectionEnum.CREDIT.getValue())
+                        .currency(payment.getCurrency())
+                        .exchangeRate(rate)
+                        .originalAmount(ref.getAllocateAmount())
+                        .baseAmount(refBaseAmt)
+                        .refType(FinanceLedgerRefTypeEnum.PAYMENT.getValue())
+                        .refId(payment.getId())
+                        .refItemId(ref.getId())
+                        .reversalOfId(targetArEntryId) // 回指被核销的 AR_INC 分录 ID
+                        .remark("客户收款核销 - " + payment.getPaymentNo())
+                        .build();
+                Long writeoffEntryId = ledgerService.append(writeoffEntry);
+                ref.setLedgerEntryId(writeoffEntryId);
                 paymentRefMapper.updateById(ref);
             }
         }

@@ -1,12 +1,23 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.ledger;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerCustomerBalanceRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.account.AccountMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceLedgerCategoryEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceLedgerDirectionEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceLedgerRefTypeEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinancePartyTypeEnum;
+import com.luna.lunasrv.module.lunaerp.service.finance.exchangerate.ExchangeRateService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,8 +27,8 @@ import org.springframework.validation.annotation.Validated;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants.LEDGER_IMMUTABLE;
@@ -39,6 +50,15 @@ public class LedgerServiceImpl implements LedgerService {
 
     @Resource
     private LedgerEntryMapper ledgerEntryMapper;
+
+    @Resource
+    private CustomerMapper customerMapper;
+
+    @Resource
+    private AccountMapper accountMapper;
+
+    @Resource
+    private ExchangeRateService exchangeRateService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -160,6 +180,169 @@ public class LedgerServiceImpl implements LedgerService {
         }
         Long count = ledgerEntryMapper.selectCountByAccountId(accountId);
         return count != null ? count : 0L;
+    }
+
+    @Override
+    public PageResult<LedgerRespVO> getLedgerPage(LedgerPageReqVO reqVO) {
+        PageResult<LedgerEntryDO> pageResult = ledgerEntryMapper.selectPage(reqVO);
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return new PageResult<>(Collections.emptyList(), pageResult.getTotal());
+        }
+
+        // 批量查询客户名称
+        Set<Long> customerIds = pageResult.getList().stream()
+                .filter(e -> FinancePartyTypeEnum.CUSTOMER.getValue().equals(e.getPartyType()) && e.getPartyId() != null)
+                .map(LedgerEntryDO::getPartyId)
+                .collect(Collectors.toSet());
+        Map<Long, String> customerNameMap = Collections.emptyMap();
+        if (CollUtil.isNotEmpty(customerIds)) {
+            List<CustomerDO> customers = customerMapper.selectBatchIds(customerIds);
+            customerNameMap = customers.stream()
+                    .filter(c -> c.getCompanyName() != null)
+                    .collect(Collectors.toMap(CustomerDO::getId, CustomerDO::getCompanyName, (a, b) -> a));
+        }
+
+        // 批量查询账户名称
+        Set<Long> accountIds = pageResult.getList().stream()
+                .map(LedgerEntryDO::getAccountId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> accountNameMap = Collections.emptyMap();
+        if (CollUtil.isNotEmpty(accountIds)) {
+            List<AccountDO> accounts = accountMapper.selectBatchIds(accountIds);
+            accountNameMap = accounts.stream()
+                    .filter(a -> a.getAccountName() != null)
+                    .collect(Collectors.toMap(AccountDO::getId, AccountDO::getAccountName, (a, b) -> a));
+        }
+
+        Map<Long, String> finalCustomerNameMap = customerNameMap;
+        Map<Long, String> finalAccountNameMap = accountNameMap;
+        List<LedgerRespVO> respList = pageResult.getList().stream().map(entry -> {
+            String partyName = FinancePartyTypeEnum.CUSTOMER.getValue().equals(entry.getPartyType())
+                    ? finalCustomerNameMap.get(entry.getPartyId())
+                    : null;
+            String accountName = entry.getAccountId() != null ? finalAccountNameMap.get(entry.getAccountId()) : null;
+            return LedgerRespVO.builder()
+                    .id(entry.getId())
+                    .bizDate(entry.getBizDate())
+                    .partyType(entry.getPartyType())
+                    .partyId(entry.getPartyId())
+                    .partyName(partyName)
+                    .accountId(entry.getAccountId())
+                    .accountName(accountName)
+                    .category(entry.getCategory())
+                    .direction(entry.getDirection())
+                    .currency(entry.getCurrency())
+                    .exchangeRate(entry.getExchangeRate())
+                    .originalAmount(entry.getOriginalAmount())
+                    .baseAmount(entry.getBaseAmount())
+                    .refType(entry.getRefType())
+                    .refId(entry.getRefId())
+                    .refItemId(entry.getRefItemId())
+                    .reversalOfId(entry.getReversalOfId())
+                    .remark(entry.getRemark())
+                    .createTime(entry.getCreateTime())
+                    .build();
+        }).collect(Collectors.toList());
+
+        return new PageResult<>(respList, pageResult.getTotal());
+    }
+
+    @Override
+    public List<LedgerCustomerBalanceRespVO> getCustomerBalanceList(Long customerId, String currency) {
+        // 查询该租户下客户维度的分录
+        List<LedgerEntryDO> entries = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eq(LedgerEntryDO::getPartyType, FinancePartyTypeEnum.CUSTOMER.getValue())
+                .eqIfPresent(LedgerEntryDO::getPartyId, customerId)
+                .eqIfPresent(LedgerEntryDO::getCurrency, currency)
+                .orderByAsc(LedgerEntryDO::getPartyId)
+                .orderByAsc(LedgerEntryDO::getCurrency));
+
+        if (CollUtil.isEmpty(entries)) {
+            return Collections.emptyList();
+        }
+
+        // 获取客户名称
+        Set<Long> partyIds = entries.stream().map(LedgerEntryDO::getPartyId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> customerNameMap = Collections.emptyMap();
+        if (CollUtil.isNotEmpty(partyIds)) {
+            List<CustomerDO> customers = customerMapper.selectBatchIds(partyIds);
+            customerNameMap = customers.stream()
+                    .filter(c -> c.getCompanyName() != null)
+                    .collect(Collectors.toMap(CustomerDO::getId, CustomerDO::getCompanyName, (a, b) -> a));
+        }
+
+        // 按 (partyId, currency) 分组聚合
+        Map<String, List<LedgerEntryDO>> grouped = entries.stream()
+                .collect(Collectors.groupingBy(e -> e.getPartyId() + ":" + (StrUtil.isNotBlank(e.getCurrency()) ? e.getCurrency() : "CNY")));
+
+        List<LedgerCustomerBalanceRespVO> resultList = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        for (List<LedgerEntryDO> groupEntries : grouped.values()) {
+            if (groupEntries.isEmpty()) {
+                continue;
+            }
+            LedgerEntryDO first = groupEntries.get(0);
+            Long cid = first.getPartyId();
+            String curr = StrUtil.isNotBlank(first.getCurrency()) ? first.getCurrency() : "CNY";
+
+            BigDecimal totalDebit = BigDecimal.ZERO;
+            BigDecimal totalCredit = BigDecimal.ZERO;
+            BigDecimal historicalBaseBalance = BigDecimal.ZERO;
+
+            for (LedgerEntryDO e : groupEntries) {
+                BigDecimal orig = e.getOriginalAmount() != null ? e.getOriginalAmount() : BigDecimal.ZERO;
+                BigDecimal base = e.getBaseAmount() != null ? e.getBaseAmount() : BigDecimal.ZERO;
+                if (FinanceLedgerDirectionEnum.DEBIT.getValue().equalsIgnoreCase(e.getDirection())) {
+                    totalDebit = totalDebit.add(orig);
+                    historicalBaseBalance = historicalBaseBalance.add(base);
+                } else if (FinanceLedgerDirectionEnum.CREDIT.getValue().equalsIgnoreCase(e.getDirection())) {
+                    totalCredit = totalCredit.add(orig);
+                    historicalBaseBalance = historicalBaseBalance.subtract(base);
+                }
+            }
+
+            BigDecimal balance = totalDebit.subtract(totalCredit);
+
+            // 获取当前即期汇率
+            BigDecimal currentRate = BigDecimal.ONE.setScale(8, RoundingMode.UNNECESSARY);
+            if (isNotBaseCurrency(curr)) {
+                try {
+                    currentRate = exchangeRateService.getRate(curr, today);
+                } catch (Exception ex) {
+                    log.warn("[getCustomerBalanceList] 获取当前汇率异常，降级处理: currency={}, error={}", curr, ex.getMessage());
+                }
+            }
+
+            BigDecimal currentBaseBalance = balance.multiply(currentRate).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal exchangeDiff = currentBaseBalance.subtract(historicalBaseBalance);
+
+            resultList.add(LedgerCustomerBalanceRespVO.builder()
+                    .customerId(cid)
+                    .customerName(customerNameMap.get(cid))
+                    .currency(curr)
+                    .totalDebit(totalDebit.setScale(2, RoundingMode.HALF_UP))
+                    .totalCredit(totalCredit.setScale(2, RoundingMode.HALF_UP))
+                    .balance(balance.setScale(2, RoundingMode.HALF_UP))
+                    .historicalBaseBalance(historicalBaseBalance.setScale(2, RoundingMode.HALF_UP))
+                    .currentRate(currentRate)
+                    .currentBaseBalance(currentBaseBalance)
+                    .exchangeDiff(exchangeDiff.setScale(2, RoundingMode.HALF_UP))
+                    .build());
+        }
+
+        // 按 customerId, currency 排序
+        resultList.sort(Comparator.comparing(LedgerCustomerBalanceRespVO::getCustomerId)
+                .thenComparing(LedgerCustomerBalanceRespVO::getCurrency));
+
+        return resultList;
+    }
+
+    private boolean isNotBaseCurrency(String currency) {
+        return StrUtil.isNotBlank(currency)
+                && !"CNY".equalsIgnoreCase(currency)
+                && !"RMB".equalsIgnoreCase(currency);
     }
 
 }

@@ -82,7 +82,24 @@ public interface LedgerEntryMapper extends BaseMapperX<LedgerEntryDO> {
     }
 
     /**
-     * 查询关联某资金账户的分录数量
+     * 分页查询经营分录账
+     */
+    default com.luna.lunasrv.framework.common.pojo.PageResult<LedgerEntryDO> selectPage(com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerPageReqVO reqVO) {
+        return selectPage(reqVO, new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eqIfPresent(LedgerEntryDO::getPartyType, reqVO.getPartyType())
+                .eqIfPresent(LedgerEntryDO::getPartyId, reqVO.getPartyId())
+                .eqIfPresent(LedgerEntryDO::getAccountId, reqVO.getAccountId())
+                .eqIfPresent(LedgerEntryDO::getCategory, reqVO.getCategory())
+                .eqIfPresent(LedgerEntryDO::getDirection, reqVO.getDirection())
+                .eqIfPresent(LedgerEntryDO::getCurrency, reqVO.getCurrency())
+                .geIfPresent(LedgerEntryDO::getBizDate, reqVO.getStartDate())
+                .leIfPresent(LedgerEntryDO::getBizDate, reqVO.getEndDate())
+                .orderByDesc(LedgerEntryDO::getBizDate)
+                .orderByDesc(LedgerEntryDO::getId));
+    }
+
+    /**
+     * 统计指定资金账户引用的分录数量
      */
     default Long selectCountByAccountId(Long accountId) {
         return selectCount(new LambdaQueryWrapperX<LedgerEntryDO>()

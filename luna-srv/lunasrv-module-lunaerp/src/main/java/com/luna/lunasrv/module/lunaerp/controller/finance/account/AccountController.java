@@ -73,13 +73,4 @@ public class AccountController {
         return success(true);
     }
 
-    @DeleteMapping("/delete")
-    @Operation(summary = "删除资金账户")
-    @Parameter(name = "id", description = "资金账户编号", required = true, example = "1024")
-    @PreAuthorize("@ss.hasPermission('lunaerp:finance:payment:register')")
-    public CommonResult<Boolean> deleteAccount(@RequestParam("id") Long id) {
-        accountService.deleteAccount(id);
-        return success(true);
-    }
-
 }

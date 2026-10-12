@@ -27,6 +27,7 @@ public interface FinanceErrorCodeConstants {
     // --- 200-202 汇率主档 ---
     ErrorCode EXCHANGE_RATE_NOT_FOUND = new ErrorCode(1_030_020_200, "未找到对应生效汇率");
     ErrorCode EXCHANGE_RATE_NO_DUPLICATE = new ErrorCode(1_030_020_201, "同币种同生效日汇率已存在");
+    ErrorCode EXCHANGE_RATE_DUPLICATE = EXCHANGE_RATE_NO_DUPLICATE;
     ErrorCode EXCHANGE_RATE_BASE_CURRENCY_FORBIDDEN = new ErrorCode(1_030_020_202, "本位币无需配置汇率");
 
     // ========== 客户对账模块 1-030-021-000 ~ 007 ==========

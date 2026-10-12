@@ -1,5 +1,9 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.ledger;
 
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerCustomerBalanceRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
 
 import java.math.BigDecimal;
@@ -85,5 +89,22 @@ public interface LedgerService {
      * 统计指定资金账户引用的分录数量
      */
     long countEntriesByAccountId(Long accountId);
+
+    /**
+     * 分页查询经营分录账（只读视图）
+     *
+     * @param reqVO 分页查询条件
+     * @return 分页结果
+     */
+    PageResult<LedgerRespVO> getLedgerPage(LedgerPageReqVO reqVO);
+
+    /**
+     * 按客户维度查询经营分录账余额与汇率差异列表（只读视图）
+     *
+     * @param customerId 客户ID（可选）
+     * @param currency 币种（可选）
+     * @return 客户余额与汇率差异列表
+     */
+    List<LedgerCustomerBalanceRespVO> getCustomerBalanceList(Long customerId, String currency);
 
 }

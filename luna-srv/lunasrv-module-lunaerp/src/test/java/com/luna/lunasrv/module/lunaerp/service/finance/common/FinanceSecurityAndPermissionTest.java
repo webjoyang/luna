@@ -8,6 +8,7 @@ import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveConstants;
 import com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.CustomerStatementController;
 import com.luna.lunasrv.module.lunaerp.controller.finance.exchangerate.ExchangeRateController;
 import com.luna.lunasrv.module.lunaerp.controller.finance.invoice.InvoiceController;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.LedgerController;
 import com.luna.lunasrv.module.lunaerp.controller.finance.payment.PaymentController;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
@@ -128,6 +129,13 @@ public class FinanceSecurityAndPermissionTest {
         assertPreAuthorize(ExchangeRateController.class, "getExchangeRate", "lunaerp:finance:exchange-rate:query");
         assertPreAuthorize(ExchangeRateController.class, "createExchangeRate", "lunaerp:finance:exchange-rate:create");
         assertPreAuthorize(ExchangeRateController.class, "updateExchangeRate", "lunaerp:finance:exchange-rate:update");
+    }
+
+    @Test
+    @DisplayName("权限码逐位断言：LedgerController 经营分录账权限码")
+    void testLedgerControllerPermissions() throws Exception {
+        assertPreAuthorize(LedgerController.class, "getLedgerPage", "lunaerp:finance:ledger:query");
+        assertPreAuthorize(LedgerController.class, "getCustomerBalanceList", "lunaerp:finance:ledger:query");
     }
 
     @Test

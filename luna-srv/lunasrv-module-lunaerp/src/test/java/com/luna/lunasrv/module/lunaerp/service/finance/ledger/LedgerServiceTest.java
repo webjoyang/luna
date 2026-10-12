@@ -3,12 +3,21 @@ package com.luna.lunasrv.module.lunaerp.service.finance.ledger;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerCustomerBalanceRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.account.AccountMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceLedgerCategoryEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceLedgerDirectionEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceLedgerRefTypeEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinancePartyTypeEnum;
+import com.luna.lunasrv.module.lunaerp.service.finance.exchangerate.ExchangeRateService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +50,15 @@ class LedgerServiceTest {
 
     @Mock
     private LedgerEntryMapper ledgerEntryMapper;
+
+    @Mock
+    private CustomerMapper customerMapper;
+
+    @Mock
+    private AccountMapper accountMapper;
+
+    @Mock
+    private ExchangeRateService exchangeRateService;
 
     @InjectMocks
     private LedgerServiceImpl ledgerService;
@@ -187,6 +205,96 @@ class LedgerServiceTest {
         when(ledgerEntryMapper.selectCountByAccountId(5L)).thenReturn(3L);
         assertEquals(3L, ledgerService.countEntriesByAccountId(5L));
         assertEquals(0L, ledgerService.countEntriesByAccountId(null));
+    }
+
+    @Test
+    @DisplayName("getLedgerPage：分页查询经营分录账并回填客户与账户名称")
+    void testGetLedgerPage_Success() {
+        LedgerPageReqVO reqVO = new LedgerPageReqVO();
+        reqVO.setPartyType("CUSTOMER");
+        reqVO.setPartyId(101L);
+
+        LedgerEntryDO entry = LedgerEntryDO.builder()
+                .id(1L)
+                .bizDate(LocalDate.now())
+                .partyType("CUSTOMER")
+                .partyId(101L)
+                .accountId(5L)
+                .category("AR_INC")
+                .direction("DEBIT")
+                .currency("USD")
+                .originalAmount(new BigDecimal("100.00"))
+                .baseAmount(new BigDecimal("720.00"))
+                .build();
+
+        when(ledgerEntryMapper.selectPage(reqVO)).thenReturn(new PageResult<>(List.of(entry), 1L));
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("测试客户");
+        when(customerMapper.selectBatchIds(any())).thenReturn(List.of(customer));
+
+        AccountDO account = AccountDO.builder().id(5L).accountName("美金基本户").build();
+        when(accountMapper.selectBatchIds(any())).thenReturn(List.of(account));
+
+        PageResult<LedgerRespVO> pageResult = ledgerService.getLedgerPage(reqVO);
+
+        assertNotNull(pageResult);
+        assertEquals(1L, pageResult.getTotal());
+        assertEquals(1, pageResult.getList().size());
+        LedgerRespVO resp = pageResult.getList().get(0);
+        assertEquals("测试客户", resp.getPartyName());
+        assertEquals("美金基本户", resp.getAccountName());
+    }
+
+    @Test
+    @DisplayName("getCustomerBalanceList：客户维度余额汇总与汇率差异计算")
+    void testGetCustomerBalanceList_WithExchangeDiff() {
+        LedgerEntryDO debit = LedgerEntryDO.builder()
+                .id(1L)
+                .partyType("CUSTOMER")
+                .partyId(101L)
+                .currency("USD")
+                .direction("DEBIT")
+                .originalAmount(new BigDecimal("3000.00"))
+                .baseAmount(new BigDecimal("21600.00")) // rate 7.20
+                .build();
+
+        LedgerEntryDO credit = LedgerEntryDO.builder()
+                .id(2L)
+                .partyType("CUSTOMER")
+                .partyId(101L)
+                .currency("USD")
+                .direction("CREDIT")
+                .originalAmount(new BigDecimal("1000.00"))
+                .baseAmount(new BigDecimal("7200.00")) // rate 7.20
+                .build();
+
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(debit, credit));
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("环球外贸集团");
+        when(customerMapper.selectBatchIds(any())).thenReturn(List.of(customer));
+
+        // 即期汇率 7.25
+        when(exchangeRateService.getRate(eq("USD"), any())).thenReturn(new BigDecimal("7.25000000"));
+
+        List<LedgerCustomerBalanceRespVO> list = ledgerService.getCustomerBalanceList(101L, "USD");
+
+        assertNotNull(list);
+        assertEquals(1, list.size());
+        LedgerCustomerBalanceRespVO resp = list.get(0);
+        assertEquals(101L, resp.getCustomerId());
+        assertEquals("环球外贸集团", resp.getCustomerName());
+        assertEquals("USD", resp.getCurrency());
+        assertEquals(new BigDecimal("3000.00"), resp.getTotalDebit());
+        assertEquals(new BigDecimal("1000.00"), resp.getTotalCredit());
+        assertEquals(new BigDecimal("2000.00"), resp.getBalance());
+        assertEquals(new BigDecimal("14400.00"), resp.getHistoricalBaseBalance());
+        assertEquals(new BigDecimal("7.25000000"), resp.getCurrentRate());
+        assertEquals(new BigDecimal("14500.00"), resp.getCurrentBaseBalance());
+        assertEquals(new BigDecimal("100.00"), resp.getExchangeDiff());
     }
 
 }

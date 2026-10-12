@@ -243,6 +243,7 @@ class CustomerReceiptServiceImplTest {
                 .id(1L)
                 .paymentId(100L)
                 .refType("AR_ENTRY")
+                .refId(501L)
                 .ledgerEntryId(501L)
                 .entryNo("SH20261012001")
                 .allocateAmount(new BigDecimal("1000.00"))
@@ -266,16 +267,24 @@ class CustomerReceiptServiceImplTest {
         // 1. 资金账户入账
         verify(accountService).updateBalance(2001L, new BigDecimal("1000.00"));
 
-        // 2. 经营分录入账
+        // 2. 经营分录入账（包含 1 笔 RECEIPT 入账分录 + 1 笔 RECEIPT_WRITE_OFF 核销分录）
         ArgumentCaptor<LedgerEntryDO> ledgerCaptor = ArgumentCaptor.forClass(LedgerEntryDO.class);
-        verify(ledgerService).append(ledgerCaptor.capture());
-        LedgerEntryDO postedEntry = ledgerCaptor.getValue();
-        assertEquals("RECEIPT", postedEntry.getCategory());
-        assertEquals("CREDIT", postedEntry.getDirection());
-        assertEquals(new BigDecimal("1000.00"), postedEntry.getOriginalAmount());
-        assertEquals(new BigDecimal("7250.00"), postedEntry.getBaseAmount()); // 1000 * 7.25
+        verify(ledgerService, times(2)).append(ledgerCaptor.capture());
+        List<LedgerEntryDO> postedEntries = ledgerCaptor.getAllValues();
+        LedgerEntryDO receiptEntry = postedEntries.get(0);
+        assertEquals("RECEIPT", receiptEntry.getCategory());
+        assertEquals("CREDIT", receiptEntry.getDirection());
+        assertEquals(new BigDecimal("1000.00"), receiptEntry.getOriginalAmount());
+        assertEquals(new BigDecimal("7250.00"), receiptEntry.getBaseAmount()); // 1000 * 7.25
 
-        // 3. 核销行更新 baseAmount
+        LedgerEntryDO writeOffEntry = postedEntries.get(1);
+        assertEquals("RECEIPT_WRITE_OFF", writeOffEntry.getCategory());
+        assertEquals("CREDIT", writeOffEntry.getDirection());
+        assertEquals(new BigDecimal("1000.00"), writeOffEntry.getOriginalAmount());
+        assertEquals(new BigDecimal("7250.00"), writeOffEntry.getBaseAmount());
+        assertEquals(501L, writeOffEntry.getReversalOfId());
+
+        // 3. 核销行更新 baseAmount 与 ledgerEntryId
         verify(paymentRefMapper).updateById(ref);
         assertEquals(new BigDecimal("7250.00"), ref.getBaseAmount());
 
