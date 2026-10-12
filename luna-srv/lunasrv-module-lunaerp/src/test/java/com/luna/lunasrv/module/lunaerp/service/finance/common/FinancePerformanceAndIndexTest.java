@@ -29,12 +29,37 @@ public class FinancePerformanceAndIndexTest {
     @Test
     @DisplayName("索引架构验证：确认 DDL 包含 (tenant_id, party_type, party_id, biz_date) 聚合索引")
     void testLedgerEntryIndexDefinition() throws Exception {
-        // 读取 DDL 脚本文件内容
-        String sqlPath = "/D:/work/luna/20261011/luna/.wt/issue-12/luna-srv/sql/postgresql/lunaerp-finance-customer-recon.sql";
-        java.io.File file = new java.io.File(sqlPath);
-        if (!file.exists()) {
-            file = new java.io.File("sql/postgresql/lunaerp-finance-customer-recon.sql");
+        java.io.File file = null;
+        String[] candidates = {
+                "sql/postgresql/lunaerp-finance-customer-recon.sql",
+                "../sql/postgresql/lunaerp-finance-customer-recon.sql",
+                "../../sql/postgresql/lunaerp-finance-customer-recon.sql",
+                "luna-srv/sql/postgresql/lunaerp-finance-customer-recon.sql"
+        };
+        for (String candidate : candidates) {
+            java.io.File f = new java.io.File(candidate);
+            if (f.exists()) {
+                file = f;
+                break;
+            }
         }
+        if (file == null) {
+            java.io.File dir = new java.io.File(System.getProperty("user.dir"));
+            while (dir != null && dir.exists()) {
+                java.io.File f = new java.io.File(dir, "luna-srv/sql/postgresql/lunaerp-finance-customer-recon.sql");
+                if (f.exists()) {
+                    file = f;
+                    break;
+                }
+                f = new java.io.File(dir, "sql/postgresql/lunaerp-finance-customer-recon.sql");
+                if (f.exists()) {
+                    file = f;
+                    break;
+                }
+                dir = dir.getParentFile();
+            }
+        }
+        assertNotNull(file, "必须定位到 SQL DDL 脚本文件 lunaerp-finance-customer-recon.sql");
         assertTrue(file.exists(), "SQL DDL 脚本必须存在: " + file.getAbsolutePath());
 
         String sqlContent = java.nio.file.Files.readString(file.toPath(), StandardCharsets.UTF_8);
