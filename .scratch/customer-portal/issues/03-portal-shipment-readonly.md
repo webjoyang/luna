@@ -4,7 +4,7 @@
 
 **Blocked by:** 02（PortalTokenFilter 校验链 + 门户前端骨架）
 
-**Status:** completed
+**Status:** resolved
 
 - [x] `GET /app-api/lunaerp/portal/shipment/page`：按 PortalContext customerId 天然过滤，仅 COMPLETED，时间倒序分页；返回单号/日期/物流/签收状态/金额合计/运费；无搜索框（列表仅时间倒序分页 + 状态 Tab）
 - [x] `GET /app-api/lunaerp/portal/shipment/get?id=`：头 + 逐行明细（品名/规格/色号/数量/卷数）；归属校验 customerId 不符 → 038-001
@@ -34,3 +34,7 @@
 3. **测试验证**：
    - 后端 15 个针对性测试（`PortalShipmentServiceImplTest` 13 项 + `PortalShipmentControllerTest` 2 项）全绿：涵盖分页查询、Tab 过滤、id/no 双形态查询、A/B 客户横向越权专测、跨租户专测、非 COMPLETED 拦截、严格白名单 JSON 序列化断言。全量 portal 后端测试 46 项全绿。
    - 前端 8 个针对性 Vitest 测试（`portal-shipment.spec.ts`）全绿：涵盖 API 契约、Tab 切换重载、状态 Tag 映射、金额格式化、id/?no= 双形态加载与路由契约。全量前端 391 个测试全绿。
+
+### 相关 Commit
+- 功能 Commit: `dc7a08a`
+- 合并 Commit: `b81c1e0`
