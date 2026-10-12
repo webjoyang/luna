@@ -59,6 +59,8 @@ public class CustomerServiceImpl implements CustomerService {
         CustomerDO customer = BeanUtils.toBean(createReqVO, CustomerDO.class);
         // shortName 为空时用 companyName 回填
         backfillShortName(customer);
+        // invoiceTitle 为空时用 companyName 回填（缺省取公司名）
+        backfillInvoiceTitle(customer);
         // status 缺省 ACTIVE
         if (!StringUtils.hasText(customer.getStatus())) {
             customer.setStatus(DEFAULT_STATUS);
@@ -171,6 +173,15 @@ public class CustomerServiceImpl implements CustomerService {
     }
 
     /**
+     * invoiceTitle 为空时用 companyName 回填（缺省取公司名）
+     */
+    private void backfillInvoiceTitle(CustomerDO customer) {
+        if (!StringUtils.hasText(customer.getInvoiceTitle()) && StringUtils.hasText(customer.getCompanyName())) {
+            customer.setInvoiceTitle(customer.getCompanyName());
+        }
+    }
+
+    /**
      * 校验客户存在，不存在抛 1_030_004_000
      */
     private CustomerDO validateCustomerExists(Long id) {
@@ -207,6 +218,10 @@ public class CustomerServiceImpl implements CustomerService {
                         .unifiedSocialCreditCode("91330100MA12345678")
                         .nameEn("Sample Customer A Co., Ltd.")
                         .addressEn("Yuhang District, Hangzhou, Zhejiang")
+                        .invoiceTitle("示例客户A有限公司")
+                        .invoiceAddress("浙江省杭州市余杭区临平大道100号")
+                        .bankName("中国工商银行杭州临平支行")
+                        .bankAccountNo("1202021109900012345")
                         .remark("标准客户档案示例")
                         .build()
         );
@@ -235,6 +250,8 @@ public class CustomerServiceImpl implements CustomerService {
                         CustomerDO customer = BeanUtils.toBean(vo, CustomerDO.class);
                         // 简称空则用企业名称回填
                         backfillShortName(customer);
+                        // 开票抬头缺省取公司名
+                        backfillInvoiceTitle(customer);
                         // 导入行 status 默认 ACTIVE
                         customer.setStatus(DEFAULT_STATUS);
                         // 归属人=登录用户、归属部门=其当前部门（服务端推导）

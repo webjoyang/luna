@@ -214,6 +214,44 @@
           />
         </el-form-item>
       </el-col>
+      <!-- 开票与账期信息 -->
+      <el-col :span="24">
+        <el-divider content-position="left">开票与账期信息</el-divider>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="开票抬头" prop="invoiceTitle">
+          <el-input v-model="formData.invoiceTitle" placeholder="留空时自动用公司名称回填" maxlength="256" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="开票地址" prop="invoiceAddress">
+          <el-input v-model="formData.invoiceAddress" placeholder="请输入开票地址" maxlength="512" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="开户银行" prop="bankName">
+          <el-input v-model="formData.bankName" placeholder="请输入开户银行" maxlength="256" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="开户行账号" prop="bankAccountNo">
+          <el-input v-model="formData.bankAccountNo" placeholder="请输入开户行账号" maxlength="64" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="信用账期天数" prop="creditDays">
+          <el-input-number
+            v-model="formData.creditDays"
+            :min="0"
+            :max="3650"
+            :step="1"
+            controls-position="right"
+            placeholder="留空表示不设账期"
+            class="!w-full"
+          />
+        </el-form-item>
+      </el-col>
+
       <el-col :span="24">
         <el-form-item label="备注" prop="remark">
           <el-input
@@ -292,7 +330,12 @@ const formData = reactive<CustomerVO>({
   salespersonUserId: undefined,
   defaultMarginRate: undefined,
   nameEn: '',
-  addressEn: ''
+  addressEn: '',
+  invoiceTitle: '',
+  invoiceAddress: '',
+  bankName: '',
+  bankAccountNo: '',
+  creditDays: undefined
 })
 
 const rules: FormRules = {

@@ -63,4 +63,19 @@ public class CustomerSaveReqVO {
     @Schema(description = "默认毛利率（小数，如 0.150000 表示 15%，可空）", example = "0.150000")
     private BigDecimal defaultMarginRate;
 
+    @Schema(description = "开票抬头", example = "杭州织造有限公司")
+    private String invoiceTitle;
+
+    @Schema(description = "开票地址", example = "浙江省杭州市余杭区临平大道100号")
+    private String invoiceAddress;
+
+    @Schema(description = "开户银行", example = "中国工商银行杭州临平支行")
+    private String bankName;
+
+    @Schema(description = "开户行账号", example = "1202021109900012345")
+    private String bankAccountNo;
+
+    @Schema(description = "信用账期天数（空=不设账期）", example = "30")
+    private Integer creditDays;
+
 }

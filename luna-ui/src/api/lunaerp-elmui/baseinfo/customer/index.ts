@@ -19,6 +19,11 @@ export interface CustomerVO {
   defaultMarginRate?: number
   nameEn?: string
   addressEn?: string
+  invoiceTitle?: string
+  invoiceAddress?: string
+  bankName?: string
+  bankAccountNo?: string
+  creditDays?: number
   createTime?: Date | string
 }
 
