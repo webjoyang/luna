@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.enums;
 
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
+import com.luna.lunasrv.module.lunaerp.enums.portal.PortalErrorCodeConstants;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -321,6 +322,24 @@ public class ErrorCodeConstantsTest {
         assertEquals(FinanceErrorCodeConstants.PAYMENT_ACCOUNT_NOT_AVAILABLE, ErrorCodeConstants.PAYMENT_ACCOUNT_NOT_AVAILABLE);
         assertEquals(FinanceErrorCodeConstants.PAYMENT_AMOUNT_INVALID, ErrorCodeConstants.PAYMENT_AMOUNT_INVALID);
         assertEquals(FinanceErrorCodeConstants.PAYMENT_NOT_EXISTS, ErrorCodeConstants.PAYMENT_NOT_EXISTS);
+    }
+
+    @Test
+    void testPortalErrorCodes() {
+        // ========== 1-030-038 客户门户 (000–002) ==========
+        assertEquals(1_030_038_000, PortalErrorCodeConstants.PORTAL_TOKEN_INVALID.getCode());
+        assertEquals("门户令牌无效或已过期", PortalErrorCodeConstants.PORTAL_TOKEN_INVALID.getMsg());
+
+        assertEquals(1_030_038_001, PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED.getCode());
+        assertEquals("门户数据归属不符", PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED.getMsg());
+
+        assertEquals(1_030_038_002, PortalErrorCodeConstants.PORTAL_RATE_LIMIT_EXCEEDED.getCode());
+        assertEquals("门户请求过于频繁，请稍后再试", PortalErrorCodeConstants.PORTAL_RATE_LIMIT_EXCEEDED.getMsg());
+
+        // 验证 ErrorCodeConstants 继承了所有 PortalErrorCodeConstants 错误码
+        assertEquals(PortalErrorCodeConstants.PORTAL_TOKEN_INVALID, ErrorCodeConstants.PORTAL_TOKEN_INVALID);
+        assertEquals(PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED, ErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED);
+        assertEquals(PortalErrorCodeConstants.PORTAL_RATE_LIMIT_EXCEEDED, ErrorCodeConstants.PORTAL_RATE_LIMIT_EXCEEDED);
     }
 }
 

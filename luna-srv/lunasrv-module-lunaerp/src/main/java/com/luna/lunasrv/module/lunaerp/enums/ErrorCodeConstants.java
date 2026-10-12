@@ -2,6 +2,7 @@ package com.luna.lunasrv.module.lunaerp.enums;
 
 import com.luna.lunasrv.framework.common.exception.ErrorCode;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
+import com.luna.lunasrv.module.lunaerp.enums.portal.PortalErrorCodeConstants;
 
 /**
  * LunaERP 错误码枚举类
@@ -25,8 +26,9 @@ import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
  *                  与 1-030-033-xxx 段（出口单证：单证套 000–099、明细 100–199、卖方配置 200–299，见 ExportDocErrorCodeConstants）
  *                  与 1-030-034-xxx 段（成本卡与报价：成本卡 000–099、报价单 100–199、纱价追加 1-030-008-008/009，见 CostCardQuotationErrorCodeConstants）
  *                  与 1-030-035-xxx 段（下达生产编排：见 ReleaseProductionErrorCodeConstants）
+ *                  与 1-030-038-xxx 段（客户门户：见 PortalErrorCodeConstants）
  */
-public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, ColorInstructionErrorCodeConstants, ReleaseProductionErrorCodeConstants, FinanceErrorCodeConstants {
+public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, ColorInstructionErrorCodeConstants, ReleaseProductionErrorCodeConstants, FinanceErrorCodeConstants, PortalErrorCodeConstants {
 
     // ========== 产品模块 1-030-001-000 ==========
     ErrorCode PRODUCT_NOT_EXISTS = new ErrorCode(1_030_001_000, "产品不存在");
