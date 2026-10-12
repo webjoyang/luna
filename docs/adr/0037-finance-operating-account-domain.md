@@ -115,7 +115,20 @@ component 字符串按最终 UI 落点加 `lunaerp/` 或 `lunaerp-elmui/` 前缀
 - 金蝶/用友一期没有可运行对接，只保证"分录账形状未来可对接"；私有化客户的法定账仍需外部财务软件完成。
 - 018 段重号（发染记录/样品分析）是本次盘点的附带发现，本 ADR 只做记录与避让（财务从 020 起），**不在本 ticket 修码**；样品分析迁段另开 ticket 处理。
 
-## 增补（2026-10-07，10 号 customer-reconciliation spec 定稿）
+## 增补（2026-10-07，10 号 customer-reconciliation spec 定稿与收口）
 
 - **菜单骨架补全**：决策 6 表追加 **10780 汇率**（type 2，sort 8，parent 10700，path `exchange-rate`，权限 `lunaerp:finance:exchangerate:query`，component `lunaerp-elmui/finance/exchange-rate/index`，按钮 10781/:create、10782/:update）——exchangerate"待定（配置位）"落定为正式二级菜单；10740 收付款页面定为三 Tab（收款｜付款申请｜付款登记），收款 Tab 与按钮 10745–10749 归 10 号，OUT 两 Tab 与按钮 10741–10743 归 11 号。
 - **域公共表 DDL 归属**：决策 5 中 020 段的 `lunaerp_finance_ledger_entry`/`lunaerp_finance_account`/`lunaerp_finance_exchange_rate` 三表 DDL 与 `LedgerService`/`AccountService` 由 10 号 spec 先行落地（消除 11 号付款登记扣余额对"账户归 12 号"的先后依赖），11/12 号只消费与扩列（12 号扩外币双余额/账面加权汇率、MONTH_END 期末牌价）。
+- **共享件收口清单 12 项无冲突核定**：
+  1. `lunaerp_finance_payment` 主表：11 号先行建表，10 号 ADD COLUMN 扩 IN 侧 7 列（收口完成）；
+  2. `lunaerp_finance_payment_ref`：ref_type 扩值 AR_ENTRY + IN 侧 4 扩列（收口完成）；
+  3. 单号前缀：IN=RC-、OUT=FK-（收口完成）；
+  4. 经营分录账：10 号落地 ledger_entry DDL 与 LedgerService，11 号 OUT_SUPPLIER 与 12 号消费同表；
+  5. 资金账户：account DDL 与 AccountService 随 10 号落地，11 号/12 号消费同表与扩列；
+  6. 字典 2271 direction：10 号复用 11 号；
+  7. 审批状态字典：复用 02 号；
+  8. 错误码 023 段：IN 侧取 100–199，复用共享 003/004/006；
+  9. 10740 页面：三 Tab 页面结构，收款 Tab 归 10 号，OUT 两 Tab 归 11 号；
+  10. ledger category 字典 2274：10 号建全集 9 值，11/12/13 号复用；
+  11. 汇率主档：10 号落地，12 号扩 MONTH_END 期末牌价；
+  12. 13 号退货冲减：`LedgerService.recordArReturnReversal` 契约冻结，退货审批通过时记账。

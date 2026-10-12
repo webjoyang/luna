@@ -98,8 +98,17 @@ public class InvoiceServiceImpl implements InvoiceService {
                 ? reqVO.getBankInfo().trim()
                 : formatBankInfo(customer.getBankName(), customer.getBankAccountNo());
 
-        // 5. 生成单号（IA{yyyy}{4位流水}）
-        String invoiceNo = generateInvoiceNoWithRetry();
+        // 5. 生成或校验单号（IA{yyyy}{4位流水}）
+        String invoiceNo;
+        if (StringUtils.hasText(reqVO.getInvoiceNo())) {
+            invoiceNo = reqVO.getInvoiceNo().trim();
+            InvoiceApplicationDO existing = invoiceApplicationMapper.selectByInvoiceNoIncludingDeleted(invoiceNo);
+            if (existing != null) {
+                throw exception(INVOICE_STATUS_NOT_ALLOW, "发票申请单号【" + invoiceNo + "】已存在");
+            }
+        } else {
+            invoiceNo = generateInvoiceNoWithRetry();
+        }
 
         // 6. 保存主表（DRAFT）
         InvoiceApplicationDO app = InvoiceApplicationDO.builder()

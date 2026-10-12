@@ -22,6 +22,9 @@ public class InvoiceSaveReqVO {
     @Schema(description = "发票申请ID（修改时必填）", example = "1024")
     private Long id;
 
+    @Schema(description = "发票申请单号（可手填，空则自动生成）", example = "IA20260001")
+    private String invoiceNo;
+
     @Schema(description = "客户ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1001")
     @NotNull(message = "客户不能为空")
     private Long customerId;
