@@ -4,7 +4,7 @@
 
 **Blocked by:** 01（管理端门户链接签发闭环——需要真实 token 驱动校验链）
 
-**Status:** completed
+**Status:** resolved
 
 - [x] `PortalTokenFilter` 仅拦 `/app-api/lunaerp/portal/**`：解析 header `X-Portal-Token` → GET 主键；未命中（无效/过期/吊销/伪造）统一 401 + 038-000 不区分文案；命中则双键 EXPIRE 续期 → 设置 TenantContextHolder（租户插件生效）+ PortalContext（ThreadLocal：tenantId/customerId）→ 请求结束 finally 清理
 - [x] 失效兜底：PortalContext 校验客户存在且未删除（deleted=0），否则按 038-001 拒绝（客户进回收站后门户不可见，不新增 RecycleBinHandler）
@@ -15,3 +15,29 @@
 - [x] token 引导：`?t=` 进入列表页时存 sessionStorage → `history.replaceState` 清地址栏 → 进列表；直接打开无 token 的门户路由 → invalid 页引导先从业务员链接进入
 - [x] `src/views/portal/`（正式目录，非 elmui 临时区）+ `src/api/portal/` 落位；本票交付 `invalid.vue` 与列表占位页，业务页面由 03/05 填充
 - [x] 专测：有效请求前后主键 TTL 变化（续期）；61 次/分钟→429、窗口重置恢复；伪造/未带 header/过期/吊销统一 401-000；并发请求 ThreadLocal 不串数据（请求结束清理）
+
+## Answer
+
+### 实现总结
+1. **PortalTokenFilter 校验链与上下文注入**：
+   - 过滤拦截 `/app-api/lunaerp/portal/**` 请求，解析 `X-Portal-Token` 请求头。
+   - 令牌未命中/伪造/过期统一按 `038-000` 拒绝（401 Unauthorized）；命中后双键滑动续期 30 天。
+   - 客户状态校验（兜底）：确保客户未删除（`deleted=0`），否则返回 `038-001`（客户不存在或已被删除）。
+   - 注入 `TenantContextHolder` 与 `PortalContext`（ThreadLocal：tenantId, customerId），并在 `finally` 中严格清理防串号。
+2. **PortalRateLimiter 限流机制**：
+   - 基于 Redis 固定窗口 60 秒计数器（`luna_portal:rl:{token}`），单 Token 每分钟上限 60 次，超限返回 429 + `038-002`。
+3. **Portal 认证与信息端点**：
+   - 提供 `GET /app-api/lunaerp/portal/auth/info` 查询当前客户信息（`PortalAuthController`）。
+4. **前端免登路由与骨架**：
+   - `permission.ts` 白名单放行 `'/portal'` 前缀免登路径。
+   - `remaining.ts` 静态注册免登路由：`/portal/shipments`、`/portal/shipment/:id`、`/portal/statements`、`/portal/statement/:id`、`/portal/invalid`。
+   - 落地 `PortalLayout.vue` 移动优先容器（max-width 480px 居中），包含顶部标题栏与底部导航 Tab（发货单/对账单）。
+   - 落地独立 Axios 实例（`src/config/axios/portal.ts`）：请求头自动注入 `X-Portal-Token`，401 统一重定向到失效页 `/portal/invalid`，429 提示限流错误。
+   - 提供 `usePortalAuth` 引导逻辑：进入带有 `?t=` 链接时自动解析并暂存到 `sessionStorage`，并调用 `history.replaceState` 清除 URL 参数。
+5. **测试验证**：
+   - 后端 31 个单元测试全部通过：`PortalContextTest`、`PortalRateLimiterTest`、`PortalTokenFilterTest`、`PortalAuthControllerTest`、`PortalTokenServiceImplTest`、`CustomerPortalTokenControllerTest`。
+   - 前端 16 个单元测试全部通过：`portal.spec.ts`、`portal-skeleton.spec.ts`。
+
+### 相关 Commit
+- 合并 Commit: `32da7f9`
+
