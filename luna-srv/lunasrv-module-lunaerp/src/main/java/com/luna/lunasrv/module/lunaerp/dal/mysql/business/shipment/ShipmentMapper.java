@@ -146,4 +146,19 @@ public interface ShipmentMapper extends BaseMapperX<ShipmentDO> {
                 .in(ShipmentDO::getSalesContractId, contractIds));
     }
 
+    /**
+     * 悲观锁查询发货单（用于开票/收款并发控制）
+     *
+     * @param id 发货单ID
+     * @return 发货单
+     */
+    @DataPermission(enable = false)
+    @Select("SELECT id, shipment_no, status, customer_id, customer_name, sales_contract_id, contract_no, "
+            + "warehouse_id, warehouse_name, shipping_address, receive_address, carrier, tracking_number, "
+            + "shipping_date, expected_delivery_date, freight_fee, total_amount, total_pieces, "
+            + "salesperson_user_id, salesperson_name, currency, sign_status, signed_by_name, signed_at, "
+            + "sign_remark, remark, creator, create_time, updater, update_time, deleted, tenant_id "
+            + "FROM lunaerp_business_shipment WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    ShipmentDO selectByIdForUpdate(@Param("id") Long id);
+
 }
