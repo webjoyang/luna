@@ -20,6 +20,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
@@ -111,6 +112,31 @@ public class PaymentController {
     public CommonResult<List<AccountSimpleRespVO>> getAccountSimpleList() {
         List<AccountDO> list = accountService.getSimpleAccountList();
         return success(BeanUtils.toBean(list, AccountSimpleRespVO.class));
+    }
+
+    @PutMapping("/reverse")
+    @Operation(summary = "客户收款单红冲（IN 侧）")
+    @Parameter(name = "id", description = "收款单编号", required = true, example = "100")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:payment:reverse')")
+    public CommonResult<Boolean> reverseReceipt(@RequestParam("id") Long id) {
+        customerReceiptService.reverseReceipt(id);
+        return success(true);
+    }
+
+    @PostMapping("/advance-writeoff")
+    @Operation(summary = "客户预收转核销（IN 侧）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:payment:writeoff')")
+    public CommonResult<Boolean> advanceWriteoff(@Valid @RequestBody AdvanceWriteoffReqVO reqVO) {
+        customerReceiptService.advanceWriteoff(reqVO);
+        return success(true);
+    }
+
+    @GetMapping("/advance-balance")
+    @Operation(summary = "查询预收款单剩余可用预收余额（IN 侧）")
+    @Parameter(name = "paymentId", description = "收款单编号", required = true, example = "100")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:payment:query')")
+    public CommonResult<BigDecimal> getAdvanceBalance(@RequestParam("paymentId") Long paymentId) {
+        return success(customerReceiptService.getAdvanceBalance(paymentId));
     }
 
     // ==================== 共享分页与详情 ====================

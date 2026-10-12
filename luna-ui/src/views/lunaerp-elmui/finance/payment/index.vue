@@ -229,6 +229,27 @@
                   重新编辑
                 </el-button>
               </template>
+
+              <!-- 已过账操作 (COMPLETED) -->
+              <template v-else-if="row.status === 'COMPLETED'">
+                <el-button
+                  v-if="row.receiptType === 'ADVANCE'"
+                  link
+                  type="warning"
+                  @click="openAdvanceWriteoffDialog(row)"
+                  v-hasPermi="['lunaerp:finance:payment:writeoff']"
+                >
+                  预收转核销
+                </el-button>
+                <el-button
+                  link
+                  type="danger"
+                  @click="handleReverseReceipt(row)"
+                  v-hasPermi="['lunaerp:finance:payment:reverse']"
+                >
+                  红冲
+                </el-button>
+              </template>
             </template>
           </el-table-column>
 
@@ -758,6 +779,9 @@
 
   <!-- 客户收款单详情弹窗 -->
   <ReceiptDetailDialog ref="receiptDetailDialogRef" />
+
+  <!-- 预收转核销弹窗 -->
+  <AdvanceWriteoffDialog ref="advanceWriteoffDialogRef" @success="handleReceiptSuccess" />
 </template>
 
 <script lang="ts" setup>
@@ -785,6 +809,7 @@ import PaymentRegisterDialog from './components/PaymentRegisterDialog.vue'
 import PaymentDetailDialog from './components/PaymentDetailDialog.vue'
 import ReceiptFormDialog from './components/ReceiptFormDialog.vue'
 import ReceiptDetailDialog from './components/ReceiptDetailDialog.vue'
+import AdvanceWriteoffDialog from './components/AdvanceWriteoffDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiPayment' })
 
@@ -800,6 +825,7 @@ const receiptList = ref<PaymentVO[]>([])
 const receiptQueryFormRef = ref()
 const receiptFormDialogRef = ref()
 const receiptDetailDialogRef = ref()
+const advanceWriteoffDialogRef = ref()
 const receiptDateRange = ref<[string, string] | null>(null)
 
 const receiptQuery = reactive<PaymentPageParam>({
@@ -903,6 +929,22 @@ const handleDeleteReceipt = async (row: PaymentVO) => {
     await message.confirm(`确定删除草稿收款单【${row.paymentNo}】吗？删除后进入回收站。`, '删除收款单')
     await PaymentApi.deleteReceipt(row.id)
     message.success('已删除草稿')
+    getReceiptList()
+  } catch {}
+}
+
+const openAdvanceWriteoffDialog = (row: PaymentVO) => {
+  advanceWriteoffDialogRef.value?.open(row)
+}
+
+const handleReverseReceipt = async (row: PaymentVO) => {
+  try {
+    await message.confirm(
+      `确定对客户收款单【${row.paymentNo}】进行红冲吗？红冲后分录将冲回，账户余额扣减，核销分录自动重开，此操作不可撤销！`,
+      '收款单红冲确认'
+    )
+    await PaymentApi.reverseReceipt(row.id)
+    message.success('收款单已成功红冲')
     getReceiptList()
   } catch {}
 }
