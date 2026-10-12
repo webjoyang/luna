@@ -78,4 +78,57 @@ public class CustomerStatementController {
         return success(true);
     }
 
+    @PutMapping("/send")
+    @Operation(summary = "发送客户对账单")
+    @Parameter(name = "id", description = "编号", required = true, example = "100")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:finance:customer-reconciliation:send', 'lunaerp:finance-statement:send')")
+    public CommonResult<Boolean> sendStatement(@RequestParam("id") Long id) {
+        customerStatementService.sendStatement(id);
+        return success(true);
+    }
+
+    @PutMapping("/void")
+    @Operation(summary = "作废客户对账单（非终态可作废，释放行占用）")
+    @Parameter(name = "id", description = "编号", required = true, example = "100")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:finance:customer-reconciliation:void', 'lunaerp:finance-statement:void')")
+    public CommonResult<Boolean> voidStatement(@RequestParam("id") Long id) {
+        customerStatementService.voidStatement(id);
+        return success(true);
+    }
+
+    @PutMapping("/confirm-on-behalf")
+    @Operation(summary = "代客确认客户对账单")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:finance:customer-reconciliation:confirm-on-behalf', 'lunaerp:finance-statement:confirm-on-behalf')")
+    public CommonResult<Boolean> confirmStatementOnBehalf(@Valid @RequestBody CustomerStatementConfirmOnBehalfReqVO reqVO) {
+        customerStatementService.confirmStatementOnBehalf(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/reject")
+    @Operation(summary = "驳回客户对账单（登记异议原因）")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:finance:customer-reconciliation:update', 'lunaerp:finance-statement:update')")
+    public CommonResult<Boolean> rejectStatement(@Valid @RequestBody CustomerStatementRejectReqVO reqVO) {
+        customerStatementService.rejectStatement(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/reject-reply")
+    @Operation(summary = "客户对账单异议回复处理（改回草稿态可重新发出）")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:finance:customer-reconciliation:update', 'lunaerp:finance-statement:update')")
+    public CommonResult<Boolean> rejectReplyStatement(@Valid @RequestBody CustomerStatementRejectReplyReqVO reqVO) {
+        customerStatementService.rejectReplyStatement(reqVO);
+        return success(true);
+    }
+
+    @GetMapping({"/{id}/print-data", "/print-data"})
+    @Operation(summary = "获得客户对账单打印数据（豁免脱敏）")
+    @Parameter(name = "id", description = "编号", example = "100")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:finance:customer-reconciliation:print', 'lunaerp:finance-statement:print')")
+    public CommonResult<CustomerStatementPrintRespVO> getStatementPrintData(
+            @PathVariable(value = "id", required = false) Long pathId,
+            @RequestParam(value = "id", required = false) Long queryId) {
+        Long id = pathId != null ? pathId : queryId;
+        return success(customerStatementService.getStatementPrintData(id));
+    }
+
 }
