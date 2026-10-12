@@ -1,6 +1,6 @@
 # 客户门户 H5 - 免登发货查询/签收 + 对账单确认（W4 触点）
 
-Status: ready-for-agent（14 号 grilling 两轮 Q1–Q10 + 默认值确认定稿，可按 session 施工）
+Status: completed（全部 6 个 tickets 全部完成并闭环，DoD 100% 达成）
 
 ## Problem Statement
 
@@ -121,17 +121,17 @@ Status: ready-for-agent（14 号 grilling 两轮 Q1–Q10 + 默认值确认定�
 
 ## 验收标准（统一 DoD 映射）
 
-- [ ] 零新表：Redis 双键令牌 + 反向索引；SQL 仅按钮 10150 幂等脚本；`luna.portal.base-url` 复用 04 号键
-- [ ] 门户端点收敛 `/app-api/lunaerp/portal/**`：@PermitAll + PortalTokenFilter（续期/上下文注入/清理）+ 60/min 限流
-- [ ] 状态机零新增：签收复用 shipment 既有守卫（COMPLETED + PENDING/SIGNED/REFUSED 条件更新）、对账单走 10 号五态；门户不引入任何新状态
-- [ ] 安全测试全绿：A↔B 横向越权（id/no 双入口）、跨租户、token 伪造/过期/吊销/未带 header、限流 429、ThreadLocal 并发隔离
-- [ ] PortalVO 白名单断言（金额透明、内部字段零透出）；@LogRecord 五处留痕且不含完整 token
-- [ ] 10 号契约身份来源替换（显式 customerId → PortalContext）+ 隔离专测复核；代客确认与门户确认同字段
-- [ ] 二维码 URL 契约不回改：`/portal/shipment?no=`、`/portal/statement?no=` 直达路由兼容，无会话引导 invalid 页
-- [ ] 管理端：生成/重新生成（吊销旧链接+二次确认）/复制/吊销/剩余有效期可用；基址未配置时降级提示
-- [ ] 错误码 038 段登记 shared GLOSSARY 总表；术语（客户门户/门户令牌）进 shared GLOSSARY；ADR-0044 落 `docs/adr/`
-- [ ] 前端验收清单（移动视口 375px）：生成链接→客户打开（?t= 清址）→发货单列表/详情→签收（手填姓名）→对账单列表/详情→确认→驳回路径→吊销后 401 invalid 页 全流程冒烟
-- [ ] 常规列表 P95<1s（万级）；PortalTokenFilter 校验路径 O(1)
+- [x] 零新表：Redis 双键令牌 + 反向索引；SQL 仅按钮 10150 幂等脚本；`luna.portal.base-url` 复用 04 号键
+- [x] 门户端点收敛 `/app-api/lunaerp/portal/**`：@PermitAll + PortalTokenFilter（续期/上下文注入/清理）+ 60/min 限流
+- [x] 状态机零新增：签收复用 shipment 既有守卫（COMPLETED + PENDING/SIGNED/REFUSED 条件更新）、对账单走 10 号五态；门户不引入任何新状态
+- [x] 安全测试全绿：A↔B 横向越权（id/no 双入口）、跨租户、token 伪造/过期/吊销/未带 header、限流 429、ThreadLocal 并发隔离
+- [x] PortalVO 白名单断言（金额透明、内部字段零透出）；@LogRecord 五处留痕且不含完整 token
+- [x] 10 号契约身份来源替换（显式 customerId → PortalContext）+ 隔离专测复核；代客确认与门户确认同字段
+- [x] 二维码 URL 契约不回改：`/portal/shipment?no=`、`/portal/statement?no=` 直达路由兼容，无会话引导 invalid 页
+- [x] 管理端：生成/重新生成（吊销旧链接+二次确认）/复制/吊销/剩余有效期可用；基址未配置时降级提示
+- [x] 错误码 038 段登记 shared GLOSSARY 总表；术语（客户门户/门户令牌）进 shared GLOSSARY；ADR-0044 落 `docs/adr/`
+- [x] 前端验收清单（移动视口 375px）：生成链接→客户打开（?t= 清址）→发货单列表/详情→签收（手填姓名）→对账单列表/详情→确认→驳回路径→吊销后 401 invalid 页 全流程冒烟
+- [x] 常规列表 P95<1s（万级）；PortalTokenFilter 校验路径 O(1)
 
 ## Further Notes
 
