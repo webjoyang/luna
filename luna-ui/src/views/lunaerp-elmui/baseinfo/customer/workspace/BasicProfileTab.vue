@@ -1,12 +1,87 @@
 <template>
-  <el-form
-    ref="formRef"
-    :model="formData"
-    :rules="rules"
-    label-width="120px"
-    class="basic-profile-form"
-    v-loading="loading"
-  >
+  <div class="basic-profile-tab-wrapper">
+    <!-- 客户门户卡片（仅编辑模式展示） -->
+    <el-card v-if="!isCreateMode" class="portal-card mb-4" shadow="never">
+      <template #header>
+        <div class="portal-card-header">
+          <div class="title-group">
+            <span class="card-title">客户门户</span>
+            <el-tag :type="portalTokenInfo?.token ? 'success' : 'info'" size="small">
+              {{ portalTokenInfo?.token ? '已开通' : '未开通' }}
+            </el-tag>
+          </div>
+          <div class="portal-actions">
+            <el-button
+              v-if="!portalTokenInfo?.token"
+              type="primary"
+              size="small"
+              :loading="portalActionLoading"
+              v-hasPermi="['lunaerp:baseinfo:customer:portal-token']"
+              @click="handleGenerateToken(false)"
+            >
+              生成门户链接
+            </el-button>
+            <template v-else>
+              <el-button
+                type="primary"
+                size="small"
+                :loading="portalActionLoading"
+                v-hasPermi="['lunaerp:baseinfo:customer:portal-token']"
+                @click="handleGenerateToken(true)"
+              >
+                重新生成
+              </el-button>
+              <el-button
+                size="small"
+                v-hasPermi="['lunaerp:baseinfo:customer:portal-token']"
+                @click="handleCopyLink"
+              >
+                复制链接
+              </el-button>
+              <el-button
+                type="danger"
+                plain
+                size="small"
+                :loading="portalActionLoading"
+                v-hasPermi="['lunaerp:baseinfo:customer:portal-token']"
+                @click="handleRevokeToken"
+              >
+                吊销
+              </el-button>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <div v-loading="portalLoading" class="portal-card-body">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="门户状态">
+            <span v-if="portalTokenInfo?.token" class="text-success font-medium">
+              有效期至 {{ formatExpireTime(portalTokenInfo.expireTime) }} (剩余 {{ portalTokenInfo.expireDays ?? 0 }} 天)
+            </span>
+            <span v-else class="text-gray-400">未开通</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="生成时间">
+            <span>{{ formatDateTime(portalTokenInfo?.generateTime) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="portalTokenInfo?.token" label="门户链接" :span="2">
+            <div class="portal-url-display">
+              <span v-if="portalTokenInfo.url" class="portal-url-text">{{ portalTokenInfo.url }}</span>
+              <span v-else class="text-warning">未配置客户门户基准地址(luna.portal.base-url)，仅生成 Token: {{ portalTokenInfo.token }}</span>
+            </div>
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+    </el-card>
+
+    <el-form
+      ref="formRef"
+      :model="formData"
+      :rules="rules"
+      label-width="120px"
+      class="basic-profile-form"
+      v-loading="loading"
+    >
     <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="公司名称" prop="companyName">
@@ -166,14 +241,17 @@
       <el-button @click="handleBack">返回</el-button>
     </div>
   </el-form>
+  </div>
 </template>
 
 <script lang="ts" setup>
-import { reactive, ref } from 'vue'
-import type { FormInstance, FormRules } from 'element-plus'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { useRouter } from 'vue-router'
+import dayjs from 'dayjs'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
-import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
+import type { CustomerVO, PortalTokenRespVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import UserSelect from '@/views/system/user/components/UserSelect.vue'
 import { useUserStore } from '@/store/modules/user'
 
@@ -192,6 +270,11 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 const submitting = ref(false)
 const marginRatePercent = ref<number | undefined>(undefined)
+
+// 客户门户状态
+const portalLoading = ref(false)
+const portalActionLoading = ref(false)
+const portalTokenInfo = ref<PortalTokenRespVO | null>(null)
 
 const formData = reactive<CustomerVO>({
   companyName: '',
@@ -219,6 +302,31 @@ const rules: FormRules = {
 
 const isCreateMode = computed(() => !props.customerId)
 
+const formatExpireTime = (time?: string | Date | null) => {
+  if (!time) return '-'
+  return dayjs(time).format('YYYY-MM-DD HH:mm')
+}
+
+const formatDateTime = (time?: string | Date | null) => {
+  if (!time) return '-'
+  return dayjs(time).format('YYYY-MM-DD HH:mm')
+}
+
+const copyToClipboard = async (text: string) => {
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+  } else {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+  }
+}
+
 const loadCustomer = async () => {
   if (!props.customerId) return
   loading.value = true
@@ -229,6 +337,76 @@ const loadCustomer = async () => {
       data.defaultMarginRate != null ? Number((data.defaultMarginRate * 100).toFixed(4)) : undefined
   } finally {
     loading.value = false
+  }
+}
+
+const loadPortalToken = async () => {
+  if (!props.customerId) return
+  portalLoading.value = true
+  try {
+    const data = await CustomerApi.getPortalToken(Number(props.customerId))
+    portalTokenInfo.value = data
+  } catch {
+    portalTokenInfo.value = null
+  } finally {
+    portalLoading.value = false
+  }
+}
+
+const handleGenerateToken = async (isRegenerate: boolean) => {
+  if (!props.customerId) return
+  if (isRegenerate) {
+    try {
+      await ElMessageBox.confirm('重新生成将使旧链接立即失效，是否继续？', '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+    } catch {
+      return
+    }
+  }
+
+  portalActionLoading.value = true
+  try {
+    const data = await CustomerApi.generatePortalToken(Number(props.customerId))
+    portalTokenInfo.value = data
+    message.success(isRegenerate ? '重新生成成功' : '生成成功')
+  } finally {
+    portalActionLoading.value = false
+  }
+}
+
+const handleCopyLink = async () => {
+  if (!portalTokenInfo.value?.token) return
+  if (portalTokenInfo.value.url) {
+    await copyToClipboard(portalTokenInfo.value.url)
+    message.success('链接已复制到剪贴板')
+  } else {
+    await copyToClipboard(portalTokenInfo.value.token)
+    message.warning('未配置客户门户基准地址(luna.portal.base-url)，仅复制 Token')
+  }
+}
+
+const handleRevokeToken = async () => {
+  if (!props.customerId) return
+  try {
+    await ElMessageBox.confirm('确定要吊销该客户的门户链接吗？吊销后旧链接将立即失效。', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+
+  portalActionLoading.value = true
+  try {
+    await CustomerApi.revokePortalToken(Number(props.customerId))
+    portalTokenInfo.value = null
+    message.success('吊销成功')
+  } finally {
+    portalActionLoading.value = false
   }
 }
 
@@ -262,6 +440,16 @@ const handleBack = () => {
   router.push('/baseinfo/customer')
 }
 
+watch(
+  () => props.customerId,
+  (newVal) => {
+    if (newVal) {
+      loadCustomer()
+      loadPortalToken()
+    }
+  }
+)
+
 onMounted(() => {
   if (isCreateMode.value) {
     const userStore = useUserStore()
@@ -270,14 +458,63 @@ onMounted(() => {
     }
   } else {
     loadCustomer()
+    loadPortalToken()
   }
 })
 </script>
 
 <style lang="scss" scoped>
-.basic-profile-form {
+.basic-profile-tab-wrapper {
   max-width: 1200px;
   padding: 16px;
+}
+
+.portal-card {
+  margin-bottom: 20px;
+
+  .portal-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .card-title {
+        font-weight: 600;
+        font-size: 15px;
+      }
+    }
+
+    .portal-actions {
+      display: flex;
+      gap: 8px;
+    }
+  }
+
+  .portal-card-body {
+    .text-success {
+      color: var(--el-color-success);
+    }
+
+    .text-gray-400 {
+      color: var(--el-text-color-placeholder);
+    }
+
+    .text-warning {
+      color: var(--el-color-warning);
+    }
+
+    .portal-url-text {
+      word-break: break-all;
+    }
+  }
+}
+
+.basic-profile-form {
+  padding: 0;
 }
 
 .form-footer {

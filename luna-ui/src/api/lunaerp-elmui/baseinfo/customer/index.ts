@@ -77,3 +77,39 @@ export const importCustomer = (file: File) => {
     responseType: 'blob'
   })
 }
+
+// ==================== 客户门户令牌 API (ADR-0044) ====================
+
+// 门户令牌响应 VO
+export interface PortalTokenRespVO {
+  token: string
+  url?: string | null
+  generateTime?: string | Date | null
+  expireDays?: number | null
+  expireTime?: string | Date | null
+}
+
+// 查询客户门户令牌状态
+export const getPortalToken = (customerId: number) => {
+  return request.get<PortalTokenRespVO | null>({
+    url: '/lunaerp/baseinfo/customer/portal-token',
+    params: { customerId }
+  })
+}
+
+// 生成/重新生成客户门户令牌
+export const generatePortalToken = (customerId: number) => {
+  return request.post<PortalTokenRespVO>({
+    url: '/lunaerp/baseinfo/customer/portal-token/generate',
+    params: { customerId }
+  })
+}
+
+// 吊销客户门户令牌
+export const revokePortalToken = (customerId: number) => {
+  return request.delete<boolean>({
+    url: '/lunaerp/baseinfo/customer/portal-token',
+    params: { customerId }
+  })
+}
+
