@@ -161,6 +161,21 @@ public class PortalTokenServiceImpl implements PortalTokenService {
         return true;
     }
 
+    @Override
+    public PortalTokenDTO getPortalToken(String token) {
+        if (!StringUtils.hasText(token)) {
+            return null;
+        }
+
+        String mainKey = String.format(KEY_TOKEN, token);
+        String json = stringRedisTemplate.opsForValue().get(mainKey);
+        if (!StringUtils.hasText(json)) {
+            return null;
+        }
+
+        return JsonUtils.parseObject(json, PortalTokenDTO.class);
+    }
+
     private CustomerDO validateCustomer(Long customerId) {
         if (customerId == null) {
             throw exception(CUSTOMER_NOT_EXISTS);

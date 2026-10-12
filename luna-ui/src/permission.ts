@@ -25,7 +25,8 @@ const whiteList = [
   '/bind',
   '/register',
   '/oauthLogin/gitee',
-  '/pms/kb/document/share'
+  '/pms/kb/document/share',
+  '/portal'
 ]
 
 // 路由加载前
