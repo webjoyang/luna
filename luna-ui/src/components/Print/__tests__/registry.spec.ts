@@ -60,6 +60,14 @@ vi.mock('@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierR
   default: { name: 'SupplierReconPrintTemplate' }
 }))
 
+vi.mock('@/api/lunaerp-elmui/finance/customer-reconciliation', () => ({
+  getCustomerStatementPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp-elmui/finance/customer-reconciliation/components/print/CustomerStatementPrintTemplate.vue', () => ({
+  default: { name: 'CustomerStatementPrintTemplate' }
+}))
+
 import {
   getTemplatesByBizType,
   getTemplate,
@@ -154,6 +162,18 @@ describe('Print Template Registry', () => {
     expect(tpl.name).toBe('供应商对账单')
     expect(tpl.paper).toBe('A4')
     expect(tpl.permission).toBe('lunaerp:finance:supplierrecon:print')
+    expect(typeof tpl.fetchApi).toBe('function')
+  })
+
+  it('should have FINANCE_STATEMENT statically registered for FINANCE_STATEMENT', () => {
+    const customerTemplates = getTemplatesByBizType('FINANCE_STATEMENT')
+    expect(customerTemplates).toHaveLength(1)
+
+    const tpl = customerTemplates[0]
+    expect(tpl.templateCode).toBe('FINANCE_STATEMENT')
+    expect(tpl.name).toBe('客户对账单')
+    expect(tpl.paper).toBe('A4')
+    expect(tpl.permission).toBe('lunaerp:finance:customer-reconciliation:print')
     expect(typeof tpl.fetchApi).toBe('function')
   })
 

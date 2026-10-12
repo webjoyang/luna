@@ -60,6 +60,14 @@ vi.mock('@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierR
   default: { name: 'SupplierReconPrintTemplate' }
 }))
 
+vi.mock('@/api/lunaerp-elmui/finance/customer-reconciliation', () => ({
+  getCustomerStatementPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp-elmui/finance/customer-reconciliation/components/print/CustomerStatementPrintTemplate.vue', () => ({
+  default: { name: 'CustomerStatementPrintTemplate' }
+}))
+
 import { getCurrencySymbol, formatAmount, safeParseJson, formatDate } from '../utils'
 import { getTemplatesByBizType, getTemplate } from '@/components/Print/registry'
 
