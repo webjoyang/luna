@@ -4,13 +4,14 @@
 
 **Blocked by:** 01 SQL 基建 + 错误码常量 + 客户档案+5列
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] `controller.finance.exchangerate` + `service.finance.exchangerate` + DAL：`/exchange-rate` page/get/create/update（停用，无删除）
-- [ ] 唯一索引 (tenant_id, currency, effective_date) 校验，撞号报 EXCHANGE_RATE_NO_DUPLICATE
-- [ ] RMB 不建行，代码内置 rate=1；对 RMB 配置报 EXCHANGE_RATE_BASE_CURRENCY_FORBIDDEN
-- [ ] `getRate(currency, bizDate)` 取价：生效日≤业务日的最新一条 ENABLE（供 02 号内核复用）
-- [ ] 错误码：200 EXCHANGE_RATE_NOT_FOUND / 201 EXCHANGE_RATE_NO_DUPLICATE / 202 EXCHANGE_RATE_BASE_CURRENCY_FORBIDDEN
-- [ ] 前端页面 `lunaerp-elmui/finance/exchange-rate/index`：列表（币种/生效日/汇率/状态）、新增（币种+生效日+汇率）、停用；金额/汇率字段展示规范
-- [ ] 菜单 10780 汇率（sort 8, parent 10700, path exchange-rate）权限 `:query` + 10781 :create / 10782 :update
-- [ ] 测试：生效日取价（最新≤业务日、停用剔除、RMB=1）、同币种同生效日唯一、本位币禁止、缺汇率报错
+- [x] `controller.finance.exchangerate` + `service.finance.exchangerate` + DAL：`/exchange-rate` page/get/create/update（停用，无删除）
+- [x] 唯一索引 (tenant_id, currency, effective_date) 校验，撞号报 EXCHANGE_RATE_NO_DUPLICATE
+- [x] RMB 不建行，代码内置 rate=1；对 RMB 配置报 EXCHANGE_RATE_BASE_CURRENCY_FORBIDDEN
+- [x] `getRate(currency, bizDate)` 取价：生效日≤业务日的最新一条 ENABLE（供 02 号内核复用）
+- [x] 错误码：200 EXCHANGE_RATE_NOT_FOUND / 201 EXCHANGE_RATE_NO_DUPLICATE / 202 EXCHANGE_RATE_BASE_CURRENCY_FORBIDDEN
+- [x] 前端页面 `lunaerp-elmui/finance/exchange-rate/index`：列表（币种/生效日/汇率/状态）、新增（币种+生效日+汇率）、停用；金额/汇率字段展示规范
+- [x] 菜单 10780 汇率（sort 8, parent 10700, path exchange-rate）权限 `:query` + 10781 :create / 10782 :update
+- [x] 测试：生效日取价（最新≤业务日、停用剔除、RMB=1）、同币种同生效日唯一、本位币禁止、缺汇率报错
+
