@@ -25,7 +25,7 @@
 - [ ] 23，cost-card-quotation，[cost-card-quotation/spec.md](cost-card-quotation/spec.md)（依赖 03 产品、04 销售合同、18 商业地基通用件；含 21 数据范围接线列契约，ADR-0039）
 - [ ] 24，release-production，[release-production/spec.md](release-production/spec.md)（依赖 04 销售合同、05 打色、07 胚布、08 染色、10 检验、14 生产进度；ADR-0040）
 - [x] 25，scheduling-material-check，[scheduling-material-check/spec.md](scheduling-material-check/spec.md)（依赖 06 纱线采购、09 入库台账、11 织造执行、15 进度反馈；零新表，ADR-0041）
-- [ ] 26，vendor-reconciliation，[vendor-reconciliation/spec.md](vendor-reconciliation/spec.md)（依赖 02 供应商、09 入库、10 检验、18 通用件、20 审批引擎；与地图 10 客户对账/12 资金账户共享 payment 域件，合并收口）
+- [x] 26，vendor-reconciliation，[vendor-reconciliation/spec.md](vendor-reconciliation/spec.md)（依赖 02 供应商、09 入库、10 检验、18 通用件、20 审批引擎；与地图 10 客户对账/12 资金账户共享 payment 域件，合并收口）
 - [ ] 27，customer-reconciliation，[customer-reconciliation/spec.md](customer-reconciliation/spec.md)（依赖 04 销售合同、16 发货、18 通用件、20 审批引擎、21 数据范围；与 26 收口 payment 共表；域公共表 ledger/account/exchange DDL 先行；前置改动=发货事件化+客户加列）
 - [ ] 28，sales-return，[sales-return/spec.md](sales-return/spec.md)（依赖 16 发货、09 入库台账、18 通用件、20 审批引擎、27 客户对账冲减接口；finance listener 的 recordArReturnReversal 落 29 的 ledger append 服务，建议与 29 同批或之后施工；stock_in 加通用来源列；ADR-0042）
 - [ ] 29，treasury-expense-payroll，[treasury-expense-payroll/spec.md](treasury-expense-payroll/spec.md)（依赖 18 通用件、20 审批引擎、26 供应商对账、27 客户对账公共 3 表与汇率主档；ADR-0043；12 质检确认只读；9 新表+2 ALTER）

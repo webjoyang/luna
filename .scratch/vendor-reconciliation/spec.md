@@ -1,6 +1,6 @@
 # 财务域 - 供应商对账/付款申请（W3 资金闭环·应付侧）
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
