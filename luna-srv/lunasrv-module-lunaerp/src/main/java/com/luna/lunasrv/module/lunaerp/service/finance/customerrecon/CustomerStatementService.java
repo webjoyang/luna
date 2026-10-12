@@ -63,4 +63,47 @@ public interface CustomerStatementService {
      */
     void addEntry(CustomerStatementAddEntryReqVO reqVO);
 
+    /**
+     * 发送对账单给客户（DRAFT / REJECTED -> SENT）
+     *
+     * @param id 对账单ID
+     */
+    void sendStatement(Long id);
+
+    /**
+     * 作废对账单（非终态 DRAFT/SENT/REJECTED -> VOID，释放明细行占用）
+     *
+     * @param id 对账单ID
+     */
+    void voidStatement(Long id);
+
+    /**
+     * 内部代客确认对账单（SENT -> CONFIRMED，需记录代客线下方式及经手人）
+     *
+     * @param reqVO 代客确认请求
+     */
+    void confirmStatementOnBehalf(CustomerStatementConfirmOnBehalfReqVO reqVO);
+
+    /**
+     * 驳回客户对账单（SENT -> REJECTED，必填异议原因）
+     *
+     * @param reqVO 驳回请求
+     */
+    void rejectStatement(CustomerStatementRejectReqVO reqVO);
+
+    /**
+     * 异议回复处理客户对账单（REJECTED -> DRAFT，回填处理备注后可修改重新发送）
+     *
+     * @param reqVO 异议回复请求
+     */
+    void rejectReplyStatement(CustomerStatementRejectReplyReqVO reqVO);
+
+    /**
+     * 获取客户对账单套打数据（豁免脱敏，含客户四要素、全量明细及二维码URL）
+     *
+     * @param id 对账单ID
+     * @return 打印数据
+     */
+    CustomerStatementPrintRespVO getStatementPrintData(Long id);
+
 }

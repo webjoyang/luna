@@ -125,4 +125,84 @@ class CustomerStatementControllerTest {
         verify(customerStatementService).addEntry(req);
     }
 
+    @Test
+    @DisplayName("发送对账单")
+    void testSendStatement() {
+        doNothing().when(customerStatementService).sendStatement(888L);
+
+        CommonResult<Boolean> result = customerStatementController.sendStatement(888L);
+        assertEquals(0, result.getCode());
+        assertTrue(result.getData());
+        verify(customerStatementService).sendStatement(888L);
+    }
+
+    @Test
+    @DisplayName("作废对账单")
+    void testVoidStatement() {
+        doNothing().when(customerStatementService).voidStatement(888L);
+
+        CommonResult<Boolean> result = customerStatementController.voidStatement(888L);
+        assertEquals(0, result.getCode());
+        assertTrue(result.getData());
+        verify(customerStatementService).voidStatement(888L);
+    }
+
+    @Test
+    @DisplayName("代客确认对账单")
+    void testConfirmStatementOnBehalf() {
+        CustomerStatementConfirmOnBehalfReqVO req = new CustomerStatementConfirmOnBehalfReqVO();
+        req.setId(888L);
+        req.setConfirmMethod("微信文字确认");
+        doNothing().when(customerStatementService).confirmStatementOnBehalf(any());
+
+        CommonResult<Boolean> result = customerStatementController.confirmStatementOnBehalf(req);
+        assertEquals(0, result.getCode());
+        assertTrue(result.getData());
+        verify(customerStatementService).confirmStatementOnBehalf(req);
+    }
+
+    @Test
+    @DisplayName("驳回对账单")
+    void testRejectStatement() {
+        CustomerStatementRejectReqVO req = new CustomerStatementRejectReqVO();
+        req.setId(888L);
+        req.setRejectReason("运费有误");
+        doNothing().when(customerStatementService).rejectStatement(any());
+
+        CommonResult<Boolean> result = customerStatementController.rejectStatement(req);
+        assertEquals(0, result.getCode());
+        assertTrue(result.getData());
+        verify(customerStatementService).rejectStatement(req);
+    }
+
+    @Test
+    @DisplayName("异议回复处理对账单")
+    void testRejectReplyStatement() {
+        CustomerStatementRejectReplyReqVO req = new CustomerStatementRejectReplyReqVO();
+        req.setId(888L);
+        req.setReplyRemark("已重算运费");
+        doNothing().when(customerStatementService).rejectReplyStatement(any());
+
+        CommonResult<Boolean> result = customerStatementController.rejectReplyStatement(req);
+        assertEquals(0, result.getCode());
+        assertTrue(result.getData());
+        verify(customerStatementService).rejectReplyStatement(req);
+    }
+
+    @Test
+    @DisplayName("获取对账单打印数据")
+    void testGetStatementPrintData() {
+        CustomerStatementPrintRespVO printVO = CustomerStatementPrintRespVO.builder()
+                .id(888L)
+                .statementNo("CS20260001")
+                .invoiceTitle("开票抬头")
+                .build();
+        when(customerStatementService.getStatementPrintData(888L)).thenReturn(printVO);
+
+        CommonResult<CustomerStatementPrintRespVO> result = customerStatementController.getStatementPrintData(888L, null);
+        assertEquals(0, result.getCode());
+        assertEquals("CS20260001", result.getData().getStatementNo());
+        assertEquals("开票抬头", result.getData().getInvoiceTitle());
+    }
+
 }

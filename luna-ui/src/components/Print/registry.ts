@@ -16,6 +16,8 @@ import * as colorInstructionApi from '@/api/lunaerp-elmui/production/color-instr
 import ColorInstructionSheet from '@/views/lunaerp-elmui/production/color-instruction/components/print/ColorInstructionSheet.vue'
 import { getSupplierReconPrintData } from '@/api/lunaerp-elmui/finance/supplier-recon'
 import SupplierReconPrintTemplate from '@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierReconPrintTemplate.vue'
+import { getCustomerStatementPrintData } from '@/api/lunaerp-elmui/finance/customer-reconciliation'
+import CustomerStatementPrintTemplate from '@/views/lunaerp-elmui/finance/customer-reconciliation/components/print/CustomerStatementPrintTemplate.vue'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -128,6 +130,15 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
     permission: 'lunaerp:finance:supplierrecon:print',
     component: SupplierReconPrintTemplate,
     fetchApi: (bizId) => getSupplierReconPrintData(bizId)
+  },
+  {
+    bizType: 'FINANCE_STATEMENT',
+    templateCode: 'FINANCE_STATEMENT',
+    name: '客户对账单',
+    paper: 'A4',
+    permission: 'lunaerp:finance:customer-reconciliation:print',
+    component: CustomerStatementPrintTemplate,
+    fetchApi: (bizId) => getCustomerStatementPrintData(bizId)
   }
 ]
 

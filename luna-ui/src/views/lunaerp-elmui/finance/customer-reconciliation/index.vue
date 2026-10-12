@@ -119,36 +119,109 @@
           </template>
         </el-table-column>
         <el-table-column label="创建时间" prop="createTime" width="160" align="center" />
-        <el-table-column label="操作" width="220" fixed="right" align="center">
+        <el-table-column label="操作" width="300" fixed="right" align="center">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleDetail(row.id)">详情</el-button>
             <el-button
-              v-if="row.status === 'DRAFT'"
-              v-hasPermi="['lunaerp:finance:customer-reconciliation:update']"
+              v-hasPermi="['lunaerp:finance:customer-reconciliation:print']"
               link
               type="primary"
-              @click="handleEditRemark(row)"
+              @click="handlePrint(row)"
             >
-              编辑
+              打印
             </el-button>
-            <el-button
-              v-if="row.status === 'DRAFT'"
-              v-hasPermi="['lunaerp:finance:customer-reconciliation:update']"
-              link
-              type="success"
-              @click="handleAddEntry(row)"
-            >
-              追加分录
-            </el-button>
-            <el-button
-              v-if="row.status === 'DRAFT'"
-              v-hasPermi="['lunaerp:finance:customer-reconciliation:delete']"
-              link
-              type="danger"
-              @click="handleDelete(row)"
-            >
-              删除
-            </el-button>
+
+            <!-- 草稿态操作 -->
+            <template v-if="row.status === 'DRAFT'">
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:send']"
+                link
+                type="success"
+                @click="handleSend(row)"
+              >
+                发送
+              </el-button>
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:update']"
+                link
+                type="primary"
+                @click="handleEditRemark(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:update']"
+                link
+                type="primary"
+                @click="handleAddEntry(row)"
+              >
+                追加分录
+              </el-button>
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:void']"
+                link
+                type="warning"
+                @click="handleVoid(row)"
+              >
+                作废
+              </el-button>
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:delete']"
+                link
+                type="danger"
+                @click="handleDelete(row)"
+              >
+                删除
+              </el-button>
+            </template>
+
+            <!-- 已发送操作 -->
+            <template v-else-if="row.status === 'SENT'">
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:confirm-on-behalf']"
+                link
+                type="success"
+                @click="handleConfirmOnBehalf(row)"
+              >
+                代客确认
+              </el-button>
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:update']"
+                link
+                type="danger"
+                @click="handleReject(row)"
+              >
+                驳回
+              </el-button>
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:void']"
+                link
+                type="warning"
+                @click="handleVoid(row)"
+              >
+                作废
+              </el-button>
+            </template>
+
+            <!-- 已驳回操作 -->
+            <template v-else-if="row.status === 'REJECTED'">
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:update']"
+                link
+                type="primary"
+                @click="handleRejectReply(row)"
+              >
+                回复处理
+              </el-button>
+              <el-button
+                v-hasPermi="['lunaerp:finance:customer-reconciliation:void']"
+                link
+                type="warning"
+                @click="handleVoid(row)"
+              >
+                作废
+              </el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -170,6 +243,18 @@
 
     <!-- 追加分录弹窗 -->
     <CustomerStatementAddEntryDialog ref="addEntryDialogRef" @success="getList" />
+
+    <!-- 代客确认弹窗 -->
+    <CustomerStatementConfirmOnBehalfDialog ref="confirmOnBehalfDialogRef" @success="getList" />
+
+    <!-- 驳回弹窗 -->
+    <CustomerStatementRejectDialog ref="rejectDialogRef" @success="getList" />
+
+    <!-- 异议回复处理弹窗 -->
+    <CustomerStatementRejectReplyDialog ref="rejectReplyDialogRef" @success="getList" />
+
+    <!-- 打印调度组件 -->
+    <PrintDispatcher biz-type="FINANCE_STATEMENT" ref="printDispatcherRef" />
   </div>
 </template>
 
@@ -180,12 +265,18 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import {
   getCustomerStatementPage,
   updateCustomerStatement,
-  deleteCustomerStatement
+  deleteCustomerStatement,
+  sendCustomerStatement,
+  voidCustomerStatement
 } from '@/api/lunaerp-elmui/finance/customer-reconciliation'
 import type { CustomerStatementVO } from '@/api/lunaerp-elmui/finance/customer-reconciliation'
+import { PrintDispatcher } from '@/components/Print'
 import CustomerStatementCreateDialog from './components/CustomerStatementCreateDialog.vue'
 import CustomerStatementDetailDialog from './components/CustomerStatementDetailDialog.vue'
 import CustomerStatementAddEntryDialog from './components/CustomerStatementAddEntryDialog.vue'
+import CustomerStatementConfirmOnBehalfDialog from './components/CustomerStatementConfirmOnBehalfDialog.vue'
+import CustomerStatementRejectDialog from './components/CustomerStatementRejectDialog.vue'
+import CustomerStatementRejectReplyDialog from './components/CustomerStatementRejectReplyDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiCustomerReconciliation' })
 
@@ -198,6 +289,10 @@ const periodRange = ref<[string, string] | null>(null)
 const createDialogRef = ref()
 const detailDialogRef = ref()
 const addEntryDialogRef = ref()
+const confirmOnBehalfDialogRef = ref()
+const rejectDialogRef = ref()
+const rejectReplyDialogRef = ref()
+const printDispatcherRef = ref<InstanceType<typeof PrintDispatcher> | null>(null)
 
 const queryParams = reactive({
   pageNo: 1,
@@ -255,6 +350,52 @@ const handleDetail = (id: number) => {
 
 const handleAddEntry = (row: CustomerStatementVO) => {
   addEntryDialogRef.value?.open(row)
+}
+
+const handlePrint = (row: CustomerStatementVO) => {
+  printDispatcherRef.value?.open(row.id)
+}
+
+const handleSend = async (row: CustomerStatementVO) => {
+  try {
+    await ElMessageBox.confirm(`确定发送对账单【${row.statementNo}】给客户吗？发送后将进入客户对账流程。`, '确认发送', {
+      type: 'info',
+      confirmButtonText: '确定发送',
+      cancelButtonText: '取消'
+    })
+    await sendCustomerStatement(row.id)
+    ElMessage.success('对账单发送成功')
+    getList()
+  } catch (e) {
+    // 用户取消
+  }
+}
+
+const handleVoid = async (row: CustomerStatementVO) => {
+  try {
+    await ElMessageBox.confirm(`确定作废对账单【${row.statementNo}】吗？作废后占用的分录将被释放。`, '确认作废', {
+      type: 'warning',
+      confirmButtonText: '确定作废',
+      cancelButtonText: '取消'
+    })
+    await voidCustomerStatement(row.id)
+    ElMessage.success('对账单已作废')
+    getList()
+  } catch (e) {
+    // 用户取消
+  }
+}
+
+const handleConfirmOnBehalf = (row: CustomerStatementVO) => {
+  confirmOnBehalfDialogRef.value?.open(row)
+}
+
+const handleReject = (row: CustomerStatementVO) => {
+  rejectDialogRef.value?.open(row)
+}
+
+const handleRejectReply = (row: CustomerStatementVO) => {
+  rejectReplyDialogRef.value?.open(row)
 }
 
 const handleEditRemark = async (row: CustomerStatementVO) => {

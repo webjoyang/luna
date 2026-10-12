@@ -3,8 +3,11 @@ package com.luna.lunasrv.module.lunaerp.service.finance.customerrecon;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
 import com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
@@ -18,10 +21,13 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.statement.CustomerStatementItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.statement.CustomerStatementMapper;
+import com.luna.lunasrv.module.lunaerp.enums.finance.CustomerStatementConfirmTypeEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.CustomerStatementStatusEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceLedgerCategoryEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceLedgerDirectionEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinancePartyTypeEnum;
+import com.mzt.logapi.context.LogRecordContext;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,6 +37,7 @@ import org.springframework.validation.annotation.Validated;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -74,6 +81,9 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
 
     @Resource
     private PaymentMapper paymentMapper;
+
+    @Resource
+    private ConfigApi configApi;
 
     @Override
     public PageResult<CustomerStatementRespVO> getStatementPage(CustomerStatementPageReqVO pageReqVO) {
@@ -682,6 +692,204 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         vo.setRemark(statement.getRemark());
         vo.setCreateTime(statement.getCreateTime());
         vo.setCreator(statement.getCreator());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void sendStatement(Long id) {
+        CustomerStatementDO existing = validateStatementExists(id);
+        // 白名单：仅 DRAFT / REJECTED 可发送
+        if (!CustomerStatementStatusEnum.DRAFT.getValue().equals(existing.getStatus())
+                && !CustomerStatementStatusEnum.REJECTED.getValue().equals(existing.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        // 条件更新防并发
+        int updated = customerStatementMapper.update(null, new LambdaUpdateWrapper<CustomerStatementDO>()
+                .eq(CustomerStatementDO::getId, id)
+                .in(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.DRAFT.getValue(), CustomerStatementStatusEnum.REJECTED.getValue())
+                .set(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.SENT.getValue())
+                .set(CustomerStatementDO::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void voidStatement(Long id) {
+        CustomerStatementDO existing = validateStatementExists(id);
+        // 已确认单据禁止作废（终态），报 STATEMENT_CONFIRMED_NOT_VOID
+        if (CustomerStatementStatusEnum.CONFIRMED.getValue().equals(existing.getStatus())) {
+            throw exception(STATEMENT_CONFIRMED_NOT_VOID);
+        }
+        // 已作废或其他非法状态报 STATEMENT_STATUS_NOT_ALLOW
+        if (!CustomerStatementStatusEnum.DRAFT.getValue().equals(existing.getStatus())
+                && !CustomerStatementStatusEnum.SENT.getValue().equals(existing.getStatus())
+                && !CustomerStatementStatusEnum.REJECTED.getValue().equals(existing.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        // 条件更新防并发（作废后状态变为 VOID，selectActiveOccupiedLedgerEntryIds 自动释放行占用）
+        int updated = customerStatementMapper.update(null, new LambdaUpdateWrapper<CustomerStatementDO>()
+                .eq(CustomerStatementDO::getId, id)
+                .in(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.DRAFT.getValue(), CustomerStatementStatusEnum.SENT.getValue(), CustomerStatementStatusEnum.REJECTED.getValue())
+                .set(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.VOID.getValue())
+                .set(CustomerStatementDO::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            CustomerStatementDO current = customerStatementMapper.selectById(id);
+            if (current != null && CustomerStatementStatusEnum.CONFIRMED.getValue().equals(current.getStatus())) {
+                throw exception(STATEMENT_CONFIRMED_NOT_VOID);
+            }
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmStatementOnBehalf(CustomerStatementConfirmOnBehalfReqVO reqVO) {
+        CustomerStatementDO existing = validateStatementExists(reqVO.getId());
+        // 白名单：仅 SENT 可确认
+        if (!CustomerStatementStatusEnum.SENT.getValue().equals(existing.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        String confirmByName = SecurityFrameworkUtils.getLoginUserNickname();
+        if (!StringUtils.hasText(confirmByName)) {
+            confirmByName = "系统用户";
+        }
+
+        LambdaUpdateWrapper<CustomerStatementDO> updateWrapper = new LambdaUpdateWrapper<CustomerStatementDO>()
+                .eq(CustomerStatementDO::getId, reqVO.getId())
+                .eq(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.SENT.getValue())
+                .set(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.CONFIRMED.getValue())
+                .set(CustomerStatementDO::getConfirmType, CustomerStatementConfirmTypeEnum.ON_BEHALF.getValue())
+                .set(CustomerStatementDO::getConfirmByName, confirmByName)
+                .set(CustomerStatementDO::getConfirmTime, LocalDateTime.now())
+                .set(CustomerStatementDO::getConfirmMethod, reqVO.getConfirmMethod())
+                .set(CustomerStatementDO::getUpdateTime, LocalDateTime.now());
+        if (StringUtils.hasText(reqVO.getRemark())) {
+            updateWrapper.set(CustomerStatementDO::getRemark, reqVO.getRemark());
+        }
+
+        int updated = customerStatementMapper.update(null, updateWrapper);
+        if (updated == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rejectStatement(CustomerStatementRejectReqVO reqVO) {
+        CustomerStatementDO existing = validateStatementExists(reqVO.getId());
+        // 白名单：仅 SENT 可驳回
+        if (!CustomerStatementStatusEnum.SENT.getValue().equals(existing.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        int updated = customerStatementMapper.update(null, new LambdaUpdateWrapper<CustomerStatementDO>()
+                .eq(CustomerStatementDO::getId, reqVO.getId())
+                .eq(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.SENT.getValue())
+                .set(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.REJECTED.getValue())
+                .set(CustomerStatementDO::getRejectReason, reqVO.getRejectReason())
+                .set(CustomerStatementDO::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rejectReplyStatement(CustomerStatementRejectReplyReqVO reqVO) {
+        CustomerStatementDO existing = validateStatementExists(reqVO.getId());
+        // 白名单：仅 REJECTED 可回复并转回 DRAFT
+        if (!CustomerStatementStatusEnum.REJECTED.getValue().equals(existing.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        LambdaUpdateWrapper<CustomerStatementDO> updateWrapper = new LambdaUpdateWrapper<CustomerStatementDO>()
+                .eq(CustomerStatementDO::getId, reqVO.getId())
+                .eq(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.REJECTED.getValue())
+                .set(CustomerStatementDO::getStatus, CustomerStatementStatusEnum.DRAFT.getValue())
+                .set(CustomerStatementDO::getUpdateTime, LocalDateTime.now());
+        if (StringUtils.hasText(reqVO.getReplyRemark())) {
+            updateWrapper.set(CustomerStatementDO::getReplyRemark, reqVO.getReplyRemark());
+        }
+
+        int updated = customerStatementMapper.update(null, updateWrapper);
+        if (updated == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @LogRecord(type = "打印", subType = "客户对账单", bizNo = "{{#id}}", success = "打印了客户对账单 {{#no}}")
+    public CustomerStatementPrintRespVO getStatementPrintData(Long id) {
+        CustomerStatementDO statement = validateStatementExists(id);
+        LogRecordContext.putVariable("no", statement.getStatementNo());
+        LogRecordContext.putVariable("id", statement.getId());
+
+        // 1. 客户四要素与联系人
+        CustomerDO customer = customerMapper.selectById(statement.getCustomerId());
+        String invoiceTitle = customer != null ? customer.getInvoiceTitle() : null;
+        String invoiceAddress = customer != null ? customer.getInvoiceAddress() : null;
+        String bankName = customer != null ? customer.getBankName() : null;
+        String bankAccountNo = customer != null ? customer.getBankAccountNo() : null;
+        String contactPerson = null;
+        String contactPhone = customer != null ? customer.getPhone() : null;
+
+        // 2. 客户门户基准URL与二维码（未配置时降级提示，不阻断打印）
+        String qrUrl = null;
+        boolean qrDegraded = false;
+        String baseUrl = configApi != null ? configApi.getConfigValueByKey("luna.portal.base-url") : null;
+        if (StringUtils.hasText(baseUrl)) {
+            String cleanBaseUrl = baseUrl.trim().replaceAll("/+$", "");
+            qrUrl = cleanBaseUrl + "/portal/statement?no=" + statement.getStatementNo();
+        } else {
+            qrDegraded = true;
+        }
+
+        // 3. 全量明细行（按 line_no 顺序）
+        List<CustomerStatementItemDO> items = customerStatementItemMapper.selectList(
+                new LambdaQueryWrapper<CustomerStatementItemDO>()
+                        .eq(CustomerStatementItemDO::getStatementId, id)
+                        .orderByAsc(CustomerStatementItemDO::getLineNo));
+        List<CustomerStatementItemRespVO> itemVOs = items.stream()
+                .map(this::convertItemToRespVO)
+                .collect(Collectors.toList());
+
+        return CustomerStatementPrintRespVO.builder()
+                .id(statement.getId())
+                .statementNo(statement.getStatementNo())
+                .customerId(statement.getCustomerId())
+                .customerName(statement.getCustomerName())
+                .invoiceTitle(invoiceTitle)
+                .invoiceAddress(invoiceAddress)
+                .bankName(bankName)
+                .bankAccountNo(bankAccountNo)
+                .contactPerson(contactPerson)
+                .contactPhone(contactPhone)
+                .currency(statement.getCurrency())
+                .periodStart(statement.getPeriodStart())
+                .periodEnd(statement.getPeriodEnd())
+                .openingBalance(statement.getOpeningBalance())
+                .periodDebit(statement.getPeriodDebit())
+                .periodCredit(statement.getPeriodCredit())
+                .closingBalance(statement.getClosingBalance())
+                .status(statement.getStatus())
+                .confirmType(statement.getConfirmType())
+                .confirmByName(statement.getConfirmByName())
+                .confirmTime(statement.getConfirmTime())
+                .confirmMethod(statement.getConfirmMethod())
+                .rejectReason(statement.getRejectReason())
+                .replyRemark(statement.getReplyRemark())
+                .remark(statement.getRemark())
+                .qrUrl(qrUrl)
+                .qrDegraded(qrDegraded)
+                .creator(statement.getCreator())
+                .createTime(statement.getCreateTime())
+                .items(itemVOs)
+                .build();
     }
 
 }

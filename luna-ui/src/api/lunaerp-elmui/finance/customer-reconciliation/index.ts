@@ -200,3 +200,105 @@ export const addCustomerStatementEntry = (data: CustomerStatementAddEntryReqVO) 
     data
   })
 }
+
+/** 代客确认请求 VO */
+export interface CustomerStatementConfirmOnBehalfReqVO {
+  id: number
+  confirmMethod: string
+  remark?: string
+}
+
+/** 驳回请求 VO */
+export interface CustomerStatementRejectReqVO {
+  id: number
+  rejectReason: string
+}
+
+/** 异议回复处理请求 VO */
+export interface CustomerStatementRejectReplyReqVO {
+  id: number
+  replyRemark?: string
+}
+
+/** 客户对账单打印数据 VO */
+export interface CustomerStatementPrintVO {
+  id: number
+  statementNo: string
+  customerId: number
+  customerName: string
+  invoiceTitle?: string
+  invoiceAddress?: string
+  bankName?: string
+  bankAccountNo?: string
+  contactPerson?: string
+  contactPhone?: string
+  currency: string
+  periodStart: string
+  periodEnd: string
+  openingBalance: number
+  periodDebit: number
+  periodCredit: number
+  closingBalance: number
+  status: string
+  confirmType?: string
+  confirmByName?: string
+  confirmTime?: string
+  confirmMethod?: string
+  rejectReason?: string
+  replyRemark?: string
+  remark?: string
+  qrUrl?: string
+  qrDegraded?: boolean
+  creator?: string
+  createTime?: string
+  items: CustomerStatementItemVO[]
+}
+
+/** 发送对账单给客户（DRAFT / REJECTED -> SENT） */
+export const sendCustomerStatement = (id: number | string) => {
+  return request.put<boolean>({
+    url: '/lunaerp/finance/statement/send',
+    params: { id }
+  })
+}
+
+/** 作废对账单（非终态 -> VOID，释放行占用） */
+export const voidCustomerStatement = (id: number | string) => {
+  return request.put<boolean>({
+    url: '/lunaerp/finance/statement/void',
+    params: { id }
+  })
+}
+
+/** 内部代客确认对账单（SENT -> CONFIRMED） */
+export const confirmCustomerStatementOnBehalf = (data: CustomerStatementConfirmOnBehalfReqVO) => {
+  return request.put<boolean>({
+    url: '/lunaerp/finance/statement/confirm-on-behalf',
+    data
+  })
+}
+
+/** 驳回客户对账单（SENT -> REJECTED） */
+export const rejectCustomerStatement = (data: CustomerStatementRejectReqVO) => {
+  return request.put<boolean>({
+    url: '/lunaerp/finance/statement/reject',
+    data
+  })
+}
+
+/** 客户对账单异议回复处理（REJECTED -> DRAFT） */
+export const rejectReplyCustomerStatement = (data: CustomerStatementRejectReplyReqVO) => {
+  return request.put<boolean>({
+    url: '/lunaerp/finance/statement/reject-reply',
+    data
+  })
+}
+
+/** 获得客户对账单套打数据（豁免脱敏） */
+export const getCustomerStatementPrintData = (id: number | string) => {
+  return request.get<CustomerStatementPrintVO>({
+    url: '/lunaerp/finance/statement/print-data',
+    params: { id }
+  })
+}
+

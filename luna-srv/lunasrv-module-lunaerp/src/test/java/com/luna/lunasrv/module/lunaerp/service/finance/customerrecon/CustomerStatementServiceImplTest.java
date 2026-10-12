@@ -17,6 +17,10 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.statement.CustomerState
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.statement.CustomerStatementMapper;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
+import com.luna.lunasrv.module.lunaerp.enums.finance.CustomerStatementConfirmTypeEnum;
+import com.luna.lunasrv.module.lunaerp.enums.finance.CustomerStatementStatusEnum;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,6 +61,9 @@ class CustomerStatementServiceImplTest {
 
     @Mock
     private PaymentMapper paymentMapper;
+
+    @Mock
+    private ConfigApi configApi;
 
     @InjectMocks
     private CustomerStatementServiceImpl customerStatementService;
@@ -434,6 +441,269 @@ class CustomerStatementServiceImplTest {
         // 4. CONFIRMED 删除抛状态异常
         ServiceException ex2 = assertThrows(ServiceException.class, () -> customerStatementService.deleteStatement(200L));
         assertEquals(STATEMENT_STATUS_NOT_ALLOW.getCode(), ex2.getCode());
+    }
+
+    // ==================== Issue 07: 发送/作废/代客确认/驳回/异议回复/打印 ====================
+
+    @Test
+    @DisplayName("发送对账单：DRAFT 和 REJECTED 状态允许发送，条件更新成功")
+    void testSendStatementSuccess() {
+        CustomerStatementDO draft = CustomerStatementDO.builder().id(101L).status("DRAFT").build();
+        CustomerStatementDO rejected = CustomerStatementDO.builder().id(102L).status("REJECTED").build();
+
+        when(customerStatementMapper.selectById(101L)).thenReturn(draft);
+        when(customerStatementMapper.selectById(102L)).thenReturn(rejected);
+        when(customerStatementMapper.update(isNull(), any())).thenReturn(1);
+
+        customerStatementService.sendStatement(101L);
+        customerStatementService.sendStatement(102L);
+
+        verify(customerStatementMapper, times(2)).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("发送对账单：非法状态（SENT/CONFIRMED/VOID）拒绝发送抛 STATEMENT_STATUS_NOT_ALLOW")
+    void testSendStatementInvalidStatus() {
+        CustomerStatementDO sent = CustomerStatementDO.builder().id(201L).status("SENT").build();
+        CustomerStatementDO confirmed = CustomerStatementDO.builder().id(202L).status("CONFIRMED").build();
+        CustomerStatementDO voided = CustomerStatementDO.builder().id(203L).status("VOID").build();
+
+        when(customerStatementMapper.selectById(201L)).thenReturn(sent);
+        when(customerStatementMapper.selectById(202L)).thenReturn(confirmed);
+        when(customerStatementMapper.selectById(203L)).thenReturn(voided);
+
+        assertThrows(ServiceException.class, () -> customerStatementService.sendStatement(201L));
+        assertThrows(ServiceException.class, () -> customerStatementService.sendStatement(202L));
+        assertThrows(ServiceException.class, () -> customerStatementService.sendStatement(203L));
+    }
+
+    @Test
+    @DisplayName("发送对账单：条件更新并发冲突（更新0行）抛 STATEMENT_STATUS_NOT_ALLOW")
+    void testSendStatementConcurrentConflict() {
+        CustomerStatementDO draft = CustomerStatementDO.builder().id(101L).status("DRAFT").build();
+        when(customerStatementMapper.selectById(101L)).thenReturn(draft);
+        when(customerStatementMapper.update(isNull(), any())).thenReturn(0); // 并发导致更新行数为0
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.sendStatement(101L));
+        assertEquals(STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废对账单：非终态（DRAFT/SENT/REJECTED）可作废，条件更新为 VOID")
+    void testVoidStatementSuccess() {
+        CustomerStatementDO draft = CustomerStatementDO.builder().id(301L).status("DRAFT").build();
+        CustomerStatementDO sent = CustomerStatementDO.builder().id(302L).status("SENT").build();
+        CustomerStatementDO rejected = CustomerStatementDO.builder().id(303L).status("REJECTED").build();
+
+        when(customerStatementMapper.selectById(301L)).thenReturn(draft);
+        when(customerStatementMapper.selectById(302L)).thenReturn(sent);
+        when(customerStatementMapper.selectById(303L)).thenReturn(rejected);
+        when(customerStatementMapper.update(isNull(), any())).thenReturn(1);
+
+        customerStatementService.voidStatement(301L);
+        customerStatementService.voidStatement(302L);
+        customerStatementService.voidStatement(303L);
+
+        verify(customerStatementMapper, times(3)).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("作废对账单守卫：CONFIRMED 终态不可作废抛 STATEMENT_CONFIRMED_NOT_VOID")
+    void testVoidStatementConfirmedForbidden() {
+        CustomerStatementDO confirmed = CustomerStatementDO.builder().id(304L).status("CONFIRMED").build();
+        when(customerStatementMapper.selectById(304L)).thenReturn(confirmed);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.voidStatement(304L));
+        assertEquals(STATEMENT_CONFIRMED_NOT_VOID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废对账单守卫：已是 VOID 状态抛 STATEMENT_STATUS_NOT_ALLOW")
+    void testVoidStatementAlreadyVoid() {
+        CustomerStatementDO voided = CustomerStatementDO.builder().id(305L).status("VOID").build();
+        when(customerStatementMapper.selectById(305L)).thenReturn(voided);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.voidStatement(305L));
+        assertEquals(STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("代客确认：仅 SENT 状态可确认，记录 ON_BEHALF/确认方式/经手人")
+    void testConfirmStatementOnBehalfSuccess() {
+        CustomerStatementDO sent = CustomerStatementDO.builder().id(401L).status("SENT").build();
+        when(customerStatementMapper.selectById(401L)).thenReturn(sent);
+        when(customerStatementMapper.update(isNull(), any())).thenReturn(1);
+
+        CustomerStatementConfirmOnBehalfReqVO reqVO = new CustomerStatementConfirmOnBehalfReqVO();
+        reqVO.setId(401L);
+        reqVO.setConfirmMethod("微信文字确认");
+        reqVO.setRemark("客户已核对无误");
+
+        customerStatementService.confirmStatementOnBehalf(reqVO);
+
+        verify(customerStatementMapper).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("代客确认守卫：非 SENT 状态拒绝确认抛 STATEMENT_STATUS_NOT_ALLOW")
+    void testConfirmStatementOnBehalfInvalidStatus() {
+        CustomerStatementDO draft = CustomerStatementDO.builder().id(402L).status("DRAFT").build();
+        when(customerStatementMapper.selectById(402L)).thenReturn(draft);
+
+        CustomerStatementConfirmOnBehalfReqVO reqVO = new CustomerStatementConfirmOnBehalfReqVO();
+        reqVO.setId(402L);
+        reqVO.setConfirmMethod("微信文字确认");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.confirmStatementOnBehalf(reqVO));
+        assertEquals(STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("驳回对账单：仅 SENT 状态可驳回，记录异议原因")
+    void testRejectStatementSuccess() {
+        CustomerStatementDO sent = CustomerStatementDO.builder().id(501L).status("SENT").build();
+        when(customerStatementMapper.selectById(501L)).thenReturn(sent);
+        when(customerStatementMapper.update(isNull(), any())).thenReturn(1);
+
+        CustomerStatementRejectReqVO reqVO = new CustomerStatementRejectReqVO();
+        reqVO.setId(501L);
+        reqVO.setRejectReason("运费金额有误");
+
+        customerStatementService.rejectStatement(reqVO);
+
+        verify(customerStatementMapper).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("驳回对账单守卫：非 SENT 状态拒绝驳回抛 STATEMENT_STATUS_NOT_ALLOW")
+    void testRejectStatementInvalidStatus() {
+        CustomerStatementDO draft = CustomerStatementDO.builder().id(502L).status("DRAFT").build();
+        when(customerStatementMapper.selectById(502L)).thenReturn(draft);
+
+        CustomerStatementRejectReqVO reqVO = new CustomerStatementRejectReqVO();
+        reqVO.setId(502L);
+        reqVO.setRejectReason("单价不对");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.rejectStatement(reqVO));
+        assertEquals(STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("异议回复处理：仅 REJECTED 状态可回复并转回 DRAFT")
+    void testRejectReplyStatementSuccess() {
+        CustomerStatementDO rejected = CustomerStatementDO.builder().id(601L).status("REJECTED").build();
+        when(customerStatementMapper.selectById(601L)).thenReturn(rejected);
+        when(customerStatementMapper.update(isNull(), any())).thenReturn(1);
+
+        CustomerStatementRejectReplyReqVO reqVO = new CustomerStatementRejectReplyReqVO();
+        reqVO.setId(601L);
+        reqVO.setReplyRemark("已重新核算运费");
+
+        customerStatementService.rejectReplyStatement(reqVO);
+
+        verify(customerStatementMapper).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("异议回复守卫：非 REJECTED 状态拒绝回复抛 STATEMENT_STATUS_NOT_ALLOW")
+    void testRejectReplyStatementInvalidStatus() {
+        CustomerStatementDO sent = CustomerStatementDO.builder().id(602L).status("SENT").build();
+        when(customerStatementMapper.selectById(602L)).thenReturn(sent);
+
+        CustomerStatementRejectReplyReqVO reqVO = new CustomerStatementRejectReplyReqVO();
+        reqVO.setId(602L);
+        reqVO.setReplyRemark("备注");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.rejectReplyStatement(reqVO));
+        assertEquals(STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("套打数据：base-url 已配置时正确拼装二维码，带出客户四要素与明细行")
+    void testGetStatementPrintDataWithBaseUrl() {
+        CustomerStatementDO statement = CustomerStatementDO.builder()
+                .id(701L)
+                .statementNo("CS20260001")
+                .customerId(10L)
+                .customerName("盛世纺织")
+                .currency("CNY")
+                .periodStart(LocalDate.of(2026, 9, 1))
+                .periodEnd(LocalDate.of(2026, 9, 30))
+                .openingBalance(new BigDecimal("1000.00"))
+                .periodDebit(new BigDecimal("5000.00"))
+                .periodCredit(new BigDecimal("2000.00"))
+                .closingBalance(new BigDecimal("4000.00"))
+                .status("CONFIRMED")
+                .build();
+        when(customerStatementMapper.selectById(701L)).thenReturn(statement);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(10L);
+        customer.setCompanyName("盛世纺织");
+        customer.setInvoiceTitle("广州盛世纺织开票抬头");
+        customer.setInvoiceAddress("广州市海珠区新港西路100号");
+        customer.setBankName("建设银行广州支行");
+        customer.setBankAccountNo("44050143004100001234");
+        customer.setPhone("13800138000");
+        when(customerMapper.selectById(10L)).thenReturn(customer);
+
+        when(configApi.getConfigValueByKey("luna.portal.base-url")).thenReturn("https://portal.lunaerp.com///");
+
+        CustomerStatementItemDO item = CustomerStatementItemDO.builder()
+                .id(1L)
+                .statementId(701L)
+                .lineNo(1)
+                .bizDate(LocalDate.of(2026, 9, 15))
+                .direction("DEBIT")
+                .refType("SHIPMENT")
+                .refNo("SH20260915001")
+                .summary("发货出库")
+                .debitAmount(new BigDecimal("5000.00"))
+                .creditAmount(BigDecimal.ZERO)
+                .build();
+        when(customerStatementItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+
+        CustomerStatementPrintRespVO printVO = customerStatementService.getStatementPrintData(701L);
+
+        assertNotNull(printVO);
+        assertEquals("CS20260001", printVO.getStatementNo());
+        assertEquals("广州盛世纺织开票抬头", printVO.getInvoiceTitle());
+        assertEquals("建设银行广州支行", printVO.getBankName());
+        assertEquals("44050143004100001234", printVO.getBankAccountNo());
+        assertEquals("13800138000", printVO.getContactPhone());
+        assertEquals("https://portal.lunaerp.com/portal/statement?no=CS20260001", printVO.getQrUrl());
+        assertFalse(printVO.getQrDegraded());
+        assertEquals(1, printVO.getItems().size());
+        assertEquals("SH20260915001", printVO.getItems().get(0).getRefNo());
+    }
+
+    @Test
+    @DisplayName("套打数据：base-url 未配置时不阻断打印，qrDegraded 标记为 true，qrUrl 为 null")
+    void testGetStatementPrintDataWithoutBaseUrl() {
+        CustomerStatementDO statement = CustomerStatementDO.builder()
+                .id(702L)
+                .statementNo("CS20260002")
+                .customerId(10L)
+                .customerName("盛世纺织")
+                .currency("CNY")
+                .periodStart(LocalDate.of(2026, 9, 1))
+                .periodEnd(LocalDate.of(2026, 9, 30))
+                .openingBalance(BigDecimal.ZERO)
+                .periodDebit(BigDecimal.ZERO)
+                .periodCredit(BigDecimal.ZERO)
+                .closingBalance(BigDecimal.ZERO)
+                .status("DRAFT")
+                .build();
+        when(customerStatementMapper.selectById(702L)).thenReturn(statement);
+        when(customerMapper.selectById(10L)).thenReturn(null);
+        when(configApi.getConfigValueByKey("luna.portal.base-url")).thenReturn(null); // 未配置
+        when(customerStatementItemMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        CustomerStatementPrintRespVO printVO = customerStatementService.getStatementPrintData(702L);
+
+        assertNotNull(printVO);
+        assertNull(printVO.getQrUrl());
+        assertTrue(printVO.getQrDegraded());
     }
 
 }
