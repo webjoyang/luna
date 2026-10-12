@@ -82,4 +82,32 @@ public interface InvoiceApplicationItemMapper extends BaseMapperX<InvoiceApplica
             + "</script>")
     List<Map<String, Object>> selectInvoicedAmountsByShipmentIds(@Param("shipmentIds") Collection<Long> shipmentIds);
 
+    /**
+     * 查询已删除发票申请下的明细行
+     */
+    @Select("SELECT * FROM lunaerp_finance_invoice_application_item "
+            + "WHERE application_id = #{applicationId} AND deleted = 1 AND tenant_id = #{tenantId} "
+            + "ORDER BY id ASC")
+    List<InvoiceApplicationItemDO> selectDeletedListByApplicationId(@Param("applicationId") Long applicationId,
+                                                                    @Param("tenantId") Long tenantId);
+
+    /**
+     * 级联恢复发票申请明细行
+     */
+    @Update("UPDATE lunaerp_finance_invoice_application_item "
+            + "SET deleted = 0, updater = #{updater}, update_time = #{updateTime} "
+            + "WHERE application_id = #{applicationId} AND deleted = 1 AND tenant_id = #{tenantId}")
+    int restoreByApplicationId(@Param("applicationId") Long applicationId,
+                               @Param("tenantId") Long tenantId,
+                               @Param("updater") String updater,
+                               @Param("updateTime") java.time.LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除发票申请明细行
+     */
+    @Update("DELETE FROM lunaerp_finance_invoice_application_item "
+            + "WHERE application_id = #{applicationId} AND deleted = 1 AND tenant_id = #{tenantId}")
+    int purgeByApplicationId(@Param("applicationId") Long applicationId,
+                             @Param("tenantId") Long tenantId);
+
 }

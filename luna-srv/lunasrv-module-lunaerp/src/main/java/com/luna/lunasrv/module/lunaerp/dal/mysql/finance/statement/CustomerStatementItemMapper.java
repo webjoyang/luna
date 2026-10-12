@@ -50,4 +50,33 @@ public interface CustomerStatementItemMapper extends BaseMapperX<CustomerStateme
             + "JOIN lunaerp_finance_statement s ON item.statement_id = s.id "
             + "WHERE item.deleted = 0 AND s.deleted = 0 AND s.status != 'VOID' AND item.ledger_entry_id IS NOT NULL")
     List<java.util.Map<String, Object>> selectActiveOccupiedMapList();
+
+    /**
+     * 查询已删除客户对账单下的明细
+     */
+    @org.apache.ibatis.annotations.Select("SELECT * FROM lunaerp_finance_statement_item "
+            + "WHERE statement_id = #{statementId} AND deleted = 1 AND tenant_id = #{tenantId} "
+            + "ORDER BY id ASC")
+    List<CustomerStatementItemDO> selectDeletedListByStatementId(
+            @org.apache.ibatis.annotations.Param("statementId") Long statementId,
+            @org.apache.ibatis.annotations.Param("tenantId") Long tenantId);
+
+    /**
+     * 级联恢复客户对账单明细
+     */
+    @org.apache.ibatis.annotations.Update("UPDATE lunaerp_finance_statement_item "
+            + "SET deleted = 0, updater = #{updater}, update_time = #{updateTime} "
+            + "WHERE statement_id = #{statementId} AND deleted = 1 AND tenant_id = #{tenantId}")
+    int restoreByStatementId(@org.apache.ibatis.annotations.Param("statementId") Long statementId,
+                             @org.apache.ibatis.annotations.Param("tenantId") Long tenantId,
+                             @org.apache.ibatis.annotations.Param("updater") String updater,
+                             @org.apache.ibatis.annotations.Param("updateTime") java.time.LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除客户对账单明细
+     */
+    @org.apache.ibatis.annotations.Delete("DELETE FROM lunaerp_finance_statement_item "
+            + "WHERE statement_id = #{statementId} AND deleted = 1 AND tenant_id = #{tenantId}")
+    int purgeByStatementId(@org.apache.ibatis.annotations.Param("statementId") Long statementId,
+                           @org.apache.ibatis.annotations.Param("tenantId") Long tenantId);
 }

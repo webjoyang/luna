@@ -614,4 +614,44 @@ class CustomerReceiptServiceImplTest {
         assertEquals(RECEIPT_POST_CONFLICT.getCode(), ex.getCode());
     }
 
+    @Test
+    @DisplayName("删除收款单：仅 PENDING 状态允许删除进回收站")
+    void testDeleteReceipt_pendingSuccess() {
+        PaymentDO payment = PaymentDO.builder()
+                .id(901L)
+                .direction("IN")
+                .approvalStatus("PENDING")
+                .build();
+        when(paymentMapper.selectById(901L)).thenReturn(payment);
+
+        assertDoesNotThrow(() -> customerReceiptService.deleteReceipt(901L));
+
+        verify(paymentRefMapper).delete(any());
+        verify(paymentMapper).deleteById(901L);
+    }
+
+    @Test
+    @DisplayName("删除收款单守卫：非 PENDING 状态（如 COMPLETED）拒绝删除抛 RECEIPT_STATUS_NOT_ALLOW")
+    void testDeleteReceipt_nonPendingThrows() {
+        PaymentDO payment = PaymentDO.builder()
+                .id(902L)
+                .direction("IN")
+                .approvalStatus("APPROVED")
+                .status("COMPLETED")
+                .build();
+        when(paymentMapper.selectById(902L)).thenReturn(payment);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerReceiptService.deleteReceipt(902L));
+        assertEquals(RECEIPT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("删除收款单守卫：单据不存在或方向非 IN 抛 RECEIPT_NOT_EXISTS")
+    void testDeleteReceipt_notExistsThrows() {
+        when(paymentMapper.selectById(903L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerReceiptService.deleteReceipt(903L));
+        assertEquals(RECEIPT_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
 }

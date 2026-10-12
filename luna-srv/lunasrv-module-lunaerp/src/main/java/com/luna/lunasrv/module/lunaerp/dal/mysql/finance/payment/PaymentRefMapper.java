@@ -48,4 +48,33 @@ public interface PaymentRefMapper extends BaseMapperX<PaymentRefDO> {
                 .in(PaymentRefDO::getRefId, refIds));
     }
 
+    /**
+     * 查询已删除收款单下的核销明细
+     */
+    @org.apache.ibatis.annotations.Select("SELECT * FROM lunaerp_finance_payment_ref "
+            + "WHERE payment_id = #{paymentId} AND deleted = 1 AND tenant_id = #{tenantId} "
+            + "ORDER BY id ASC")
+    List<PaymentRefDO> selectDeletedListByPaymentId(
+            @org.apache.ibatis.annotations.Param("paymentId") Long paymentId,
+            @org.apache.ibatis.annotations.Param("tenantId") Long tenantId);
+
+    /**
+     * 级联恢复收款单核销明细
+     */
+    @org.apache.ibatis.annotations.Update("UPDATE lunaerp_finance_payment_ref "
+            + "SET deleted = 0, updater = #{updater}, update_time = #{updateTime} "
+            + "WHERE payment_id = #{paymentId} AND deleted = 1 AND tenant_id = #{tenantId}")
+    int restoreByPaymentId(@org.apache.ibatis.annotations.Param("paymentId") Long paymentId,
+                           @org.apache.ibatis.annotations.Param("tenantId") Long tenantId,
+                           @org.apache.ibatis.annotations.Param("updater") String updater,
+                           @org.apache.ibatis.annotations.Param("updateTime") java.time.LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除收款单核销明细
+     */
+    @org.apache.ibatis.annotations.Delete("DELETE FROM lunaerp_finance_payment_ref "
+            + "WHERE payment_id = #{paymentId} AND deleted = 1 AND tenant_id = #{tenantId}")
+    int purgeByPaymentId(@org.apache.ibatis.annotations.Param("paymentId") Long paymentId,
+                         @org.apache.ibatis.annotations.Param("tenantId") Long tenantId);
+
 }

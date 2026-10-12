@@ -244,8 +244,8 @@ public class CustomerReceiptServiceImpl implements CustomerReceiptService {
         if (payment == null || !DIRECTION_IN.equals(payment.getDirection())) {
             throw exception(RECEIPT_NOT_EXISTS);
         }
-        if (!APPROVAL_STATUS_PENDING.equalsIgnoreCase(payment.getApprovalStatus())
-                && !APPROVAL_STATUS_REJECTED.equalsIgnoreCase(payment.getApprovalStatus())) {
+        // 状态守卫：仅 PENDING 草稿态允许删除进回收站（ADR-0038）
+        if (!APPROVAL_STATUS_PENDING.equalsIgnoreCase(payment.getApprovalStatus())) {
             throw exception(RECEIPT_STATUS_NOT_ALLOW);
         }
 

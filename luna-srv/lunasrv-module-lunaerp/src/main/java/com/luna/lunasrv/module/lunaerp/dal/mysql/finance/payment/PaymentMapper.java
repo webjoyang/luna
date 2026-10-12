@@ -61,4 +61,38 @@ public interface PaymentMapper extends BaseMapperX<PaymentDO> {
                 .orderByDesc(PaymentDO::getId));
     }
 
+    /**
+     * 回收站分页查询已软删客户收款单（仅 IN 方向且 PENDING 状态）
+     */
+    @Select("SELECT 'PAYMENT' AS biz_type, id AS biz_id, payment_no AS display_name, "
+            + "updater AS deleted_by, update_time AS deleted_time "
+            + "FROM lunaerp_finance_payment "
+            + "WHERE deleted = 1 AND direction = 'IN' AND approval_status = 'PENDING' AND tenant_id = #{tenantId} "
+            + "ORDER BY update_time DESC")
+    com.baomidou.mybatisplus.core.metadata.IPage<com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO> selectRecyclePage(
+            com.baomidou.mybatisplus.core.metadata.IPage<?> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的草稿客户收款单
+     */
+    @Select("SELECT * FROM lunaerp_finance_payment "
+            + "WHERE id = #{id} AND deleted = 1 AND direction = 'IN' AND approval_status = 'PENDING' AND tenant_id = #{tenantId} LIMIT 1")
+    PaymentDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿客户收款单
+     */
+    @org.apache.ibatis.annotations.Update("UPDATE lunaerp_finance_payment "
+            + "SET deleted = 0, approval_status = 'PENDING', updater = #{updater}, update_time = #{updateTime} "
+            + "WHERE id = #{id} AND deleted = 1 AND direction = 'IN' AND approval_status = 'PENDING' AND tenant_id = #{tenantId}")
+    int restorePayment(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                       @Param("updater") String updater, @Param("updateTime") java.time.LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除草稿客户收款单
+     */
+    @org.apache.ibatis.annotations.Delete("DELETE FROM lunaerp_finance_payment "
+            + "WHERE id = #{id} AND deleted = 1 AND direction = 'IN' AND approval_status = 'PENDING' AND tenant_id = #{tenantId}")
+    int purgePayment(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
 }

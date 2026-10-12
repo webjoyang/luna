@@ -1,5 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo;
 
+import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveConstants;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -39,15 +42,19 @@ public class CustomerStatementRespVO {
     private LocalDate periodEnd;
 
     @Schema(description = "期初余额", example = "10000.00")
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
     private BigDecimal openingBalance;
 
     @Schema(description = "本期借方发生额（发货应收增加）", example = "50000.00")
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
     private BigDecimal periodDebit;
 
     @Schema(description = "本期贷方发生额（回款/冲减）", example = "30000.00")
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
     private BigDecimal periodCredit;
 
     @Schema(description = "期末余额", example = "30000.00")
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
     private BigDecimal closingBalance;
 
     @Schema(description = "状态（DRAFT/SENT/CONFIRMED/REJECTED/VOID）", example = "DRAFT")

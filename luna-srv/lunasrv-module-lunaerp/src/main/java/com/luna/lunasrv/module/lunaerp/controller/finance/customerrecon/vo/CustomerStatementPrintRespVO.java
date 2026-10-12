@@ -106,6 +106,6 @@ public class CustomerStatementPrintRespVO {
     private LocalDateTime createTime;
 
     @Schema(description = "明细分录列表")
-    private List<CustomerStatementItemRespVO> items;
+    private List<CustomerStatementPrintItemRespVO> items;
 
 }

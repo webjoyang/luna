@@ -113,6 +113,9 @@ public class InvoiceApplicationRecycleBinHandler implements RecycleBinHandler {
         if (affected == 0) {
             throw exception(RECYCLE_BIN_RECORD_NOT_EXISTS);
         }
+
+        // 3. 级联恢复明细行
+        invoiceApplicationItemMapper.restoreByApplicationId(id, tenantId, updater, now);
         log.info("[InvoiceApplicationRecycleBinHandler] 草稿发票申请已恢复: id={}, tenantId={}", id, tenantId);
     }
 
@@ -139,7 +142,10 @@ public class InvoiceApplicationRecycleBinHandler implements RecycleBinHandler {
             throw exception(RECYCLE_BIN_RECORD_NOT_EXISTS);
         }
 
-        // 2. 物理删除主表
+        // 2. 物理删除明细行
+        invoiceApplicationItemMapper.purgeByApplicationId(id, tenantId);
+
+        // 3. 物理删除主表
         int affected = invoiceApplicationMapper.purgeInvoiceApplication(id, tenantId);
         if (affected == 0) {
             throw exception(RECYCLE_BIN_RECORD_NOT_EXISTS);

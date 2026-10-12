@@ -796,6 +796,27 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         if (updated == 0) {
             throw exception(STATEMENT_STATUS_NOT_ALLOW);
         }
+
+        // 尝试发送站内信通知制单财务（旁路容错，失败绝不阻塞或回滚业务事务）
+        try {
+            Long creatorUserId = null;
+            if (cn.hutool.core.util.StrUtil.isNotBlank(existing.getCreator())) {
+                try {
+                    creatorUserId = Long.valueOf(existing.getCreator().trim());
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            if (creatorUserId != null) {
+                com.luna.lunasrv.module.lunaerp.common.notify.LunaNotifyHelper helper =
+                        com.luna.lunasrv.module.lunaerp.common.notify.LunaNotifyHelper.getInstance();
+                if (helper != null) {
+                    helper.sendStatementRejected(creatorUserId, existing.getId(), existing.getStatementNo(),
+                            existing.getCustomerName(), reqVO.getRejectReason());
+                }
+            }
+        } catch (Throwable t) {
+            log.error("[rejectStatement] 站内消息通知发送异常，已容忍错误并不阻塞主业务: id={}", reqVO.getId(), t);
+        }
     }
 
     @Override
@@ -854,8 +875,8 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
                 new LambdaQueryWrapper<CustomerStatementItemDO>()
                         .eq(CustomerStatementItemDO::getStatementId, id)
                         .orderByAsc(CustomerStatementItemDO::getLineNo));
-        List<CustomerStatementItemRespVO> itemVOs = items.stream()
-                .map(this::convertItemToRespVO)
+        List<CustomerStatementPrintItemRespVO> itemVOs = items.stream()
+                .map(this::convertItemToPrintRespVO)
                 .collect(Collectors.toList());
 
         return CustomerStatementPrintRespVO.builder()
@@ -889,6 +910,24 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
                 .creator(statement.getCreator())
                 .createTime(statement.getCreateTime())
                 .items(itemVOs)
+                .build();
+    }
+
+    private CustomerStatementPrintItemRespVO convertItemToPrintRespVO(CustomerStatementItemDO item) {
+        return CustomerStatementPrintItemRespVO.builder()
+                .id(item.getId())
+                .statementId(item.getStatementId())
+                .lineNo(item.getLineNo())
+                .ledgerEntryId(item.getLedgerEntryId())
+                .direction(item.getDirection())
+                .bizDate(item.getBizDate())
+                .refType(item.getRefType())
+                .refNo(item.getRefNo())
+                .summary(item.getSummary())
+                .debitAmount(item.getDebitAmount())
+                .creditAmount(item.getCreditAmount())
+                .signStatus(item.getSignStatus())
+                .remark(item.getRemark())
                 .build();
     }
 

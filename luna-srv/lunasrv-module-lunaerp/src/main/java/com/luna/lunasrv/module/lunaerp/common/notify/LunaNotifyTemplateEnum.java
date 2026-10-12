@@ -64,6 +64,15 @@ public enum LunaNotifyTemplateEnum {
     ),
 
     /**
+     * 客户对账单驳回通知（对账单被客户驳回，发送给制单财务）
+     */
+    LUNA_STATEMENT_REJECTED(
+            "LUNA_STATEMENT_REJECTED",
+            "客户对账单驳回通知",
+            "客户对账单被驳回：单号 {bizNo}，客户 {customerName}，驳回原因：{reason}"
+    ),
+
+    /**
      * 应收账期逾期/即将到期定时预警（发送给财务/业务员，一期不接线，模板文案保留待二期）
      */
     LUNA_AR_PERIOD_WARNING(
