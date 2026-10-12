@@ -1,5 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.payment.seam;
 
+import com.luna.lunasrv.module.lunaerp.service.finance.account.AccountService;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -9,7 +11,7 @@ import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionU
 import static com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants.PAYMENT_ACCOUNT_NOT_AVAILABLE;
 
 /**
- * 资金账户服务 Seam 默认实现（在 12 号资金账户服务落地前提供桩支持）
+ * 资金账户服务 Seam 实现（桥接至真实 AccountService）
  *
  * @author luna
  */
@@ -17,13 +19,18 @@ import static com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeCons
 @Service
 public class FinanceAccountSeamImpl implements FinanceAccountSeam {
 
+    @Resource
+    private AccountService accountService;
+
     @Override
     public void deductAccountBalance(Long accountId, BigDecimal amount) {
         log.info("[FinanceAccountSeam] 资金账户扣减余额: accountId={}, amount={}", accountId, amount);
         if (accountId == null) {
             throw exception(PAYMENT_ACCOUNT_NOT_AVAILABLE);
         }
-        // 未接入真实账户表前的桩实现，默认放行；实际落地后校验账户状态与余额并执行条件更新
+        if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+            accountService.updateBalance(accountId, amount.negate());
+        }
     }
 
     @Override
