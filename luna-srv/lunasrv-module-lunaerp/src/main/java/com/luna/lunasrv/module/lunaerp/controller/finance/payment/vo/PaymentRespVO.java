@@ -35,8 +35,38 @@ public class PaymentRespVO {
     @Schema(description = "供应商名称", example = "某某织造有限公司")
     private String supplierName;
 
+    @Schema(description = "客户ID", example = "1001")
+    private Long customerId;
+
+    @Schema(description = "客户名称", example = "某某服装有限公司")
+    private String customerName;
+
     @Schema(description = "资金账户ID", example = "2001")
     private Long accountId;
+
+    @Schema(description = "资金账户名称", example = "基本户 - 中国工商银行")
+    private String accountName;
+
+    @Schema(description = "收款单类型（RECEIPT 货款 / ADVANCE 预收）", example = "RECEIPT")
+    private String receiptType;
+
+    @Schema(description = "币种", example = "CNY")
+    private String currency;
+
+    @Schema(description = "汇率", example = "1.00000000")
+    private BigDecimal exchangeRate;
+
+    @Schema(description = "收款日期", example = "2026-10-12")
+    private java.time.LocalDate receiptDate;
+
+    @Schema(description = "银行水单/回单号", example = "B20261012001")
+    private String bankRefNo;
+
+    @Schema(description = "经手人姓名", example = "张三")
+    private String handlerName;
+
+    @Schema(description = "审批状态（PENDING/APPROVING/APPROVED/REJECTED/CANCELLED）", example = "PENDING")
+    private String approvalStatus;
 
     @Schema(description = "本次资金实收/实付金额（元）", example = "10000.00")
     @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)

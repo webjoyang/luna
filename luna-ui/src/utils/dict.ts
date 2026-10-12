@@ -188,8 +188,19 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_finance_statement_status', label: '已作废', value: 'CANCELLED', colorType: 'danger', cssClass: '' }
   ],
   lunaerp_finance_receipt_type: [
-    { dictType: 'lunaerp_finance_receipt_type', label: '预收定金', value: 'SALES_ADVANCE', colorType: 'primary', cssClass: '' },
-    { dictType: 'lunaerp_finance_receipt_type', label: '尾款结算', value: 'SALES_SETTLE', colorType: 'success', cssClass: '' }
+    { dictType: 'lunaerp_finance_receipt_type', label: '货款收款', value: 'RECEIPT', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_receipt_type', label: '预收款', value: 'ADVANCE', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_finance_ledger_category: [
+    { dictType: 'lunaerp_finance_ledger_category', label: '发货应收', value: 'AR_INC', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '发货应收红冲', value: 'AR_INC_REVERSAL', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '收款入账', value: 'RECEIPT', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '收款红冲', value: 'RECEIPT_REVERSAL', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '收款核销', value: 'RECEIPT_WRITE_OFF', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '预收转核销', value: 'ADVANCE_WRITE_OFF', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '退货冲减', value: 'AR_RETURN_REVERSAL', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '供应商付款', value: 'OUT_SUPPLIER', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '供应商付款红冲', value: 'OUT_SUPPLIER_REVERSAL', colorType: 'danger', cssClass: '' }
   ]
 }
 
@@ -719,5 +730,6 @@ export enum DICT_TYPE {
   LUNAERP_FINANCE_STATEMENT_STATUS = 'lunaerp_finance_statement_status', // 客户对账单状态
   LUNAERP_FINANCE_RECEIPT_TYPE = 'lunaerp_finance_receipt_type', // 收款单类型
   LUNAERP_FINANCE_STATEMENT_CONFIRM_TYPE = 'lunaerp_finance_statement_confirm_type', // 对账单确认方式
-  LUNAERP_FINANCE_ACCOUNT_TYPE = 'lunaerp_finance_account_type' // 资金账户类型
+  LUNAERP_FINANCE_ACCOUNT_TYPE = 'lunaerp_finance_account_type', // 资金账户类型
+  LUNAERP_FINANCE_LEDGER_CATEGORY = 'lunaerp_finance_ledger_category' // 经营分录类别
 }

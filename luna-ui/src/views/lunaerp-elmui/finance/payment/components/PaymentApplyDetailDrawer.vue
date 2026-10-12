@@ -49,7 +49,7 @@
           </template>
 
           <el-descriptions-item label="创建时间" :span="2">
-            {{ detail.createTime ? dateFormatter(detail.createTime) : '—' }}
+            {{ detail.createTime ? formatDate(detail.createTime) : '—' }}
           </el-descriptions-item>
 
           <el-descriptions-item label="备注说明" :span="2">
@@ -77,7 +77,7 @@
 <script lang="ts" setup>
 import { ref } from 'vue'
 import { DICT_TYPE } from '@/utils/dict'
-import { dateFormatter } from '@/utils/formatTime'
+import { formatDate } from '@/utils/formatTime'
 import * as PaymentApi from '@/api/lunaerp-elmui/finance/payment'
 import type { PaymentApplyVO } from '@/api/lunaerp-elmui/finance/payment'
 import { formatAmount } from '../utils'
