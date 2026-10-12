@@ -4,21 +4,31 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.luna.lunasrv.framework.common.exception.enums.GlobalErrorCodeConstants;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentUpdateSignReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
+import com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants;
 import com.luna.lunasrv.module.lunaerp.enums.portal.PortalErrorCodeConstants;
 import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentPageItemRespVO;
 import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentPageReqVO;
+import com.luna.lunasrv.module.lunaerp.portal.controller.portal.shipment.vo.PortalShipmentSignReqVO;
 import com.luna.lunasrv.module.lunaerp.portal.core.PortalContext;
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.ShipmentService;
+import com.mzt.logapi.context.LogRecordContext;
+import com.mzt.logapi.starter.annotation.LogRecord;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -31,7 +41,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -61,6 +73,9 @@ public class PortalShipmentServiceImplTest {
 
     @Mock
     private ShipmentRollMapper shipmentRollMapper;
+
+    @Mock
+    private ShipmentService shipmentService;
 
     private static final Long TEST_TENANT_ID = 1L;
     private static final Long TEST_CUSTOMER_ID = 100L;
@@ -393,6 +408,240 @@ public class PortalShipmentServiceImplTest {
         assertFalse(json.contains("内部发货备注"), "不得包含内部单据备注");
         assertFalse(json.contains("内部明细备注"), "不得包含内部明细备注");
         assertFalse(json.contains("卷内部备注"), "不得包含卷内部备注");
+    }
+
+    // ==================== Issue 04: 门户发货单签收/拒收测试 ====================
+
+    @Test
+    @DisplayName("签收登记：成功登记已签收（SIGNED），signedAt 为服务器时间，更新委托 shipmentService 并留痕")
+    void testSignShipment_signedSuccess() {
+        Long shipmentId = 101L;
+        String shipmentNo = "SH-20261011-001";
+        ShipmentDO shipment = createCompletedShipment(shipmentId, shipmentNo, TEST_CUSTOMER_ID, TEST_TENANT_ID);
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(shipment);
+
+        PortalShipmentSignReqVO reqVO = PortalShipmentSignReqVO.builder()
+                .id(shipmentId)
+                .signStatus("SIGNED")
+                .signedByName("李收货")
+                .signRemark("外包装完好，实收全部数量")
+                .build();
+
+        portalShipmentService.signShipment(reqVO);
+
+        ArgumentCaptor<ShipmentUpdateSignReqVO> captor = ArgumentCaptor.forClass(ShipmentUpdateSignReqVO.class);
+        verify(shipmentService).updateShipmentSign(captor.capture());
+
+        ShipmentUpdateSignReqVO captured = captor.getValue();
+        assertEquals(shipmentId, captured.getId());
+        assertEquals("SIGNED", captured.getSignStatus());
+        assertEquals("李收货", captured.getSignedByName());
+        assertEquals("外包装完好，实收全部数量", captured.getSignRemark());
+        assertNotNull(captured.getSignedAt());
+        assertTrue(Duration.between(captured.getSignedAt(), LocalDateTime.now()).abs().getSeconds() < 5,
+                "signedAt 必须为服务器当前时间");
+
+        // 验证 LogRecordContext 放入了 shipmentNo 供日志模版解析
+        assertEquals(shipmentNo, LogRecordContext.getVariable("shipmentNo"));
+    }
+
+    @Test
+    @DisplayName("拒收登记：成功登记已拒收（REFUSED），零库存/账务副作用，仅调用 updateShipmentSign")
+    void testSignShipment_refusedSuccess() {
+        Long shipmentId = 102L;
+        String shipmentNo = "SH-20261011-002";
+        ShipmentDO shipment = createCompletedShipment(shipmentId, shipmentNo, TEST_CUSTOMER_ID, TEST_TENANT_ID);
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(shipment);
+
+        PortalShipmentSignReqVO reqVO = PortalShipmentSignReqVO.builder()
+                .id(shipmentId)
+                .signStatus("REFUSED")
+                .signedByName("王质检")
+                .signRemark("货物受潮有异味，整单拒收")
+                .build();
+
+        portalShipmentService.signShipment(reqVO);
+
+        ArgumentCaptor<ShipmentUpdateSignReqVO> captor = ArgumentCaptor.forClass(ShipmentUpdateSignReqVO.class);
+        verify(shipmentService).updateShipmentSign(captor.capture());
+
+        ShipmentUpdateSignReqVO captured = captor.getValue();
+        assertEquals(shipmentId, captured.getId());
+        assertEquals("REFUSED", captured.getSignStatus());
+        assertEquals("王质检", captured.getSignedByName());
+        assertEquals("货物受潮有异味，整单拒收", captured.getSignRemark());
+        assertNotNull(captured.getSignedAt());
+        assertEquals(shipmentNo, LogRecordContext.getVariable("shipmentNo"));
+    }
+
+    @Test
+    @DisplayName("签收状态守卫：仅 COMPLETED 可签，草稿与已取消报 SHIPMENT_STATUS_NOT_ALLOW (1_030_016_002)")
+    void testSignShipment_statusNotCompleted_throwsShipmentStatusNotAllow() {
+        Long shipmentId = 103L;
+        ShipmentDO draftShipment = createCompletedShipment(shipmentId, "SH-DRAFT", TEST_CUSTOMER_ID, TEST_TENANT_ID);
+        draftShipment.setStatus("DRAFT");
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(draftShipment);
+
+        PortalShipmentSignReqVO reqVO = PortalShipmentSignReqVO.builder()
+                .id(shipmentId)
+                .signStatus("SIGNED")
+                .signedByName("张三")
+                .build();
+
+        ServiceException draftEx = assertThrows(ServiceException.class,
+                () -> portalShipmentService.signShipment(reqVO));
+        assertEquals(ErrorCodeConstants.SHIPMENT_STATUS_NOT_ALLOW.getCode(), draftEx.getCode());
+
+        // 已取消单据
+        ShipmentDO cancelledShipment = createCompletedShipment(shipmentId, "SH-CANCEL", TEST_CUSTOMER_ID, TEST_TENANT_ID);
+        cancelledShipment.setStatus("CANCELLED");
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(cancelledShipment);
+
+        ServiceException cancelEx = assertThrows(ServiceException.class,
+                () -> portalShipmentService.signShipment(reqVO));
+        assertEquals(ErrorCodeConstants.SHIPMENT_STATUS_NOT_ALLOW.getCode(), cancelEx.getCode());
+
+        verify(shipmentService, never()).updateShipmentSign(any());
+    }
+
+    @Test
+    @DisplayName("归属校验：客户A不能签客户B的发货单，报 PORTAL_DATA_ACCESS_DENIED (1_030_038_001)")
+    void testSignShipment_crossCustomerOwnership_throwsPortalDataAccessDenied() {
+        Long shipmentId = 104L;
+        Long otherCustomerId = 999L;
+        ShipmentDO shipment = createCompletedShipment(shipmentId, "SH-OTHER", otherCustomerId, TEST_TENANT_ID);
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(shipment);
+
+        PortalShipmentSignReqVO reqVO = PortalShipmentSignReqVO.builder()
+                .id(shipmentId)
+                .signStatus("SIGNED")
+                .signedByName("张三")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> portalShipmentService.signShipment(reqVO));
+        assertEquals(PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+        verify(shipmentService, never()).updateShipmentSign(any());
+    }
+
+    @Test
+    @DisplayName("租户隔离守卫：跨租户签收报 PORTAL_DATA_ACCESS_DENIED (1_030_038_001)")
+    void testSignShipment_crossTenantOwnership_throwsPortalDataAccessDenied() {
+        Long shipmentId = 105L;
+        Long otherTenantId = 888L;
+        ShipmentDO shipment = createCompletedShipment(shipmentId, "SH-TENANT", TEST_CUSTOMER_ID, otherTenantId);
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(shipment);
+
+        PortalShipmentSignReqVO reqVO = PortalShipmentSignReqVO.builder()
+                .id(shipmentId)
+                .signStatus("SIGNED")
+                .signedByName("张三")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> portalShipmentService.signShipment(reqVO));
+        assertEquals(PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+        verify(shipmentService, never()).updateShipmentSign(any());
+    }
+
+    @Test
+    @DisplayName("单据存在性守卫：单据不存在或已软删报 PORTAL_DATA_ACCESS_DENIED (1_030_038_001)")
+    void testSignShipment_shipmentNotExists_throwsPortalDataAccessDenied() {
+        Long nonExistentId = 9999L;
+        when(shipmentMapper.selectById(nonExistentId)).thenReturn(null);
+
+        PortalShipmentSignReqVO reqVO = PortalShipmentSignReqVO.builder()
+                .id(nonExistentId)
+                .signStatus("SIGNED")
+                .signedByName("张三")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> portalShipmentService.signShipment(reqVO));
+        assertEquals(PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+        verify(shipmentService, never()).updateShipmentSign(any());
+    }
+
+    @Test
+    @DisplayName("签收人必填守卫：signedByName 为空报 BAD_REQUEST")
+    void testSignShipment_signedByNameBlank_throwsException() {
+        Long shipmentId = 106L;
+
+        PortalShipmentSignReqVO reqVO = PortalShipmentSignReqVO.builder()
+                .id(shipmentId)
+                .signStatus("SIGNED")
+                .signedByName("   ")
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> portalShipmentService.signShipment(reqVO));
+        assertEquals(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), ex.getCode());
+        verify(shipmentService, never()).updateShipmentSign(any());
+    }
+
+    @Test
+    @DisplayName("签收状态合法性校验：仅支持 SIGNED 与 REFUSED，PENDING 或非法状态报 SHIPMENT_SIGN_STATUS_INVALID (1_030_016_006)")
+    void testSignShipment_invalidSignStatus_throwsShipmentSignStatusInvalid() {
+        Long shipmentId = 107L;
+        ShipmentDO shipment = createCompletedShipment(shipmentId, "SH-107", TEST_CUSTOMER_ID, TEST_TENANT_ID);
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(shipment);
+
+        // 试图在门户将状态置为 PENDING
+        PortalShipmentSignReqVO reqPending = PortalShipmentSignReqVO.builder()
+                .id(shipmentId)
+                .signStatus("PENDING")
+                .signedByName("张三")
+                .build();
+        ServiceException exPending = assertThrows(ServiceException.class,
+                () -> portalShipmentService.signShipment(reqPending));
+        assertEquals(ErrorCodeConstants.SHIPMENT_SIGN_STATUS_INVALID.getCode(), exPending.getCode());
+
+        // 非法未知状态
+        PortalShipmentSignReqVO reqUnknown = PortalShipmentSignReqVO.builder()
+                .id(shipmentId)
+                .signStatus("UNKNOWN_STATUS")
+                .signedByName("张三")
+                .build();
+        ServiceException exUnknown = assertThrows(ServiceException.class,
+                () -> portalShipmentService.signShipment(reqUnknown));
+        assertEquals(ErrorCodeConstants.SHIPMENT_SIGN_STATUS_INVALID.getCode(), exUnknown.getCode());
+
+        verify(shipmentService, never()).updateShipmentSign(any());
+    }
+
+    @Test
+    @DisplayName("留痕注解校验：signShipment 包含正确的 @LogRecord 注解定义")
+    void testSignShipment_logRecordAnnotation() throws NoSuchMethodException {
+        Method method = PortalShipmentServiceImpl.class.getMethod("signShipment", PortalShipmentSignReqVO.class);
+        LogRecord logRecord = method.getAnnotation(LogRecord.class);
+
+        assertNotNull(logRecord, "signShipment 必须标注 @LogRecord 注解");
+        assertEquals("客户门户", logRecord.type());
+        assertEquals("发货签收", logRecord.subType());
+        assertEquals("{{#reqVO.id}}", logRecord.bizNo());
+        assertEquals("门户客户登记发货单签收【{{#shipmentNo}}】：状态【{{#reqVO.signStatus}}】，签收人【{{#reqVO.signedByName}}】", logRecord.success());
+    }
+
+    @Test
+    @DisplayName("Bean Validation 约束测试：PortalShipmentSignReqVO 属性校验")
+    void testPortalShipmentSignReqVO_beanValidation() {
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+
+        // 1. 缺失 id
+        PortalShipmentSignReqVO reqMissingId = new PortalShipmentSignReqVO(null, "SIGNED", "张三", "备注");
+        assertFalse(validator.validate(reqMissingId).isEmpty(), "id 为空应校验失败");
+
+        // 2. 缺失 signStatus
+        PortalShipmentSignReqVO reqMissingStatus = new PortalShipmentSignReqVO(1L, " ", "张三", "备注");
+        assertFalse(validator.validate(reqMissingStatus).isEmpty(), "signStatus 为空应校验失败");
+
+        // 3. 缺失 signedByName
+        PortalShipmentSignReqVO reqMissingName = new PortalShipmentSignReqVO(1L, "SIGNED", "  ", "备注");
+        assertFalse(validator.validate(reqMissingName).isEmpty(), "signedByName 为空应校验失败");
+
+        // 4. 全部合法
+        PortalShipmentSignReqVO reqValid = new PortalShipmentSignReqVO(1L, "SIGNED", "张三", "备注");
+        assertTrue(validator.validate(reqValid).isEmpty(), "参数合规应通过校验");
     }
 
 }
