@@ -4,16 +4,17 @@
 
 **Blocked by:** 01 SQL 基建 + 错误码常量 + 客户档案+5列
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] `controller.finance.invoice` + `service.finance.invoice`：`/invoice` page/get/create/update/delete（DRAFT）
-- [ ] `PUT /submit?id=`：DRAFT→SUBMITTED
-- [ ] `PUT /issue?id=`（`:issue` 权限）：SUBMITTED→ISSUED，回填 official_invoice_no（20 位必填）/ invoice_date / attachment_url，记录 issue_by/issue_time + @LogRecord
-- [ ] `PUT /reject?id=`（可空原因）：SUBMITTED→REJECTED，释放该单发货行开票占用
-- [ ] 创建守卫：多选发货单同客户同币种（INVOICE_CURRENCY_MIXED / INVOICE_CUSTOMER_MISMATCH）；快照客户开票四要素（invoice_title/tax_no=统一社会信用代码快照/address/bank_info，可改）
-- [ ] 超开守卫：Σ(该发货单全部 SUBMITTED+ISSUED 申请行 amount) + 本次 ≤ shipment_amount（整数分，条件更新防并发超开 INVOICE_EXCEED_SHIPMENT_AMOUNT，REJECTED 释放占用）
-- [ ] 税额服务端反算：total_amount_excl_tax / total_tax / total_amount_incl_tax 按税率反算；字典 2276（13/9/6/3/1/0/免税），纺织默认 13%、外贸 0%
-- [ ] 发票号唯一：official_invoice_no 唯一索引（非空时，含软删行），20 位必填
-- [ ] IA 取号（IA{yyyy}{4位流水}）
-- [ ] 前端 `finance/invoice-application/`：列表、创建（多选发货单弹窗 + 部分开票金额 + 税率选择 + 抬头四要素可改）、登记回填弹窗
-- [ ] 测试：超开守卫（跨申请聚合含 SUBMITTED 在途、REJECTED 释放）；币种混选拒绝；税额反算（金额逻辑必有测试）；发票号唯一；抬头快照带出与可改；状态机流转
+- [x] `controller.finance.invoice` + `service.finance.invoice`：`/invoice` page/get/create/update/delete（DRAFT）
+- [x] `PUT /submit?id=`：DRAFT→SUBMITTED
+- [x] `PUT /issue?id=`（`:issue` 权限）：SUBMITTED→ISSUED，回填 official_invoice_no（20 位必填）/ invoice_date / attachment_url，记录 issue_by/issue_time + @LogRecord
+- [x] `PUT /reject?id=`（可空原因）：SUBMITTED→REJECTED，释放该单发货行开票占用
+- [x] 创建守卫：多选发货单同客户同币种（INVOICE_CURRENCY_MIXED / INVOICE_CUSTOMER_MISMATCH）；快照客户开票四要素（invoice_title/tax_no=统一社会信用代码快照/address/bank_info，可改）
+- [x] 超开守卫：Σ(该发货单全部 SUBMITTED+ISSUED 申请行 amount) + 本次 ≤ shipment_amount（整数分，条件更新防并发超开 INVOICE_EXCEED_SHIPMENT_AMOUNT，REJECTED 释放占用）
+- [x] 税额服务端反算：total_amount_excl_tax / total_tax / total_amount_incl_tax 按税率反算；字典 2276（13/9/6/3/1/0/免税），纺织默认 13%、外贸 0%
+- [x] 发票号唯一：official_invoice_no 唯一索引（非空时，含软删行），20 位必填
+- [x] IA 取号（IA{yyyy}{4位流水}）
+- [x] 前端 `finance/invoice-application/`：列表、创建（多选发货单弹窗 + 部分开票金额 + 税率选择 + 抬头四要素可改）、登记回填弹窗
+- [x] 测试：超开守卫（跨申请聚合含 SUBMITTED 在途、REJECTED 释放）；币种混选拒绝；税额反算（金额逻辑必有测试）；发票号唯一；抬头快照带出与可改；状态机流转
+
