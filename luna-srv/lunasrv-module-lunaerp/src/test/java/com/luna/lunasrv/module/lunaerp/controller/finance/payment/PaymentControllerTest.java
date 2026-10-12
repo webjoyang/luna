@@ -166,4 +166,33 @@ class PaymentControllerTest {
         verify(customerReceiptService).getReceipt(888L);
     }
 
+    @Test
+    @DisplayName("收款单红冲端点验证")
+    void testReverseReceipt() {
+        CommonResult<Boolean> result = paymentController.reverseReceipt(999L);
+        assertTrue(result.getData());
+        verify(customerReceiptService).reverseReceipt(999L);
+    }
+
+    @Test
+    @DisplayName("预收转核销端点验证")
+    void testAdvanceWriteoff() {
+        AdvanceWriteoffReqVO reqVO = AdvanceWriteoffReqVO.builder()
+                .paymentId(100L)
+                .items(List.of(ReceiptRefSaveVO.builder().ledgerEntryId(501L).allocateAmount(new BigDecimal("1000.00")).build()))
+                .build();
+        CommonResult<Boolean> result = paymentController.advanceWriteoff(reqVO);
+        assertTrue(result.getData());
+        verify(customerReceiptService).advanceWriteoff(reqVO);
+    }
+
+    @Test
+    @DisplayName("获取预收余额端点验证")
+    void testGetAdvanceBalance() {
+        when(customerReceiptService.getAdvanceBalance(100L)).thenReturn(new BigDecimal("5000.00"));
+        CommonResult<BigDecimal> result = paymentController.getAdvanceBalance(100L);
+        assertEquals(new BigDecimal("5000.00"), result.getData());
+        verify(customerReceiptService).getAdvanceBalance(100L);
+    }
+
 }

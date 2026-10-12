@@ -400,3 +400,34 @@ export const getAccountSimpleList = () => {
     url: '/lunaerp/finance/payment/account/simple-list'
   })
 }
+
+/**
+ * 客户预收转核销请求 VO
+ */
+export interface AdvanceWriteoffReqVO {
+  paymentId: number
+  items: ReceiptRefSaveVO[]
+  remark?: string
+}
+
+/** 客户收款单红冲（仅已过账 COMPLETED 单据） */
+export const reverseReceipt = (id: number | string) => {
+  return request.put<boolean>({
+    url: '/lunaerp/finance/payment/reverse?id=' + id
+  })
+}
+
+/** 客户预收转核销（在原预收款单上追加核销行，不审批） */
+export const advanceWriteoff = (data: AdvanceWriteoffReqVO) => {
+  return request.post<boolean>({
+    url: '/lunaerp/finance/payment/advance-writeoff',
+    data
+  })
+}
+
+/** 查询预收款单剩余可用预收余额 */
+export const getAdvanceBalance = (paymentId: number | string) => {
+  return request.get<number>({
+    url: '/lunaerp/finance/payment/advance-balance?paymentId=' + paymentId
+  })
+}

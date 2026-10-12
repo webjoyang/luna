@@ -87,4 +87,31 @@ public interface CustomerReceiptService {
      */
     void postReceiptOnApproval(Long paymentId);
 
+    /**
+     * 收款单红冲（仅 COMPLETED 收款单）
+     * 同事务四写：
+     * 1. 生成 RECEIPT_REVERSAL 反向分录（reversal_of_id 回指原入账分录）
+     * 2. 资金账户余额扣减（current_balance -= payAmount）
+     * 3. 该单核销行自动重开（未核销余额恢复）
+     * 4. 收款单状态更新为 REVERSED
+     *
+     * @param id 收款单ID
+     */
+    void reverseReceipt(Long id);
+
+    /**
+     * 客户预收转核销（在原 ADVANCE 单上追加核销行，不建新单，不审批）
+     *
+     * @param reqVO 预收转核销请求
+     */
+    void advanceWriteoff(AdvanceWriteoffReqVO reqVO);
+
+    /**
+     * 查询指定预收款单的剩余可用预收余额
+     *
+     * @param paymentId 预收款单ID
+     * @return 剩余可用预收余额
+     */
+    java.math.BigDecimal getAdvanceBalance(Long paymentId);
+
 }
