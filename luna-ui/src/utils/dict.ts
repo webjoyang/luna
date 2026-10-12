@@ -166,6 +166,30 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
   lunaerp_finance_payment_direction: [
     { dictType: 'lunaerp_finance_payment_direction', label: '收款', value: 'IN', colorType: 'success', cssClass: '' },
     { dictType: 'lunaerp_finance_payment_direction', label: '付款', value: 'OUT', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_finance_invoice_kind: [
+    { dictType: 'lunaerp_finance_invoice_kind', label: '数电专票', value: 'ELEC_SPECIAL', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_invoice_kind', label: '数电普票', value: 'ELEC_NORMAL', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_invoice_kind', label: '增值税专票', value: 'VAT_SPECIAL', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_invoice_kind', label: '增值税普票', value: 'VAT_NORMAL', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_finance_tax_rate: [
+    { dictType: 'lunaerp_finance_tax_rate', label: '13%', value: '13', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_tax_rate', label: '9%', value: '9', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_finance_tax_rate', label: '6%', value: '6', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_finance_tax_rate', label: '3%', value: '3', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_tax_rate', label: '1%', value: '1', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_tax_rate', label: '0%', value: '0', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_tax_rate', label: '免税', value: 'EXEMPT', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_finance_statement_status: [
+    { dictType: 'lunaerp_finance_statement_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_finance_statement_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_statement_status', label: '已作废', value: 'CANCELLED', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_finance_receipt_type: [
+    { dictType: 'lunaerp_finance_receipt_type', label: '预收定金', value: 'SALES_ADVANCE', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_receipt_type', label: '尾款结算', value: 'SALES_SETTLE', colorType: 'success', cssClass: '' }
   ]
 }
 
@@ -687,5 +711,13 @@ export enum DICT_TYPE {
   // ========== LunaERP - 财务管理-供应商对账与收付款模块 ==========
   LUNAERP_SUPPLIER_RECON_STATUS = 'lunaerp_supplier_recon_status', // 供应商对账单状态
   LUNAERP_PAYMENT_APPLY_TYPE = 'lunaerp_payment_apply_type', // 付款申请类型
-  LUNAERP_FINANCE_PAYMENT_DIRECTION = 'lunaerp_finance_payment_direction' // 收付款方向
+  LUNAERP_FINANCE_PAYMENT_DIRECTION = 'lunaerp_finance_payment_direction', // 收付款方向
+
+  // ========== LunaERP - 财务管理-客户对账、发票与收款模块 ==========
+  LUNAERP_FINANCE_INVOICE_KIND = 'lunaerp_finance_invoice_kind', // 发票种类
+  LUNAERP_FINANCE_TAX_RATE = 'lunaerp_finance_tax_rate', // 开票税率
+  LUNAERP_FINANCE_STATEMENT_STATUS = 'lunaerp_finance_statement_status', // 客户对账单状态
+  LUNAERP_FINANCE_RECEIPT_TYPE = 'lunaerp_finance_receipt_type', // 收款单类型
+  LUNAERP_FINANCE_STATEMENT_CONFIRM_TYPE = 'lunaerp_finance_statement_confirm_type', // 对账单确认方式
+  LUNAERP_FINANCE_ACCOUNT_TYPE = 'lunaerp_finance_account_type' // 资金账户类型
 }
