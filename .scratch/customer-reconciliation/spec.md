@@ -173,7 +173,7 @@ payment_ref 的 ref_type 扩值：OUT=PAY_APPLY（11 号，一期唯一）；IN=
 | account | `/account` page/get/create（opening_balance 仅此可写）/update（仅备注/状态）；无删除（有分录引用） |
 | ledger | `/ledger/page`、`/ledger/customer-balance`（party 维度只读视图查询，含汇率差异列） |
 
-**门户契约（14 号接页面，Q9）**：`/portal/finance/statement/` — `GET /list`（仅 SENT/CONFIRMED）、`GET /{id}`（含全部行）、`PUT /confirm`（SENT→CONFIRMED，记录 confirm_by_name/time/ip）、`PUT /reject`（必填 reject_reason）。客户身份 14 号 token 注入；本票实现按显式 customerId 并完成隔离专测（A 客户不可见/不可操作 B 客户单、不可遍历 id），14 号接入时仅替换身份来源。
+**门户契约（14 号接页面，Q9）**：`/portal/finance/statement/`（完整路径映射为 `/app-api/lunaerp/portal/finance/statement/*`，模块内相对前缀不变，契约语义零变更）— `GET /list`（仅 SENT/CONFIRMED）、`GET /{id}`（含全部行）、`PUT /confirm`（SENT→CONFIRMED，记录 confirm_by_name/time/ip）、`PUT /reject`（必填 reject_reason）。客户身份 14 号 token 注入；本票实现按显式 customerId 并完成隔离专测（A 客户不可见/不可操作 B 客户单、不可遍历 id），14 号接入时仅替换身份来源。
 
 ### 审批集成（02 号契约）
 
