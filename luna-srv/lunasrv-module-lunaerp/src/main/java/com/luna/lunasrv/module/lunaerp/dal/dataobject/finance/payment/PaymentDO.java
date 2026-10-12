@@ -73,9 +73,46 @@ public class PaymentDO extends TenantBaseDO {
     private BigDecimal prepayUsedAmount;
 
     /**
-     * 状态（COMPLETED 已登记过账 / REVERSED 已红冲预留）
+     * 状态（PENDING 待提交/待审批 / COMPLETED 已登记过账 / REVERSED 已红冲预留）
      */
     private String status;
+
+    /**
+     * 收款单类型（RECEIPT 货款 / ADVANCE 预收）
+     */
+    private String receiptType;
+
+    /**
+     * 币种（默认 CNY）
+     */
+    private String currency;
+
+    /**
+     * 汇率（默认 1）
+     */
+    private BigDecimal exchangeRate;
+
+    /**
+     * 收款日期
+     */
+    private java.time.LocalDate receiptDate;
+
+    /**
+     * 银行水单/回单号
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String bankRefNo;
+
+    /**
+     * 经手人姓名
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String handlerName;
+
+    /**
+     * 审批状态（PENDING/APPROVING/APPROVED/REJECTED/CANCELLED）
+     */
+    private String approvalStatus;
 
     /**
      * 备注

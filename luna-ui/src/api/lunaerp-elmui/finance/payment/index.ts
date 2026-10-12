@@ -61,7 +61,7 @@ export interface PaymentApplySaveReqVO {
 }
 
 /**
- * 付款单核销明细 VO
+ * 收付款核销明细 VO
  */
 export interface PaymentRefVO {
   id?: number
@@ -70,30 +70,52 @@ export interface PaymentRefVO {
   refId: number
   applyNo?: string
   allocateAmount: number
+  entryNo?: string
+  bizDate?: string
+  baseAmount?: number
+  ledgerEntryId?: number
 }
 
 /**
- * 付款单 VO
+ * 收付款单 VO（共享）
  */
 export interface PaymentVO {
   id: number
-  /** 付款单号（PAY+YYYYMMDD+3位流水） */
+  /** 单号（PAY... / RC-...） */
   paymentNo: string
-  /** 收付款方向：OUT (付款) */
+  /** 收付款方向：IN (收款) / OUT (付款) */
   direction: string
   /** 供应商ID */
-  supplierId: number
+  supplierId?: number
   /** 供应商名称 */
   supplierName?: string
+  /** 客户ID */
+  customerId?: number
+  /** 客户名称 */
+  customerName?: string
   /** 资金账户ID */
   accountId: number
   /** 资金账户名称（前端展示用） */
   accountName?: string
-  /** 本次资金实付金额（元） */
+  /** 本次资金实付/实收金额（元） */
   payAmount: number
-  /** 预付抵扣额（元） */
+  /** 预收/预付抵扣额（元） */
   prepayUsedAmount: number
-  /** 状态：COMPLETED / REVERSED */
+  /** 收款单类型：RECEIPT / ADVANCE */
+  receiptType?: string
+  /** 币种 */
+  currency?: string
+  /** 汇率 */
+  exchangeRate?: number
+  /** 收款日期 */
+  receiptDate?: string
+  /** 银行水单号 */
+  bankRefNo?: string
+  /** 经手人 */
+  handlerName?: string
+  /** 审批状态：PENDING / APPROVING / APPROVED / REJECTED / CANCELLED */
+  approvalStatus?: string
+  /** 状态：PENDING / COMPLETED / REVERSED */
   status: string
   /** 备注 */
   remark?: string
@@ -104,13 +126,22 @@ export interface PaymentVO {
 }
 
 /**
- * 付款单分页查询入参
+ * 收付款单分页查询入参
  */
 export interface PaymentPageParam {
   pageNo?: number
   pageSize?: number
   supplierId?: number
+  customerId?: number
   accountId?: number
+  direction?: string
+  receiptType?: string
+  approvalStatus?: string
+  status?: string
+  currency?: string
+  keyword?: string
+  receiptDateStart?: string
+  receiptDateEnd?: string
   createTimeStart?: string
   createTimeEnd?: string
 }
@@ -124,7 +155,7 @@ export interface PaymentRegisterItemReqVO {
 }
 
 /**
- * 付款登记入参
+ * 付款登记入参（OUT 侧）
  */
 export interface PaymentRegisterReqVO {
   supplierId: number
@@ -133,6 +164,101 @@ export interface PaymentRegisterReqVO {
   prepayUsedAmount?: number
   remark?: string
   items: PaymentRegisterItemReqVO[]
+}
+
+/**
+ * 客户收款单核销明细保存入参
+ */
+export interface ReceiptRefSaveVO {
+  id?: number
+  ledgerEntryId: number
+  allocateAmount: number
+  entryNo?: string
+  bizDate?: string
+}
+
+/**
+ * 客户收款单保存入参（IN 侧）
+ */
+export interface ReceiptSaveReqVO {
+  id?: number
+  paymentNo?: string
+  customerId: number
+  receiptType: string
+  currency: string
+  receiptDate: string
+  accountId: number
+  payAmount: number
+  prepayUsedAmount?: number
+  bankRefNo?: string
+  handlerName?: string
+  remark?: string
+  items?: ReceiptRefSaveVO[]
+}
+
+/**
+ * 自动核销分配试算入参
+ */
+export interface AllocatePreviewReqVO {
+  customerId: number
+  currency: string
+  payAmount: number
+  entryIds?: number[]
+}
+
+/**
+ * 自动核销分配行 VO
+ */
+export interface AllocateItemRespVO {
+  ledgerEntryId: number
+  entryNo: string
+  bizDate?: string
+  originalAmount: number
+  unallocatedBalance: number
+  allocatedAmount: number
+  refType?: string
+  refId?: number
+}
+
+/**
+ * 自动核销分配试算出参
+ */
+export interface AllocatePreviewRespVO {
+  totalPayAmount: number
+  totalAllocated: number
+  remainingPayAmount: number
+  items: AllocateItemRespVO[]
+}
+
+/**
+ * 客户未核销应收分录 VO
+ */
+export interface ArBalanceRespVO {
+  ledgerEntryId: number
+  entryNo: string
+  category: string
+  bizDate?: string
+  currency: string
+  originalAmount: number
+  reversedAmount?: number
+  allocatedAmount?: number
+  unallocatedBalance: number
+  refType?: string
+  refId?: number
+  shipmentNo?: string
+  contractNo?: string
+}
+
+/**
+ * 资金账户精简 VO
+ */
+export interface AccountSimpleVO {
+  id: number
+  accountName: string
+  accountType: string
+  currency: string
+  currentBalance: number
+  status: string
 }
 
 // =================== 付款申请接口 ===================
@@ -196,9 +322,9 @@ export const getPrepayBalance = (supplierId: number | string) => {
   })
 }
 
-// =================== 付款登记接口 ===================
+// =================== 付款登记接口（OUT 侧） ===================
 
-/** 分页查询付款单流水（固定 direction=OUT） */
+/** 分页查询付款单流水 */
 export const getPaymentPage = (params: PaymentPageParam) => {
   return request.get<{ list: PaymentVO[]; total: number }>({
     url: '/lunaerp/finance/payment/page',
@@ -218,5 +344,59 @@ export const registerPayment = (data: PaymentRegisterReqVO) => {
   return request.post<number>({
     url: '/lunaerp/finance/payment/register',
     data
+  })
+}
+
+// =================== 客户收款接口（IN 侧） ===================
+
+/** 创建客户收款单草稿 */
+export const createReceipt = (data: ReceiptSaveReqVO) => {
+  return request.post<number>({
+    url: '/lunaerp/finance/payment/create',
+    data
+  })
+}
+
+/** 更新客户收款单草稿 */
+export const updateReceipt = (data: ReceiptSaveReqVO) => {
+  return request.put<boolean>({
+    url: '/lunaerp/finance/payment/update',
+    data
+  })
+}
+
+/** 删除客户收款单草稿 */
+export const deleteReceipt = (id: number | string) => {
+  return request.delete<boolean>({
+    url: '/lunaerp/finance/payment/delete?id=' + id
+  })
+}
+
+/** 提交客户收款单审批 */
+export const submitReceipt = (id: number | string) => {
+  return request.put<number>({
+    url: '/lunaerp/finance/payment/submit?id=' + id
+  })
+}
+
+/** 自动核销分配试算（FIFO） */
+export const allocatePreview = (data: AllocatePreviewReqVO) => {
+  return request.post<AllocatePreviewRespVO>({
+    url: '/lunaerp/finance/payment/allocate-preview',
+    data
+  })
+}
+
+/** 查询客户指定币种的未核销应收分录列表 */
+export const getArBalance = (customerId: number | string, currency: string) => {
+  return request.get<ArBalanceRespVO[]>({
+    url: `/lunaerp/finance/payment/ar-balance?customerId=${customerId}&currency=${currency}`
+  })
+}
+
+/** 获取启用的资金账户简要列表（用于下拉选单） */
+export const getAccountSimpleList = () => {
+  return request.get<AccountSimpleVO[]>({
+    url: '/lunaerp/finance/payment/account/simple-list'
   })
 }

@@ -37,4 +37,17 @@ public class PaymentRefRespVO {
     @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
     private BigDecimal allocateAmount;
 
+    @Schema(description = "应收分录单号快照", example = "SH20261012001")
+    private String entryNo;
+
+    @Schema(description = "业务日期快照", example = "2026-10-12")
+    private java.time.LocalDate bizDate;
+
+    @Schema(description = "折算本位币金额（人民币）", example = "5000.00")
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
+    private BigDecimal baseAmount;
+
+    @Schema(description = "关联核销分录ID", example = "1001")
+    private Long ledgerEntryId;
+
 }

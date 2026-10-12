@@ -1,7 +1,252 @@
 <template>
   <ContentWrap>
     <el-tabs v-model="activeTab" class="payment-tabs" @tab-change="handleTabChange">
-      <!-- ====================== TAB 1: 付款申请 ====================== -->
+      <!-- ====================== TAB 1: 客户收款 ====================== -->
+      <el-tab-pane label="客户收款" name="receipt">
+        <!-- 搜索区 -->
+        <el-form
+          class="-mb-15px mt-2"
+          :model="receiptQuery"
+          ref="receiptQueryFormRef"
+          :inline="true"
+          label-width="80px"
+        >
+          <el-form-item label="关键词" prop="keyword">
+            <el-input
+              v-model="receiptQuery.keyword"
+              placeholder="收款单号 / 银行水单号"
+              clearable
+              @keyup.enter="handleReceiptQuery"
+              class="!w-200px"
+            />
+          </el-form-item>
+
+          <el-form-item label="客户" prop="customerId">
+            <el-select
+              v-model="receiptQuery.customerId"
+              placeholder="全部客户"
+              clearable
+              filterable
+              remote
+              reserve-keyword
+              :remote-method="searchCustomers"
+              :loading="customerLoading"
+              class="!w-200px"
+            >
+              <el-option
+                v-for="item in customerOptions"
+                :key="item.id"
+                :label="item.companyName"
+                :value="item.id!"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="收款类型" prop="receiptType">
+            <el-select v-model="receiptQuery.receiptType" placeholder="全部类型" clearable class="!w-130px">
+              <el-option
+                v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_FINANCE_RECEIPT_TYPE)"
+                :key="dict.value"
+                :label="dict.label"
+                :value="dict.value"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="资金账户" prop="accountId">
+            <el-select v-model="receiptQuery.accountId" placeholder="全部账户" clearable class="!w-180px">
+              <el-option
+                v-for="acc in accountSimpleOptions"
+                :key="acc.id"
+                :label="acc.accountName"
+                :value="acc.id"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="审批状态" prop="approvalStatus">
+            <el-select
+              v-model="receiptQuery.approvalStatus"
+              placeholder="全部状态"
+              clearable
+              class="!w-130px"
+            >
+              <el-option
+                v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_APPROVAL_INSTANCE_STATUS)"
+                :key="dict.value"
+                :label="dict.label"
+                :value="dict.value"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="收款日期">
+            <el-date-picker
+              v-model="receiptDateRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              value-format="YYYY-MM-DD"
+              class="!w-240px"
+            />
+          </el-form-item>
+
+          <el-form-item>
+            <el-button @click="handleReceiptQuery">
+              <Icon icon="ep:search" class="mr-2px" />搜索
+            </el-button>
+            <el-button @click="resetReceiptQuery">
+              <Icon icon="ep:refresh" class="mr-2px" />重置
+            </el-button>
+            <el-button
+              type="primary"
+              plain
+              @click="openCreateReceipt()"
+              v-hasPermi="['lunaerp:finance:payment:create']"
+            >
+              <Icon icon="ep:plus" class="mr-2px" />新增收款单
+            </el-button>
+          </el-form-item>
+        </el-form>
+
+        <!-- 收款单列表表格 -->
+        <el-table v-loading="receiptLoading" :data="receiptList" border stripe class="mt-4">
+          <el-table-column label="收款单号" prop="paymentNo" min-width="150" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-link type="primary" :underline="false" @click="openReceiptDetail(row.id)">
+                <span class="cell-code">{{ row.paymentNo }}</span>
+              </el-link>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="收款类型" prop="receiptType" width="110" align="center">
+            <template #default="{ row }">
+              <dict-tag :type="DICT_TYPE.LUNAERP_FINANCE_RECEIPT_TYPE" :value="row.receiptType" />
+            </template>
+          </el-table-column>
+
+          <el-table-column label="客户名称" prop="customerName" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.customerName || '—' }}</template>
+          </el-table-column>
+
+          <el-table-column label="币种" prop="currency" width="75" align="center">
+            <template #default="{ row }">
+              <el-tag size="small">{{ row.currency || 'CNY' }}</el-tag>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="收款金额" prop="payAmount" width="130" align="right">
+            <template #default="{ row }">
+              <span class="font-bold text-blue-600">￥{{ formatAmount(row.payAmount) }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="资金账户" prop="accountName" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.accountName || getAccountName(row.accountId) }}
+            </template>
+          </el-table-column>
+
+          <el-table-column label="收款日期" prop="receiptDate" width="110" align="center">
+            <template #default="{ row }">{{ row.receiptDate || '—' }}</template>
+          </el-table-column>
+
+          <el-table-column label="经手人" prop="handlerName" width="100" align="center" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.handlerName || '—' }}</template>
+          </el-table-column>
+
+          <el-table-column label="审批状态" prop="approvalStatus" width="110" align="center">
+            <template #default="{ row }">
+              <dict-tag :type="DICT_TYPE.LUNAERP_APPROVAL_INSTANCE_STATUS" :value="row.approvalStatus" />
+            </template>
+          </el-table-column>
+
+          <el-table-column label="过账状态" prop="status" width="95" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.status === 'COMPLETED'" type="success" size="small">已过账</el-tag>
+              <el-tag v-else-if="row.status === 'REVERSED'" type="danger" size="small">已红冲</el-tag>
+              <el-tag v-else type="info" size="small">未过账</el-tag>
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            label="创建时间"
+            prop="createTime"
+            width="160"
+            align="center"
+            :formatter="dateFormatter"
+          />
+
+          <!-- 操作列 -->
+          <el-table-column label="操作" width="220" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                link
+                type="primary"
+                @click="openReceiptDetail(row.id)"
+                v-hasPermi="['lunaerp:finance:payment:query']"
+              >
+                详情
+              </el-button>
+
+              <!-- 草稿态操作 (PENDING 或 DRAFT) -->
+              <template v-if="row.approvalStatus === 'PENDING' || row.approvalStatus === 'DRAFT'">
+                <el-button
+                  link
+                  type="primary"
+                  @click="openEditReceipt(row)"
+                  v-hasPermi="['lunaerp:finance:payment:update']"
+                >
+                  编辑
+                </el-button>
+                <el-button
+                  link
+                  type="success"
+                  @click="handleSubmitReceipt(row)"
+                  v-hasPermi="['lunaerp:finance:payment:create']"
+                >
+                  提交
+                </el-button>
+                <el-button
+                  link
+                  type="danger"
+                  @click="handleDeleteReceipt(row)"
+                  v-hasPermi="['lunaerp:finance:payment:delete']"
+                >
+                  删除
+                </el-button>
+              </template>
+
+              <!-- 已驳回操作 (REJECTED) -->
+              <template v-else-if="row.approvalStatus === 'REJECTED'">
+                <el-button
+                  link
+                  type="primary"
+                  @click="openEditReceipt(row)"
+                  v-hasPermi="['lunaerp:finance:payment:update']"
+                >
+                  重新编辑
+                </el-button>
+              </template>
+            </template>
+          </el-table-column>
+
+          <template #empty>
+            <el-empty description="暂无客户收款数据" :image-size="80" />
+          </template>
+        </el-table>
+
+        <!-- 分页 -->
+        <Pagination
+          :total="receiptTotal"
+          v-model:page="receiptQuery.pageNo"
+          v-model:limit="receiptQuery.pageSize"
+          @pagination="getReceiptList"
+        />
+      </el-tab-pane>
+
+      <!-- ====================== TAB 2: 付款申请 ====================== -->
       <el-tab-pane label="付款申请" name="apply">
         <!-- 搜索区 -->
         <el-form
@@ -507,6 +752,12 @@
 
   <!-- 付款单流水详情弹窗 -->
   <PaymentDetailDialog ref="paymentDetailDialogRef" />
+
+  <!-- 客户收款单发起/编辑弹窗 -->
+  <ReceiptFormDialog ref="receiptFormDialogRef" @success="handleReceiptSuccess" />
+
+  <!-- 客户收款单详情弹窗 -->
+  <ReceiptDetailDialog ref="receiptDetailDialogRef" />
 </template>
 
 <script lang="ts" setup>
@@ -520,22 +771,141 @@ import type {
   PaymentApplyVO,
   PaymentApplyPageParam,
   PaymentVO,
-  PaymentPageParam
+  PaymentPageParam,
+  AccountSimpleVO
 } from '@/api/lunaerp-elmui/finance/payment'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
+import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
+import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import { formatAmount, DEFAULT_FINANCE_ACCOUNTS } from './utils'
 import PaymentApplyFormDialog from './components/PaymentApplyFormDialog.vue'
 import PaymentApplyDetailDrawer from './components/PaymentApplyDetailDrawer.vue'
 import PaymentRegisterDialog from './components/PaymentRegisterDialog.vue'
 import PaymentDetailDialog from './components/PaymentDetailDialog.vue'
+import ReceiptFormDialog from './components/ReceiptFormDialog.vue'
+import ReceiptDetailDialog from './components/ReceiptDetailDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiPayment' })
 
 const route = useRoute()
 const message = useMessage()
 
-const activeTab = ref<'apply' | 'register'>('apply')
+const activeTab = ref<'receipt' | 'apply' | 'register'>('receipt')
+
+// ====================== 客户收款逻辑 ======================
+const receiptLoading = ref(false)
+const receiptTotal = ref(0)
+const receiptList = ref<PaymentVO[]>([])
+const receiptQueryFormRef = ref()
+const receiptFormDialogRef = ref()
+const receiptDetailDialogRef = ref()
+const receiptDateRange = ref<[string, string] | null>(null)
+
+const receiptQuery = reactive<PaymentPageParam>({
+  pageNo: 1,
+  pageSize: 20,
+  direction: 'IN',
+  keyword: '',
+  customerId: undefined,
+  accountId: undefined,
+  receiptType: undefined,
+  approvalStatus: undefined,
+  status: undefined,
+  receiptDateStart: undefined,
+  receiptDateEnd: undefined
+})
+
+// 客户下拉列表
+const customerOptions = ref<CustomerVO[]>([])
+const customerLoading = ref(false)
+const searchCustomers = async (query: string) => {
+  customerLoading.value = true
+  try {
+    const res = await CustomerApi.getCustomerPage({
+      pageNo: 1,
+      pageSize: 30,
+      search: query || '',
+      status: 'ACTIVE'
+    })
+    customerOptions.value = res.list || []
+  } finally {
+    customerLoading.value = false
+  }
+}
+
+// 资金账户简要列表（用于收款筛选）
+const accountSimpleOptions = ref<AccountSimpleVO[]>([])
+const loadAccountSimpleOptions = async () => {
+  try {
+    accountSimpleOptions.value = await PaymentApi.getAccountSimpleList()
+  } catch (e) {
+    // 降级使用内置
+  }
+}
+
+const getReceiptList = async () => {
+  receiptLoading.value = true
+  try {
+    if (receiptDateRange.value && receiptDateRange.value.length === 2) {
+      receiptQuery.receiptDateStart = receiptDateRange.value[0]
+      receiptQuery.receiptDateEnd = receiptDateRange.value[1]
+    } else {
+      receiptQuery.receiptDateStart = undefined
+      receiptQuery.receiptDateEnd = undefined
+    }
+    const res = await PaymentApi.getPaymentPage(receiptQuery)
+    receiptList.value = res.list
+    receiptTotal.value = res.total
+  } finally {
+    receiptLoading.value = false
+  }
+}
+
+const handleReceiptQuery = () => {
+  receiptQuery.pageNo = 1
+  getReceiptList()
+}
+
+const resetReceiptQuery = () => {
+  receiptDateRange.value = null
+  receiptQueryFormRef.value?.resetFields()
+  handleReceiptQuery()
+}
+
+const openCreateReceipt = () => {
+  receiptFormDialogRef.value?.open('create')
+}
+
+const openEditReceipt = (row: PaymentVO) => {
+  receiptFormDialogRef.value?.open('edit', row)
+}
+
+const openReceiptDetail = (id: number) => {
+  receiptDetailDialogRef.value?.open(id)
+}
+
+const handleReceiptSuccess = () => {
+  getReceiptList()
+}
+
+const handleSubmitReceipt = async (row: PaymentVO) => {
+  try {
+    await message.confirm(`确定提交客户收款单【${row.paymentNo}】进行审批吗？`, '提交审批')
+    await PaymentApi.submitReceipt(row.id)
+    message.success('已提交审批')
+    getReceiptList()
+  } catch {}
+}
+
+const handleDeleteReceipt = async (row: PaymentVO) => {
+  try {
+    await message.confirm(`确定删除草稿收款单【${row.paymentNo}】吗？删除后进入回收站。`, '删除收款单')
+    await PaymentApi.deleteReceipt(row.id)
+    message.success('已删除草稿')
+    getReceiptList()
+  } catch {}
+}
 
 // 供应商下拉列表
 const supplierOptions = ref<SupplierVO[]>([])
@@ -731,7 +1101,9 @@ const openPaymentDetail = (id: number) => {
 }
 
 const handleTabChange = (name: any) => {
-  if (name === 'apply') {
+  if (name === 'receipt') {
+    getReceiptList()
+  } else if (name === 'apply') {
     getApplyList()
   } else if (name === 'register') {
     getPendingApplies()
@@ -741,7 +1113,8 @@ const handleTabChange = (name: any) => {
 
 onMounted(async () => {
   await searchSuppliers('')
-  await getApplyList()
+  await searchCustomers('')
+  await loadAccountSimpleOptions()
 
   // 检查是否从供应商对账单直接跳转过来生成付款申请
   if (route.query.reconId && route.query.action === 'create') {
@@ -753,6 +1126,9 @@ onMounted(async () => {
       reconId,
       supplierId
     })
+    await getApplyList()
+  } else {
+    await getReceiptList()
   }
 })
 </script>

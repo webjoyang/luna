@@ -289,8 +289,8 @@ const handleSupplierChange = async (supplierId: number) => {
     const sup = supplierOptions.value.find((s) => s.id === supplierId)
     if (sup) {
       selectedSupplierBank.value = {
-        bankName: sup.bankName,
-        bankAccount: sup.bankAccount
+        bankName: (sup as any).bankName,
+        bankAccount: (sup as any).bankAccount
       }
     }
   } catch {}
