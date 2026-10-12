@@ -39,10 +39,13 @@ import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentP
 import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentAuditedEvent;
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentCancelledEvent;
 
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
 import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
@@ -180,6 +183,9 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Resource
     private ConfigApi configApi;
+
+    @Resource
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -508,6 +514,32 @@ public class ShipmentServiceImpl implements ShipmentService {
             ledger.setRemark(item.getRemark());
             stockLedgerMapper.insert(ledger);
         }
+
+        // 7. 同事务发布发货审核出库事件（应收成立点，Q1/Q15）
+        if (applicationEventPublisher != null) {
+            List<ShipmentAuditedEvent.Item> eventItems = items.stream().map(item ->
+                    ShipmentAuditedEvent.Item.builder()
+                            .shipmentItemId(item.getId())
+                            .productName(item.getProductName())
+                            .quantity(item.getQuantity())
+                            .unit(item.getUnit())
+                            .unitPrice(item.getUnitPrice())
+                            .amount(item.getAmount())
+                            .build()
+            ).collect(Collectors.toList());
+
+            LocalDate shipmentDate = existing.getShippingDate() != null ? existing.getShippingDate() : LocalDate.now();
+            ShipmentAuditedEvent event = ShipmentAuditedEvent.builder()
+                    .shipmentId(existing.getId())
+                    .shipmentNo(existing.getShipmentNo())
+                    .customerId(existing.getCustomerId())
+                    .currency(existing.getCurrency())
+                    .shipmentDate(shipmentDate)
+                    .freightFee(existing.getFreightFee())
+                    .items(eventItems)
+                    .build();
+            applicationEventPublisher.publishEvent(event);
+        }
     }
 
     @Override
@@ -561,6 +593,30 @@ public class ShipmentServiceImpl implements ShipmentService {
                     reversal.setRemark(orig.getRemark());
                     stockLedgerMapper.insert(reversal);
                 }
+            }
+
+            // 同事务发布发货单红冲事件（应收红冲点，Q1/Q15）
+            if (applicationEventPublisher != null) {
+                List<ShipmentItemDO> shipmentItems = shipmentItemMapper.selectListByShipmentId(id);
+                List<ShipmentCancelledEvent.Item> cancelItems = Collections.emptyList();
+                if (CollUtil.isNotEmpty(shipmentItems)) {
+                    cancelItems = shipmentItems.stream().map(item ->
+                            ShipmentCancelledEvent.Item.builder()
+                                    .shipmentItemId(item.getId())
+                                    .amount(item.getAmount())
+                                    .currency(existing.getCurrency())
+                                    .build()
+                    ).collect(Collectors.toList());
+                }
+
+                ShipmentCancelledEvent event = ShipmentCancelledEvent.builder()
+                        .shipmentId(existing.getId())
+                        .shipmentNo(existing.getShipmentNo())
+                        .customerId(existing.getCustomerId())
+                        .freightFee(existing.getFreightFee())
+                        .items(cancelItems)
+                        .build();
+                applicationEventPublisher.publishEvent(event);
             }
         } else {
             // 2.3 CANCELLED 终态或非法状态：报 1_030_016_002

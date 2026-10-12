@@ -1,0 +1,62 @@
+package com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.exchangerate;
+
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
+import lombok.*;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+/**
+ * 财务管理 - 汇率主档 DO（SPOT 即期牌价）
+ *
+ * 表：lunaerp_finance_exchange_rate
+ * 序列：lunaerp_finance_exchange_rate_seq
+ *
+ * @author luna
+ */
+@TableName("lunaerp_finance_exchange_rate")
+@KeySequence("lunaerp_finance_exchange_rate_seq")
+@Data
+@EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true)
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ExchangeRateDO extends TenantBaseDO {
+
+    /**
+     * 汇率ID
+     */
+    private Long id;
+
+    /**
+     * 外币币种（如 USD/EUR/HKD 等；RMB/CNY 内置 rate=1 不建行）
+     */
+    private String currency;
+
+    /**
+     * 汇率（1 外币 = rate 本位币）
+     */
+    private BigDecimal rate;
+
+    /**
+     * 生效日期
+     */
+    private LocalDate effectiveDate;
+
+    /**
+     * 状态（ENABLE 启用 / DISABLE 停用）
+     */
+    private String status;
+
+    /**
+     * 备注说明
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String remark;
+
+}
