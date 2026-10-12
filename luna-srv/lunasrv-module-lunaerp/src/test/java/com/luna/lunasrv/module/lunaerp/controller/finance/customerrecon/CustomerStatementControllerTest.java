@@ -26,6 +26,9 @@ class CustomerStatementControllerTest {
     @Mock
     private CustomerStatementService customerStatementService;
 
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.service.finance.customerrecon.aging.CustomerAgingService customerAgingService;
+
     @InjectMocks
     private CustomerStatementController customerStatementController;
 
@@ -203,6 +206,34 @@ class CustomerStatementControllerTest {
         assertEquals(0, result.getCode());
         assertEquals("CS20260001", result.getData().getStatementNo());
         assertEquals("开票抬头", result.getData().getInvoiceTitle());
+    }
+
+    @Test
+    @DisplayName("获得客户账龄汇总列表")
+    void testGetAgingSummary() {
+        CustomerAgingSummaryReqVO req = CustomerAgingSummaryReqVO.builder().currency("CNY").build();
+        CustomerAgingSummaryRespVO resp = CustomerAgingSummaryRespVO.builder().customerId(1001L).totalBalance(new BigDecimal("5000.00")).build();
+        when(customerAgingService.getAgingSummary(any())).thenReturn(List.of(resp));
+
+        CommonResult<List<CustomerAgingSummaryRespVO>> result = customerStatementController.getAgingSummary(req);
+        assertEquals(0, result.getCode());
+        assertEquals(1, result.getData().size());
+        assertEquals(1001L, result.getData().get(0).getCustomerId());
+        assertEquals(new BigDecimal("5000.00"), result.getData().get(0).getTotalBalance());
+    }
+
+    @Test
+    @DisplayName("获得客户账龄未核销明细分录下钻")
+    void testGetAgingDetail() {
+        CustomerAgingDetailReqVO req = CustomerAgingDetailReqVO.builder().customerId(1001L).build();
+        CustomerAgingDetailRespVO resp = CustomerAgingDetailRespVO.builder().ledgerEntryId(555L).unsettledAmount(new BigDecimal("2000.00")).build();
+        when(customerAgingService.getAgingDetail(any())).thenReturn(List.of(resp));
+
+        CommonResult<List<CustomerAgingDetailRespVO>> result = customerStatementController.getAgingDetail(req);
+        assertEquals(0, result.getCode());
+        assertEquals(1, result.getData().size());
+        assertEquals(555L, result.getData().get(0).getLedgerEntryId());
+        assertEquals(new BigDecimal("2000.00"), result.getData().get(0).getUnsettledAmount());
     }
 
 }
