@@ -233,6 +233,33 @@ public class LunaNotifyHelper {
         return send(submitterUserId, LunaNotifyTemplateEnum.LUNA_APPROVAL_REJECTED, params, bizJump);
     }
 
+    /**
+     * 发送对账单驳回通知给制单财务（旁路通知，失败不阻塞事务）
+     *
+     * @param creatorUserId 制单人用户编号
+     * @param statementId   对账单ID
+     * @param statementNo   对账单号
+     * @param customerName  客户名称
+     * @param reason        驳回原因
+     * @return 消息 ID
+     */
+    public Long sendStatementRejected(Long creatorUserId, Long statementId, String statementNo,
+                                      String customerName, String reason) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("bizName", "客户对账单");
+        params.put("bizNo", StrUtil.nullToDefault(statementNo, ""));
+        params.put("customerName", StrUtil.nullToDefault(customerName, ""));
+        params.put("reason", StrUtil.nullToDefault(reason, "无"));
+
+        BizJump bizJump = BizJump.builder()
+                .bizType("STATEMENT")
+                .bizId(statementId)
+                .bizNo(statementNo)
+                .build();
+
+        return send(creatorUserId, LunaNotifyTemplateEnum.LUNA_STATEMENT_REJECTED, params, bizJump);
+    }
+
     // ==========================================
     // 静态便捷方法
     // ==========================================

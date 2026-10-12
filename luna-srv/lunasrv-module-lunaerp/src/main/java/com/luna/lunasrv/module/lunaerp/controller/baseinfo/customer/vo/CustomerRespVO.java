@@ -74,6 +74,7 @@ public class CustomerRespVO {
     private String bankName;
 
     @Schema(description = "开户行账号", example = "1202021109900012345")
+    @Sensitive(seePermission = "lunaerp:sensitive:contact", type = SensitiveType.BANK_CARD)
     private String bankAccountNo;
 
     @Schema(description = "信用账期天数（空=不设账期）", example = "30")

@@ -283,6 +283,27 @@ public class PortalStatementServiceImpl implements PortalStatementService {
         updateDO.setRejectReason(reqVO.getRejectReason().trim());
 
         customerStatementMapper.updateById(updateDO);
+
+        // 尝试发送站内信通知制单财务（旁路容错，失败绝不阻塞或回滚业务事务）
+        try {
+            Long creatorUserId = null;
+            if (cn.hutool.core.util.StrUtil.isNotBlank(statement.getCreator())) {
+                try {
+                    creatorUserId = Long.valueOf(statement.getCreator().trim());
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            if (creatorUserId != null) {
+                com.luna.lunasrv.module.lunaerp.common.notify.LunaNotifyHelper helper =
+                        com.luna.lunasrv.module.lunaerp.common.notify.LunaNotifyHelper.getInstance();
+                if (helper != null) {
+                    helper.sendStatementRejected(creatorUserId, statement.getId(), statement.getStatementNo(),
+                            statement.getCustomerName(), reqVO.getRejectReason().trim());
+                }
+            }
+        } catch (Throwable t) {
+            log.error("[rejectStatement][站内消息通知发送异常，已容忍错误并不阻塞主业务: id={}]", reqVO.getId(), t);
+        }
     }
 
     private Long resolveEffectiveCustomerId(Long explicitCustomerId) {

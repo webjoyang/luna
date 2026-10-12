@@ -18,7 +18,9 @@ import org.springframework.context.ApplicationContext;
 import java.math.BigDecimal;
 import java.util.Collections;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -160,5 +162,110 @@ public class DomainVOSensitiveTest {
         assertTrue(contactJson.contains("\"name\":\"李*\""));
         assertTrue(contactJson.contains("\"phone\":\"139****1111\""));
         assertTrue(contactJson.contains("\"email\":\"l****@example.com\""));
+    }
+
+    @Test
+    public void testCustomerStatementRespVO_WithoutPermission() throws Exception {
+        when(securityFrameworkService.hasPermission(eq(SensitiveConstants.PERMISSION_AMOUNT))).thenReturn(false);
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementRespVO vo =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementRespVO();
+        vo.setId(100L);
+        vo.setStatementNo("CS20260001");
+        vo.setOpeningBalance(new BigDecimal("1000.00"));
+        vo.setPeriodDebit(new BigDecimal("5000.00"));
+        vo.setPeriodCredit(new BigDecimal("3000.00"));
+        vo.setClosingBalance(new BigDecimal("3000.00"));
+
+        String json = objectMapper.writeValueAsString(vo);
+        assertTrue(json.contains("\"openingBalance\":\"****\""));
+        assertTrue(json.contains("\"periodDebit\":\"****\""));
+        assertTrue(json.contains("\"periodCredit\":\"****\""));
+        assertTrue(json.contains("\"closingBalance\":\"****\""));
+        assertTrue(json.contains("\"statementNo\":\"CS20260001\""));
+    }
+
+    @Test
+    public void testCustomerStatementRespVO_WithPermission() throws Exception {
+        when(securityFrameworkService.hasPermission(eq(SensitiveConstants.PERMISSION_AMOUNT))).thenReturn(true);
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementRespVO vo =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementRespVO();
+        vo.setId(100L);
+        vo.setOpeningBalance(new BigDecimal("1000.00"));
+        vo.setPeriodDebit(new BigDecimal("5000.00"));
+        vo.setPeriodCredit(new BigDecimal("3000.00"));
+        vo.setClosingBalance(new BigDecimal("3000.00"));
+
+        String json = objectMapper.writeValueAsString(vo);
+        assertTrue(json.contains("\"openingBalance\":1000.00"));
+        assertTrue(json.contains("\"periodDebit\":5000.00"));
+        assertTrue(json.contains("\"periodCredit\":3000.00"));
+        assertTrue(json.contains("\"closingBalance\":3000.00"));
+    }
+
+    @Test
+    public void testCustomerStatementItemRespVO_WithoutPermission() throws Exception {
+        when(securityFrameworkService.hasPermission(eq(SensitiveConstants.PERMISSION_AMOUNT))).thenReturn(false);
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementItemRespVO item =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementItemRespVO();
+        item.setId(201L);
+        item.setDebitAmount(new BigDecimal("1500.00"));
+        item.setCreditAmount(new BigDecimal("0.00"));
+
+        String json = objectMapper.writeValueAsString(item);
+        assertTrue(json.contains("\"debitAmount\":\"****\""));
+        assertTrue(json.contains("\"creditAmount\":\"****\""));
+    }
+
+    @Test
+    public void testCustomerRespVO_BankAccountNo_WithoutPermission() throws Exception {
+        when(securityFrameworkService.hasPermission(eq(SensitiveConstants.PERMISSION_CONTACT))).thenReturn(false);
+
+        CustomerRespVO customer = new CustomerRespVO();
+        customer.setCompanyName("广州盛世纺织");
+        customer.setBankAccountNo("1202021109900012345");
+
+        String json = objectMapper.writeValueAsString(customer);
+        assertTrue(json.contains("\"bankAccountNo\":\"120202***********45\""));
+    }
+
+    @Test
+    public void testCustomerStatementPrintRespVO_ExemptFromDesensitization() throws Exception {
+        // 即使当前用户没有任何敏感权限，打印 VO 也必须原样输出
+        when(securityFrameworkService.hasPermission(anyString())).thenReturn(false);
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementPrintItemRespVO item =
+                com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementPrintItemRespVO.builder()
+                        .id(301L)
+                        .refNo("SH20260915001")
+                        .debitAmount(new BigDecimal("5000.00"))
+                        .creditAmount(BigDecimal.ZERO)
+                        .build();
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementPrintRespVO printVO =
+                com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerStatementPrintRespVO.builder()
+                        .id(100L)
+                        .statementNo("CS20260001")
+                        .contactPhone("13800138000")
+                        .bankAccountNo("44050143004100001234")
+                        .openingBalance(new BigDecimal("1000.00"))
+                        .periodDebit(new BigDecimal("5000.00"))
+                        .periodCredit(new BigDecimal("3000.00"))
+                        .closingBalance(new BigDecimal("3000.00"))
+                        .items(Collections.singletonList(item))
+                        .build();
+
+        String json = objectMapper.writeValueAsString(printVO);
+        // 验证打印 VO 豁免脱敏：金额与联系方式全出原文
+        assertTrue(json.contains("\"openingBalance\":1000.00"));
+        assertTrue(json.contains("\"periodDebit\":5000.00"));
+        assertTrue(json.contains("\"periodCredit\":3000.00"));
+        assertTrue(json.contains("\"closingBalance\":3000.00"));
+        assertTrue(json.contains("\"contactPhone\":\"13800138000\""));
+        assertTrue(json.contains("\"bankAccountNo\":\"44050143004100001234\""));
+        assertTrue(json.contains("\"debitAmount\":5000.00"));
+        assertFalse(json.contains("****"));
     }
 }

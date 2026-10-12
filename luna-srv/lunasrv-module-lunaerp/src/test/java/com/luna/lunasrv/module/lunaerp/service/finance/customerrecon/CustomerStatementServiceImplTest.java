@@ -559,9 +559,10 @@ class CustomerStatementServiceImplTest {
     }
 
     @Test
-    @DisplayName("驳回对账单：仅 SENT 状态可驳回，记录异议原因")
+    @DisplayName("驳回对账单：仅 SENT 状态可驳回，记录异议原因并触发通知（容忍通知异常）")
     void testRejectStatementSuccess() {
-        CustomerStatementDO sent = CustomerStatementDO.builder().id(501L).status("SENT").build();
+        CustomerStatementDO sent = CustomerStatementDO.builder().id(501L).status("SENT").statementNo("CS20260001").customerName("明辉纺织").build();
+        sent.setCreator("1001");
         when(customerStatementMapper.selectById(501L)).thenReturn(sent);
         when(customerStatementMapper.update(isNull(), any())).thenReturn(1);
 
@@ -569,8 +570,24 @@ class CustomerStatementServiceImplTest {
         reqVO.setId(501L);
         reqVO.setRejectReason("运费金额有误");
 
-        customerStatementService.rejectStatement(reqVO);
+        assertDoesNotThrow(() -> customerStatementService.rejectStatement(reqVO));
 
+        verify(customerStatementMapper).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("驳回对账单：通知发送异常不阻塞对账单驳回事务")
+    void testRejectStatementNotifyExceptionDoesNotBlock() {
+        CustomerStatementDO sent = CustomerStatementDO.builder().id(501L).status("SENT").build();
+        sent.setCreator("invalid-id");
+        when(customerStatementMapper.selectById(501L)).thenReturn(sent);
+        when(customerStatementMapper.update(isNull(), any())).thenReturn(1);
+
+        CustomerStatementRejectReqVO reqVO = new CustomerStatementRejectReqVO();
+        reqVO.setId(501L);
+        reqVO.setRejectReason("运费金额有误");
+
+        assertDoesNotThrow(() -> customerStatementService.rejectStatement(reqVO));
         verify(customerStatementMapper).update(isNull(), any());
     }
 

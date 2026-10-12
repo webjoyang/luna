@@ -127,6 +127,7 @@ class InvoiceApplicationRecycleBinHandlerTest {
 
         assertDoesNotThrow(() -> handler.restore(APP_ID));
         verify(invoiceApplicationMapper).restoreInvoiceApplication(eq(APP_ID), eq(TENANT_ID), anyString(), any(LocalDateTime.class));
+        verify(invoiceApplicationItemMapper).restoreByApplicationId(eq(APP_ID), eq(TENANT_ID), anyString(), any(LocalDateTime.class));
     }
 
     @Test
@@ -138,6 +139,7 @@ class InvoiceApplicationRecycleBinHandlerTest {
         when(invoiceApplicationMapper.purgeInvoiceApplication(APP_ID, TENANT_ID)).thenReturn(1);
 
         assertDoesNotThrow(() -> handler.purge(APP_ID));
+        verify(invoiceApplicationItemMapper).purgeByApplicationId(APP_ID, TENANT_ID);
         verify(invoiceApplicationMapper).purgeInvoiceApplication(APP_ID, TENANT_ID);
     }
 

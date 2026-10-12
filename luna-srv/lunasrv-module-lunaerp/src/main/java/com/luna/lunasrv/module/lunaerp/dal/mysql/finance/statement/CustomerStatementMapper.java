@@ -62,4 +62,38 @@ public interface CustomerStatementMapper extends BaseMapperX<CustomerStatementDO
             + "FROM lunaerp_finance_statement WHERE statement_no LIKE CONCAT(#{prefix}, '%')")
     List<CustomerStatementDO> selectListByStatementNoPrefixIncludingDeleted(@Param("prefix") String prefix);
 
+    /**
+     * 回收站分页查询已软删草稿客户对账单
+     */
+    @Select("SELECT 'STATEMENT' AS biz_type, id AS biz_id, statement_no AS display_name, "
+            + "updater AS deleted_by, update_time AS deleted_time "
+            + "FROM lunaerp_finance_statement "
+            + "WHERE deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId} "
+            + "ORDER BY update_time DESC")
+    com.baomidou.mybatisplus.core.metadata.IPage<com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO> selectRecyclePage(
+            com.baomidou.mybatisplus.core.metadata.IPage<?> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的草稿客户对账单
+     */
+    @Select("SELECT * FROM lunaerp_finance_statement "
+            + "WHERE id = #{id} AND deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId} LIMIT 1")
+    CustomerStatementDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿客户对账单
+     */
+    @org.apache.ibatis.annotations.Update("UPDATE lunaerp_finance_statement SET deleted = 0, status = 'DRAFT', "
+            + "updater = #{updater}, update_time = #{updateTime} "
+            + "WHERE id = #{id} AND deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}")
+    int restoreStatement(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                         @Param("updater") String updater, @Param("updateTime") java.time.LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除草稿客户对账单
+     */
+    @org.apache.ibatis.annotations.Delete("DELETE FROM lunaerp_finance_statement "
+            + "WHERE id = #{id} AND deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}")
+    int purgeStatement(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
 }
