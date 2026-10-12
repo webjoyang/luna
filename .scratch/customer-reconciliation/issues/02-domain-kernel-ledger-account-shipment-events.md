@@ -4,13 +4,13 @@
 
 **Blocked by:** 01 SQL 基建 + 错误码常量 + 客户档案+5列
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] `service.finance.ledger.LedgerService.append(LedgerEntryDO)` 唯一写入通道；无 update/delete 端点，应用层抛 1_030_020_000 LEDGER_IMMUTABLE
-- [ ] `service.finance.account.AccountService`：create（opening_balance 仅此可写）、update（仅备注/状态）、无删除（有分录引用报 ACCOUNT_HAS_ENTRIES_DELETE_FORBIDDEN）；余额变更唯一通道 `UPDATE ... SET current_balance = current_balance + #{amt} WHERE id=#{id} AND status='ENABLE'`
-- [ ] `service.finance.exchangerate.ExchangeRateService.getRate(currency, bizDate)`：生效日≤业务日最新 ENABLE，RMB 内置 rate=1，无则抛 EXCHANGE_RATE_NOT_FOUND
-- [ ] business.shipment 审核事务内 publish `ShipmentAuditedEvent`（BEFORE_COMMIT 同事务语义，载荷含 shipmentId/shipmentNo/customerId/currency/shipmentDate/freightFee + 明细行快照数组）
-- [ ] business.shipment 红冲事务内 publish `ShipmentCancelledEvent`（载荷含原分录回指所需行）
-- [ ] finance listener 同事务写 AR_INC（逐明细行 + freightFee>0 时运费一条，按发货日生效汇率折本位币）/ AR_INC_REVERSAL（reversal_of_id 回指）；记账失败同事务回滚发货审核
-- [ ] 事件载荷用 business 自有 DTO，business 不 import finance 任何类
-- [ ] 测试：发货审核→逐行 AR_INC+运费分录断言（金额/汇率/本位额/ref 回指）；红冲→AR_INC_REVERSAL+reversal_of_id；分录不可变守卫；账户余额条件更新；汇率取价（最新≤业务日、停用剔除、RMB=1、缺汇率报错）
+- [x] `service.finance.ledger.LedgerService.append(LedgerEntryDO)` 唯一写入通道；无 update/delete 端点，应用层抛 1_030_020_000 LEDGER_IMMUTABLE
+- [x] `service.finance.account.AccountService`：create（opening_balance 仅此可写）、update（仅备注/状态）、无删除（有分录引用报 ACCOUNT_HAS_ENTRIES_DELETE_FORBIDDEN）；余额变更唯一通道 `UPDATE ... SET current_balance = current_balance + #{amt} WHERE id=#{id} AND status='ENABLE'`
+- [x] `service.finance.exchangerate.ExchangeRateService.getRate(currency, bizDate)`：生效日≤业务日最新 ENABLE，RMB 内置 rate=1，无则抛 EXCHANGE_RATE_NOT_FOUND
+- [x] business.shipment 审核事务内 publish `ShipmentAuditedEvent`（BEFORE_COMMIT 同事务语义，载荷含 shipmentId/shipmentNo/customerId/currency/shipmentDate/freightFee + 明细行快照数组）
+- [x] business.shipment 红冲事务内 publish `ShipmentCancelledEvent`（载荷含原分录回指所需行）
+- [x] finance listener 同事务写 AR_INC（逐明细行 + freightFee>0 时运费一条，按发货日生效汇率折本位币）/ AR_INC_REVERSAL（reversal_of_id 回指）；记账失败同事务回滚发货审核
+- [x] 事件载荷用 business 自有 DTO，business 不 import finance 任何类
+- [x] 测试：发货审核→逐行 AR_INC+运费分录断言（金额/汇率/本位额/ref 回指）；红冲→AR_INC_REVERSAL+reversal_of_id；分录不可变守卫；账户余额条件更新；汇率取价（最新≤业务日、停用剔除、RMB=1、缺汇率报错）
