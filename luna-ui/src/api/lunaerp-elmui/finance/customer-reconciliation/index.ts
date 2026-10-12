@@ -302,3 +302,80 @@ export const getCustomerStatementPrintData = (id: number | string) => {
   })
 }
 
+/**
+ * 客户账龄汇总查询请求 VO
+ */
+export interface CustomerAgingSummaryReqVO {
+  agingDate?: string
+  customerIds?: number[]
+  salesmanId?: number
+  currency?: string
+}
+
+/**
+ * 客户账龄汇总响应 VO（按客户一行）
+ */
+export interface CustomerAgingSummaryVO {
+  customerId: number
+  customerName: string
+  currency: string
+  creditDays?: number
+  salesmanId?: number
+  salesmanName?: string
+  totalBalance: number
+  bucket0To30: number
+  bucket31To60: number
+  bucket61To90: number
+  bucket91To180: number
+  bucket181Plus: number
+  overdueAmount: number
+  advanceBalance: number
+}
+
+/**
+ * 客户账龄明细下钻请求 VO
+ */
+export interface CustomerAgingDetailReqVO {
+  customerId: number
+  agingDate?: string
+  currency?: string
+}
+
+/**
+ * 客户账龄未核销明细分录 VO
+ */
+export interface CustomerAgingDetailVO {
+  ledgerEntryId: number
+  bizDate: string
+  refType?: string
+  refId?: number
+  refNo?: string
+  originalAmount: number
+  settledAmount: number
+  unsettledAmount: number
+  currency: string
+  agingDays: number
+  bucket: string
+  creditDays?: number
+  dueDate?: string
+  isOverdue: boolean
+  overdueDays: number
+  summary?: string
+}
+
+/** 获得客户 FIFO 账龄汇总列表 */
+export const getCustomerAgingSummary = (params: CustomerAgingSummaryReqVO) => {
+  return request.get<CustomerAgingSummaryVO[]>({
+    url: '/lunaerp/finance/statement/aging/summary',
+    params
+  })
+}
+
+/** 获得客户 FIFO 账龄未核销明细下钻 */
+export const getCustomerAgingDetail = (params: CustomerAgingDetailReqVO) => {
+  return request.get<CustomerAgingDetailVO[]>({
+    url: '/lunaerp/finance/statement/aging/detail',
+    params
+  })
+}
+

@@ -24,6 +24,9 @@ public class CustomerStatementController {
     @Resource
     private CustomerStatementService customerStatementService;
 
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.service.finance.customerrecon.aging.CustomerAgingService customerAgingService;
+
     @GetMapping("/page")
     @Operation(summary = "获得客户对账单分页")
     @PreAuthorize("@ss.hasPermission('lunaerp:finance:customer-reconciliation:query')")
@@ -129,6 +132,20 @@ public class CustomerStatementController {
             @RequestParam(value = "id", required = false) Long queryId) {
         Long id = pathId != null ? pathId : queryId;
         return success(customerStatementService.getStatementPrintData(id));
+    }
+
+    @GetMapping({"/aging/summary", "/lunaerp/finance/aging/summary"})
+    @Operation(summary = "获得客户 FIFO 账龄汇总（按客户一行）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:customer-reconciliation:query')")
+    public CommonResult<java.util.List<CustomerAgingSummaryRespVO>> getAgingSummary(@Valid CustomerAgingSummaryReqVO reqVO) {
+        return success(customerAgingService.getAgingSummary(reqVO));
+    }
+
+    @GetMapping({"/aging/detail", "/lunaerp/finance/aging/detail"})
+    @Operation(summary = "获得客户 FIFO 账龄未核销明细分录下钻")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:customer-reconciliation:query')")
+    public CommonResult<java.util.List<CustomerAgingDetailRespVO>> getAgingDetail(@Valid CustomerAgingDetailReqVO reqVO) {
+        return success(customerAgingService.getAgingDetail(reqVO));
     }
 
 }
