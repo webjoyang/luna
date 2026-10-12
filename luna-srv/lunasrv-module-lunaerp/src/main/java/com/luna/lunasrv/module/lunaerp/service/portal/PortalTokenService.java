@@ -48,4 +48,22 @@ public interface PortalTokenService {
      */
     boolean renewToken(String token);
 
+    /**
+     * 获取并校验客户门户令牌
+     *
+     * @param token 门户令牌
+     * @return 令牌元数据 DTO；若不存在或已过期则返回 null
+     */
+    PortalTokenDTO getPortalToken(String token);
+
+    /**
+     * 校验客户门户令牌（getPortalToken 别名）
+     *
+     * @param token 门户令牌
+     * @return 令牌元数据 DTO；若不存在或已过期则返回 null
+     */
+    default PortalTokenDTO validateToken(String token) {
+        return getPortalToken(token);
+    }
+
 }

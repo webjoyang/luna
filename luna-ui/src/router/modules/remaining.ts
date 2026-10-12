@@ -941,6 +941,76 @@ const remainingRouter: AppRouteRecordRaw[] = [
       noTagsView: true,
       title: '布票扫码报工'
     }
+  },
+  {
+    path: '/portal/shipments',
+    component: () => import('@/views/portal/shipment/list.vue'),
+    name: 'PortalShipmentList',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '发货单'
+    }
+  },
+  {
+    path: '/portal/shipment/:id',
+    component: () => import('@/views/portal/shipment/detail.vue'),
+    name: 'PortalShipmentDetail',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '发货单详情'
+    }
+  },
+  {
+    path: '/portal/shipment',
+    component: () => import('@/views/portal/shipment/detail.vue'),
+    name: 'PortalShipmentQrDetail',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '发货单详情'
+    }
+  },
+  {
+    path: '/portal/statements',
+    component: () => import('@/views/portal/statement/list.vue'),
+    name: 'PortalStatementList',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '对账单'
+    }
+  },
+  {
+    path: '/portal/statement/:id',
+    component: () => import('@/views/portal/statement/detail.vue'),
+    name: 'PortalStatementDetail',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '对账单详情'
+    }
+  },
+  {
+    path: '/portal/statement',
+    component: () => import('@/views/portal/statement/detail.vue'),
+    name: 'PortalStatementQrDetail',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '对账单详情'
+    }
+  },
+  {
+    path: '/portal/invalid',
+    component: () => import('@/views/portal/invalid.vue'),
+    name: 'PortalInvalid',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '链接已失效'
+    }
   }
 ]
 
