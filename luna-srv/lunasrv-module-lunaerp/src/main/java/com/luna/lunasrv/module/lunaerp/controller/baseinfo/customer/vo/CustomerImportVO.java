@@ -72,6 +72,22 @@ public class CustomerImportVO {
     @Schema(description = "英文地址")
     private String addressEn;
 
+    @ExcelProperty("开票抬头")
+    @Schema(description = "开票抬头")
+    private String invoiceTitle;
+
+    @ExcelProperty("开票地址")
+    @Schema(description = "开票地址")
+    private String invoiceAddress;
+
+    @ExcelProperty("开户银行")
+    @Schema(description = "开户银行")
+    private String bankName;
+
+    @ExcelProperty("开户行账号")
+    @Schema(description = "开户行账号")
+    private String bankAccountNo;
+
     @ExcelProperty("备注")
     @Schema(description = "备注")
     private String remark;
