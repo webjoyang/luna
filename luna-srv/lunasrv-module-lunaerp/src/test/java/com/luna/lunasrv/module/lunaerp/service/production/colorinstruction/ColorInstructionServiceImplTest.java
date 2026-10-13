@@ -1638,15 +1638,9 @@ public class ColorInstructionServiceImplTest {
             return 1;
         }).when(colorInstructionColorMapper).insert(any(ColorInstructionColorDO.class));
 
-        // 模拟全量查询颜色行用于重排
-        ColorInstructionColorDO newlyClonedRow = new ColorInstructionColorDO();
-        newlyClonedRow.setId(12L);
-        newlyClonedRow.setInstructionId(100L);
-        newlyClonedRow.setCustomerColorNo("C01");
-        newlyClonedRow.setRound(2);
-
+        // 模拟全量查询存量颜色行用于重排（插入前库内仅有旧行）
         when(colorInstructionColorMapper.selectListByInstructionId(100L))
-                .thenReturn(List.of(oldRow, newlyClonedRow));
+                .thenReturn(new java.util.ArrayList<>(List.of(oldRow)));
 
         colorInstructionService.rejectRestrikeColorLine(11L, "颜色偏深，需调浅半度");
 
@@ -1664,8 +1658,15 @@ public class ColorInstructionServiceImplTest {
         assertEquals(3, cloned.getCopies());
         assertEquals(2, cloned.getRound(), "round 应当自增为 旧行 round + 1 = 2");
         assertEquals("PENDING", cloned.getStatus());
+        assertEquals(1, cloned.getLineNo(), "最新轮应当排在前面并赋 lineNo = 1");
         assertNull(cloned.getSamplePhotos(), "samplePhotos 必须不继承");
         assertNull(cloned.getRejectReason(), "克隆新行不能继承驳回原因");
+
+        // 验证旧行被更新为 lineNo = 2
+        ArgumentCaptor<ColorInstructionColorDO> updateOldCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper).updateById(updateOldCaptor.capture());
+        assertEquals(11L, updateOldCaptor.getValue().getId());
+        assertEquals(2, updateOldCaptor.getValue().getLineNo(), "旧行应被重排为 lineNo = 2");
 
         // 2. 验证主单触发便利规则 PENDING -> IN_PROGRESS
         verify(colorInstructionMapper).update(any(), any());
@@ -1698,14 +1699,9 @@ public class ColorInstructionServiceImplTest {
             return 1;
         }).when(colorInstructionColorMapper).insert(any(ColorInstructionColorDO.class));
 
-        ColorInstructionColorDO newlyClonedRow = new ColorInstructionColorDO();
-        newlyClonedRow.setId(12L);
-        newlyClonedRow.setInstructionId(100L);
-        newlyClonedRow.setCustomerColorNo("C01");
-        newlyClonedRow.setRound(2);
-
+        // 插入前库内仅有旧行
         when(colorInstructionColorMapper.selectListByInstructionId(100L))
-                .thenReturn(List.of(oldRow, newlyClonedRow));
+                .thenReturn(new java.util.ArrayList<>(List.of(oldRow)));
 
         colorInstructionService.rejectRestrikeColorLine(11L, "对色室二次复核偏红，驳回重打");
 
@@ -1714,6 +1710,7 @@ public class ColorInstructionServiceImplTest {
         ColorInstructionColorDO cloned = insertCaptor.getValue();
         assertEquals(2, cloned.getRound());
         assertEquals("PENDING", cloned.getStatus());
+        assertEquals(1, cloned.getLineNo());
     }
 
     @Test
@@ -1747,18 +1744,21 @@ public class ColorInstructionServiceImplTest {
         assertNotNull(startLog, "startColorInstruction 必须标注 @LogRecord");
         assertEquals("COLOR_INSTRUCTION", startLog.type());
         assertEquals("START", startLog.subType());
+        assertEquals("{{#id}}", startLog.bizNo());
 
         var approveMethod = ColorInstructionServiceImpl.class.getMethod("approveColorLine", Long.class);
         var approveLog = approveMethod.getAnnotation(com.mzt.logapi.starter.annotation.LogRecord.class);
         assertNotNull(approveLog, "approveColorLine 必须标注 @LogRecord");
         assertEquals("COLOR_INSTRUCTION", approveLog.type());
         assertEquals("APPROVE_LINE", approveLog.subType());
+        assertEquals("{{#orderId}}", approveLog.bizNo());
 
         var rejectMethod = ColorInstructionServiceImpl.class.getMethod("rejectRestrikeColorLine", Long.class, String.class);
         var rejectLog = rejectMethod.getAnnotation(com.mzt.logapi.starter.annotation.LogRecord.class);
         assertNotNull(rejectLog, "rejectRestrikeColorLine 必须标注 @LogRecord");
         assertEquals("COLOR_INSTRUCTION", rejectLog.type());
         assertEquals("REJECT_RESTRIKE_LINE", rejectLog.subType());
+        assertEquals("{{#orderId}}", rejectLog.bizNo());
     }
 
 }

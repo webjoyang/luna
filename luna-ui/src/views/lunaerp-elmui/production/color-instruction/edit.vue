@@ -16,7 +16,7 @@
         <template #extra>
           <div class="flex items-center gap-2">
             <el-button
-              v-if="formData.id && formData.status === 'PENDING'"
+              v-if="!isViewMode && formData.id && formData.status === 'PENDING'"
               type="success"
               plain
               :loading="starting"
@@ -469,8 +469,6 @@ const submitting = ref(false)
 const starting = ref(false)
 const nextNoLoading = ref(false)
 
-const canDoLineAction = computed(() => formData.status === 'PENDING' || formData.status === 'IN_PROGRESS')
-
 const id = computed(() => {
   const val = route.params.id
   return val ? Number(val) : undefined
@@ -487,6 +485,8 @@ const isViewMode = computed(() => {
   }
   return false
 })
+
+const canDoLineAction = computed(() => !isViewMode.value && (formData.status === 'PENDING' || formData.status === 'IN_PROGRESS'))
 
 // 表单数据
 const formData = reactive<ColorInstructionVO>({
@@ -696,14 +696,23 @@ const getStatusLabel = (status?: string) => {
   return status || '-'
 }
 
-const tableRowClassName = ({ row }: { row: ColorInstructionColorVO }) => {
+const tableRowClassName = ({ row, rowIndex }: { row: ColorInstructionColorVO; rowIndex: number }) => {
+  const classes: string[] = []
   if (row.status === 'REJECTED') {
-    return 'row-rejected'
+    classes.push('row-rejected')
+  } else if (isRowFrozen(row)) {
+    classes.push('row-frozen')
   }
-  if (isRowFrozen(row)) {
-    return 'row-frozen'
+  // 色组视觉分割：当当前行客户色号与上一行不同时，增加组分割线
+  if (
+    rowIndex > 0 &&
+    formData.colors &&
+    formData.colors[rowIndex]?.customerColorNo &&
+    formData.colors[rowIndex]?.customerColorNo !== formData.colors[rowIndex - 1]?.customerColorNo
+  ) {
+    classes.push('row-group-start')
   }
-  return ''
+  return classes.join(' ')
 }
 
 const deletedColorIds = ref<number[]>([])
@@ -929,10 +938,23 @@ onMounted(() => {
 }
 :deep(.row-rejected) {
   background-color: var(--el-fill-color-lighter) !important;
-  opacity: 0.85;
+  opacity: 0.75;
 }
 :deep(.row-rejected td) {
   background-color: var(--el-fill-color-lighter) !important;
+}
+:deep(.row-rejected input),
+:deep(.row-rejected .el-input__inner),
+:deep(.row-rejected .el-select__selected-item),
+:deep(.row-rejected span) {
+  text-decoration: line-through;
+  color: var(--el-text-color-placeholder) !important;
+}
+:deep(.row-rejected .el-tag span) {
+  text-decoration: none !important;
+}
+:deep(.row-group-start td) {
+  border-top: 2px solid var(--el-border-color) !important;
 }
 :deep(.line-through-input input),
 :deep(.line-through-input .el-input__inner) {

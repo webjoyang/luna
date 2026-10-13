@@ -34,6 +34,9 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.Customer
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 
+import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionLineStatusEnum;
+import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionStatusEnum;
+
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.framework.common.util.collection.CollectionUtils.convertList;
@@ -353,17 +356,17 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
             throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
         }
         // 2. 状态守卫：仅 PENDING 状态允许开始打色
-        if (!"PENDING".equals(order.getStatus())) {
+        if (!ColorInstructionStatusEnum.PENDING.getValue().equals(order.getStatus())) {
             throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
         }
 
         // 3. 条件更新防并发（带 status='PENDING' AND tenant_id=? AND deleted=0）
         ColorInstructionDO updateDO = new ColorInstructionDO();
-        updateDO.setStatus("IN_PROGRESS");
+        updateDO.setStatus(ColorInstructionStatusEnum.IN_PROGRESS.getValue());
         int updated = colorInstructionMapper.update(updateDO,
                 new LambdaUpdateWrapper<ColorInstructionDO>()
                         .eq(ColorInstructionDO::getId, id)
-                        .eq(ColorInstructionDO::getStatus, "PENDING"));
+                        .eq(ColorInstructionDO::getStatus, ColorInstructionStatusEnum.PENDING.getValue()));
         if (updated == 0) {
             throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
         }
@@ -371,11 +374,9 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    @LogRecord(type = "COLOR_INSTRUCTION", subType = "APPROVE_LINE", bizNo = "{{#lineId}}",
-            success = "通过打色行【{{#customerColorNo}}】")
-    public void approveColorLine(Long lineId) {
+    private record ColorLineAndOrder(ColorInstructionColorDO line, ColorInstructionDO order) {}
+
+    private ColorLineAndOrder validateAndGetLineAndOrder(Long lineId) {
         if (lineId == null) {
             throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
         }
@@ -384,28 +385,39 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         if (color == null) {
             throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
         }
-
         // 2. 主单校验：存在性与状态守卫（须为 PENDING 或 IN_PROGRESS）
         ColorInstructionDO order = colorInstructionMapper.selectById(color.getInstructionId());
         if (order == null) {
             throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
         }
-        if (!"PENDING".equals(order.getStatus()) && !"IN_PROGRESS".equals(order.getStatus())) {
+        if (!ColorInstructionStatusEnum.PENDING.getValue().equals(order.getStatus())
+                && !ColorInstructionStatusEnum.IN_PROGRESS.getValue().equals(order.getStatus())) {
             throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
         }
+        return new ColorLineAndOrder(color, order);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "COLOR_INSTRUCTION", subType = "APPROVE_LINE", bizNo = "{{#orderId}}",
+            success = "通过打色行【{{#customerColorNo}}】")
+    public void approveColorLine(Long lineId) {
+        ColorLineAndOrder pair = validateAndGetLineAndOrder(lineId);
+        ColorInstructionColorDO color = pair.line();
+        ColorInstructionDO order = pair.order();
 
         // 3. 行状态守卫：仅 PENDING 行允许通过
-        if (!"PENDING".equals(color.getStatus())) {
+        if (!ColorInstructionLineStatusEnum.PENDING.getValue().equals(color.getStatus())) {
             throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
         }
 
         // 4. 条件更新行状态 PENDING -> APPROVED
         ColorInstructionColorDO updateColor = new ColorInstructionColorDO();
-        updateColor.setStatus("APPROVED");
+        updateColor.setStatus(ColorInstructionLineStatusEnum.APPROVED.getValue());
         int updated = colorInstructionColorMapper.update(updateColor,
                 new LambdaUpdateWrapper<ColorInstructionColorDO>()
                         .eq(ColorInstructionColorDO::getId, lineId)
-                        .eq(ColorInstructionColorDO::getStatus, "PENDING"));
+                        .eq(ColorInstructionColorDO::getStatus, ColorInstructionLineStatusEnum.PENDING.getValue()));
         if (updated == 0) {
             throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
         }
@@ -413,6 +425,7 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         // 5. 便利规则：单据仍 PENDING 时自动转 IN_PROGRESS（条件更新）
         cascadeOrderPendingToInProgress(order);
 
+        LogRecordContext.putVariable("orderId", order.getId());
         LogRecordContext.putVariable("customerColorNo", color.getCustomerColorNo());
         LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
         LogRecordContext.putVariable("colorName", color.getColorName());
@@ -420,48 +433,38 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @LogRecord(type = "COLOR_INSTRUCTION", subType = "REJECT_RESTRIKE_LINE", bizNo = "{{#lineId}}",
+    @LogRecord(type = "COLOR_INSTRUCTION", subType = "REJECT_RESTRIKE_LINE", bizNo = "{{#orderId}}",
             success = "驳回重打打色行【{{#customerColorNo}}】，生成第{{#newRound}}轮")
     public void rejectRestrikeColorLine(Long lineId, String rejectReason) {
-        if (lineId == null) {
-            throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
-        }
-        // 1. 颜色行存在性校验
-        ColorInstructionColorDO oldColor = colorInstructionColorMapper.selectById(lineId);
-        if (oldColor == null) {
-            throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
-        }
-
-        // 2. 主单校验：存在性与状态守卫（须为 PENDING 或 IN_PROGRESS）
-        ColorInstructionDO order = colorInstructionMapper.selectById(oldColor.getInstructionId());
-        if (order == null) {
-            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
-        }
-        if (!"PENDING".equals(order.getStatus()) && !"IN_PROGRESS".equals(order.getStatus())) {
-            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
-        }
+        ColorLineAndOrder pair = validateAndGetLineAndOrder(lineId);
+        ColorInstructionColorDO oldColor = pair.line();
+        ColorInstructionDO order = pair.order();
 
         // 3. 行状态守卫：
         // REJECTED 行不可再"驳回重打"（报 1_030_032_006 行状态不允许 / 行已冻结）
-        if ("REJECTED".equals(oldColor.getStatus())) {
+        if (ColorInstructionLineStatusEnum.REJECTED.getValue().equals(oldColor.getStatus())) {
             throw exception(COLOR_INSTRUCTION_LINE_FROZEN);
         }
         // 仅 PENDING 或 APPROVED 状态允许驳回重打
-        if (!"PENDING".equals(oldColor.getStatus()) && !"APPROVED".equals(oldColor.getStatus())) {
+        if (!ColorInstructionLineStatusEnum.PENDING.getValue().equals(oldColor.getStatus())
+                && !ColorInstructionLineStatusEnum.APPROVED.getValue().equals(oldColor.getStatus())) {
             throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
         }
 
         // 4. 条件更新旧行置 REJECTED 冻结 + 记录 rejectReason
         ColorInstructionColorDO updateOld = new ColorInstructionColorDO();
-        updateOld.setStatus("REJECTED");
+        updateOld.setStatus(ColorInstructionLineStatusEnum.REJECTED.getValue());
         updateOld.setRejectReason(rejectReason != null ? rejectReason.trim() : null);
         int updated = colorInstructionColorMapper.update(updateOld,
                 new LambdaUpdateWrapper<ColorInstructionColorDO>()
                         .eq(ColorInstructionColorDO::getId, lineId)
-                        .in(ColorInstructionColorDO::getStatus, List.of("PENDING", "APPROVED")));
+                        .in(ColorInstructionColorDO::getStatus, List.of(
+                                ColorInstructionLineStatusEnum.PENDING.getValue(),
+                                ColorInstructionLineStatusEnum.APPROVED.getValue()
+                        )));
         if (updated == 0) {
             ColorInstructionColorDO current = colorInstructionColorMapper.selectById(lineId);
-            if (current != null && "REJECTED".equals(current.getStatus())) {
+            if (current != null && ColorInstructionLineStatusEnum.REJECTED.getValue().equals(current.getStatus())) {
                 throw exception(COLOR_INSTRUCTION_LINE_FROZEN);
             }
             throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
@@ -484,7 +487,7 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         cloned.setColorCardRef(oldColor.getColorCardRef());
         cloned.setCopies(oldColor.getCopies());
         cloned.setRound(newRound);
-        cloned.setStatus("PENDING");
+        cloned.setStatus(ColorInstructionLineStatusEnum.PENDING.getValue());
         // samplePhotos 不继承，rejectReason、remark 不继承
         cloned.setSamplePhotos(null);
         cloned.setRejectReason(null);
@@ -496,6 +499,7 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         // 7. 便利规则：单据仍 PENDING 时自动转 IN_PROGRESS（条件更新）
         cascadeOrderPendingToInProgress(order);
 
+        LogRecordContext.putVariable("orderId", order.getId());
         LogRecordContext.putVariable("customerColorNo", oldColor.getCustomerColorNo());
         LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
         LogRecordContext.putVariable("newRound", newRound);
@@ -503,29 +507,35 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
     }
 
     private void cascadeOrderPendingToInProgress(ColorInstructionDO order) {
-        if ("PENDING".equals(order.getStatus())) {
+        if (ColorInstructionStatusEnum.PENDING.getValue().equals(order.getStatus())) {
             ColorInstructionDO updateOrder = new ColorInstructionDO();
-            updateOrder.setStatus("IN_PROGRESS");
+            updateOrder.setStatus(ColorInstructionStatusEnum.IN_PROGRESS.getValue());
             colorInstructionMapper.update(updateOrder,
                     new LambdaUpdateWrapper<ColorInstructionDO>()
                             .eq(ColorInstructionDO::getId, order.getId())
-                            .eq(ColorInstructionDO::getStatus, "PENDING"));
+                            .eq(ColorInstructionDO::getStatus, ColorInstructionStatusEnum.PENDING.getValue()));
         }
     }
 
-    private void insertAndReorderColorLines(Long instructionId, ColorInstructionColorDO newLine) {
-        List<ColorInstructionColorDO> existingRows = colorInstructionColorMapper.selectListByInstructionId(instructionId);
-        List<ColorInstructionColorDO> allRows = new ArrayList<>(existingRows != null ? existingRows : Collections.emptyList());
-        if (newLine != null) {
-            allRows.add(newLine);
-        }
-        if (allRows.isEmpty()) {
+    /**
+     * 按客户色号分组（同色号多轮相邻）、最新轮在前（round 降序）、原行号在前排序
+     *
+     * @param lines 待排序颜色行集合
+     * @param preferredColorNoOrder 优先的色号出现次序（可为空，为空则依 lines 自身出现顺序）
+     */
+    private static void sortColorLines(List<ColorInstructionColorDO> lines, Collection<String> preferredColorNoOrder) {
+        if (lines == null || lines.size() <= 1) {
             return;
         }
-
-        // 保持原有的色号组出现顺序
         LinkedHashSet<String> colorNoGroupOrder = new LinkedHashSet<>();
-        for (ColorInstructionColorDO row : allRows) {
+        if (preferredColorNoOrder != null) {
+            for (String colorNo : preferredColorNoOrder) {
+                if (StringUtils.hasText(colorNo)) {
+                    colorNoGroupOrder.add(colorNo.trim());
+                }
+            }
+        }
+        for (ColorInstructionColorDO row : lines) {
             if (StringUtils.hasText(row.getCustomerColorNo())) {
                 colorNoGroupOrder.add(row.getCustomerColorNo().trim());
             }
@@ -537,7 +547,7 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
             groupRankMap.put(colorNo, rank++);
         }
 
-        allRows.sort((a, b) -> {
+        lines.sort((a, b) -> {
             String noA = a.getCustomerColorNo() != null ? a.getCustomerColorNo().trim() : "";
             String noB = b.getCustomerColorNo() != null ? b.getCustomerColorNo().trim() : "";
             int rankA = groupRankMap.getOrDefault(noA, Integer.MAX_VALUE);
@@ -554,6 +564,19 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
             int lineNoB = b.getLineNo() != null ? b.getLineNo() : Integer.MAX_VALUE;
             return Integer.compare(lineNoA, lineNoB);
         });
+    }
+
+    private void insertAndReorderColorLines(Long instructionId, ColorInstructionColorDO newLine) {
+        List<ColorInstructionColorDO> existingRows = colorInstructionColorMapper.selectListByInstructionId(instructionId);
+        List<ColorInstructionColorDO> allRows = new ArrayList<>(existingRows != null ? existingRows : Collections.emptyList());
+        if (newLine != null) {
+            allRows.add(newLine);
+        }
+        if (allRows.isEmpty()) {
+            return;
+        }
+
+        sortColorLines(allRows, Collections.emptyList());
 
         int newLineNo = 1;
         for (ColorInstructionColorDO row : allRows) {
@@ -673,22 +696,16 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
 
         // 6. 收集所有存活行，进行 lineNo 重排
         // 按 customerColorNo 分组、同色号多轮相邻、最新轮在前、从 1 连续编号
-        LinkedHashSet<String> colorNoGroupOrder = new LinkedHashSet<>();
+        List<String> preferredColorNoOrder = new ArrayList<>();
         for (ColorInstructionColorSaveVO vo : activeSubmitted) {
             if (StringUtils.hasText(vo.getCustomerColorNo())) {
-                colorNoGroupOrder.add(vo.getCustomerColorNo().trim());
+                preferredColorNoOrder.add(vo.getCustomerColorNo().trim());
             }
         }
         for (ColorInstructionColorDO missingFrozen : retainedFrozenMissingRows) {
             if (StringUtils.hasText(missingFrozen.getCustomerColorNo())) {
-                colorNoGroupOrder.add(missingFrozen.getCustomerColorNo().trim());
+                preferredColorNoOrder.add(missingFrozen.getCustomerColorNo().trim());
             }
-        }
-
-        Map<String, Integer> groupRankMap = new HashMap<>();
-        int rank = 0;
-        for (String colorNo : colorNoGroupOrder) {
-            groupRankMap.put(colorNo, rank++);
         }
 
         List<ColorInstructionColorDO> survivingList = new ArrayList<>();
@@ -697,7 +714,7 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
             Long id = entry.getKey();
             ColorInstructionColorSaveVO vo = entry.getValue();
             ColorInstructionColorDO dbRow = dbColorMap.get(id);
-            if ("PENDING".equals(dbRow.getStatus())) {
+            if (ColorInstructionLineStatusEnum.PENDING.getValue().equals(dbRow.getStatus())) {
                 ColorInstructionColorDO updatedDO = BeanUtils.toBean(vo, ColorInstructionColorDO.class);
                 updatedDO.setId(id);
                 updatedDO.setInstructionId(instructionId);
@@ -710,23 +727,7 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         }
         survivingList.addAll(retainedFrozenMissingRows);
 
-        survivingList.sort((a, b) -> {
-            String noA = a.getCustomerColorNo() != null ? a.getCustomerColorNo().trim() : "";
-            String noB = b.getCustomerColorNo() != null ? b.getCustomerColorNo().trim() : "";
-            int rankA = groupRankMap.getOrDefault(noA, Integer.MAX_VALUE);
-            int rankB = groupRankMap.getOrDefault(noB, Integer.MAX_VALUE);
-            if (rankA != rankB) {
-                return Integer.compare(rankA, rankB);
-            }
-            int roundA = a.getRound() != null ? a.getRound() : 1;
-            int roundB = b.getRound() != null ? b.getRound() : 1;
-            if (roundA != roundB) {
-                return Integer.compare(roundB, roundA); // 最新轮在前
-            }
-            int lineNoA = a.getLineNo() != null ? a.getLineNo() : Integer.MAX_VALUE;
-            int lineNoB = b.getLineNo() != null ? b.getLineNo() : Integer.MAX_VALUE;
-            return Integer.compare(lineNoA, lineNoB);
-        });
+        sortColorLines(survivingList, preferredColorNoOrder);
 
         int newLineNo = 1;
         for (ColorInstructionColorDO colorDO : survivingList) {

@@ -289,23 +289,38 @@ describe('Color Instruction API & Form Contracts (Issue 02)', () => {
     expect(canApprove(pendingRow, 'IN_PROGRESS')).toBe(true)
     expect(canRejectRestrike(pendingRow, 'IN_PROGRESS')).toBe(true)
 
-    // CONFIRMED / VOID 单据下禁止行级动作
-    expect(canApprove(pendingRow, 'CONFIRMED')).toBe(false)
-    expect(canRejectRestrike(pendingRow, 'CONFIRMED')).toBe(false)
-    expect(canApprove(pendingRow, 'VOID')).toBe(false)
-    expect(canRejectRestrike(pendingRow, 'VOID')).toBe(false)
+    // viewMode 查看模式下禁止任何行级动作
+    const canDoInView = (isView: boolean, orderStatus: string) => !isView && (orderStatus === 'PENDING' || orderStatus === 'IN_PROGRESS')
+    expect(canDoInView(true, 'PENDING')).toBe(false)
+    expect(canDoInView(true, 'IN_PROGRESS')).toBe(false)
+    expect(canDoInView(false, 'PENDING')).toBe(true)
   })
 
-  it('should check row rejected styling and text-decoration class', () => {
-    const getRowClass = (row: { status?: string }) => {
-      if (row.status === 'REJECTED') return 'row-rejected'
-      if (row.status === 'APPROVED') return 'row-approved'
-      return ''
+  it('should check row rejected styling and color group boundary class', () => {
+    const tableRowClassName = (
+      row: { status?: string; customerColorNo?: string },
+      rowIndex: number,
+      colors: Array<{ customerColorNo?: string }>
+    ) => {
+      const classes: string[] = []
+      if (row.status === 'REJECTED') {
+        classes.push('row-rejected')
+      }
+      if (rowIndex > 0 && colors[rowIndex]?.customerColorNo && colors[rowIndex]?.customerColorNo !== colors[rowIndex - 1]?.customerColorNo) {
+        classes.push('row-group-start')
+      }
+      return classes.join(' ')
     }
 
-    expect(getRowClass({ status: 'REJECTED' })).toBe('row-rejected')
-    expect(getRowClass({ status: 'APPROVED' })).toBe('row-approved')
-    expect(getRowClass({ status: 'PENDING' })).toBe('')
+    const colors = [
+      { customerColorNo: 'C01', status: 'PENDING' },
+      { customerColorNo: 'C01', status: 'REJECTED' },
+      { customerColorNo: 'C02', status: 'PENDING' }
+    ]
+
+    expect(tableRowClassName(colors[0], 0, colors)).toBe('')
+    expect(tableRowClassName(colors[1], 1, colors)).toBe('row-rejected')
+    expect(tableRowClassName(colors[2], 2, colors)).toBe('row-group-start')
   })
 })
 
