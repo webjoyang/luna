@@ -2,9 +2,7 @@ package com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
-import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPageReqVO;
-import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionRespVO;
-import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.*;
 import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -72,4 +70,29 @@ public class ColorInstructionController {
         return success(true);
     }
 
+    @PutMapping("/start")
+    @Operation(summary = "开始打色（PENDING -> IN_PROGRESS）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:update')")
+    public CommonResult<Boolean> startColorInstruction(@Valid @RequestBody ColorInstructionStartReqVO reqVO) {
+        colorInstructionService.startColorInstruction(reqVO.getId());
+        return success(true);
+    }
+
+    @PutMapping("/color/approve")
+    @Operation(summary = "通过打色颜色行（PENDING -> APPROVED）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:confirm')")
+    public CommonResult<Boolean> approveColorLine(@Valid @RequestBody ColorInstructionColorApproveReqVO reqVO) {
+        colorInstructionService.approveColorLine(reqVO.getId());
+        return success(true);
+    }
+
+    @PutMapping("/color/reject-restrike")
+    @Operation(summary = "驳回重打打色颜色行（PENDING/APPROVED -> REJECTED + 克隆新行）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:confirm')")
+    public CommonResult<Boolean> rejectRestrikeColorLine(@Valid @RequestBody ColorInstructionColorRejectReqVO reqVO) {
+        colorInstructionService.rejectRestrikeColorLine(reqVO.getId(), reqVO.getRejectReason());
+        return success(true);
+    }
+
 }
+

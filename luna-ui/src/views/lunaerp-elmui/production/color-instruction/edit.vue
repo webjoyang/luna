@@ -15,6 +15,16 @@
         </template>
         <template #extra>
           <div class="flex items-center gap-2">
+            <el-button
+              v-if="formData.id && formData.status === 'PENDING'"
+              type="success"
+              plain
+              :loading="starting"
+              @click="handleStartInstruction"
+              v-hasPermi="['lunaerp:production:color-instruction:update']"
+            >
+              <Icon icon="ep:video-play" class="mr-1" /> 开始打色
+            </el-button>
             <el-button v-if="!isViewMode" type="primary" :loading="submitting" @click="handleSave">
               <Icon icon="ep:check" class="mr-1" /> 保存
             </el-button>
@@ -217,9 +227,11 @@
           stripe
         >
           <el-table-column label="#" type="index" width="50" align="center" />
-          <el-table-column label="轮次" width="65" align="center">
+          <el-table-column label="轮次" width="70" align="center">
             <template #default="{ row }">
-              <el-tag size="small" type="info">R{{ row.round || 1 }}</el-tag>
+              <el-tag size="small" :type="row.status === 'REJECTED' ? 'danger' : 'info'">
+                R{{ row.round || 1 }}
+              </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="85" align="center">
@@ -231,12 +243,22 @@
           </el-table-column>
           <el-table-column label="客户色号 *" min-width="120">
             <template #default="{ row }">
-              <el-input v-model="row.customerColorNo" :disabled="isViewMode || isRowFrozen(row)" placeholder="如 C01" />
+              <el-input
+                v-model="row.customerColorNo"
+                :disabled="isViewMode || isRowFrozen(row)"
+                :class="{ 'line-through-input': row.status === 'REJECTED' }"
+                placeholder="如 C01"
+              />
             </template>
           </el-table-column>
           <el-table-column label="颜色名称 *" min-width="120">
             <template #default="{ row }">
-              <el-input v-model="row.colorName" :disabled="isViewMode || isRowFrozen(row)" placeholder="如 藏青" />
+              <el-input
+                v-model="row.colorName"
+                :disabled="isViewMode || isRowFrozen(row)"
+                :class="{ 'line-through-input': row.status === 'REJECTED' }"
+                placeholder="如 藏青"
+              />
             </template>
           </el-table-column>
           <el-table-column label="厂内色号" min-width="100">
@@ -315,46 +337,105 @@
               <el-input v-model="row.remark" :disabled="isViewMode || isRowFrozen(row)" placeholder="备注说明" />
             </template>
           </el-table-column>
-          <el-table-column v-if="!isViewMode" label="操作" width="130" align="center" fixed="right">
+          <el-table-column label="操作" width="220" align="center" fixed="right">
             <template #default="{ row, $index }">
-              <div class="flex items-center justify-center gap-1">
+              <div class="flex items-center justify-center gap-1 flex-wrap">
+                <!-- 行状态流转动作（针对已持久化行） -->
                 <el-button
+                  v-if="row.id && row.status === 'PENDING' && canDoLineAction"
                   link
-                  type="primary"
+                  type="success"
                   size="small"
-                  :disabled="$index === 0"
-                  @click="moveColorLine($index, -1)"
-                  title="上移"
+                  v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+                  @click="handleApproveLine(row)"
                 >
-                  <Icon icon="ep:top" />
+                  通过
                 </el-button>
                 <el-button
+                  v-if="row.id && (row.status === 'PENDING' || row.status === 'APPROVED') && canDoLineAction"
                   link
-                  type="primary"
+                  type="warning"
                   size="small"
-                  :disabled="$index === formData.colors.length - 1"
-                  @click="moveColorLine($index, 1)"
-                  title="下移"
+                  v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+                  @click="openRejectDialog(row)"
                 >
-                  <Icon icon="ep:bottom" />
+                  驳回重打
                 </el-button>
-                <el-button
-                  v-if="!isRowFrozen(row)"
-                  type="danger"
-                  link
-                  size="small"
-                  @click="removeColorLine($index)"
-                  title="删除"
-                >
-                  <Icon icon="ep:delete" />
-                </el-button>
-                <span v-else class="text-gray-400 text-xs select-none">已冻结</span>
+                <span v-if="row.status === 'REJECTED'" class="text-gray-400 text-xs select-none">已驳回</span>
+
+                <!-- 基础编辑动作（仅非查看模式且未冻结行） -->
+                <template v-if="!isViewMode && !isRowFrozen(row)">
+                  <el-button
+                    link
+                    type="primary"
+                    size="small"
+                    :disabled="$index === 0"
+                    @click="moveColorLine($index, -1)"
+                    title="上移"
+                  >
+                    <Icon icon="ep:top" />
+                  </el-button>
+                  <el-button
+                    link
+                    type="primary"
+                    size="small"
+                    :disabled="$index === formData.colors.length - 1"
+                    @click="moveColorLine($index, 1)"
+                    title="下移"
+                  >
+                    <Icon icon="ep:bottom" />
+                  </el-button>
+                  <el-button
+                    type="danger"
+                    link
+                    size="small"
+                    @click="removeColorLine($index)"
+                    title="删除"
+                  >
+                    <Icon icon="ep:delete" />
+                  </el-button>
+                </template>
               </div>
             </template>
           </el-table-column>
         </el-table>
       </el-card>
     </el-form>
+
+    <!-- 驳回重打意见弹窗 -->
+    <el-dialog
+      v-model="rejectDialogVisible"
+      title="驳回重打颜色行"
+      width="480px"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <el-form ref="rejectFormRef" :model="rejectFormData" :rules="rejectFormRules" label-width="90px">
+        <el-form-item label="颜色信息">
+          <span class="font-medium text-gray-700">
+            {{ activeRejectRow?.customerColorNo }} {{ activeRejectRow?.colorName }} (第 {{ activeRejectRow?.round || 1 }} 轮)
+          </span>
+        </el-form-item>
+        <el-form-item label="驳回意见" prop="rejectReason">
+          <el-input
+            v-model="rejectFormData.rejectReason"
+            type="textarea"
+            :rows="3"
+            maxlength="200"
+            show-word-limit
+            placeholder="请输入驳回意见（如：颜色偏深，需调浅半度）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="rejectDialogVisible = false">取消</el-button>
+          <el-button type="danger" :loading="rejectSubmitting" @click="handleConfirmReject">
+            确认驳回并克隆新一轮
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </ContentWrap>
 </template>
 
@@ -385,7 +466,10 @@ const message = useMessage()
 const formRef = ref()
 const loading = ref(false)
 const submitting = ref(false)
+const starting = ref(false)
 const nextNoLoading = ref(false)
+
+const canDoLineAction = computed(() => formData.status === 'PENDING' || formData.status === 'IN_PROGRESS')
 
 const id = computed(() => {
   const val = route.params.id
@@ -613,6 +697,9 @@ const getStatusLabel = (status?: string) => {
 }
 
 const tableRowClassName = ({ row }: { row: ColorInstructionColorVO }) => {
+  if (row.status === 'REJECTED') {
+    return 'row-rejected'
+  }
   if (isRowFrozen(row)) {
     return 'row-frozen'
   }
@@ -722,6 +809,74 @@ const goBack = () => {
   router.push('/production/color-instruction')
 }
 
+// 开始打色（PENDING -> IN_PROGRESS）
+const handleStartInstruction = async () => {
+  if (!formData.id) return
+  try {
+    await message.confirm(`确定将打色指示单【${formData.instructionNo || formData.id}】开始打色（状态转为打色中）吗？`)
+    starting.value = true
+    await ColorInstructionApi.startColorInstruction({ id: formData.id })
+    message.success('已开始打色')
+    await loadData(formData.id)
+  } catch {
+  } finally {
+    starting.value = false
+  }
+}
+
+// 通过颜色行
+const handleApproveLine = async (row: ColorInstructionColorVO) => {
+  if (!row.id) return
+  try {
+    await message.confirm(`确定通过颜色行【${row.customerColorNo} ${row.colorName}】吗？`)
+    await ColorInstructionApi.approveColorLine({ id: row.id })
+    message.success('颜色行已通过')
+    if (formData.id) {
+      await loadData(formData.id)
+    }
+  } catch {}
+}
+
+// 驳回重打弹窗逻辑
+const rejectDialogVisible = ref(false)
+const rejectSubmitting = ref(false)
+const rejectFormRef = ref()
+const activeRejectRow = ref<ColorInstructionColorVO | null>(null)
+const rejectFormData = reactive({
+  rejectReason: ''
+})
+const rejectFormRules = {
+  rejectReason: [{ required: true, message: '请输入驳回意见', trigger: 'blur' }]
+}
+
+const openRejectDialog = (row: ColorInstructionColorVO) => {
+  activeRejectRow.value = row
+  rejectFormData.rejectReason = ''
+  rejectDialogVisible.value = true
+}
+
+const handleConfirmReject = async () => {
+  if (!rejectFormRef.value) return
+  const valid = await rejectFormRef.value.validate()
+  if (!valid) return
+  if (!activeRejectRow.value?.id) return
+
+  rejectSubmitting.value = true
+  try {
+    await ColorInstructionApi.rejectRestrikeColorLine({
+      id: activeRejectRow.value.id,
+      rejectReason: rejectFormData.rejectReason
+    })
+    message.success('已驳回并克隆生成新一轮打色行')
+    rejectDialogVisible.value = false
+    if (formData.id) {
+      await loadData(formData.id)
+    }
+  } finally {
+    rejectSubmitting.value = false
+  }
+}
+
 // 加载已有数据
 const loadData = async (loadId: number) => {
   loading.value = true
@@ -771,5 +926,17 @@ onMounted(() => {
 :deep(.row-frozen) {
   background-color: var(--el-fill-color-light) !important;
   opacity: 0.85;
+}
+:deep(.row-rejected) {
+  background-color: var(--el-fill-color-lighter) !important;
+  opacity: 0.85;
+}
+:deep(.row-rejected td) {
+  background-color: var(--el-fill-color-lighter) !important;
+}
+:deep(.line-through-input input),
+:deep(.line-through-input .el-input__inner) {
+  text-decoration: line-through;
+  color: var(--el-text-color-placeholder) !important;
 }
 </style>

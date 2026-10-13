@@ -2,9 +2,7 @@ package com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
-import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPageReqVO;
-import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionRespVO;
-import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.*;
 import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -107,4 +105,48 @@ public class ColorInstructionControllerTest {
         verify(colorInstructionService).updateColorInstruction(reqVO);
     }
 
+    @Test
+    @DisplayName("Controller开始打色：委托Service并返回成功")
+    void testStartColorInstruction() {
+        ColorInstructionStartReqVO reqVO = new ColorInstructionStartReqVO();
+        reqVO.setId(1024L);
+        doNothing().when(colorInstructionService).startColorInstruction(1024L);
+
+        CommonResult<Boolean> result = colorInstructionController.startColorInstruction(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(colorInstructionService).startColorInstruction(1024L);
+    }
+
+    @Test
+    @DisplayName("Controller通过打色颜色行：委托Service并返回成功")
+    void testApproveColorLine() {
+        ColorInstructionColorApproveReqVO reqVO = new ColorInstructionColorApproveReqVO();
+        reqVO.setId(11L);
+        doNothing().when(colorInstructionService).approveColorLine(11L);
+
+        CommonResult<Boolean> result = colorInstructionController.approveColorLine(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(colorInstructionService).approveColorLine(11L);
+    }
+
+    @Test
+    @DisplayName("Controller驳回重打颜色行：委托Service并返回成功")
+    void testRejectRestrikeColorLine() {
+        ColorInstructionColorRejectReqVO reqVO = new ColorInstructionColorRejectReqVO();
+        reqVO.setId(11L);
+        reqVO.setRejectReason("颜色偏浅，需调深半度");
+        doNothing().when(colorInstructionService).rejectRestrikeColorLine(11L, "颜色偏浅，需调深半度");
+
+        CommonResult<Boolean> result = colorInstructionController.rejectRestrikeColorLine(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(colorInstructionService).rejectRestrikeColorLine(11L, "颜色偏浅，需调深半度");
+    }
+
 }
+

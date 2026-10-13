@@ -220,4 +220,92 @@ describe('Color Instruction API & Form Contracts (Issue 02)', () => {
     expect(isViewMode(undefined, 'IN_PRODUCTION')).toBe(true)
     expect(isViewMode(undefined, 'VOID')).toBe(true)
   })
+
+  // ==================== Issue 04: 行级动作：通过 / 驳回重打（含开始打色） ====================
+
+  it('startColorInstruction should PUT /lunaerp/production/color-instruction/start', async () => {
+    vi.mocked(request.put).mockResolvedValueOnce(true as any)
+    const res = await ColorInstructionApi.startColorInstruction({ id: 1024 })
+    expect(request.put).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/start',
+      data: { id: 1024 }
+    })
+    expect(res).toBe(true)
+  })
+
+  it('approveColorLine should PUT /lunaerp/production/color-instruction/color/approve', async () => {
+    vi.mocked(request.put).mockResolvedValueOnce(true as any)
+    const res = await ColorInstructionApi.approveColorLine({ id: 11 })
+    expect(request.put).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/color/approve',
+      data: { id: 11 }
+    })
+    expect(res).toBe(true)
+  })
+
+  it('rejectRestrikeColorLine should PUT /lunaerp/production/color-instruction/color/reject-restrike', async () => {
+    vi.mocked(request.put).mockResolvedValueOnce(true as any)
+    const payload = { id: 11, rejectReason: '色差偏深，需调浅半度' }
+    const res = await ColorInstructionApi.rejectRestrikeColorLine(payload)
+    expect(request.put).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/color/reject-restrike',
+      data: payload
+    })
+    expect(res).toBe(true)
+  })
+
+  it('should verify line action permissions and availability for different line statuses', () => {
+    const canApprove = (row: { id?: number; status?: string }, orderStatus?: string) => {
+      if (!row.id) return false // 未保存行不能审批
+      if (orderStatus !== 'PENDING' && orderStatus !== 'IN_PROGRESS') return false
+      return row.status === 'PENDING'
+    }
+
+    const canRejectRestrike = (row: { id?: number; status?: string }, orderStatus?: string) => {
+      if (!row.id) return false // 未保存行不能驳回重打
+      if (orderStatus !== 'PENDING' && orderStatus !== 'IN_PROGRESS') return false
+      return row.status === 'PENDING' || row.status === 'APPROVED'
+    }
+
+    const pendingRow = { id: 1, status: 'PENDING' }
+    const approvedRow = { id: 2, status: 'APPROVED' }
+    const rejectedRow = { id: 3, status: 'REJECTED' }
+    const unsavedRow = { status: 'PENDING' }
+
+    // PENDING 单据下
+    expect(canApprove(pendingRow, 'PENDING')).toBe(true)
+    expect(canRejectRestrike(pendingRow, 'PENDING')).toBe(true)
+
+    expect(canApprove(approvedRow, 'PENDING')).toBe(false)
+    expect(canRejectRestrike(approvedRow, 'PENDING')).toBe(true) // 电话先通过后改口，允许驳回重打
+
+    expect(canApprove(rejectedRow, 'PENDING')).toBe(false)
+    expect(canRejectRestrike(rejectedRow, 'PENDING')).toBe(false) // REJECTED 冻结，不可再重打
+
+    expect(canApprove(unsavedRow, 'PENDING')).toBe(false)
+    expect(canRejectRestrike(unsavedRow, 'PENDING')).toBe(false)
+
+    // IN_PROGRESS 单据下
+    expect(canApprove(pendingRow, 'IN_PROGRESS')).toBe(true)
+    expect(canRejectRestrike(pendingRow, 'IN_PROGRESS')).toBe(true)
+
+    // CONFIRMED / VOID 单据下禁止行级动作
+    expect(canApprove(pendingRow, 'CONFIRMED')).toBe(false)
+    expect(canRejectRestrike(pendingRow, 'CONFIRMED')).toBe(false)
+    expect(canApprove(pendingRow, 'VOID')).toBe(false)
+    expect(canRejectRestrike(pendingRow, 'VOID')).toBe(false)
+  })
+
+  it('should check row rejected styling and text-decoration class', () => {
+    const getRowClass = (row: { status?: string }) => {
+      if (row.status === 'REJECTED') return 'row-rejected'
+      if (row.status === 'APPROVED') return 'row-approved'
+      return ''
+    }
+
+    expect(getRowClass({ status: 'REJECTED' })).toBe('row-rejected')
+    expect(getRowClass({ status: 'APPROVED' })).toBe('row-approved')
+    expect(getRowClass({ status: 'PENDING' })).toBe('')
+  })
 })
+

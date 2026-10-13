@@ -57,4 +57,29 @@ public interface ColorInstructionService {
      */
     void updateColorInstruction(ColorInstructionSaveReqVO updateReqVO);
 
+    /**
+     * 开始打色（PENDING -> IN_PROGRESS，条件更新防并发）
+     *
+     * @param id 打色指示单ID
+     */
+    void startColorInstruction(Long id);
+
+    /**
+     * 通过打色颜色行（PENDING -> APPROVED，便利规则级联主单 PENDING -> IN_PROGRESS）
+     *
+     * @param lineId 颜色行ID
+     */
+    void approveColorLine(Long lineId);
+
+    /**
+     * 驳回重打颜色行（PENDING/APPROVED -> REJECTED + 克隆新行 round+1，样布照片不继承，重排 lineNo）
+     *
+     * @param lineId 颜色行ID
+     * @param rejectReason 驳回意见
+     */
+    void rejectRestrikeColorLine(Long lineId, String rejectReason);
+
 }
+
+
+
