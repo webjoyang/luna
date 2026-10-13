@@ -465,7 +465,7 @@
             <el-radio
               v-for="item in ColorInstructionApi.COLOR_INSTRUCTION_CONFIRM_TYPES"
               :key="item.value"
-              :label="item.value"
+              :value="item.value"
             >
               {{ item.label }}
             </el-radio>

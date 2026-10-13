@@ -108,7 +108,7 @@ export const startColorInstruction = (data: { id: number }) => {
   return request.put({ url: '/lunaerp/production/color-instruction/start', data })
 }
 
-// 打色单确认类型常量（内部枚举，不入字典）
+// 打色指示单确认类型常量（内部枚举，不入字典）
 export const COLOR_INSTRUCTION_CONFIRM_TYPES = [
   { value: 'CUSTOMER', label: '客户确认' },
   { value: 'INTERNAL', label: '内部确认' }
@@ -116,8 +116,12 @@ export const COLOR_INSTRUCTION_CONFIRM_TYPES = [
 
 export type ColorInstructionConfirmType = (typeof COLOR_INSTRUCTION_CONFIRM_TYPES)[number]['value']
 
-// 确认打色单 IN_PROGRESS -> CONFIRMED（05 票）
-export const confirmColorInstruction = (data: { id: number; confirmType: string; customerFeedback?: string }) => {
+// 确认打色指示单 IN_PROGRESS -> CONFIRMED（05 票）
+export const confirmColorInstruction = (data: {
+  id: number
+  confirmType: ColorInstructionConfirmType
+  customerFeedback?: string
+}) => {
   return request.put({ url: '/lunaerp/production/color-instruction/confirm', data })
 }
 

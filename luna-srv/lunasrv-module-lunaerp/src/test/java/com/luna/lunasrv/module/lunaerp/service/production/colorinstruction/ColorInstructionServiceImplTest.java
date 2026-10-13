@@ -1773,7 +1773,7 @@ public class ColorInstructionServiceImplTest {
     // ==================== Issue 05: 确认动作与三道守卫 ====================
 
     @Test
-    @DisplayName("确认打色单：单据不存在抛 COLOR_INSTRUCTION_NOT_EXISTS (1_030_032_000)")
+    @DisplayName("确认打色指示单：单据不存在抛 COLOR_INSTRUCTION_NOT_EXISTS (1_030_032_000)")
     void testConfirmColorInstruction_notExists_throwsException() {
         ColorInstructionConfirmReqVO reqVO = new ColorInstructionConfirmReqVO();
         reqVO.setId(999L);
@@ -1787,7 +1787,7 @@ public class ColorInstructionServiceImplTest {
     }
 
     @Test
-    @DisplayName("确认打色单：守卫一——单据非 IN_PROGRESS 状态（PENDING/CONFIRMED重复确认/VOID）抛 COLOR_INSTRUCTION_STATUS_NOT_ALLOWED (1_030_032_002)")
+    @DisplayName("确认打色指示单：守卫一——单据非 IN_PROGRESS 状态（PENDING/CONFIRMED重复确认/VOID）抛 COLOR_INSTRUCTION_STATUS_NOT_ALLOWED (1_030_032_002)")
     void testConfirmColorInstruction_guard1_notInProgress_throwsException() {
         ColorInstructionConfirmReqVO reqVO = new ColorInstructionConfirmReqVO();
         reqVO.setId(100L);
@@ -1825,7 +1825,7 @@ public class ColorInstructionServiceImplTest {
     }
 
     @Test
-    @DisplayName("确认打色单：守卫二——存在 PENDING 行抛 COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET (1_030_032_004)")
+    @DisplayName("确认打色指示单：守卫二——存在 PENDING 行抛 COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET (1_030_032_004)")
     void testConfirmColorInstruction_guard2_hasPendingLine_throwsException() {
         ColorInstructionConfirmReqVO reqVO = new ColorInstructionConfirmReqVO();
         reqVO.setId(100L);
@@ -1852,7 +1852,7 @@ public class ColorInstructionServiceImplTest {
     }
 
     @Test
-    @DisplayName("确认打色单：守卫三——无 APPROVED 行（全部 REJECTED 或无颜色行）抛 COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET (1_030_032_004)")
+    @DisplayName("确认打色指示单：守卫三——无 APPROVED 行（全部 REJECTED 或无颜色行）抛 COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET (1_030_032_004)")
     void testConfirmColorInstruction_guard3_allRejectedNoApproved_throwsException() {
         ColorInstructionConfirmReqVO reqVO = new ColorInstructionConfirmReqVO();
         reqVO.setId(100L);
@@ -1885,7 +1885,7 @@ public class ColorInstructionServiceImplTest {
     }
 
     @Test
-    @DisplayName("确认打色单：confirmType 非法枚举报 COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT (1_030_032_007)")
+    @DisplayName("确认打色指示单：confirmType 非法枚举报 COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT (1_030_032_007)")
     void testConfirmColorInstruction_invalidConfirmType_throwsException() {
         ColorInstructionConfirmReqVO reqVO = new ColorInstructionConfirmReqVO();
         reqVO.setId(100L);
@@ -1907,7 +1907,7 @@ public class ColorInstructionServiceImplTest {
     }
 
     @Test
-    @DisplayName("确认打色单：条件更新防并发覆盖（影响 0 行时抛 1_030_032_002）")
+    @DisplayName("确认打色指示单：条件更新防并发覆盖（影响 0 行时抛 1_030_032_002）")
     void testConfirmColorInstruction_concurrencyZeroRowsUpdated_throwsException() {
         ColorInstructionConfirmReqVO reqVO = new ColorInstructionConfirmReqVO();
         reqVO.setId(100L);
@@ -1932,7 +1932,7 @@ public class ColorInstructionServiceImplTest {
     }
 
     @Test
-    @DisplayName("确认打色单：三道守卫通过，写入 confirmType/customerFeedback/confirmedBy/confirmedAt 四字段，status=CONFIRMED")
+    @DisplayName("确认打色指示单：三道守卫通过，写入 confirmType/customerFeedback/confirmedBy/confirmedAt 四字段，status=CONFIRMED")
     void testConfirmColorInstruction_success_writesFourFieldsAndConfirmed() {
         try {
             Long testUserId = 888L;
@@ -1997,10 +1997,9 @@ public class ColorInstructionServiceImplTest {
         var confirmLog = confirmMethod.getAnnotation(com.mzt.logapi.starter.annotation.LogRecord.class);
         assertNotNull(confirmLog, "confirmColorInstruction 必须标注 @LogRecord");
         assertEquals("COLOR_INSTRUCTION", confirmLog.type());
-        assertEquals("CONFIRMED".equals(confirmLog.subType()) ? "CONFIRMED" : "CONFIRM", confirmLog.subType());
         assertEquals("CONFIRM", confirmLog.subType());
         assertEquals("{{#reqVO.id}}", confirmLog.bizNo());
-        assertEquals("确认打色单 {{#instructionNo}}", confirmLog.success());
+        assertEquals("确认打色指示单 {{#instructionNo}}", confirmLog.success());
     }
 
 }

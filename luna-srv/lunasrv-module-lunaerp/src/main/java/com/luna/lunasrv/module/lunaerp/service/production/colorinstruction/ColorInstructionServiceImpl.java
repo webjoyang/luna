@@ -874,7 +874,7 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     @LogRecord(type = "COLOR_INSTRUCTION", subType = "CONFIRM", bizNo = "{{#reqVO.id}}",
-            success = "确认打色单 {{#instructionNo}}")
+            success = "确认打色指示单 {{#instructionNo}}")
     public void confirmColorInstruction(ColorInstructionConfirmReqVO reqVO) {
         if (reqVO == null || reqVO.getId() == null) {
             throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
