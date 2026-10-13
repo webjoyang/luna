@@ -50,4 +50,11 @@ public interface ColorInstructionService {
      */
     void deleteColorInstruction(Long id);
 
+    /**
+     * 更新打色指示单（差异保存颜色行，含行状态守卫与行号重排）
+     *
+     * @param updateReqVO 更新请求参数
+     */
+    void updateColorInstruction(ColorInstructionSaveReqVO updateReqVO);
+
 }

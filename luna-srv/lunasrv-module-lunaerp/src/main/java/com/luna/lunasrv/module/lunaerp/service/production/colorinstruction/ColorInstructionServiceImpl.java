@@ -21,10 +21,8 @@ import org.springframework.validation.annotation.Validated;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -36,6 +34,7 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.framework.common.util.collection.CollectionUtils.convertList;
 import static com.luna.lunasrv.module.lunaerp.enums.ColorInstructionErrorCodeConstants.*;
 
@@ -209,36 +208,7 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
             validateInstructionNoUnique(createReqVO.getInstructionNo().trim());
         }
 
-        // 3. 引用校验：客户/产品强关联校验；打色承接方供应商可空，传值则校验
-        CustomerDO customer = customerMapper.selectById(createReqVO.getCustomerId());
-        if (customer == null) {
-            throw exception(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND);
-        }
-
-        ProductDO product = productMapper.selectById(createReqVO.getProductId());
-        if (product == null) {
-            throw exception(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND);
-        }
-
-        SupplierDO labFactory = null;
-        if (createReqVO.getLabFactoryId() != null) {
-            labFactory = supplierMapper.selectById(createReqVO.getLabFactoryId());
-            if (labFactory == null) {
-                throw exception(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND);
-            }
-        }
-
-        // 4. 颜色行灯源合法性校验（主灯源必填且合法，辅灯源可空、若有必合法）
-        for (ColorInstructionColorSaveVO color : createReqVO.getColors()) {
-            if (!VALID_LIGHT_SOURCES.contains(color.getLightPrimary())) {
-                throw exception(COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT);
-            }
-            if (StringUtils.hasText(color.getLightSecondary()) && !VALID_LIGHT_SOURCES.contains(color.getLightSecondary().trim())) {
-                throw exception(COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT);
-            }
-        }
-
-        // 5. 组装主表 DO 与快照回填、缺省值
+        // 3. 组装主表 DO 与快照回填、缺省值
         ColorInstructionDO order = BeanUtils.toBean(createReqVO, ColorInstructionDO.class);
         if (StringUtils.hasText(order.getInstructionNo())) {
             order.setInstructionNo(order.getInstructionNo().trim());
@@ -252,24 +222,12 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         if (!StringUtils.hasText(order.getStatus())) {
             order.setStatus("PENDING");
         }
-        order.setClientName(customer.getCompanyName());
-        order.setProductCode(product.getCode());
-        order.setProductName(product.getName());
-        if (!StringUtils.hasText(order.getComposition())) {
-            order.setComposition(product.getComposition());
-        }
-        if (!StringUtils.hasText(order.getWidth()) && product.getWidthCm() != null) {
-            order.setWidth(product.getWidthCm().stripTrailingZeros().toPlainString() + "cm");
-        }
-        if (!StringUtils.hasText(order.getGsm()) && product.getWeightGsm() != null) {
-            order.setGsm(product.getWeightGsm().stripTrailingZeros().toPlainString() + "g/m²");
-        }
-        if (labFactory != null) {
-            order.setLabFactoryName(labFactory.getCompanyName());
-        } else {
-            order.setLabFactoryId(null);
-            order.setLabFactoryName(null);
-        }
+
+        // 引用校验与快照填充
+        validateHeaderReferences(createReqVO, order);
+
+        // 4. 颜色行灯源合法性校验（主灯源必填且合法，辅灯源可空、若有必合法）
+        validateColorLightSources(createReqVO.getColors());
 
         // 6. 插入主表（捕获数据库并发唯一冲突，映射为业务错误码）
         try {
@@ -325,6 +283,354 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         // 3. 级联逻辑删除：主表 + 颜色行（单号不释放）
         colorInstructionMapper.deleteById(id);
         colorInstructionColorMapper.deleteByInstructionId(id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "COLOR_INSTRUCTION", subType = "UPDATE", bizNo = "{{#updateReqVO.id}}",
+            success = "更新打色单【{{#instructionNo}}】")
+    public void updateColorInstruction(ColorInstructionSaveReqVO updateReqVO) {
+        if (updateReqVO == null || updateReqVO.getId() == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 1. 存在性校验：不存在报 COLOR_INSTRUCTION_NOT_EXISTS (1_030_032_000)
+        ColorInstructionDO order = colorInstructionMapper.selectById(updateReqVO.getId());
+        if (order == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 2. 状态守卫：仅 PENDING / IN_PROGRESS 可整体编辑；CONFIRMED / IN_PRODUCTION / VOID 报 1_030_032_002
+        if (!"PENDING".equals(order.getStatus()) && !"IN_PROGRESS".equals(order.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 颜色行非空守卫（打色单至少需要 1 行颜色明细）
+        if (updateReqVO.getColors() == null || updateReqVO.getColors().isEmpty()) {
+            throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
+        }
+
+        // 4. 手填编号查重（排除自身，包含已删除单据）
+        if (StringUtils.hasText(updateReqVO.getInstructionNo())) {
+            String trimmedNo = updateReqVO.getInstructionNo().trim();
+            ColorInstructionDO duplicate = colorInstructionMapper.selectByInstructionNoIncludingDeleted(trimmedNo);
+            if (duplicate != null && !duplicate.getId().equals(order.getId())) {
+                throw exception(COLOR_INSTRUCTION_NO_DUPLICATE, trimmedNo);
+            }
+            order.setInstructionNo(trimmedNo);
+        }
+
+        // 5. 引用校验与更新主表快照与字段
+        validateHeaderReferences(updateReqVO, order);
+
+        // 6. 颜色行灯源合法性校验（主灯源必填且合法，辅灯源可空、若有必合法）
+        validateColorLightSources(updateReqVO.getColors());
+        if (updateReqVO.getInstructionDate() != null) {
+            order.setInstructionDate(updateReqVO.getInstructionDate());
+        }
+        order.setDeliveryDate(updateReqVO.getDeliveryDate());
+        order.setRemark(updateReqVO.getRemark());
+
+        colorInstructionMapper.updateById(order);
+        LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
+
+        // 7. 颜色行差异保存（含行状态守卫与 lineNo 重排）
+        diffSaveColors(order, updateReqVO.getColors(), updateReqVO.getDeletedColorIds());
+    }
+
+    private void diffSaveColors(ColorInstructionDO order, List<ColorInstructionColorSaveVO> submittedColors, List<Long> explicitDeleteIds) {
+        Long instructionId = order.getId();
+        // 1. 查询库内当前打色单现存颜色行
+        List<ColorInstructionColorDO> dbColors = colorInstructionColorMapper.selectListByInstructionId(instructionId);
+        Map<Long, ColorInstructionColorDO> dbColorMap = dbColors.stream()
+                .collect(Collectors.toMap(ColorInstructionColorDO::getId, Function.identity()));
+
+        // 2. 收集显式删除的 ID（来自 explicitDeleteIds）
+        Set<Long> explicitDeletes = new HashSet<>();
+        if (explicitDeleteIds != null) {
+            explicitDeletes.addAll(explicitDeleteIds);
+        }
+
+        // 校验显式删除行：跨父非法 ID 校验与冻结行守卫
+        for (Long delId : explicitDeletes) {
+            ColorInstructionColorDO dbColor = dbColorMap.get(delId);
+            if (dbColor == null) {
+                throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
+            }
+            if ("APPROVED".equals(dbColor.getStatus()) || "REJECTED".equals(dbColor.getStatus())) {
+                throw exception(COLOR_INSTRUCTION_LINE_FROZEN);
+            }
+        }
+
+        // 3. 本次提交的颜色行列表
+        List<ColorInstructionColorSaveVO> activeSubmitted = submittedColors != null
+                ? submittedColors
+                : Collections.emptyList();
+
+        // 校验提交行的 ID 合法性：不能与显式删除冲突、跨父非法 ID 与重复提交
+        Set<Long> seenIds = new HashSet<>();
+        for (ColorInstructionColorSaveVO c : activeSubmitted) {
+            if (c.getId() != null) {
+                if (explicitDeletes.contains(c.getId())) {
+                    throw invalidParamException("打色单颜色明细行 ID【{}】不能同时在更新列表与删除列表中提交", c.getId());
+                }
+                if (!seenIds.add(c.getId())) {
+                    throw invalidParamException("打色单颜色明细行 ID【{}】重复提交", c.getId());
+                }
+                if (!dbColorMap.containsKey(c.getId())) {
+                    throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
+                }
+            }
+        }
+
+        // 4. 行状态守卫：带 id 的更新行中，APPROVED/REJECTED 冻结行提交任何字段变更报 1_030_032_006
+        List<ColorInstructionColorDO> toInsert = new ArrayList<>();
+        Map<Long, ColorInstructionColorSaveVO> updateVOMap = new HashMap<>();
+
+        for (ColorInstructionColorSaveVO vo : activeSubmitted) {
+            if (vo.getId() != null) {
+                ColorInstructionColorDO dbRow = dbColorMap.get(vo.getId());
+                if ("APPROVED".equals(dbRow.getStatus()) || "REJECTED".equals(dbRow.getStatus())) {
+                    if (isColorFieldChanged(vo, dbRow)) {
+                        throw exception(COLOR_INSTRUCTION_LINE_FROZEN);
+                    }
+                }
+                updateVOMap.put(vo.getId(), vo);
+            } else {
+                ColorInstructionColorDO newDO = BeanUtils.toBean(vo, ColorInstructionColorDO.class);
+                newDO.setId(null);
+                newDO.setInstructionId(instructionId);
+                newDO.setRound(1);
+                newDO.setStatus("PENDING");
+                toInsert.add(newDO);
+            }
+        }
+
+        // 5. 删除处理：
+        // 请求缺失的持久化行——仅 PENDING 行可删；
+        // 冻结行缺失不处理（不报错、保留在库中）。
+        // 另外 explicitDeletes 里的 PENDING 行也一并删除。
+        List<Long> toDeleteIds = new ArrayList<>();
+        List<ColorInstructionColorDO> retainedFrozenMissingRows = new ArrayList<>();
+
+        for (ColorInstructionColorDO dbRow : dbColors) {
+            boolean isInSubmitted = seenIds.contains(dbRow.getId());
+            boolean isExplicitDelete = explicitDeletes.contains(dbRow.getId());
+
+            if (isExplicitDelete) {
+                toDeleteIds.add(dbRow.getId());
+            } else if (!isInSubmitted) {
+                if ("PENDING".equals(dbRow.getStatus())) {
+                    toDeleteIds.add(dbRow.getId());
+                } else {
+                    retainedFrozenMissingRows.add(dbRow);
+                }
+            }
+        }
+
+        if (!toDeleteIds.isEmpty()) {
+            colorInstructionColorMapper.deleteBatchIds(toDeleteIds);
+        }
+
+        int totalSurvivingCount = toInsert.size() + updateVOMap.size() + retainedFrozenMissingRows.size();
+        if (totalSurvivingCount == 0) {
+            throw exception(COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
+        }
+
+        // 6. 收集所有存活行，进行 lineNo 重排
+        // 按 customerColorNo 分组、同色号多轮相邻、最新轮在前、从 1 连续编号
+        LinkedHashSet<String> colorNoGroupOrder = new LinkedHashSet<>();
+        for (ColorInstructionColorSaveVO vo : activeSubmitted) {
+            if (StringUtils.hasText(vo.getCustomerColorNo())) {
+                colorNoGroupOrder.add(vo.getCustomerColorNo().trim());
+            }
+        }
+        for (ColorInstructionColorDO missingFrozen : retainedFrozenMissingRows) {
+            if (StringUtils.hasText(missingFrozen.getCustomerColorNo())) {
+                colorNoGroupOrder.add(missingFrozen.getCustomerColorNo().trim());
+            }
+        }
+
+        Map<String, Integer> groupRankMap = new HashMap<>();
+        int rank = 0;
+        for (String colorNo : colorNoGroupOrder) {
+            groupRankMap.put(colorNo, rank++);
+        }
+
+        List<ColorInstructionColorDO> survivingList = new ArrayList<>();
+        survivingList.addAll(toInsert);
+        for (Map.Entry<Long, ColorInstructionColorSaveVO> entry : updateVOMap.entrySet()) {
+            Long id = entry.getKey();
+            ColorInstructionColorSaveVO vo = entry.getValue();
+            ColorInstructionColorDO dbRow = dbColorMap.get(id);
+            if ("PENDING".equals(dbRow.getStatus())) {
+                ColorInstructionColorDO updatedDO = BeanUtils.toBean(vo, ColorInstructionColorDO.class);
+                updatedDO.setId(id);
+                updatedDO.setInstructionId(instructionId);
+                updatedDO.setRound(dbRow.getRound() != null ? dbRow.getRound() : 1);
+                updatedDO.setStatus(dbRow.getStatus());
+                survivingList.add(updatedDO);
+            } else {
+                survivingList.add(dbRow);
+            }
+        }
+        survivingList.addAll(retainedFrozenMissingRows);
+
+        survivingList.sort((a, b) -> {
+            String noA = a.getCustomerColorNo() != null ? a.getCustomerColorNo().trim() : "";
+            String noB = b.getCustomerColorNo() != null ? b.getCustomerColorNo().trim() : "";
+            int rankA = groupRankMap.getOrDefault(noA, Integer.MAX_VALUE);
+            int rankB = groupRankMap.getOrDefault(noB, Integer.MAX_VALUE);
+            if (rankA != rankB) {
+                return Integer.compare(rankA, rankB);
+            }
+            int roundA = a.getRound() != null ? a.getRound() : 1;
+            int roundB = b.getRound() != null ? b.getRound() : 1;
+            if (roundA != roundB) {
+                return Integer.compare(roundB, roundA); // 最新轮在前
+            }
+            int lineNoA = a.getLineNo() != null ? a.getLineNo() : Integer.MAX_VALUE;
+            int lineNoB = b.getLineNo() != null ? b.getLineNo() : Integer.MAX_VALUE;
+            return Integer.compare(lineNoA, lineNoB);
+        });
+
+        int newLineNo = 1;
+        for (ColorInstructionColorDO colorDO : survivingList) {
+            if (colorDO.getId() == null) {
+                colorDO.setLineNo(newLineNo);
+                colorInstructionColorMapper.insert(colorDO);
+            } else {
+                ColorInstructionColorDO originalDB = dbColorMap.get(colorDO.getId());
+                boolean lineNoChanged = !Objects.equals(originalDB.getLineNo(), newLineNo);
+                if ("PENDING".equals(originalDB.getStatus())) {
+                    boolean contentChanged = isColorFieldChanged(updateVOMap.get(colorDO.getId()), originalDB);
+                    if (contentChanged || lineNoChanged) {
+                        colorDO.setLineNo(newLineNo);
+                        colorInstructionColorMapper.updateById(colorDO);
+                    }
+                } else {
+                    if (lineNoChanged) {
+                        ColorInstructionColorDO lineNoOnlyUpdate = new ColorInstructionColorDO();
+                        lineNoOnlyUpdate.setId(colorDO.getId());
+                        lineNoOnlyUpdate.setLineNo(newLineNo);
+                        colorInstructionColorMapper.updateById(lineNoOnlyUpdate);
+                    }
+                }
+            }
+            newLineNo++;
+        }
+    }
+
+    private boolean isColorFieldChanged(ColorInstructionColorSaveVO vo, ColorInstructionColorDO db) {
+        if (vo == null || db == null) {
+            return false;
+        }
+        if (!Objects.equals(trimToNull(vo.getCustomerColorNo()), trimToNull(db.getCustomerColorNo()))) {
+            return true;
+        }
+        if (!Objects.equals(trimToNull(vo.getColorName()), trimToNull(db.getColorName()))) {
+            return true;
+        }
+        if (!Objects.equals(trimToNull(vo.getFactoryColorNo()), trimToNull(db.getFactoryColorNo()))) {
+            return true;
+        }
+        if (!Objects.equals(trimToNull(vo.getColorHex()), trimToNull(db.getColorHex()))) {
+            return true;
+        }
+        if (!Objects.equals(trimToNull(vo.getLightPrimary()), trimToNull(db.getLightPrimary()))) {
+            return true;
+        }
+        if (!Objects.equals(trimToNull(vo.getLightSecondary()), trimToNull(db.getLightSecondary()))) {
+            return true;
+        }
+        if (!Objects.equals(trimToNull(vo.getColorCardRef()), trimToNull(db.getColorCardRef()))) {
+            return true;
+        }
+        if (!Objects.equals(trimToNull(vo.getRejectReason()), trimToNull(db.getRejectReason()))) {
+            return true;
+        }
+        if (!Objects.equals(trimToNull(vo.getRemark()), trimToNull(db.getRemark()))) {
+            return true;
+        }
+        if (!Objects.equals(vo.getCopies(), db.getCopies())) {
+            return true;
+        }
+        if (vo.getRound() != null && !Objects.equals(vo.getRound(), db.getRound())) {
+            return true;
+        }
+        if (vo.getStatus() != null && !Objects.equals(vo.getStatus(), db.getStatus())) {
+            return true;
+        }
+        List<String> voPhotos = vo.getSamplePhotos() != null ? vo.getSamplePhotos() : Collections.emptyList();
+        List<String> dbPhotos = db.getSamplePhotos() != null ? db.getSamplePhotos() : Collections.emptyList();
+        return !voPhotos.equals(dbPhotos);
+    }
+
+    private static String trimToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    private void validateHeaderReferences(ColorInstructionSaveReqVO reqVO, ColorInstructionDO order) {
+        CustomerDO customer = customerMapper.selectById(reqVO.getCustomerId());
+        if (customer == null) {
+            throw exception(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND);
+        }
+
+        ProductDO product = productMapper.selectById(reqVO.getProductId());
+        if (product == null) {
+            throw exception(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND);
+        }
+
+        SupplierDO labFactory = null;
+        if (reqVO.getLabFactoryId() != null) {
+            labFactory = supplierMapper.selectById(reqVO.getLabFactoryId());
+            if (labFactory == null) {
+                throw exception(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND);
+            }
+        }
+
+        order.setCustomerId(reqVO.getCustomerId());
+        order.setClientName(customer.getCompanyName());
+        order.setContactPerson(reqVO.getContactPerson());
+        order.setProductId(reqVO.getProductId());
+        order.setProductCode(product.getCode());
+        order.setProductName(product.getName());
+        order.setLabFactoryId(reqVO.getLabFactoryId());
+        order.setLabFactoryName(labFactory != null ? labFactory.getCompanyName() : null);
+
+        if (StringUtils.hasText(reqVO.getComposition())) {
+            order.setComposition(reqVO.getComposition());
+        } else if (!StringUtils.hasText(order.getComposition())) {
+            order.setComposition(product.getComposition());
+        }
+        if (StringUtils.hasText(reqVO.getWidth())) {
+            order.setWidth(reqVO.getWidth());
+        } else if (!StringUtils.hasText(order.getWidth()) && product.getWidthCm() != null) {
+            order.setWidth(product.getWidthCm().stripTrailingZeros().toPlainString() + "cm");
+        }
+        if (StringUtils.hasText(reqVO.getGsm())) {
+            order.setGsm(reqVO.getGsm());
+        } else if (!StringUtils.hasText(order.getGsm()) && product.getWeightGsm() != null) {
+            order.setGsm(product.getWeightGsm().stripTrailingZeros().toPlainString() + "g/m²");
+        }
+    }
+
+    private void validateColorLightSources(List<ColorInstructionColorSaveVO> colors) {
+        if (colors == null) {
+            return;
+        }
+        for (ColorInstructionColorSaveVO color : colors) {
+            if (!VALID_LIGHT_SOURCES.contains(color.getLightPrimary())) {
+                throw exception(COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT);
+            }
+            if (StringUtils.hasText(color.getLightSecondary()) && !VALID_LIGHT_SOURCES.contains(color.getLightSecondary().trim())) {
+                throw exception(COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT);
+            }
+        }
     }
 
 }

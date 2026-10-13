@@ -156,7 +156,7 @@
           <el-button
             link
             type="primary"
-            @click="openEdit(row.id)"
+            @click="openEdit(row)"
             v-hasPermi="['lunaerp:production:color-instruction:update']"
           >
             <Icon icon="ep:edit" class="mr-2px" />编辑
@@ -289,13 +289,20 @@ const openCreate = () => {
 // 查看打色单
 const openView = (id?: number) => {
   if (!id) return
-  router.push(`/production/color-instruction/edit/${id}`)
+  router.push({
+    path: `/production/color-instruction/edit/${id}`,
+    query: { mode: 'view' }
+  })
 }
 
-// 编辑打色单
-const openEdit = (id?: number) => {
-  if (!id) return
-  router.push(`/production/color-instruction/edit/${id}`)
+// 编辑打色单（非可编辑态点编辑进入只读模式）
+const openEdit = (row: ColorInstructionVO) => {
+  if (!row?.id) return
+  const isEditable = row.status === 'PENDING' || row.status === 'IN_PROGRESS'
+  router.push({
+    path: `/production/color-instruction/edit/${row.id}`,
+    query: isEditable ? {} : { mode: 'view' }
+  })
 }
 
 // 打印占位

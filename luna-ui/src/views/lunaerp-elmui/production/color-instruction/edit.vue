@@ -209,34 +209,52 @@
           </div>
         </template>
 
-        <el-table :data="formData.colors" border stripe>
+        <el-table
+          :data="formData.colors"
+          :row-key="getRowKey"
+          :row-class-name="tableRowClassName"
+          border
+          stripe
+        >
           <el-table-column label="#" type="index" width="50" align="center" />
-          <el-table-column label="客户色号 *" min-width="130">
+          <el-table-column label="轮次" width="65" align="center">
             <template #default="{ row }">
-              <el-input v-model="row.customerColorNo" :disabled="isViewMode" placeholder="如 C01" />
+              <el-tag size="small" type="info">R{{ row.round || 1 }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="颜色名称 *" min-width="130">
+          <el-table-column label="状态" width="85" align="center">
             <template #default="{ row }">
-              <el-input v-model="row.colorName" :disabled="isViewMode" placeholder="如 藏青" />
+              <el-tag size="small" :type="getColorTagType(row.status)">
+                {{ getStatusLabel(row.status) }}
+              </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="厂内色号" min-width="110">
+          <el-table-column label="客户色号 *" min-width="120">
             <template #default="{ row }">
-              <el-input v-model="row.factoryColorNo" :disabled="isViewMode" placeholder="如 F-01" />
+              <el-input v-model="row.customerColorNo" :disabled="isViewMode || isRowFrozen(row)" placeholder="如 C01" />
             </template>
           </el-table-column>
-          <el-table-column label="色值" width="130" align="center">
+          <el-table-column label="颜色名称 *" min-width="120">
+            <template #default="{ row }">
+              <el-input v-model="row.colorName" :disabled="isViewMode || isRowFrozen(row)" placeholder="如 藏青" />
+            </template>
+          </el-table-column>
+          <el-table-column label="厂内色号" min-width="100">
+            <template #default="{ row }">
+              <el-input v-model="row.factoryColorNo" :disabled="isViewMode || isRowFrozen(row)" placeholder="如 F-01" />
+            </template>
+          </el-table-column>
+          <el-table-column label="色值" width="120" align="center">
             <template #default="{ row }">
               <div class="flex items-center gap-1 justify-center">
-                <el-color-picker v-model="row.colorHex" :disabled="isViewMode" size="small" />
+                <el-color-picker v-model="row.colorHex" :disabled="isViewMode || isRowFrozen(row)" size="small" />
                 <span class="text-xs font-mono text-gray-500">{{ row.colorHex || '-' }}</span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="主灯源 *" min-width="120">
+          <el-table-column label="主灯源 *" min-width="110">
             <template #default="{ row }">
-              <el-select v-model="row.lightPrimary" :disabled="isViewMode" placeholder="选择主灯源">
+              <el-select v-model="row.lightPrimary" :disabled="isViewMode || isRowFrozen(row)" placeholder="选择主灯源">
                 <el-option
                   v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_COLOR_LIGHT_SOURCE)"
                   :key="dict.value"
@@ -246,9 +264,9 @@
               </el-select>
             </template>
           </el-table-column>
-          <el-table-column label="辅灯源" min-width="120">
+          <el-table-column label="辅灯源" min-width="110">
             <template #default="{ row }">
-              <el-select v-model="row.lightSecondary" :disabled="isViewMode" clearable placeholder="可选辅灯源">
+              <el-select v-model="row.lightSecondary" :disabled="isViewMode || isRowFrozen(row)" clearable placeholder="可选辅灯源">
                 <el-option
                   v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_COLOR_LIGHT_SOURCE)"
                   :key="dict.value"
@@ -258,27 +276,27 @@
               </el-select>
             </template>
           </el-table-column>
-          <el-table-column label="色卡参考" min-width="150">
+          <el-table-column label="色卡参考" min-width="140">
             <template #default="{ row }">
-              <el-input v-model="row.colorCardRef" :disabled="isViewMode" placeholder="如 Pantone TPX 19-4052" />
+              <el-input v-model="row.colorCardRef" :disabled="isViewMode || isRowFrozen(row)" placeholder="如 Pantone TPX 19-4052" />
             </template>
           </el-table-column>
-          <el-table-column label="样布照片" min-width="160">
+          <el-table-column label="样布照片" min-width="150">
             <template #default="{ row }">
               <UploadImgs
                 v-model="row.samplePhotos"
-                :disabled="isViewMode"
+                :disabled="isViewMode || isRowFrozen(row)"
                 :limit="5"
                 height="60px"
                 width="60px"
               />
             </template>
           </el-table-column>
-          <el-table-column label="份数" width="100" align="center">
+          <el-table-column label="份数" width="90" align="center">
             <template #default="{ row }">
               <el-input-number
                 v-model="row.copies"
-                :disabled="isViewMode"
+                :disabled="isViewMode || isRowFrozen(row)"
                 :min="1"
                 :precision="0"
                 controls-position="right"
@@ -286,16 +304,52 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="行备注" min-width="120">
+          <el-table-column label="驳回意见" min-width="140" show-overflow-tooltip>
             <template #default="{ row }">
-              <el-input v-model="row.remark" :disabled="isViewMode" placeholder="备注说明" />
+              <span v-if="row.rejectReason" class="text-red-500 font-medium text-xs">{{ row.rejectReason }}</span>
+              <span v-else class="text-gray-400 text-xs">-</span>
             </template>
           </el-table-column>
-          <el-table-column v-if="!isViewMode" label="操作" width="70" align="center" fixed="right">
-            <template #default="{ $index }">
-              <el-button type="danger" link @click="removeColorLine($index)">
-                <Icon icon="ep:delete" />
-              </el-button>
+          <el-table-column label="行备注" min-width="110">
+            <template #default="{ row }">
+              <el-input v-model="row.remark" :disabled="isViewMode || isRowFrozen(row)" placeholder="备注说明" />
+            </template>
+          </el-table-column>
+          <el-table-column v-if="!isViewMode" label="操作" width="130" align="center" fixed="right">
+            <template #default="{ row, $index }">
+              <div class="flex items-center justify-center gap-1">
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  :disabled="$index === 0"
+                  @click="moveColorLine($index, -1)"
+                  title="上移"
+                >
+                  <Icon icon="ep:top" />
+                </el-button>
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  :disabled="$index === formData.colors.length - 1"
+                  @click="moveColorLine($index, 1)"
+                  title="下移"
+                >
+                  <Icon icon="ep:bottom" />
+                </el-button>
+                <el-button
+                  v-if="!isRowFrozen(row)"
+                  type="danger"
+                  link
+                  size="small"
+                  @click="removeColorLine($index)"
+                  title="删除"
+                >
+                  <Icon icon="ep:delete" />
+                </el-button>
+                <span v-else class="text-gray-400 text-xs select-none">已冻结</span>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -339,7 +393,16 @@ const id = computed(() => {
 })
 
 const isCreateMode = computed(() => !id.value)
-const isViewMode = computed(() => route.query.mode === 'view')
+const isViewMode = computed(() => {
+  if (route.query.mode === 'view') {
+    return true
+  }
+  // 非可编辑态（非 PENDING / IN_PROGRESS）自动进入只读模式
+  if (formData.status && formData.status !== 'PENDING' && formData.status !== 'IN_PROGRESS') {
+    return true
+  }
+  return false
+})
 
 // 表单数据
 const formData = reactive<ColorInstructionVO>({
@@ -519,6 +582,45 @@ const handleGetNextNo = async () => {
   }
 }
 
+// 颜色行唯一标识与状态判断
+let tempIdCounter = 0
+const getRowKey = (row: ColorInstructionColorVO & { _tempId?: string }) => {
+  if (row.id) {
+    return `id_${row.id}`
+  }
+  if (!row._tempId) {
+    row._tempId = `temp_${++tempIdCounter}`
+  }
+  return row._tempId
+}
+
+const isRowFrozen = (row: ColorInstructionColorVO) => {
+  return row.status === 'APPROVED' || row.status === 'REJECTED'
+}
+
+const getColorTagType = (status?: string): 'success' | 'danger' | 'info' | '' => {
+  if (status === 'APPROVED') return 'success'
+  if (status === 'REJECTED') return 'danger'
+  if (status === 'PENDING') return 'info'
+  return ''
+}
+
+const getStatusLabel = (status?: string) => {
+  if (status === 'APPROVED') return '通过'
+  if (status === 'REJECTED') return '驳回'
+  if (status === 'PENDING') return '待结果'
+  return status || '-'
+}
+
+const tableRowClassName = ({ row }: { row: ColorInstructionColorVO }) => {
+  if (isRowFrozen(row)) {
+    return 'row-frozen'
+  }
+  return ''
+}
+
+const deletedColorIds = ref<number[]>([])
+
 // 颜色行操作
 const addColorLine = () => {
   if (!formData.colors) {
@@ -540,11 +642,31 @@ const addColorLine = () => {
   })
 }
 
+// 调序（上移/下移）
+const moveColorLine = (index: number, direction: number) => {
+  if (!formData.colors) return
+  const targetIndex = index + direction
+  if (targetIndex < 0 || targetIndex >= formData.colors.length) return
+  const current = formData.colors[index]
+  const target = formData.colors[targetIndex]
+  formData.colors.splice(index, 1, target)
+  formData.colors.splice(targetIndex, 1, current)
+}
+
+// 删除颜色行（已冻结行不可删）
 const removeColorLine = (index: number) => {
   if (!formData.colors) return
   if (formData.colors.length <= 1) {
     message.warning('打色单至少需要保留一行颜色明细')
     return
+  }
+  const removed = formData.colors[index]
+  if (isRowFrozen(removed)) {
+    message.warning('已冻结行不可删除')
+    return
+  }
+  if (removed.id) {
+    deletedColorIds.value.push(removed.id)
   }
   formData.colors.splice(index, 1)
 }
@@ -578,11 +700,15 @@ const handleSave = async () => {
 
   submitting.value = true
   try {
+    const payload = {
+      ...formData,
+      deletedColorIds: deletedColorIds.value.length > 0 ? deletedColorIds.value : undefined
+    }
     if (isCreateMode.value) {
-      await ColorInstructionApi.createColorInstruction(formData)
+      await ColorInstructionApi.createColorInstruction(payload)
       message.success('创建打色指示单成功')
     } else {
-      await ColorInstructionApi.updateColorInstruction(formData)
+      await ColorInstructionApi.updateColorInstruction(payload)
       message.success('更新打色指示单成功')
     }
     router.push('/production/color-instruction')
@@ -641,5 +767,9 @@ onMounted(() => {
 .edit-header {
   border-bottom: 1px solid var(--el-border-color-light);
   padding-bottom: 12px;
+}
+:deep(.row-frozen) {
+  background-color: var(--el-fill-color-light) !important;
+  opacity: 0.85;
 }
 </style>

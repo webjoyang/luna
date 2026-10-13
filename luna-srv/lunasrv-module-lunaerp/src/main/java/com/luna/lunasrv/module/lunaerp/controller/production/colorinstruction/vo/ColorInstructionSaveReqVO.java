@@ -56,5 +56,8 @@ public class ColorInstructionSaveReqVO {
     @Valid
     private List<ColorInstructionColorSaveVO> colors;
 
+    @Schema(description = "显式删除的颜色行ID列表（可选）", example = "[1001, 1002]")
+    private List<Long> deletedColorIds;
+
 }
 

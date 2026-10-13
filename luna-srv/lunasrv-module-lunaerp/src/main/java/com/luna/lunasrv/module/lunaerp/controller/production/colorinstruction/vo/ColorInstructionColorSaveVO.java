@@ -54,5 +54,4 @@ public class ColorInstructionColorSaveVO {
 
     @Schema(description = "行备注", example = "注意手感")
     private String remark;
-
 }

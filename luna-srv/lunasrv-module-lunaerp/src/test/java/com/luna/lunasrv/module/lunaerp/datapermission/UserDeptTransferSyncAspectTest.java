@@ -11,6 +11,7 @@ import com.luna.lunasrv.framework.datapermission.core.aop.DataPermissionContextH
 import com.luna.lunasrv.framework.datapermission.core.rule.dept.DeptDataPermissionRule;
 import com.luna.lunasrv.framework.security.core.LoginUser;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.quotation.QuotationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
@@ -97,6 +98,7 @@ class UserDeptTransferSyncAspectTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), CustomerDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), SalesContractDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), ShipmentDO.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), QuotationDO.class);
     }
 
     @BeforeEach

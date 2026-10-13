@@ -21,6 +21,7 @@ import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentP
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customercontact.CustomerContactDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.quotation.QuotationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
@@ -101,6 +102,7 @@ public class LunaerpDataPermissionMatrixTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), SalesContractDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), ShipmentDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), CustomerContactDO.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), QuotationDO.class);
     }
 
     @BeforeEach
@@ -441,13 +443,12 @@ public class LunaerpDataPermissionMatrixTest {
     }
 
     @Test
-    @DisplayName("§9.2 用例 1 - 报价表（QuotationDO）冻结契约断言：用例文本已在 spec 冻结，随 05 票施工同批补跑")
+    @DisplayName("§9.2 用例 1 - 报价表（QuotationDO）契约断言：报价表已注册数据权限规则")
     void testCase1_QuotationTableSpecificationFrozen() {
-        // 验证报价表规格说明已被 spec 冻结并与 05 票契约锁定
-        // 报价主表为 lunaerp_business_quotation，由 05 票自带 dept_id 列与 2 个 dp 索引
+        // 报价主表为 lunaerp_business_quotation，由报价单票自带 dept_id 列与 2 个 dp 索引，并已注册到数据权限规则
         String frozenTableName = "lunaerp_business_quotation";
-        assertFalse(deptRule.getTableNames().contains(frozenTableName),
-                "07 票施工期报价表尚未建类，本票不强制注册，随 05 票施工同批落地");
+        assertTrue(deptRule.getTableNames().contains(frozenTableName),
+                "报价表已完成建类与数据权限注册");
     }
 
     // =========================================================================

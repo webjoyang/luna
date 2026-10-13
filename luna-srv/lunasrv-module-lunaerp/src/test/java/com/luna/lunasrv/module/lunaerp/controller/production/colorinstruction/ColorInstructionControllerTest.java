@@ -93,4 +93,18 @@ public class ColorInstructionControllerTest {
         verify(colorInstructionService).deleteColorInstruction(1024L);
     }
 
+    @Test
+    @DisplayName("Controller更新打色指示单：委托Service并返回成功")
+    void testUpdateColorInstruction() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(1024L);
+        doNothing().when(colorInstructionService).updateColorInstruction(reqVO);
+
+        CommonResult<Boolean> result = colorInstructionController.updateColorInstruction(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(colorInstructionService).updateColorInstruction(reqVO);
+    }
+
 }

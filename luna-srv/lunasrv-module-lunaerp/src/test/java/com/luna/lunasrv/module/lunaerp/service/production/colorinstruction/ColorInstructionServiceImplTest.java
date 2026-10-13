@@ -232,7 +232,7 @@ public class ColorInstructionServiceImplTest {
     }
 
     @Test
-    @DisplayName("详情查询：存在时返回单据头及颜色行摘要")
+    @DisplayName("详情查询：存在时返回单据头及嵌套颜色行列表（含 REJECTED 历史轮次行，按 lineNo 排序）与摘要")
     void testGetColorInstruction_success() {
         ColorInstructionDO do1 = new ColorInstructionDO();
         do1.setId(1001L);
@@ -245,16 +245,54 @@ public class ColorInstructionServiceImplTest {
         c1.setId(1L);
         c1.setInstructionId(1001L);
         c1.setCustomerColorNo("C01");
-        c1.setColorName("藏青");
-        c1.setRound(1);
+        c1.setColorName("藏青第2轮");
+        c1.setRound(2);
+        c1.setLineNo(1);
         c1.setStatus("PENDING");
-        when(colorInstructionColorMapper.selectListByInstructionId(1001L)).thenReturn(List.of(c1));
+
+        ColorInstructionColorDO c2 = new ColorInstructionColorDO();
+        c2.setId(2L);
+        c2.setInstructionId(1001L);
+        c2.setCustomerColorNo("C01");
+        c2.setColorName("藏青第1轮");
+        c2.setRound(1);
+        c2.setLineNo(2);
+        c2.setStatus("REJECTED");
+        c2.setRejectReason("色偏暗");
+
+        ColorInstructionColorDO c3 = new ColorInstructionColorDO();
+        c3.setId(3L);
+        c3.setInstructionId(1001L);
+        c3.setCustomerColorNo("C02");
+        c3.setColorName("军绿");
+        c3.setRound(1);
+        c3.setLineNo(3);
+        c3.setStatus("APPROVED");
+
+        when(colorInstructionColorMapper.selectListByInstructionId(1001L)).thenReturn(List.of(c1, c2, c3));
 
         ColorInstructionRespVO resp = colorInstructionService.getColorInstruction(1001L);
         assertNotNull(resp);
         assertEquals("DS20261007001", resp.getInstructionNo());
-        assertEquals(1, resp.getColorSummaries().size());
-        assertEquals("C01", resp.getColorSummaries().get(0).getCustomerColorNo());
+
+        // 验证返回包含全部颜色行，包含 REJECTED 历史轮次行，且按 lineNo 排序
+        assertNotNull(resp.getColors());
+        assertEquals(3, resp.getColors().size());
+        assertEquals(1L, resp.getColors().get(0).getId());
+        assertEquals(1, resp.getColors().get(0).getLineNo());
+        assertEquals("PENDING", resp.getColors().get(0).getStatus());
+
+        assertEquals(2L, resp.getColors().get(1).getId());
+        assertEquals(2, resp.getColors().get(1).getLineNo());
+        assertEquals("REJECTED", resp.getColors().get(1).getStatus());
+        assertEquals("色偏暗", resp.getColors().get(1).getRejectReason());
+
+        assertEquals(3L, resp.getColors().get(2).getId());
+        assertEquals(3, resp.getColors().get(2).getLineNo());
+        assertEquals("APPROVED", resp.getColors().get(2).getStatus());
+
+        // 验证摘要列表
+        assertEquals(3, resp.getColorSummaries().size());
     }
 
     private ColorInstructionColorSaveVO createValidColor() {
@@ -669,6 +707,655 @@ public class ColorInstructionServiceImplTest {
         // 验证级联删除主表与子表
         verify(colorInstructionMapper, times(1)).deleteById(1001L);
         verify(colorInstructionColorMapper, times(1)).deleteByInstructionId(1001L);
+    }
+
+    // ==================== updateColorInstruction: 修改（03 票） ====================
+
+    @Test
+    @DisplayName("更新打色单：单据不存在抛 COLOR_INSTRUCTION_NOT_EXISTS")
+    void testUpdateColorInstruction_notExists_throwsException() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(999L);
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("更新打色单：终态或非可编辑状态（CONFIRMED/IN_PRODUCTION/VOID）抛 COLOR_INSTRUCTION_STATUS_NOT_ALLOWED")
+    void testUpdateColorInstruction_statusNotAllowed_throwsException() {
+        for (String status : List.of("CONFIRMED", "IN_PRODUCTION", "VOID")) {
+            ColorInstructionDO order = new ColorInstructionDO();
+            order.setId(1001L);
+            order.setStatus(status);
+            when(colorInstructionMapper.selectById(1001L)).thenReturn(order);
+
+            ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+            reqVO.setId(1001L);
+            ServiceException ex = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.updateColorInstruction(reqVO));
+            assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("更新打色单：手填单号撞其他单据（含已删除）抛 COLOR_INSTRUCTION_NO_DUPLICATE")
+    void testUpdateColorInstruction_instructionNoDuplicate_throwsException() {
+        ColorInstructionDO current = new ColorInstructionDO();
+        current.setId(1001L);
+        current.setStatus("PENDING");
+        current.setInstructionNo("DS20261013001");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(current);
+
+        ColorInstructionDO duplicate = new ColorInstructionDO();
+        duplicate.setId(2002L);
+        duplicate.setInstructionNo("DS20261013999");
+        when(colorInstructionMapper.selectByInstructionNoIncludingDeleted("DS20261013999")).thenReturn(duplicate);
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(1001L);
+        reqVO.setInstructionNo("DS20261013999");
+        ColorInstructionColorSaveVO color = new ColorInstructionColorSaveVO();
+        color.setCustomerColorNo("C01");
+        color.setColorName("藏青");
+        color.setLightPrimary("D65");
+        reqVO.setColors(List.of(color));
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_NO_DUPLICATE.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("更新打色单：客户/产品/供应商引用校验非法抛 COLOR_INSTRUCTION_REFERENCE_NOT_FOUND")
+    void testUpdateColorInstruction_referenceNotFound_throwsException() {
+        ColorInstructionDO current = new ColorInstructionDO();
+        current.setId(1001L);
+        current.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(current);
+
+        ColorInstructionColorSaveVO color = new ColorInstructionColorSaveVO();
+        color.setCustomerColorNo("C01");
+        color.setColorName("藏青");
+        color.setLightPrimary("D65");
+
+        // 1. 客户不存在
+        ColorInstructionSaveReqVO reqVO1 = new ColorInstructionSaveReqVO();
+        reqVO1.setId(1001L);
+        reqVO1.setCustomerId(999L);
+        reqVO1.setProductId(2001L);
+        reqVO1.setColors(List.of(color));
+        when(customerMapper.selectById(999L)).thenReturn(null);
+        ServiceException ex1 = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO1));
+        assertEquals(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND.getCode(), ex1.getCode());
+
+        // 2. 产品不存在
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("优质客户");
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+
+        ColorInstructionSaveReqVO reqVO2 = new ColorInstructionSaveReqVO();
+        reqVO2.setId(1001L);
+        reqVO2.setCustomerId(101L);
+        reqVO2.setProductId(999L);
+        reqVO2.setColors(List.of(color));
+        when(productMapper.selectById(999L)).thenReturn(null);
+        ServiceException ex2 = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO2));
+        assertEquals(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND.getCode(), ex2.getCode());
+
+        // 3. 打色供应商不存在
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        product.setCode("P01");
+        product.setName("平纹布");
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        ColorInstructionSaveReqVO reqVO3 = new ColorInstructionSaveReqVO();
+        reqVO3.setId(1001L);
+        reqVO3.setCustomerId(101L);
+        reqVO3.setProductId(201L);
+        reqVO3.setLabFactoryId(888L);
+        reqVO3.setColors(List.of(color));
+        when(supplierMapper.selectById(888L)).thenReturn(null);
+        ServiceException ex3 = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO3));
+        assertEquals(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND.getCode(), ex3.getCode());
+    }
+
+    @Test
+    @DisplayName("更新打色单：灯源非法抛 COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT")
+    void testUpdateColorInstruction_invalidLight_throwsException() {
+        ColorInstructionDO current = new ColorInstructionDO();
+        current.setId(1001L);
+        current.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(current);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("客户");
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        product.setCode("P01");
+        product.setName("面料");
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(1001L);
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        ColorInstructionColorSaveVO color = new ColorInstructionColorSaveVO();
+        color.setCustomerColorNo("C01");
+        color.setColorName("藏青");
+        color.setLightPrimary("INVALID_LIGHT");
+        reqVO.setColors(List.of(color));
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("更新打色单：跨父非法行ID（提交行ID不属于本单）报错")
+    void testUpdateColorInstruction_crossParentColorId_throwsException() {
+        ColorInstructionDO current = new ColorInstructionDO();
+        current.setId(1001L);
+        current.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(current);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        // DB 只有行 501L
+        ColorInstructionColorDO dbColor = new ColorInstructionColorDO();
+        dbColor.setId(501L);
+        dbColor.setInstructionId(1001L);
+        dbColor.setStatus("PENDING");
+        when(colorInstructionColorMapper.selectListByInstructionId(1001L)).thenReturn(List.of(dbColor));
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(1001L);
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        // 提交跨父 ID 999L
+        ColorInstructionColorSaveVO color = new ColorInstructionColorSaveVO();
+        color.setId(999L);
+        color.setCustomerColorNo("C01");
+        color.setColorName("藏青");
+        color.setLightPrimary("D65");
+        reqVO.setColors(List.of(color));
+
+        assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO));
+    }
+
+    @Test
+    @DisplayName("更新打色单：提交列表中存在重复行ID报错")
+    void testUpdateColorInstruction_duplicateColorIds_throwsException() {
+        ColorInstructionDO current = new ColorInstructionDO();
+        current.setId(1001L);
+        current.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(current);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        ColorInstructionColorDO dbColor = new ColorInstructionColorDO();
+        dbColor.setId(501L);
+        dbColor.setInstructionId(1001L);
+        dbColor.setStatus("PENDING");
+        when(colorInstructionColorMapper.selectListByInstructionId(1001L)).thenReturn(List.of(dbColor));
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(1001L);
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        ColorInstructionColorSaveVO c1 = new ColorInstructionColorSaveVO();
+        c1.setId(501L);
+        c1.setCustomerColorNo("C01");
+        c1.setColorName("藏青");
+        c1.setLightPrimary("D65");
+        ColorInstructionColorSaveVO c2 = new ColorInstructionColorSaveVO();
+        c2.setId(501L);
+        c2.setCustomerColorNo("C01");
+        c2.setColorName("藏青");
+        c2.setLightPrimary("D65");
+        reqVO.setColors(List.of(c1, c2));
+
+        assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO));
+    }
+
+    @Test
+    @DisplayName("更新打色单：冻结行（APPROVED/REJECTED）提交字段变更抛 COLOR_INSTRUCTION_LINE_FROZEN (1_030_032_006)")
+    void testUpdateColorInstruction_frozenLineFieldModified_throwsLineFrozen() {
+        ColorInstructionDO current = new ColorInstructionDO();
+        current.setId(1001L);
+        current.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(current);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        // 1. APPROVED 冻结行修改 colorName
+        ColorInstructionColorDO approvedLine = new ColorInstructionColorDO();
+        approvedLine.setId(501L);
+        approvedLine.setInstructionId(1001L);
+        approvedLine.setCustomerColorNo("C01");
+        approvedLine.setColorName("藏青");
+        approvedLine.setLightPrimary("D65");
+        approvedLine.setRound(1);
+        approvedLine.setStatus("APPROVED");
+
+        when(colorInstructionColorMapper.selectListByInstructionId(1001L)).thenReturn(List.of(approvedLine));
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(1001L);
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        ColorInstructionColorSaveVO vo = new ColorInstructionColorSaveVO();
+        vo.setId(501L);
+        vo.setCustomerColorNo("C01");
+        vo.setColorName("藏青_篡改");
+        vo.setLightPrimary("D65");
+        vo.setRound(1);
+        vo.setStatus("APPROVED");
+        reqVO.setColors(List.of(vo));
+
+        ServiceException ex1 = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_LINE_FROZEN.getCode(), ex1.getCode());
+
+        // 2. REJECTED 冻结行修改 lightPrimary
+        ColorInstructionColorDO rejectedLine = new ColorInstructionColorDO();
+        rejectedLine.setId(502L);
+        rejectedLine.setInstructionId(1001L);
+        rejectedLine.setCustomerColorNo("C02");
+        rejectedLine.setColorName("咖啡");
+        rejectedLine.setLightPrimary("D65");
+        rejectedLine.setRound(1);
+        rejectedLine.setStatus("REJECTED");
+        rejectedLine.setRejectReason("色偏浅");
+        when(colorInstructionColorMapper.selectListByInstructionId(1001L)).thenReturn(List.of(rejectedLine));
+
+        ColorInstructionColorSaveVO vo2 = new ColorInstructionColorSaveVO();
+        vo2.setId(502L);
+        vo2.setCustomerColorNo("C02");
+        vo2.setColorName("咖啡");
+        vo2.setLightPrimary("TL84"); // 篡改灯源
+        vo2.setRound(1);
+        vo2.setStatus("REJECTED");
+        vo2.setRejectReason("色偏浅");
+        reqVO.setColors(List.of(vo2));
+
+        ServiceException ex2 = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_LINE_FROZEN.getCode(), ex2.getCode());
+    }
+
+    @Test
+    @DisplayName("更新打色单：显式提交删除冻结行（deletedColorIds 或 deleted=true）抛 COLOR_INSTRUCTION_LINE_FROZEN (1_030_032_006)")
+    void testUpdateColorInstruction_frozenLineExplicitlyDeleted_throwsLineFrozen() {
+        ColorInstructionDO current = new ColorInstructionDO();
+        current.setId(1001L);
+        current.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(current);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        ColorInstructionColorDO approvedLine = new ColorInstructionColorDO();
+        approvedLine.setId(501L);
+        approvedLine.setInstructionId(1001L);
+        approvedLine.setCustomerColorNo("C01");
+        approvedLine.setColorName("藏青");
+        approvedLine.setLightPrimary("D65");
+        approvedLine.setStatus("APPROVED");
+
+        ColorInstructionColorDO rejectedLine = new ColorInstructionColorDO();
+        rejectedLine.setId(502L);
+        rejectedLine.setInstructionId(1001L);
+        rejectedLine.setCustomerColorNo("C01");
+        rejectedLine.setColorName("藏青第1轮");
+        rejectedLine.setLightPrimary("D65");
+        rejectedLine.setStatus("REJECTED");
+
+        ColorInstructionColorDO pendingLine = new ColorInstructionColorDO();
+        pendingLine.setId(503L);
+        pendingLine.setInstructionId(1001L);
+        pendingLine.setCustomerColorNo("C02");
+        pendingLine.setColorName("白色");
+        pendingLine.setLightPrimary("D65");
+        pendingLine.setStatus("PENDING");
+
+        when(colorInstructionColorMapper.selectListByInstructionId(1001L)).thenReturn(List.of(approvedLine, rejectedLine, pendingLine));
+
+        ColorInstructionColorSaveVO pendingVO = new ColorInstructionColorSaveVO();
+        pendingVO.setId(503L);
+        pendingVO.setCustomerColorNo("C02");
+        pendingVO.setColorName("白色");
+        pendingVO.setLightPrimary("D65");
+
+        // 1. deletedColorIds 中显式删除 APPROVED 行 (501L)
+        ColorInstructionSaveReqVO reqVO1 = new ColorInstructionSaveReqVO();
+        reqVO1.setId(1001L);
+        reqVO1.setCustomerId(101L);
+        reqVO1.setProductId(201L);
+        reqVO1.setColors(List.of(pendingVO));
+        reqVO1.setDeletedColorIds(List.of(501L));
+
+        ServiceException ex1 = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO1));
+        assertEquals(COLOR_INSTRUCTION_LINE_FROZEN.getCode(), ex1.getCode());
+
+        // 2. deletedColorIds 中显式删除 REJECTED 行 (502L)
+        ColorInstructionSaveReqVO reqVO2 = new ColorInstructionSaveReqVO();
+        reqVO2.setId(1001L);
+        reqVO2.setCustomerId(101L);
+        reqVO2.setProductId(201L);
+        reqVO2.setColors(List.of(pendingVO));
+        reqVO2.setDeletedColorIds(List.of(502L));
+
+        ServiceException ex2 = assertThrows(ServiceException.class, () ->
+                colorInstructionService.updateColorInstruction(reqVO2));
+        assertEquals(COLOR_INSTRUCTION_LINE_FROZEN.getCode(), ex2.getCode());
+    }
+
+    @Test
+    @DisplayName("更新打色单：差异保存三分流（未改行不更新、改行更新、新增行插入、缺失PENDING行删除、缺失冻结行保留）")
+    void testUpdateColorInstruction_differentialSave_success() {
+        ColorInstructionDO current = new ColorInstructionDO();
+        current.setId(1001L);
+        current.setStatus("IN_PROGRESS");
+        current.setInstructionNo("DS20261013001");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(current);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("优客集团");
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        product.setCode("P-101");
+        product.setName("双面布");
+        product.setComposition("100% 棉");
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        // 库内存量 4 行：
+        // 行 1: APPROVED 冻结行，提交无改动（应保留、不触发 updateById）
+        ColorInstructionColorDO row1 = new ColorInstructionColorDO();
+        row1.setId(101L);
+        row1.setInstructionId(1001L);
+        row1.setLineNo(1);
+        row1.setCustomerColorNo("C01");
+        row1.setColorName("藏青");
+        row1.setLightPrimary("D65");
+        row1.setRound(1);
+        row1.setStatus("APPROVED");
+
+        // 行 2: PENDING 行，提交有改动（修改 remark，应触发 updateById）
+        ColorInstructionColorDO row2 = new ColorInstructionColorDO();
+        row2.setId(102L);
+        row2.setInstructionId(1001L);
+        row2.setLineNo(2);
+        row2.setCustomerColorNo("C01");
+        row2.setColorName("藏青");
+        row2.setLightPrimary("D65");
+        row2.setRound(2);
+        row2.setStatus("PENDING");
+        row2.setRemark("旧备注");
+
+        // 行 3: PENDING 行，请求中缺失（应触发 deleteBatchIds）
+        ColorInstructionColorDO row3 = new ColorInstructionColorDO();
+        row3.setId(103L);
+        row3.setInstructionId(1001L);
+        row3.setLineNo(3);
+        row3.setCustomerColorNo("C02");
+        row3.setColorName("黑色");
+        row3.setLightPrimary("D65");
+        row3.setRound(1);
+        row3.setStatus("PENDING");
+
+        // 行 4: REJECTED 冻结行，请求中缺失（应保留在库中，不触发删除）
+        ColorInstructionColorDO row4 = new ColorInstructionColorDO();
+        row4.setId(104L);
+        row4.setInstructionId(1001L);
+        row4.setLineNo(4);
+        row4.setCustomerColorNo("C03");
+        row4.setColorName("灰色");
+        row4.setLightPrimary("D65");
+        row4.setRound(1);
+        row4.setStatus("REJECTED");
+        row4.setRejectReason("色偏暗");
+
+        when(colorInstructionColorMapper.selectListByInstructionId(1001L)).thenReturn(List.of(row1, row2, row3, row4));
+
+        // 提交参数：
+        // 1) 未改动的 APPROVED 行 (101L)
+        ColorInstructionColorSaveVO vo1 = new ColorInstructionColorSaveVO();
+        vo1.setId(101L);
+        vo1.setCustomerColorNo("C01");
+        vo1.setColorName("藏青");
+        vo1.setLightPrimary("D65");
+        vo1.setRound(1);
+        vo1.setStatus("APPROVED");
+
+        // 2) 改动 remark 的 PENDING 行 (102L)
+        ColorInstructionColorSaveVO vo2 = new ColorInstructionColorSaveVO();
+        vo2.setId(102L);
+        vo2.setCustomerColorNo("C01");
+        vo2.setColorName("藏青");
+        vo2.setLightPrimary("D65");
+        vo2.setRound(2);
+        vo2.setStatus("PENDING");
+        vo2.setRemark("新备注");
+
+        // 3) 新增行 (id=null, C04, 红色)
+        ColorInstructionColorSaveVO voNew = new ColorInstructionColorSaveVO();
+        voNew.setId(null);
+        voNew.setCustomerColorNo("C04");
+        voNew.setColorName("红色");
+        voNew.setLightPrimary("TL84");
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(1001L);
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        reqVO.setColors(List.of(vo1, vo2, voNew));
+
+        colorInstructionService.updateColorInstruction(reqVO);
+
+        // 验证主表更新
+        verify(colorInstructionMapper, times(1)).updateById(any(ColorInstructionDO.class));
+
+        // 验证删除：仅缺失的 PENDING 行 103L 被删除；缺失的 REJECTED 行 104L 不被删除
+        ArgumentCaptor<List<Long>> deleteCaptor = ArgumentCaptor.forClass(List.class);
+        verify(colorInstructionColorMapper, times(1)).deleteBatchIds(deleteCaptor.capture());
+        assertEquals(List.of(103L), deleteCaptor.getValue());
+
+        // 验证新增行插入：round=1, status=PENDING
+        ArgumentCaptor<ColorInstructionColorDO> insertCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper, times(1)).insert(insertCaptor.capture());
+        ColorInstructionColorDO inserted = insertCaptor.getValue();
+        assertEquals("C04", inserted.getCustomerColorNo());
+        assertEquals(1, inserted.getRound());
+        assertEquals("PENDING", inserted.getStatus());
+        assertEquals("TL84", inserted.getLightPrimary());
+
+        // 验证更新行：
+        // vo2 (102L) remark 改变，执行了 updateById
+        // vo1 (101L) 未改动且处于正确顺序，不应调用 updateById（审计字段不变）
+        ArgumentCaptor<ColorInstructionColorDO> updateCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper, atLeastOnce()).updateById(updateCaptor.capture());
+        List<ColorInstructionColorDO> updatedList = updateCaptor.getAllValues();
+        assertTrue(updatedList.stream().anyMatch(u -> u.getId().equals(102L) && "新备注".equals(u.getRemark())));
+    }
+
+    @Test
+    @DisplayName("更新打色单：服务端按 customerColorNo 分组重排 lineNo（同色号多轮相邻、最新轮在前、从 1 连续编号）")
+    void testUpdateColorInstruction_lineNoReorder_success() {
+        ColorInstructionDO current = new ColorInstructionDO();
+        current.setId(1001L);
+        current.setStatus("PENDING");
+        current.setInstructionNo("DS20261013001");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(current);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("客户");
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        product.setCode("P01");
+        product.setName("产品");
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        // 库内有色号 C01 的两轮行：
+        // 轮 1 (REJECTED, id=101L, lineNo=1)
+        ColorInstructionColorDO r1 = new ColorInstructionColorDO();
+        r1.setId(101L);
+        r1.setInstructionId(1001L);
+        r1.setLineNo(2);
+        r1.setCustomerColorNo("C01");
+        r1.setColorName("藏青");
+        r1.setLightPrimary("D65");
+        r1.setRound(1);
+        r1.setStatus("REJECTED");
+
+        // 轮 2 (PENDING, id=102L, 初始 lineNo=1)
+        ColorInstructionColorDO r2 = new ColorInstructionColorDO();
+        r2.setId(102L);
+        r2.setInstructionId(1001L);
+        r2.setLineNo(1);
+        r2.setCustomerColorNo("C01");
+        r2.setColorName("藏青");
+        r2.setLightPrimary("D65");
+        r2.setRound(2);
+        r2.setStatus("PENDING");
+
+        when(colorInstructionColorMapper.selectListByInstructionId(1001L)).thenReturn(List.of(r1, r2));
+
+        // 用户提交：
+        // 先提交色号 C02 的新行（无 id）
+        ColorInstructionColorSaveVO c02 = new ColorInstructionColorSaveVO();
+        c02.setId(null);
+        c02.setCustomerColorNo("C02");
+        c02.setColorName("米白");
+        c02.setLightPrimary("D65");
+
+        // 接着提交 C01 轮 1 和 轮 2（注意提交顺序故意写反）
+        ColorInstructionColorSaveVO c01r1 = new ColorInstructionColorSaveVO();
+        c01r1.setId(101L);
+        c01r1.setCustomerColorNo("C01");
+        c01r1.setColorName("藏青");
+        c01r1.setLightPrimary("D65");
+        c01r1.setRound(1);
+        c01r1.setStatus("REJECTED");
+
+        ColorInstructionColorSaveVO c01r2 = new ColorInstructionColorSaveVO();
+        c01r2.setId(102L);
+        c01r2.setCustomerColorNo("C01");
+        c01r2.setColorName("藏青");
+        c01r2.setLightPrimary("D65");
+        c01r2.setRound(2);
+        c01r2.setStatus("PENDING");
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setId(1001L);
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        // 提交顺序：C02 先，然后 C01 轮 1，再 C01 轮 2
+        reqVO.setColors(List.of(c02, c01r1, c01r2));
+
+        colorInstructionService.updateColorInstruction(reqVO);
+
+        // 校验新增的 C02 行：排在组首，lineNo 应为 1
+        ArgumentCaptor<ColorInstructionColorDO> insertCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper).insert(insertCaptor.capture());
+        ColorInstructionColorDO inserted = insertCaptor.getValue();
+        assertEquals("C02", inserted.getCustomerColorNo());
+        assertEquals(1, inserted.getLineNo());
+
+        // 校验 C01 的多轮行：最新轮（round=2）在前（lineNo=2），旧轮（round=1）在后（lineNo=3）
+        ArgumentCaptor<ColorInstructionColorDO> updateCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper, atLeastOnce()).updateById(updateCaptor.capture());
+        List<ColorInstructionColorDO> updatedRows = updateCaptor.getAllValues();
+
+        // r2 (round=2) lineNo 应为 2
+        ColorInstructionColorDO updatedR2 = updatedRows.stream().filter(u -> u.getId().equals(102L)).findFirst().orElse(null);
+        assertNotNull(updatedR2);
+        assertEquals(2, updatedR2.getLineNo());
+
+        // r1 (round=1) lineNo 原来是 1，现在重排为 3
+        ColorInstructionColorDO updatedR1 = updatedRows.stream().filter(u -> u.getId().equals(101L)).findFirst().orElse(null);
+        assertNotNull(updatedR1);
+        assertEquals(3, updatedR1.getLineNo());
+    }
+
+    @Test
+    @DisplayName("更新打色单：颜色行 ID 同时出现在更新列表与显式删除列表中报参数非法异常")
+    void testUpdateColorInstruction_conflictDeleteAndUpdateThrowsException() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(100L);
+        order.setInstructionNo("DS20261013001");
+        order.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(100L)).thenReturn(order);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(1001L);
+        customer.setCompanyName("客户A");
+        when(customerMapper.selectById(1001L)).thenReturn(customer);
+
+        ProductDO product = new ProductDO();
+        product.setId(2001L);
+        product.setCode("P001");
+        product.setName("双面布");
+        when(productMapper.selectById(2001L)).thenReturn(product);
+
+        ColorInstructionColorDO row1 = new ColorInstructionColorDO();
+        row1.setId(11L);
+        row1.setInstructionId(100L);
+        row1.setStatus("PENDING");
+        row1.setCustomerColorNo("C01");
+        when(colorInstructionColorMapper.selectListByInstructionId(100L)).thenReturn(List.of(row1));
+
+        ColorInstructionSaveReqVO updateReq = new ColorInstructionSaveReqVO();
+        updateReq.setId(100L);
+        updateReq.setCustomerId(1001L);
+        updateReq.setProductId(2001L);
+
+        ColorInstructionColorSaveVO vo1 = new ColorInstructionColorSaveVO();
+        vo1.setId(11L);
+        vo1.setCustomerColorNo("C01");
+        vo1.setColorName("黑色");
+        vo1.setLightPrimary("D65");
+        updateReq.setColors(List.of(vo1));
+        updateReq.setDeletedColorIds(List.of(11L));
+
+        assertThrows(ServiceException.class, () -> colorInstructionService.updateColorInstruction(updateReq));
     }
 
 }

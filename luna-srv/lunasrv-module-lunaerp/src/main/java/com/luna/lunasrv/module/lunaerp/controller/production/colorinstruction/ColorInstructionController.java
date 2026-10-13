@@ -64,4 +64,12 @@ public class ColorInstructionController {
         return success(true);
     }
 
+    @PutMapping("/update")
+    @Operation(summary = "更新打色指示单（差异保存）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:update')")
+    public CommonResult<Boolean> updateColorInstruction(@Valid @RequestBody ColorInstructionSaveReqVO updateReqVO) {
+        colorInstructionService.updateColorInstruction(updateReqVO);
+        return success(true);
+    }
+
 }
