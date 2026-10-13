@@ -2002,6 +2002,164 @@ public class ColorInstructionServiceImplTest {
         assertEquals("确认打色指示单 {{#instructionNo}}", confirmLog.success());
     }
 
+    @Test
+    @DisplayName("打色单列表 Wrapper：keyword 4字段模糊 OR 与 statusList 多选过滤")
+    void testBuildQueryWrapper_keywordAndStatusListFilters() {
+        ColorInstructionPageReqVO reqVO = new ColorInstructionPageReqVO();
+        reqVO.setKeyword("ABC");
+        reqVO.setStatusList(List.of("CONFIRMED", "IN_PRODUCTION"));
+
+        LambdaQueryWrapperX<ColorInstructionDO> wrapper = ColorInstructionMapper.buildQueryWrapper(reqVO);
+        String sql = wrapper.getSqlSegment();
+        assertNotNull(sql);
+        assertTrue(sql.contains("LOWER(instruction_no) LIKE"), "Wrapper 必须包含 instruction_no 模糊匹配");
+        assertTrue(sql.contains("LOWER(client_name) LIKE"), "Wrapper 必须包含 client_name 模糊匹配");
+        assertTrue(sql.contains("LOWER(product_code) LIKE"), "Wrapper 必须包含 product_code 模糊匹配");
+        assertTrue(sql.contains("LOWER(product_name) LIKE"), "Wrapper 必须包含 product_name 模糊匹配");
+        assertTrue(sql.contains("status IN"), "Wrapper 必须包含 status IN 集合过滤");
+
+        var paramValues = wrapper.getParamNameValuePairs().values();
+        assertTrue(paramValues.contains("%ABC%"), "参数必须包含 %ABC%");
+    }
+
+    // ==================== 下游引用通用校验（validateColorInstructionForDownstream） ====================
+
+    @Test
+    @DisplayName("下游引用校验：colorInstructionId 为空直接返回 null")
+    void testValidateColorInstructionForDownstream_nullId_returnsNull() {
+        var result = colorInstructionService.validateColorInstructionForDownstream(
+                null, 100L, 200L, "P001",
+                new com.luna.lunasrv.framework.common.exception.ErrorCode(1_030_006_002, "胚布单关联引用不存在: %s"));
+        assertNull(result);
+    }
+
+    @Test
+    @DisplayName("下游引用校验：打色单不存在抛下游错误码")
+    void testValidateColorInstructionForDownstream_notExists_throwsException() {
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+        var errCode = new com.luna.lunasrv.framework.common.exception.ErrorCode(1_030_006_002, "胚布单关联引用不存在: %s");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.validateColorInstructionForDownstream(999L, 100L, 200L, "P001", errCode));
+        assertEquals(1_030_006_002, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("下游引用校验：跨租户打色单抛下游错误码")
+    void testValidateColorInstructionForDownstream_crossTenant_throwsException() {
+        try {
+            com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder.setTenantId(1L);
+            ColorInstructionDO order = new ColorInstructionDO();
+            order.setId(501L);
+            order.setTenantId(2L); // 租户不匹配
+            order.setStatus("CONFIRMED");
+            order.setDeleted(false);
+            when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+            var errCode = new com.luna.lunasrv.framework.common.exception.ErrorCode(1_030_006_002, "胚布单关联引用不存在: %s");
+            ServiceException ex = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.validateColorInstructionForDownstream(501L, null, null, null, errCode));
+            assertEquals(1_030_006_002, ex.getCode());
+        } finally {
+            com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder.clear();
+        }
+    }
+
+    @Test
+    @DisplayName("下游引用校验：已软删打色单抛下游错误码")
+    void testValidateColorInstructionForDownstream_deleted_throwsException() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setStatus("CONFIRMED");
+        order.setDeleted(true); // 已软删
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+        var errCode = new com.luna.lunasrv.framework.common.exception.ErrorCode(1_030_006_002, "胚布单关联引用不存在: %s");
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.validateColorInstructionForDownstream(501L, null, null, null, errCode));
+        assertEquals(1_030_006_002, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("下游引用校验：状态非 CONFIRMED/IN_PRODUCTION 抛下游错误码")
+    void testValidateColorInstructionForDownstream_invalidStatus_throwsException() {
+        var errCode = new com.luna.lunasrv.framework.common.exception.ErrorCode(1_030_006_002, "胚布单关联引用不存在: %s");
+        for (String invalidStatus : List.of("PENDING", "IN_PROGRESS", "VOID")) {
+            ColorInstructionDO order = new ColorInstructionDO();
+            order.setId(501L);
+            order.setStatus(invalidStatus);
+            order.setDeleted(false);
+            when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+            ServiceException ex = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.validateColorInstructionForDownstream(501L, null, null, null, errCode));
+            assertEquals(1_030_006_002, ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("下游引用校验：客户不一致抛下游错误码")
+    void testValidateColorInstructionForDownstream_customerMismatch_throwsException() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setStatus("CONFIRMED");
+        order.setDeleted(false);
+        order.setCustomerId(100L);
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+        var errCode = new com.luna.lunasrv.framework.common.exception.ErrorCode(1_030_006_002, "胚布单关联引用不存在: %s");
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.validateColorInstructionForDownstream(501L, 200L, null, null, errCode));
+        assertEquals(1_030_006_002, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("下游引用校验：产品ID或产品编码不一致抛下游错误码")
+    void testValidateColorInstructionForDownstream_productMismatch_throwsException() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setStatus("CONFIRMED");
+        order.setDeleted(false);
+        order.setCustomerId(100L);
+        order.setProductId(10L);
+        order.setProductCode("P001");
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+        var errCode = new com.luna.lunasrv.framework.common.exception.ErrorCode(1_030_006_002, "胚布单关联引用不存在: %s");
+
+        // 1. productId 不匹配
+        ServiceException ex1 = assertThrows(ServiceException.class, () ->
+                colorInstructionService.validateColorInstructionForDownstream(501L, 100L, 99L, null, errCode));
+        assertEquals(1_030_006_002, ex1.getCode());
+
+        // 2. productCode 不匹配
+        ServiceException ex2 = assertThrows(ServiceException.class, () ->
+                colorInstructionService.validateColorInstructionForDownstream(501L, 100L, 10L, "P999", errCode));
+        assertEquals(1_030_006_002, ex2.getCode());
+    }
+
+    @Test
+    @DisplayName("下游引用校验：有效打色单校验成功返回 DO（CONFIRMED / IN_PRODUCTION）")
+    void testValidateColorInstructionForDownstream_success() {
+        var errCode = new com.luna.lunasrv.framework.common.exception.ErrorCode(1_030_006_002, "胚布单关联引用不存在: %s");
+        for (String validStatus : List.of("CONFIRMED", "IN_PRODUCTION")) {
+            ColorInstructionDO order = new ColorInstructionDO();
+            order.setId(501L);
+            order.setInstructionNo("DS20261013001");
+            order.setStatus(validStatus);
+            order.setDeleted(false);
+            order.setCustomerId(100L);
+            order.setProductId(10L);
+            order.setProductCode("P001");
+            when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+            ColorInstructionDO result = colorInstructionService.validateColorInstructionForDownstream(
+                    501L, 100L, 10L, "P001", errCode);
+            assertNotNull(result);
+            assertEquals("DS20261013001", result.getInstructionNo());
+        }
+    }
+
 }
 
 

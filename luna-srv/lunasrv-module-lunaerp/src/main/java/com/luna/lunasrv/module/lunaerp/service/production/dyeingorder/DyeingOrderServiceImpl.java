@@ -11,13 +11,12 @@ import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.Dyei
 import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
-import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.color.DyeingColorDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
-import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.color.DyeingColorMapper;
 import jakarta.annotation.Resource;
@@ -71,7 +70,7 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
     private SalesContractMapper salesContractMapper;
 
     @Resource
-    private ColorInstructionMapper colorInstructionMapper;
+    private ColorInstructionService colorInstructionService;
 
     @Override
     public PageResult<DyeingOrderRespVO> getDyeingOrderPage(DyeingOrderPageReqVO reqVO) {
@@ -261,30 +260,13 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         if (dyeingFactory == null) {
             throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "承染方");
         }
-        ColorInstructionDO colorInstruction = null;
-        if (reqVO.getColorInstructionId() != null) {
-            colorInstruction = colorInstructionMapper.selectById(reqVO.getColorInstructionId());
-            Long currentTenantId = TenantContextHolder.getTenantId();
-            if (colorInstruction == null
-                    || (currentTenantId != null && colorInstruction.getTenantId() != null && !Objects.equals(colorInstruction.getTenantId(), currentTenantId))
-                    || Boolean.TRUE.equals(colorInstruction.getDeleted())
-                    || (!"CONFIRMED".equals(colorInstruction.getStatus()) && !"IN_PRODUCTION".equals(colorInstruction.getStatus()))) {
-                throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
-            }
-            // 口径一致校验：客户与产品（若单据有对应字段，须与打色单一致）
-            if (contract.getCustomerId() != null
-                    && !Objects.equals(contract.getCustomerId(), colorInstruction.getCustomerId())) {
-                throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
-            }
-            if (reqVO.getCustomerId() != null
-                    && !Objects.equals(reqVO.getCustomerId(), colorInstruction.getCustomerId())) {
-                throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
-            }
-            if (StringUtils.hasText(reqVO.getProductCode()) && StringUtils.hasText(colorInstruction.getProductCode())
-                    && !reqVO.getProductCode().trim().equalsIgnoreCase(colorInstruction.getProductCode().trim())) {
-                throw exception(DYEING_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
-            }
-        }
+        Long customerId = reqVO.getCustomerId() != null ? reqVO.getCustomerId() : contract.getCustomerId();
+        ColorInstructionDO colorInstruction = colorInstructionService.validateColorInstructionForDownstream(
+                reqVO.getColorInstructionId(),
+                customerId,
+                null,
+                reqVO.getProductCode(),
+                DYEING_ORDER_REFERENCE_NOT_FOUND);
         return new ValidatedRefs(contract, dyeingFactory, colorInstruction);
     }
 

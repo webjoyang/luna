@@ -22,7 +22,7 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstructio
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
-import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import jakarta.annotation.Resource;
@@ -120,7 +120,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     private GreigeTypeMapper greigeTypeMapper;
 
     @Resource
-    private ColorInstructionMapper colorInstructionMapper;
+    private ColorInstructionService colorInstructionService;
 
     @Autowired(required = false)
     private GreigeOrderWeavingProgressProvider weavingProgressProvider;
@@ -292,30 +292,13 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
                 throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "产品档案");
             }
         }
-        ColorInstructionDO colorInstruction = null;
-        if (reqVO.getColorInstructionId() != null) {
-            colorInstruction = colorInstructionMapper.selectById(reqVO.getColorInstructionId());
-            Long currentTenantId = TenantContextHolder.getTenantId();
-            if (colorInstruction == null
-                    || (currentTenantId != null && colorInstruction.getTenantId() != null && !java.util.Objects.equals(colorInstruction.getTenantId(), currentTenantId))
-                    || Boolean.TRUE.equals(colorInstruction.getDeleted())
-                    || (!"CONFIRMED".equals(colorInstruction.getStatus()) && !"IN_PRODUCTION".equals(colorInstruction.getStatus()))) {
-                throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
-            }
-            // 口径一致校验：客户与产品（若当前单据有对应字段，须与打色单一致）
-            if (contract != null && contract.getCustomerId() != null
-                    && !java.util.Objects.equals(contract.getCustomerId(), colorInstruction.getCustomerId())) {
-                throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
-            }
-            if (reqVO.getProductId() != null
-                    && !java.util.Objects.equals(reqVO.getProductId(), colorInstruction.getProductId())) {
-                throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
-            }
-            if (StringUtils.hasText(reqVO.getProductCode()) && StringUtils.hasText(colorInstruction.getProductCode())
-                    && !reqVO.getProductCode().trim().equalsIgnoreCase(colorInstruction.getProductCode().trim())) {
-                throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "打色指示单");
-            }
-        }
+        Long contractCustomerId = contract != null ? contract.getCustomerId() : null;
+        ColorInstructionDO colorInstruction = colorInstructionService.validateColorInstructionForDownstream(
+                reqVO.getColorInstructionId(),
+                contractCustomerId,
+                reqVO.getProductId(),
+                reqVO.getProductCode(),
+                GREIGE_ORDER_REFERENCE_NOT_FOUND);
         validateGreigeTypeExists(reqVO.getGreigeTypeId());
         return new ValidatedRefs(greigeFactory, dyeingFactory, contract, product, colorInstruction);
     }

@@ -420,6 +420,21 @@ describe('Color Instruction API & Form Contracts (Issue 02)', () => {
       'DS20261013001 | 上海客户A | 双面棉毛布 | [C01 藏青, C02 雪青]'
     )
 
+    // 颜色行从 colors 兜底提取
+    const itemWithColors: ColorInstructionApi.ColorInstructionVO = {
+      id: 1,
+      instructionNo: 'DS20261013001',
+      clientName: '上海客户A',
+      productName: '双面棉毛布',
+      colors: [
+        { customerColorNo: 'C01', colorName: '藏青' },
+        { customerColorNo: 'C02', colorName: '雪青' }
+      ]
+    }
+    expect(ColorInstructionApi.formatColorInstructionOptionLabel(itemWithColors)).toBe(
+      'DS20261013001 | 上海客户A | 双面棉毛布 | [C01 藏青, C02 雪青]'
+    )
+
     // 无产品名但有产品编码
     const itemCodeOnly: ColorInstructionApi.ColorInstructionVO = {
       id: 2,
@@ -473,5 +488,106 @@ describe('Color Instruction API & Form Contracts (Issue 02)', () => {
     expect(formData.colorInstructionNo).toBe('')
   })
 })
+
+describe('useColorInstructionSelect composable', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should search color instructions with CONFIRMED and IN_PRODUCTION statusList', async () => {
+    const { useColorInstructionSelect } = await import(
+      '@/views/lunaerp-elmui/production/color-instruction/composables/useColorInstructionSelect'
+    )
+    const mockList = [
+      { id: 101, instructionNo: 'DS20261013001', clientName: '客户A', status: 'CONFIRMED' }
+    ]
+    vi.mocked(request.get).mockResolvedValueOnce({ list: mockList } as any)
+
+    const {
+      colorInstructionOptions,
+      colorInstructionLoading,
+      searchColorInstructions
+    } = useColorInstructionSelect()
+
+    expect(colorInstructionOptions.value).toEqual([])
+    expect(colorInstructionLoading.value).toBe(false)
+
+    await searchColorInstructions('DS2026')
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/page',
+      params: {
+        pageNo: 1,
+        pageSize: 50,
+        keyword: 'DS2026',
+        statusList: ['CONFIRMED', 'IN_PRODUCTION']
+      }
+    })
+    expect(colorInstructionOptions.value).toEqual(mockList)
+    expect(colorInstructionLoading.value).toBe(false)
+  })
+
+  it('should trigger onSelected callback and handle change/clear', async () => {
+    const { useColorInstructionSelect } = await import(
+      '@/views/lunaerp-elmui/production/color-instruction/composables/useColorInstructionSelect'
+    )
+    const onSelected = vi.fn()
+    const {
+      colorInstructionOptions,
+      handleColorInstructionChange
+    } = useColorInstructionSelect({ onSelected })
+
+    const mockItem = { id: 101, instructionNo: 'DS20261013001', clientName: '客户A' }
+    colorInstructionOptions.value = [mockItem]
+
+    // 选中
+    const res = handleColorInstructionChange(101)
+    expect(res).toEqual(mockItem)
+    expect(onSelected).toHaveBeenCalledWith(mockItem)
+
+    // 清空
+    const resCleared = handleColorInstructionChange(undefined)
+    expect(resCleared).toBeUndefined()
+    expect(onSelected).toHaveBeenCalledWith(undefined)
+  })
+
+  it('should preload full detail for existing downstream order and fallback to snapshot on failure', async () => {
+    const { useColorInstructionSelect } = await import(
+      '@/views/lunaerp-elmui/production/color-instruction/composables/useColorInstructionSelect'
+    )
+    const {
+      colorInstructionOptions,
+      preloadColorInstruction
+    } = useColorInstructionSelect()
+
+    // 1. 成功获取完整详情
+    const mockDetail = {
+      id: 501,
+      instructionNo: 'DS20261013001',
+      clientName: '上海客户A',
+      productName: '双面棉毛布',
+      colorSummaries: [{ customerColorNo: 'C01', colorName: '藏青' }]
+    }
+    vi.mocked(request.get).mockResolvedValueOnce(mockDetail as any)
+
+    const loaded = await preloadColorInstruction(501, 'DS20261013001')
+    expect(loaded).toEqual(mockDetail)
+    expect(colorInstructionOptions.value).toEqual([mockDetail])
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/get?id=501'
+    })
+
+    // 2. 失败时降级回退到快照
+    vi.mocked(request.get).mockRejectedValueOnce(new Error('Network error'))
+    const fallback = await preloadColorInstruction(502, 'DS20261013002')
+    expect(fallback).toEqual({ id: 502, instructionNo: 'DS20261013002' })
+    expect(colorInstructionOptions.value).toEqual([{ id: 502, instructionNo: 'DS20261013002' }])
+
+    // 3. id 为空时不发起请求
+    const emptyRes = await preloadColorInstruction(undefined)
+    expect(emptyRes).toBeUndefined()
+  })
+})
+
 
 

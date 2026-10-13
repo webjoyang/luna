@@ -520,8 +520,7 @@ import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
 import * as GreigeTypeApi from '@/api/lunaerp/baseinfo/greige-type'
 import type { GreigeTypeSimpleVO } from '@/api/lunaerp/baseinfo/greige-type'
-import * as ColorInstructionApi from '@/api/lunaerp-elmui/production/color-instruction'
-import type { ColorInstructionVO } from '@/api/lunaerp-elmui/production/color-instruction'
+import { useColorInstructionSelect } from '@/views/lunaerp-elmui/production/color-instruction/composables/useColorInstructionSelect'
 
 defineOptions({ name: 'LunaerpElmuiProductionGreigeOrderEdit' })
 
@@ -820,35 +819,25 @@ const handleProductChange = (productId?: number) => {
 
 // ==================== 打色指示单远程搜索（可空引用，同客户+产品） ====================
 
-const colorInstructionLoading = ref(false)
-const colorInstructionOptions = ref<ColorInstructionVO[]>([])
-
-const formatColorInstructionLabel = ColorInstructionApi.formatColorInstructionOptionLabel
-
-const searchColorInstructions = async (query: string) => {
-  colorInstructionLoading.value = true
-  try {
-    const data = await ColorInstructionApi.getColorInstructionPage({
-      pageNo: 1,
-      pageSize: 20,
-      keyword: query || undefined,
-      statusList: ['CONFIRMED', 'IN_PRODUCTION']
-    })
-    colorInstructionOptions.value = data.list || []
-  } finally {
-    colorInstructionLoading.value = false
+const {
+  colorInstructionLoading,
+  colorInstructionOptions,
+  formatColorInstructionLabel,
+  searchColorInstructions,
+  handleColorInstructionChange: triggerColorInstructionChange,
+  preloadColorInstruction
+} = useColorInstructionSelect({
+  onSelected: (item) => {
+    formData.colorInstructionNo = item?.instructionNo || ''
+    if (!item) {
+      formData.colorInstructionId = undefined
+    }
   }
-}
+})
 
-/** 选中打色单：保存单号快照，清空时重置为 null/undefined */
 const handleColorInstructionChange = (instructionId?: number) => {
-  if (!instructionId) {
-    formData.colorInstructionId = undefined
-    formData.colorInstructionNo = ''
-    return
-  }
-  const item = colorInstructionOptions.value.find((c) => c.id === instructionId)
-  formData.colorInstructionNo = item?.instructionNo || ''
+  formData.colorInstructionId = instructionId || undefined
+  triggerColorInstructionChange(instructionId)
 }
 
 // ==================== 胚布品种（手选、不自动识别） ====================
@@ -936,12 +925,7 @@ const loadGreigeOrder = async () => {
       ]
     }
     if (data.colorInstructionId) {
-      colorInstructionOptions.value = [
-        {
-          id: data.colorInstructionId,
-          instructionNo: data.colorInstructionNo || ''
-        } as ColorInstructionVO
-      ]
+      await preloadColorInstruction(data.colorInstructionId, data.colorInstructionNo)
     }
   } finally {
     restoring.value = false

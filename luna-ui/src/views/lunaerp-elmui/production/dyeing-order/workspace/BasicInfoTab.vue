@@ -424,8 +424,7 @@ import * as SalesContractApi from '@/api/lunaerp-elmui/business/sales-contract'
 import type { SalesContractVO } from '@/api/lunaerp-elmui/business/sales-contract'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
-import * as ColorInstructionApi from '@/api/lunaerp-elmui/production/color-instruction'
-import type { ColorInstructionVO } from '@/api/lunaerp-elmui/production/color-instruction'
+import { useColorInstructionSelect } from '@/views/lunaerp-elmui/production/color-instruction/composables/useColorInstructionSelect'
 
 defineOptions({ name: 'DyeingOrderBasicInfoTab' })
 
@@ -658,34 +657,25 @@ const handleSupplierChange = (val?: number) => {
 }
 
 // 打色指示单远程搜索
-const colorInstructionOptions = ref<ColorInstructionVO[]>([])
-const colorInstructionLoading = ref(false)
-const formatColorInstructionLabel = ColorInstructionApi.formatColorInstructionOptionLabel
-
-const searchColorInstructions = async (query: string) => {
-  colorInstructionLoading.value = true
-  try {
-    const res = await ColorInstructionApi.getColorInstructionPage({
-      pageNo: 1,
-      pageSize: 20,
-      keyword: query || undefined,
-      statusList: ['CONFIRMED', 'IN_PRODUCTION']
-    })
-    colorInstructionOptions.value = res.list || []
-  } finally {
-    colorInstructionLoading.value = false
+const {
+  colorInstructionOptions,
+  colorInstructionLoading,
+  formatColorInstructionLabel,
+  searchColorInstructions,
+  handleColorInstructionChange: triggerColorInstructionChange,
+  preloadColorInstruction
+} = useColorInstructionSelect({
+  onSelected: (item) => {
+    formData.value.colorInstructionNo = item?.instructionNo || ''
+    if (!item) {
+      formData.value.colorInstructionId = undefined
+    }
   }
-}
+})
 
 const handleColorInstructionChange = (val?: number) => {
-  if (!val) {
-    formData.value.colorInstructionId = undefined
-    formData.value.colorInstructionNo = ''
-    return
-  }
-  const found = colorInstructionOptions.value.find((c) => c.id === val)
-  formData.value.colorInstructionId = val
-  formData.value.colorInstructionNo = found?.instructionNo || ''
+  formData.value.colorInstructionId = val || undefined
+  triggerColorInstructionChange(val)
 }
 
 // 详情加载
@@ -727,12 +717,7 @@ const loadDetail = async () => {
       ]
     }
     if (res.colorInstructionId) {
-      colorInstructionOptions.value = [
-        {
-          id: res.colorInstructionId,
-          instructionNo: res.colorInstructionNo || ''
-        } as ColorInstructionVO
-      ]
+      await preloadColorInstruction(res.colorInstructionId, res.colorInstructionNo)
     }
   } finally {
     loading.value = false

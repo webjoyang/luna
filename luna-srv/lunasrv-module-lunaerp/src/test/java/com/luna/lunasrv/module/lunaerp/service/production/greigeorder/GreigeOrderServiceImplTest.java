@@ -23,7 +23,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeM
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
-import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.ColorInstructionMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -94,7 +94,7 @@ class GreigeOrderServiceImplTest {
     private GreigeOrderWeavingProgressProvider weavingProgressProvider;
 
     @Mock
-    private ColorInstructionMapper colorInstructionMapper;
+    private ColorInstructionService colorInstructionService;
 
     @InjectMocks
     private GreigeOrderServiceImpl greigeOrderService;
@@ -1266,7 +1266,6 @@ class GreigeOrderServiceImplTest {
         ci.setStatus(status);
         ci.setDeleted(false);
         ci.setTenantId(TenantContextHolder.getTenantId() == null ? 1L : TenantContextHolder.getTenantId());
-        when(colorInstructionMapper.selectById(id)).thenReturn(ci);
         return ci;
     }
 
@@ -1278,7 +1277,8 @@ class GreigeOrderServiceImplTest {
         req.setGreigeFactoryId(100L);
         req.setPlannedQty(new BigDecimal("1000"));
         req.setColorInstructionId(999L);
-        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(999L), any(), any(), any(), any()))
+                .thenThrow(new ServiceException(1_030_006_002, "打色指示单"));
 
         ServiceException ex = assertThrows(ServiceException.class, () -> greigeOrderService.createGreigeOrder(req));
         assertEquals(1_030_006_002, ex.getCode(), "打色单不存在应抛 GREIGE_ORDER_REFERENCE_NOT_FOUND");
@@ -1293,16 +1293,11 @@ class GreigeOrderServiceImplTest {
         req.setPlannedQty(new BigDecimal("1000"));
         req.setColorInstructionId(501L);
 
-        try {
-            TenantContextHolder.setTenantId(1L);
-            ColorInstructionDO ci = stubColorInstruction(501L, "DS20261007001", 10L, 20L, "P001", "CONFIRMED");
-            ci.setTenantId(9999L); // 他租户
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), any(), any(), any()))
+                .thenThrow(new ServiceException(1_030_006_002, "打色指示单"));
 
-            ServiceException ex = assertThrows(ServiceException.class, () -> greigeOrderService.createGreigeOrder(req));
-            assertEquals(1_030_006_002, ex.getCode(), "他租户打色单应抛 GREIGE_ORDER_REFERENCE_NOT_FOUND");
-        } finally {
-            TenantContextHolder.clear();
-        }
+        ServiceException ex = assertThrows(ServiceException.class, () -> greigeOrderService.createGreigeOrder(req));
+        assertEquals(1_030_006_002, ex.getCode(), "他租户打色单应抛 GREIGE_ORDER_REFERENCE_NOT_FOUND");
     }
 
     @Test
@@ -1314,8 +1309,8 @@ class GreigeOrderServiceImplTest {
         req.setPlannedQty(new BigDecimal("1000"));
         req.setColorInstructionId(501L);
 
-        ColorInstructionDO ci = stubColorInstruction(501L, "DS20261007001", 10L, 20L, "P001", "CONFIRMED");
-        ci.setDeleted(true); // 软删除
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), any(), any(), any()))
+                .thenThrow(new ServiceException(1_030_006_002, "打色指示单"));
 
         ServiceException ex = assertThrows(ServiceException.class, () -> greigeOrderService.createGreigeOrder(req));
         assertEquals(1_030_006_002, ex.getCode(), "已软删打色单应抛 GREIGE_ORDER_REFERENCE_NOT_FOUND");
@@ -1331,7 +1326,8 @@ class GreigeOrderServiceImplTest {
             req.setPlannedQty(new BigDecimal("1000"));
             req.setColorInstructionId(501L);
 
-            stubColorInstruction(501L, "DS20261007001", 10L, 20L, "P001", invalidStatus);
+            when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), any(), any(), any()))
+                    .thenThrow(new ServiceException(1_030_006_002, "打色指示单"));
 
             ServiceException ex = assertThrows(ServiceException.class, () -> greigeOrderService.createGreigeOrder(req));
             assertEquals(1_030_006_002, ex.getCode(), "非 CONFIRMED/IN_PRODUCTION 打色单应抛 GREIGE_ORDER_REFERENCE_NOT_FOUND: " + invalidStatus);
@@ -1354,8 +1350,8 @@ class GreigeOrderServiceImplTest {
         req.setSalesContractId(200L);
         req.setColorInstructionId(501L);
 
-        // 打色单客户为 99 (与合同客户 10 不一致)
-        stubColorInstruction(501L, "DS20261007001", 99L, 20L, "P001", "CONFIRMED");
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), eq(10L), any(), any(), any()))
+                .thenThrow(new ServiceException(1_030_006_002, "打色指示单"));
 
         ServiceException ex = assertThrows(ServiceException.class, () -> greigeOrderService.createGreigeOrder(req));
         assertEquals(1_030_006_002, ex.getCode(), "客户口径不一致应抛 GREIGE_ORDER_REFERENCE_NOT_FOUND");
@@ -1373,8 +1369,8 @@ class GreigeOrderServiceImplTest {
         req.setProductId(20L);
         req.setColorInstructionId(501L);
 
-        // 打色单产品 ID 为 88 (与胚布单产品 ID 20 不一致)
-        stubColorInstruction(501L, "DS20261007001", 10L, 88L, "P088", "CONFIRMED");
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), eq(20L), any(), any()))
+                .thenThrow(new ServiceException(1_030_006_002, "打色指示单"));
 
         ServiceException ex = assertThrows(ServiceException.class, () -> greigeOrderService.createGreigeOrder(req));
         assertEquals(1_030_006_002, ex.getCode(), "产品口径不一致应抛 GREIGE_ORDER_REFERENCE_NOT_FOUND");
@@ -1393,7 +1389,8 @@ class GreigeOrderServiceImplTest {
             req.setProductId(20L);
             req.setColorInstructionId(501L);
 
-            stubColorInstruction(501L, "DS20261007001", 10L, 20L, "P001", validStatus);
+            ColorInstructionDO ci = stubColorInstruction(501L, "DS20261007001", 10L, 20L, "P001", validStatus);
+            when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), eq(20L), any(), any())).thenReturn(ci);
 
             greigeOrderService.createGreigeOrder(req);
 
@@ -1428,6 +1425,42 @@ class GreigeOrderServiceImplTest {
         GreigeOrderDO updated = captor.getValue();
         assertNull(updated.getColorInstructionId(), "清空后 colorInstructionId 应为 null");
         assertNull(updated.getColorInstructionNo(), "清空后 colorInstructionNo 快照应为 null");
+    }
+
+    @Test
+    void createGreigeOrder_singleColorInstructionConstraint_atMostOneColorInstruction() {
+        stubSupplier(100L, "海宁坯布厂");
+        ColorInstructionDO ci1 = stubColorInstruction(501L, "DS20261007001", 10L, 20L, "P001", "CONFIRMED");
+        ColorInstructionDO ci2 = stubColorInstruction(502L, "DS20261007002", 10L, 20L, "P001", "CONFIRMED");
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), any(), any(), any())).thenReturn(ci1);
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(502L), any(), any(), any(), any())).thenReturn(ci2);
+
+        GreigeOrderSaveReqVO req = new GreigeOrderSaveReqVO();
+        req.setProductionMode("OUTSOURCE");
+        req.setGreigeFactoryId(100L);
+        req.setPlannedQty(new BigDecimal("1000"));
+        req.setColorInstructionId(501L);
+
+        greigeOrderService.createGreigeOrder(req);
+
+        ArgumentCaptor<GreigeOrderDO> captor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).insert(captor.capture());
+        assertEquals(501L, captor.getValue().getColorInstructionId());
+        assertEquals("DS20261007001", captor.getValue().getColorInstructionNo());
+
+        // 再次修改单据并关联另一张打色单，验证单次保存只保留唯一打色单
+        req.setId(1L);
+        req.setColorInstructionId(502L);
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919001");
+        existing.setColorInstructionId(501L);
+        existing.setColorInstructionNo("DS20261007001");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+
+        greigeOrderService.updateGreigeOrder(req);
+        ArgumentCaptor<GreigeOrderDO> updateCaptor = ArgumentCaptor.forClass(GreigeOrderDO.class);
+        verify(greigeOrderMapper).updateById(updateCaptor.capture());
+        assertEquals(502L, updateCaptor.getValue().getColorInstructionId());
+        assertEquals("DS20261007002", updateCaptor.getValue().getColorInstructionNo());
     }
 
 }

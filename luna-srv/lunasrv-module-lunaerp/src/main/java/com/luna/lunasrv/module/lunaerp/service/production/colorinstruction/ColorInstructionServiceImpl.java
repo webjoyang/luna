@@ -12,6 +12,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.Col
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction.color.ColorInstructionColorMapper;
 import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.starter.annotation.LogRecord;
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -931,6 +932,40 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         // 6. 日志变量填充
         LogRecordContext.putVariable("orderId", order.getId());
         LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
+    }
+
+    @Override
+    public ColorInstructionDO validateColorInstructionForDownstream(Long colorInstructionId,
+                                                                     Long customerId,
+                                                                     Long productId,
+                                                                     String productCode,
+                                                                     com.luna.lunasrv.framework.common.exception.ErrorCode notFoundErrorCode) {
+        if (colorInstructionId == null) {
+            return null;
+        }
+        ColorInstructionDO colorInstruction = colorInstructionMapper.selectById(colorInstructionId);
+        Long currentTenantId = TenantContextHolder.getTenantId();
+        if (colorInstruction == null
+                || (currentTenantId != null && colorInstruction.getTenantId() != null && !Objects.equals(colorInstruction.getTenantId(), currentTenantId))
+                || Boolean.TRUE.equals(colorInstruction.getDeleted())
+                || (!"CONFIRMED".equals(colorInstruction.getStatus()) && !"IN_PRODUCTION".equals(colorInstruction.getStatus()))) {
+            throw exception(notFoundErrorCode, "打色指示单");
+        }
+        // 口径一致校验：客户
+        if (customerId != null && colorInstruction.getCustomerId() != null
+                && !Objects.equals(colorInstruction.getCustomerId(), customerId)) {
+            throw exception(notFoundErrorCode, "打色指示单");
+        }
+        // 口径一致校验：产品（优先按 productId 比对，若无则按 productCode 文本比对）
+        if (productId != null && colorInstruction.getProductId() != null
+                && !Objects.equals(colorInstruction.getProductId(), productId)) {
+            throw exception(notFoundErrorCode, "打色指示单");
+        }
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(productCode) && org.apache.commons.lang3.StringUtils.isNotBlank(colorInstruction.getProductCode())
+                && !Objects.equals(colorInstruction.getProductCode().trim(), productCode.trim())) {
+            throw exception(notFoundErrorCode, "打色指示单");
+        }
+        return colorInstruction;
     }
 
 }

@@ -81,8 +81,12 @@ export function formatColorInstructionOptionLabel(item: ColorInstructionVO): str
   if (item.productName || item.productCode) {
     parts.push(item.productName || item.productCode || '')
   }
-  if (item.colorSummaries && item.colorSummaries.length > 0) {
-    const summaryStr = item.colorSummaries
+  const colorList =
+    item.colorSummaries && item.colorSummaries.length > 0
+      ? item.colorSummaries
+      : (item.colors || [])
+  if (colorList && colorList.length > 0) {
+    const summaryStr = colorList
       .map((c) => [c.customerColorNo, c.colorName].filter(Boolean).join(' '))
       .filter(Boolean)
       .join(', ')

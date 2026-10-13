@@ -86,6 +86,30 @@ public interface ColorInstructionService {
      */
     void confirmColorInstruction(com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionConfirmReqVO reqVO);
 
+    /**
+     * 校验打色指示单是否可供下游单据（胚布单/染色单）引用
+     * <p>
+     * 校验规则（下沉领域守卫，避免下游 Feature Envy 与逻辑重复）：
+     * 1. 存在且未软删
+     * 2. 属于当前租户
+     * 3. 状态 ∈ {CONFIRMED, IN_PRODUCTION}
+     * 4. 客户口径一致（若下游单据指定了客户）
+     * 5. 产品口径一致（若下游单据指定了产品ID或产品编码）
+     *
+     * @param colorInstructionId 打色指示单ID（允许为null，为null直接返回null）
+     * @param customerId 预期客户ID（可空）
+     * @param productId 预期产品ID（可空）
+     * @param productCode 预期产品编码（可空）
+     * @param notFoundErrorCode 校验失败时抛出的下游错误码
+     * @return 校验通过的打色指示单DO，若colorInstructionId为null则返回null
+     */
+    com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO validateColorInstructionForDownstream(
+            Long colorInstructionId,
+            Long customerId,
+            Long productId,
+            String productCode,
+            com.luna.lunasrv.framework.common.exception.ErrorCode notFoundErrorCode);
+
 }
 
 
