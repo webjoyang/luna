@@ -148,5 +148,32 @@ public class ColorInstructionControllerTest {
         verify(colorInstructionService).rejectRestrikeColorLine(11L, "颜色偏浅，需调深半度");
     }
 
+    @Test
+    @DisplayName("Controller确认打色单：委托Service并返回成功，具备:confirm权限注解")
+    void testConfirmColorInstruction() throws NoSuchMethodException {
+        ColorInstructionConfirmReqVO reqVO = new ColorInstructionConfirmReqVO();
+        reqVO.setId(1024L);
+        reqVO.setConfirmType("CUSTOMER");
+        reqVO.setCustomerFeedback("客户确认通过");
+
+        doNothing().when(colorInstructionService).confirmColorInstruction(reqVO);
+
+        CommonResult<Boolean> result = colorInstructionController.confirmColorInstruction(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(colorInstructionService).confirmColorInstruction(reqVO);
+
+        // 校验注解
+        var method = ColorInstructionController.class.getMethod("confirmColorInstruction", ColorInstructionConfirmReqVO.class);
+        var putMapping = method.getAnnotation(org.springframework.web.bind.annotation.PutMapping.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(putMapping);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new String[]{"/confirm"}, putMapping.value());
+
+        var preAuth = method.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(preAuth);
+        org.junit.jupiter.api.Assertions.assertEquals("@ss.hasPermission('lunaerp:production:color-instruction:confirm')", preAuth.value());
+    }
+
 }
 

@@ -25,6 +25,15 @@
             >
               <Icon icon="ep:video-play" class="mr-1" /> 开始打色
             </el-button>
+            <el-button
+              v-if="!isViewMode && formData.id && formData.status === 'IN_PROGRESS'"
+              type="success"
+              :loading="confirmSubmitting"
+              @click="openConfirmDialog"
+              v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+            >
+              <Icon icon="ep:circle-check" class="mr-1" /> 确认
+            </el-button>
             <el-button v-if="!isViewMode" type="primary" :loading="submitting" @click="handleSave">
               <Icon icon="ep:check" class="mr-1" /> 保存
             </el-button>
@@ -379,7 +388,7 @@
                     link
                     type="primary"
                     size="small"
-                    :disabled="$index === formData.colors.length - 1"
+                    :disabled="$index === (formData.colors?.length || 0) - 1"
                     @click="moveColorLine($index, 1)"
                     title="下移"
                   >
@@ -432,6 +441,52 @@
           <el-button @click="rejectDialogVisible = false">取消</el-button>
           <el-button type="danger" :loading="rejectSubmitting" @click="handleConfirmReject">
             确认驳回并克隆新一轮
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 确认打色指示单弹窗 -->
+    <el-dialog
+      v-model="confirmDialogVisible"
+      title="确认打色指示单"
+      width="480px"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="confirmFormRef"
+        :model="confirmFormData"
+        :rules="confirmFormRules"
+        label-width="90px"
+      >
+        <el-form-item label="确认类型" prop="confirmType">
+          <el-radio-group v-model="confirmFormData.confirmType">
+            <el-radio
+              v-for="item in ColorInstructionApi.COLOR_INSTRUCTION_CONFIRM_TYPES"
+              :key="item.value"
+              :label="item.value"
+            >
+              {{ item.label }}
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="客户反馈" prop="customerFeedback">
+          <el-input
+            v-model="confirmFormData.customerFeedback"
+            type="textarea"
+            :rows="3"
+            maxlength="300"
+            show-word-limit
+            placeholder="请输入客户反馈意见（可空）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="confirmDialogVisible = false">取消</el-button>
+          <el-button type="success" :loading="confirmSubmitting" @click="handleConfirmInstruction">
+            确认
           </el-button>
         </div>
       </template>
@@ -883,6 +938,45 @@ const handleConfirmReject = async () => {
     }
   } finally {
     rejectSubmitting.value = false
+  }
+}
+
+// 确认打色指示单弹窗逻辑
+const confirmDialogVisible = ref(false)
+const confirmSubmitting = ref(false)
+const confirmFormRef = ref()
+const confirmFormData = reactive({
+  confirmType: 'CUSTOMER',
+  customerFeedback: ''
+})
+const confirmFormRules = {
+  confirmType: [{ required: true, message: '请选择确认类型', trigger: 'change' }]
+}
+
+const openConfirmDialog = () => {
+  confirmFormData.confirmType = 'CUSTOMER'
+  confirmFormData.customerFeedback = ''
+  confirmDialogVisible.value = true
+}
+
+const handleConfirmInstruction = async () => {
+  if (!confirmFormRef.value) return
+  const valid = await confirmFormRef.value.validate()
+  if (!valid) return
+  if (!formData.id) return
+
+  confirmSubmitting.value = true
+  try {
+    await ColorInstructionApi.confirmColorInstruction({
+      id: formData.id,
+      confirmType: confirmFormData.confirmType,
+      customerFeedback: confirmFormData.customerFeedback
+    })
+    message.success('打色指示单已确认')
+    confirmDialogVisible.value = false
+    await loadData(formData.id)
+  } finally {
+    confirmSubmitting.value = false
   }
 }
 

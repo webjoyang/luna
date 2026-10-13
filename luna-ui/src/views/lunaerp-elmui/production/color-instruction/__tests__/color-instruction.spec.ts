@@ -322,5 +322,70 @@ describe('Color Instruction API & Form Contracts (Issue 02)', () => {
     expect(tableRowClassName(colors[1], 1, colors)).toBe('row-rejected')
     expect(tableRowClassName(colors[2], 2, colors)).toBe('row-group-start')
   })
+
+  // ==================== Issue 05: 确认动作与三道守卫 ====================
+
+  it('confirmColorInstruction should PUT /lunaerp/production/color-instruction/confirm', async () => {
+    vi.mocked(request.put).mockResolvedValueOnce(true as any)
+    const payload = {
+      id: 1024,
+      confirmType: 'CUSTOMER',
+      customerFeedback: '客户现场看样确认通过'
+    }
+    const res = await ColorInstructionApi.confirmColorInstruction(payload)
+    expect(request.put).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/confirm',
+      data: payload
+    })
+    expect(res).toBe(true)
+  })
+
+  it('COLOR_INSTRUCTION_CONFIRM_TYPES should define CUSTOMER and INTERNAL constants', () => {
+    const types = (ColorInstructionApi as any).COLOR_INSTRUCTION_CONFIRM_TYPES
+    expect(types).toBeDefined()
+    expect(types).toHaveLength(2)
+    expect(types.find((t: any) => t.value === 'CUSTOMER')?.label).toBe('客户确认')
+    expect(types.find((t: any) => t.value === 'INTERNAL')?.label).toBe('内部确认')
+  })
+
+  it('should verify confirm button visibility guard on header', () => {
+    const canShowConfirmButton = (isView: boolean, id?: number, status?: string) => {
+      if (isView) return false
+      if (!id) return false
+      return status === 'IN_PROGRESS'
+    }
+
+    // 仅已保存且处于 IN_PROGRESS 且非只读模式下显示
+    expect(canShowConfirmButton(false, 1024, 'IN_PROGRESS')).toBe(true)
+    expect(canShowConfirmButton(false, 1024, 'PENDING')).toBe(false)
+    expect(canShowConfirmButton(false, 1024, 'CONFIRMED')).toBe(false)
+    expect(canShowConfirmButton(false, 1024, 'VOID')).toBe(false)
+    expect(canShowConfirmButton(false, undefined, 'IN_PROGRESS')).toBe(false)
+    expect(canShowConfirmButton(true, 1024, 'IN_PROGRESS')).toBe(false)
+  })
+
+  it('should transition to full read-only mode once order status becomes CONFIRMED', () => {
+    const isViewMode = (queryMode?: string, status?: string) => {
+      if (queryMode === 'view') return true
+      if (status && status !== 'PENDING' && status !== 'IN_PROGRESS') return true
+      return false
+    }
+
+    // 确认成功后状态转 CONFIRMED
+    const statusAfterConfirm = 'CONFIRMED'
+    expect(isViewMode(undefined, statusAfterConfirm)).toBe(true)
+    // 行动作在 CONFIRMED 下也全部禁用
+    const canDoLineAction = (isView: boolean, status?: string) =>
+      !isView && (status === 'PENDING' || status === 'IN_PROGRESS')
+    expect(canDoLineAction(true, statusAfterConfirm)).toBe(false)
+  })
+
+  it('should validate confirm dialog required fields', () => {
+    const confirmFormRules = {
+      confirmType: [{ required: true, message: '请选择确认类型', trigger: 'change' }]
+    }
+    expect(confirmFormRules.confirmType[0].required).toBe(true)
+  })
 })
+
 

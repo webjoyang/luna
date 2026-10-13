@@ -79,6 +79,13 @@ public interface ColorInstructionService {
      */
     void rejectRestrikeColorLine(Long lineId, String rejectReason);
 
+    /**
+     * 确认打色指示单（三道守卫：IN_PROGRESS态、无PENDING行、至少1行APPROVED；写入确认信息与防并发更新）
+     *
+     * @param reqVO 确认请求参数
+     */
+    void confirmColorInstruction(com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionConfirmReqVO reqVO);
+
 }
 
 

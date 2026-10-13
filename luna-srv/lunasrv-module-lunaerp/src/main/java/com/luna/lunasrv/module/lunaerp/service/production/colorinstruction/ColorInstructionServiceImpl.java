@@ -34,6 +34,9 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.Customer
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
 
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionConfirmReqVO;
+import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionConfirmTypeEnum;
 import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionLineStatusEnum;
 import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionStatusEnum;
 
@@ -866,6 +869,68 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
                 throw exception(COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT);
             }
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "COLOR_INSTRUCTION", subType = "CONFIRM", bizNo = "{{#reqVO.id}}",
+            success = "确认打色单 {{#instructionNo}}")
+    public void confirmColorInstruction(ColorInstructionConfirmReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 1. 存在性校验
+        ColorInstructionDO order = colorInstructionMapper.selectById(reqVO.getId());
+        if (order == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 2. 守卫一：单据状态必须为 IN_PROGRESS（CONFIRMED 重复确认报 1_030_032_002）
+        if (!ColorInstructionStatusEnum.IN_PROGRESS.getValue().equals(order.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 守卫二与守卫三：查询打色颜色行，校验无 PENDING 行且至少 1 行 APPROVED
+        List<ColorInstructionColorDO> colors = colorInstructionColorMapper.selectList(
+                new LambdaQueryWrapperX<ColorInstructionColorDO>()
+                        .eq(ColorInstructionColorDO::getInstructionId, reqVO.getId())
+        );
+        boolean hasPending = colors.stream()
+                .anyMatch(c -> ColorInstructionLineStatusEnum.PENDING.getValue().equals(c.getStatus()));
+        if (hasPending) {
+            throw exception(COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET);
+        }
+        boolean hasApproved = colors.stream()
+                .anyMatch(c -> ColorInstructionLineStatusEnum.APPROVED.getValue().equals(c.getStatus()));
+        if (!hasApproved) {
+            throw exception(COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET);
+        }
+
+        // 4. 枚举校验 confirmType（内部枚举：CUSTOMER 客户确认 / INTERNAL 内部确认）
+        if (!ColorInstructionConfirmTypeEnum.isValid(reqVO.getConfirmType())) {
+            throw exception(COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT);
+        }
+
+        // 5. 条件更新：status='IN_PROGRESS'，影响行数 0 报 1_030_032_002（防并发覆盖与重复确认）
+        ColorInstructionDO updateDO = new ColorInstructionDO();
+        updateDO.setStatus(ColorInstructionStatusEnum.CONFIRMED.getValue());
+        updateDO.setConfirmType(reqVO.getConfirmType());
+        updateDO.setCustomerFeedback(StringUtils.hasText(reqVO.getCustomerFeedback()) ? reqVO.getCustomerFeedback().trim() : null);
+        updateDO.setConfirmedBy(SecurityFrameworkUtils.getLoginUserId());
+        updateDO.setConfirmedAt(java.time.LocalDateTime.now());
+
+        int updated = colorInstructionMapper.update(updateDO,
+                new LambdaUpdateWrapper<ColorInstructionDO>()
+                        .eq(ColorInstructionDO::getId, reqVO.getId())
+                        .eq(ColorInstructionDO::getStatus, ColorInstructionStatusEnum.IN_PROGRESS.getValue()));
+        if (updated == 0) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+
+        // 6. 日志变量填充
+        LogRecordContext.putVariable("orderId", order.getId());
+        LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
     }
 
 }

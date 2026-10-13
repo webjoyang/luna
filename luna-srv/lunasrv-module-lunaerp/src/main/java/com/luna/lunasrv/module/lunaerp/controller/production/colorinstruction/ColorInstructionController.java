@@ -94,5 +94,13 @@ public class ColorInstructionController {
         return success(true);
     }
 
+    @PutMapping("/confirm")
+    @Operation(summary = "确认打色指示单（三道守卫校验）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:confirm')")
+    public CommonResult<Boolean> confirmColorInstruction(@Valid @RequestBody ColorInstructionConfirmReqVO reqVO) {
+        colorInstructionService.confirmColorInstruction(reqVO);
+        return success(true);
+    }
+
 }
 
