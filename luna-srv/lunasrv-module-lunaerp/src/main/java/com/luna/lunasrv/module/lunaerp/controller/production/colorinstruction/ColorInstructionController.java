@@ -4,17 +4,16 @@ import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
@@ -40,6 +39,29 @@ public class ColorInstructionController {
     @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:query')")
     public CommonResult<ColorInstructionRespVO> getColorInstruction(@RequestParam("id") Long id) {
         return success(colorInstructionService.getColorInstruction(id));
+    }
+
+    @PostMapping("/create")
+    @Operation(summary = "创建打色指示单")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:create')")
+    public CommonResult<Long> createColorInstruction(@Valid @RequestBody ColorInstructionSaveReqVO createReqVO) {
+        return success(colorInstructionService.createColorInstruction(createReqVO));
+    }
+
+    @GetMapping("/get-next-no")
+    @Operation(summary = "预览下一个打色单号（只读、不占号）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:query')")
+    public CommonResult<String> getNextInstructionNo() {
+        return success(colorInstructionService.getNextInstructionNo());
+    }
+
+    @DeleteMapping("/delete")
+    @Operation(summary = "软删除打色指示单（仅 PENDING 状态）")
+    @Parameter(name = "id", description = "打色指示单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:delete')")
+    public CommonResult<Boolean> deleteColorInstruction(@RequestParam("id") Long id) {
+        colorInstructionService.deleteColorInstruction(id);
+        return success(true);
     }
 
 }

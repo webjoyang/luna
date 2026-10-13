@@ -83,6 +83,11 @@ export const getColorInstruction = (id: number) => {
 
 // ========== 后续票据端点占位 ==========
 
+// 预览下一个打色单号（02 票）
+export const getNextInstructionNo = () => {
+  return request.get({ url: '/lunaerp/production/color-instruction/get-next-no' })
+}
+
 // 新建打色指示单（02 票）
 export const createColorInstruction = (data: Partial<ColorInstructionVO>) => {
   return request.post({ url: '/lunaerp/production/color-instruction/create', data })

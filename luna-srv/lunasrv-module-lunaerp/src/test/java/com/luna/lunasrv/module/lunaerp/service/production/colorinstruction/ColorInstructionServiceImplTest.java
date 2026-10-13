@@ -24,7 +24,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.util.List;
 
-import static com.luna.lunasrv.module.lunaerp.enums.ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_NOT_EXISTS;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionColorSaveVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO;
+
+import static com.luna.lunasrv.module.lunaerp.enums.ColorInstructionErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -41,6 +47,15 @@ public class ColorInstructionServiceImplTest {
 
     @Mock
     private ColorInstructionColorMapper colorInstructionColorMapper;
+
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper customerMapper;
+
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper productMapper;
+
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper supplierMapper;
 
     @InjectMocks
     private ColorInstructionServiceImpl colorInstructionService;
@@ -240,6 +255,420 @@ public class ColorInstructionServiceImplTest {
         assertEquals("DS20261007001", resp.getInstructionNo());
         assertEquals(1, resp.getColorSummaries().size());
         assertEquals("C01", resp.getColorSummaries().get(0).getCustomerColorNo());
+    }
+
+    private ColorInstructionColorSaveVO createValidColor() {
+        ColorInstructionColorSaveVO color = new ColorInstructionColorSaveVO();
+        color.setCustomerColorNo("C01");
+        color.setColorName("黑色");
+        color.setLightPrimary("D65");
+        return color;
+    }
+
+    @Test
+    @DisplayName("预览下一个单号：当天无单据时从 001 起号")
+    void testGetNextInstructionNo_emptyCandidates() {
+        String todayStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDate.now());
+        String expectedPrefix = "DS" + todayStr;
+        when(colorInstructionMapper.selectListByNoPrefixIncludingDeleted(expectedPrefix))
+                .thenReturn(java.util.Collections.emptyList());
+
+        String nextNo = colorInstructionService.getNextInstructionNo();
+        assertEquals(expectedPrefix + "001", nextNo);
+    }
+
+    @Test
+    @DisplayName("预览下一个单号：跨天重置（历史存在昨天单据，今天依然按当天日期从 001 开始）")
+    void testGetNextInstructionNo_crossDayReset() {
+        String todayStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDate.now());
+        String todayPrefix = "DS" + todayStr;
+        // 今天前缀查出来为空
+        when(colorInstructionMapper.selectListByNoPrefixIncludingDeleted(todayPrefix))
+                .thenReturn(java.util.Collections.emptyList());
+
+        String nextNo = colorInstructionService.getNextInstructionNo();
+        assertEquals(todayPrefix + "001", nextNo);
+    }
+
+    @Test
+    @DisplayName("预览下一个单号：扫描含已删除单据并取 max+1，超999自然扩位")
+    void testGetNextInstructionNo_withExistingAndDeleted() {
+        String todayStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDate.now());
+        String expectedPrefix = "DS" + todayStr;
+
+        ColorInstructionDO d1 = new ColorInstructionDO();
+        d1.setInstructionNo(expectedPrefix + "001");
+        ColorInstructionDO d2 = new ColorInstructionDO();
+        d2.setInstructionNo(expectedPrefix + "005"); // 存在已删或跳号的 005
+        d2.setDeleted(true);
+
+        when(colorInstructionMapper.selectListByNoPrefixIncludingDeleted(expectedPrefix))
+                .thenReturn(List.of(d1, d2));
+
+        String nextNo = colorInstructionService.getNextInstructionNo();
+        assertEquals(expectedPrefix + "006", nextNo);
+    }
+
+    @Test
+    @DisplayName("新建打色单：颜色明细为空时抛出 COLOR_INSTRUCTION_COLOR_NOT_EXISTS")
+    void testCreateColorInstruction_emptyColors_throwsException() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        reqVO.setColors(java.util.Collections.emptyList());
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.createColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_COLOR_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("新建打色单：手填单号撞号（含已删除）抛 COLOR_INSTRUCTION_NO_DUPLICATE 不顺延")
+    void testCreateColorInstruction_manualDuplicate_throwsException() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setInstructionNo("DS20261013008");
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        reqVO.setColors(List.of(createValidColor()));
+
+        ColorInstructionDO existing = new ColorInstructionDO();
+        existing.setId(99L);
+        existing.setInstructionNo("DS20261013008");
+        existing.setDeleted(true);
+
+        when(colorInstructionMapper.selectByInstructionNoIncludingDeleted("DS20261013008"))
+                .thenReturn(existing);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.createColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_NO_DUPLICATE.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("新建打色单：客户不存在时抛出 COLOR_INSTRUCTION_REFERENCE_NOT_FOUND")
+    void testCreateColorInstruction_customerNotFound_throwsException() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        reqVO.setColors(List.of(createValidColor()));
+
+        when(customerMapper.selectById(101L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.createColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("新建打色单：产品不存在时抛出 COLOR_INSTRUCTION_REFERENCE_NOT_FOUND")
+    void testCreateColorInstruction_productNotFound_throwsException() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        reqVO.setColors(List.of(createValidColor()));
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("客户A");
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+        when(productMapper.selectById(201L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.createColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("新建打色单：打色承接方供应商不存在时抛出 COLOR_INSTRUCTION_REFERENCE_NOT_FOUND")
+    void testCreateColorInstruction_labFactoryNotFound_throwsException() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        reqVO.setLabFactoryId(301L);
+        reqVO.setColors(List.of(createValidColor()));
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("客户A");
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        product.setCode("P001");
+        product.setName("纯棉斜纹");
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        when(supplierMapper.selectById(301L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.createColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("新建打色单：本厂打色房（承接方为空）放行通过，labFactoryId 与 labFactoryName 为空")
+    void testCreateColorInstruction_withoutLabFactory_success() {
+        String todayStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDate.now());
+        String expectedPrefix = "DS" + todayStr;
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        reqVO.setLabFactoryId(null);
+        reqVO.setColors(List.of(createValidColor()));
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("优衣库");
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        product.setCode("P001");
+        product.setName("纯棉");
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        when(colorInstructionMapper.selectListByNoPrefixIncludingDeleted(expectedPrefix))
+                .thenReturn(java.util.Collections.emptyList());
+        when(colorInstructionMapper.selectByInstructionNoIncludingDeleted(expectedPrefix + "001"))
+                .thenReturn(null);
+
+        doAnswer(invocation -> {
+            ColorInstructionDO insertDO = invocation.getArgument(0);
+            insertDO.setId(888L);
+            return 1;
+        }).when(colorInstructionMapper).insert(any(ColorInstructionDO.class));
+
+        Long id = colorInstructionService.createColorInstruction(reqVO);
+        assertEquals(888L, id);
+
+        verify(supplierMapper, never()).selectById(any());
+        verify(colorInstructionMapper).insert(argThat((ColorInstructionDO d) ->
+                d.getLabFactoryId() == null && d.getLabFactoryName() == null
+        ));
+    }
+
+    @Test
+    @DisplayName("新建打色单：并发插入主表撞唯一约束抛 DuplicateKeyException 时映射为 COLOR_INSTRUCTION_NO_DUPLICATE")
+    void testCreateColorInstruction_duplicateKeyException_mapped() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        reqVO.setColors(List.of(createValidColor()));
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("优衣库");
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        product.setCode("P001");
+        product.setName("纯棉");
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        String todayStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDate.now());
+        String expectedPrefix = "DS" + todayStr;
+        when(colorInstructionMapper.selectListByNoPrefixIncludingDeleted(expectedPrefix))
+                .thenReturn(java.util.Collections.emptyList());
+        when(colorInstructionMapper.selectByInstructionNoIncludingDeleted(expectedPrefix + "001"))
+                .thenReturn(null);
+
+        doThrow(new org.springframework.dao.DuplicateKeyException("duplicate key value violates unique constraint"))
+                .when(colorInstructionMapper).insert(any(ColorInstructionDO.class));
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.createColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_NO_DUPLICATE.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("新建打色单：主灯源非法时抛出 COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT")
+    void testCreateColorInstruction_invalidLightPrimary_throwsException() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        ColorInstructionColorSaveVO color = new ColorInstructionColorSaveVO();
+        color.setCustomerColorNo("C01");
+        color.setColorName("黑色");
+        color.setLightPrimary("NON_EXISTING_LIGHT");
+        reqVO.setColors(List.of(color));
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.createColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("新建打色单：辅灯源非空但非法时抛出 COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT")
+    void testCreateColorInstruction_invalidLightSecondary_throwsException() {
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        ColorInstructionColorSaveVO color = new ColorInstructionColorSaveVO();
+        color.setCustomerColorNo("C01");
+        color.setColorName("黑色");
+        color.setLightPrimary("D65");
+        color.setLightSecondary("INVALID_LIGHT_2");
+        reqVO.setColors(List.of(color));
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.createColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("新建打色单：自动取号、缺省值（日期/状态/round=1）、快照回填与颜色行级联插入")
+    void testCreateColorInstruction_success() {
+        String todayStr = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDate.now());
+        String expectedPrefix = "DS" + todayStr;
+
+        ColorInstructionSaveReqVO reqVO = new ColorInstructionSaveReqVO();
+        reqVO.setCustomerId(101L);
+        reqVO.setProductId(201L);
+        reqVO.setLabFactoryId(301L);
+        reqVO.setContactPerson("张工 13900000000");
+        reqVO.setRemark("急单");
+
+        CustomerDO customer = new CustomerDO();
+        customer.setId(101L);
+        customer.setCompanyName("客户集团");
+        when(customerMapper.selectById(101L)).thenReturn(customer);
+
+        ProductDO product = new ProductDO();
+        product.setId(201L);
+        product.setCode("P100");
+        product.setName("特级牛津布");
+        product.setComposition("100% 涤纶");
+        when(productMapper.selectById(201L)).thenReturn(product);
+
+        SupplierDO labFactory = new SupplierDO();
+        labFactory.setId(301L);
+        labFactory.setCompanyName("优染打色房");
+        when(supplierMapper.selectById(301L)).thenReturn(labFactory);
+
+        // 自动取号 mock
+        when(colorInstructionMapper.selectListByNoPrefixIncludingDeleted(expectedPrefix))
+                .thenReturn(java.util.Collections.emptyList());
+        when(colorInstructionMapper.selectByInstructionNoIncludingDeleted(expectedPrefix + "001"))
+                .thenReturn(null);
+
+        ColorInstructionColorSaveVO c1 = new ColorInstructionColorSaveVO();
+        c1.setCustomerColorNo("C01");
+        c1.setColorName("藏青");
+        c1.setColorHex("#000080");
+        c1.setLightPrimary("D65");
+        c1.setLightSecondary("TL84");
+        c1.setColorCardRef("TCX-01");
+        c1.setCopies(2);
+        c1.setSamplePhotos(List.of("https://luna.com/p1.png"));
+
+        ColorInstructionColorSaveVO c2 = new ColorInstructionColorSaveVO();
+        c2.setCustomerColorNo("C02");
+        c2.setColorName("浅灰");
+        c2.setLightPrimary("CWF");
+
+        reqVO.setColors(List.of(c1, c2));
+
+        // 模拟 insert 主表回填 ID
+        doAnswer(invocation -> {
+            ColorInstructionDO insertDO = invocation.getArgument(0);
+            insertDO.setId(888L);
+            return 1;
+        }).when(colorInstructionMapper).insert(any(ColorInstructionDO.class));
+
+        Long newId = colorInstructionService.createColorInstruction(reqVO);
+        assertEquals(888L, newId);
+
+        // 验证主表 DO
+        ArgumentCaptor<ColorInstructionDO> masterCaptor = ArgumentCaptor.forClass(ColorInstructionDO.class);
+        verify(colorInstructionMapper).insert(masterCaptor.capture());
+        ColorInstructionDO savedMaster = masterCaptor.getValue();
+        assertEquals(expectedPrefix + "001", savedMaster.getInstructionNo());
+        assertEquals("客户集团", savedMaster.getClientName());
+        assertEquals("P100", savedMaster.getProductCode());
+        assertEquals("特级牛津布", savedMaster.getProductName());
+        assertEquals("100% 涤纶", savedMaster.getComposition());
+        assertEquals("优染打色房", savedMaster.getLabFactoryName());
+        assertEquals("PENDING", savedMaster.getStatus());
+        assertEquals(LocalDate.now(), savedMaster.getInstructionDate());
+
+        // 验证颜色行插入 2 次
+        ArgumentCaptor<ColorInstructionColorDO> colorCaptor = ArgumentCaptor.forClass(ColorInstructionColorDO.class);
+        verify(colorInstructionColorMapper, times(2)).insert(colorCaptor.capture());
+        List<ColorInstructionColorDO> savedColors = colorCaptor.getAllValues();
+
+        assertEquals(888L, savedColors.get(0).getInstructionId());
+        assertEquals(1, savedColors.get(0).getLineNo());
+        assertEquals("C01", savedColors.get(0).getCustomerColorNo());
+        assertEquals("D65", savedColors.get(0).getLightPrimary());
+        assertEquals("TL84", savedColors.get(0).getLightSecondary());
+        assertEquals(1, savedColors.get(0).getRound());
+        assertEquals("PENDING", savedColors.get(0).getStatus());
+
+        assertEquals(888L, savedColors.get(1).getInstructionId());
+        assertEquals(2, savedColors.get(1).getLineNo());
+        assertEquals("C02", savedColors.get(1).getCustomerColorNo());
+        assertEquals("CWF", savedColors.get(1).getLightPrimary());
+        assertNull(savedColors.get(1).getLightSecondary());
+        assertEquals(1, savedColors.get(1).getRound());
+        assertEquals("PENDING", savedColors.get(1).getStatus());
+    }
+
+    @Test
+    @DisplayName("删除打色单：目标单据不存在抛 COLOR_INSTRUCTION_NOT_EXISTS")
+    void testDeleteColorInstruction_notExists_throwsException() {
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.deleteColorInstruction(999L));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("删除打色单：非 PENDING 状态不允许删除，抛 COLOR_INSTRUCTION_STATUS_NOT_ALLOWED")
+    void testDeleteColorInstruction_statusNotAllowed_throwsException() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(1001L);
+        order.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(order);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.deleteColorInstruction(1001L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("删除打色单：PENDING 状态成功级联软删除主表与全部颜色行")
+    void testDeleteColorInstruction_success() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(1001L);
+        order.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(1001L)).thenReturn(order);
+
+        colorInstructionService.deleteColorInstruction(1001L);
+
+        // 验证级联删除主表与子表
+        verify(colorInstructionMapper, times(1)).deleteById(1001L);
+        verify(colorInstructionColorMapper, times(1)).deleteByInstructionId(1001L);
     }
 
 }

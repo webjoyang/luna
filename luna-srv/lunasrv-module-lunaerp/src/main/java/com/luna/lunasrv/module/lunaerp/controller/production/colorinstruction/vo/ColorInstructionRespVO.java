@@ -83,6 +83,9 @@ public class ColorInstructionRespVO {
     @Schema(description = "创建人")
     private String creator;
 
+    @Schema(description = "打色指示单颜色行明细列表")
+    private List<ColorInstructionColorRespVO> colors;
+
     @Schema(description = "颜色行摘要列表（色号 chips，含轮次数与状态）")
     private List<ColorSummaryVO> colorSummaries;
 

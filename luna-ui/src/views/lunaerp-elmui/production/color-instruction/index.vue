@@ -303,10 +303,15 @@ const handlePrint = (id?: number) => {
   message.info(`打印功能将在 10 票提供套打模板，单据 ID: ${id}`)
 }
 
-// 删除占位（将在 02 票上线）
+// 删除打色单（仅 PENDING 状态，级联逻辑删除颜色行）
 const handleDelete = async (id?: number) => {
   if (!id) return
-  message.info(`删除功能将在 02 票打色单新建与软删中提供，单据 ID: ${id}`)
+  try {
+    await message.delConfirm('是否确认删除该打色指示单？')
+    await ColorInstructionApi.deleteColorInstruction(id)
+    message.success('删除成功')
+    await getList()
+  } catch {}
 }
 
 onMounted(() => {
