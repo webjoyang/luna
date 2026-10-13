@@ -28,6 +28,13 @@ public class GreigeOrderSaveReqVO {
     @Size(max = 32, message = "合同号长度不能超过 32 位")
     private String contractNo;
 
+    @Schema(description = "打色指示单ID（远程选择打色单，可空）", example = "5001")
+    private Long colorInstructionId;
+
+    @Schema(description = "打色指示单号快照（选中打色单时保存，可空）", example = "DS20261007001")
+    @Size(max = 32, message = "打色单号长度不能超过 32 位")
+    private String colorInstructionNo;
+
     @Schema(description = "承织坯布厂供应商ID（供应商远程选择，外发 OUTSOURCE 必填、自织 SELF 可空，见 ADR-0007 / ADR-0022）", example = "3072")
     private Long greigeFactoryId;
 

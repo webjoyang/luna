@@ -68,7 +68,29 @@ export interface ColorInstructionPageReqVO {
   productCodeOrName?: string
   customerColorNo?: string
   status?: string
+  statusList?: string[]
+  keyword?: string
   instructionDateRange?: string[]
+}
+
+// 格式化打色指示单下拉选项文本（如：单号 | 客户 | 品名 | [色号 颜色名]）
+export function formatColorInstructionOptionLabel(item: ColorInstructionVO): string {
+  const parts: string[] = []
+  if (item.instructionNo) parts.push(item.instructionNo)
+  if (item.clientName) parts.push(item.clientName)
+  if (item.productName || item.productCode) {
+    parts.push(item.productName || item.productCode || '')
+  }
+  if (item.colorSummaries && item.colorSummaries.length > 0) {
+    const summaryStr = item.colorSummaries
+      .map((c) => [c.customerColorNo, c.colorName].filter(Boolean).join(' '))
+      .filter(Boolean)
+      .join(', ')
+    if (summaryStr) {
+      parts.push(`[${summaryStr}]`)
+    }
+  }
+  return parts.join(' | ')
 }
 
 // 查询打色指示单分页

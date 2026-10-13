@@ -969,7 +969,7 @@ const handleConfirmInstruction = async () => {
   try {
     await ColorInstructionApi.confirmColorInstruction({
       id: formData.id,
-      confirmType: confirmFormData.confirmType,
+      confirmType: confirmFormData.confirmType as ColorInstructionApi.ColorInstructionConfirmType,
       customerFeedback: confirmFormData.customerFeedback
     })
     message.success('打色指示单已确认')

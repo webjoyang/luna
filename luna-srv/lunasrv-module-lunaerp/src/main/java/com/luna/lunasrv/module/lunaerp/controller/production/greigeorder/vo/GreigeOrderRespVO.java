@@ -24,6 +24,12 @@ public class GreigeOrderRespVO {
     @Schema(description = "合同号快照", example = "CH20260001")
     private String contractNo;
 
+    @Schema(description = "打色指示单ID", example = "5001")
+    private Long colorInstructionId;
+
+    @Schema(description = "打色指示单号快照", example = "DS20261007001")
+    private String colorInstructionNo;
+
     @Schema(description = "承织坯布厂供应商ID（外发必填，自织可空）", example = "3072")
     private Long greigeFactoryId;
 

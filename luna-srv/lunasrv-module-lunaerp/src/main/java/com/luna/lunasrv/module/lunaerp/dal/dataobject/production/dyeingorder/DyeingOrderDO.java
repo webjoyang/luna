@@ -43,6 +43,16 @@ public class DyeingOrderDO extends TenantBaseDO {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String contractNo;
     /**
+     * 打色指示单ID（lunaerp_production_color_instruction.id，可空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long colorInstructionId;
+    /**
+     * 打色指示单号快照（可空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String colorInstructionNo;
+    /**
      * 客户ID（lunaerp_baseinfo_customer.id，从合同带出可空）
      */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)

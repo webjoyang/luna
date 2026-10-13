@@ -329,7 +329,7 @@ describe('Color Instruction API & Form Contracts (Issue 02)', () => {
     vi.mocked(request.put).mockResolvedValueOnce(true as any)
     const payload = {
       id: 1024,
-      confirmType: 'CUSTOMER',
+      confirmType: 'CUSTOMER' as const,
       customerFeedback: '客户现场看样确认通过'
     }
     const res = await ColorInstructionApi.confirmColorInstruction(payload)
@@ -385,6 +385,92 @@ describe('Color Instruction API & Form Contracts (Issue 02)', () => {
       confirmType: [{ required: true, message: '请选择确认类型', trigger: 'change' }]
     }
     expect(confirmFormRules.confirmType[0].required).toBe(true)
+  })
+
+  // ==================== Issue 06: 下游引用列与保存校验 ====================
+
+  it('getColorInstructionPage should pass statusList and keyword params', async () => {
+    vi.mocked(request.get).mockResolvedValueOnce({ list: [], total: 0 } as any)
+    const params: ColorInstructionApi.ColorInstructionPageReqVO = {
+      pageNo: 1,
+      pageSize: 20,
+      keyword: 'DS001',
+      statusList: ['CONFIRMED', 'IN_PRODUCTION']
+    }
+    await ColorInstructionApi.getColorInstructionPage(params)
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/page',
+      params
+    })
+  })
+
+  it('formatColorInstructionOptionLabel should format label correctly for various inputs', () => {
+    // 完整详情：单号 + 客户 + 产品 + 颜色摘要
+    const itemFull: ColorInstructionApi.ColorInstructionVO = {
+      id: 1,
+      instructionNo: 'DS20261013001',
+      clientName: '上海客户A',
+      productName: '双面棉毛布',
+      colorSummaries: [
+        { customerColorNo: 'C01', colorName: '藏青' },
+        { customerColorNo: 'C02', colorName: '雪青' }
+      ]
+    }
+    expect(ColorInstructionApi.formatColorInstructionOptionLabel(itemFull)).toBe(
+      'DS20261013001 | 上海客户A | 双面棉毛布 | [C01 藏青, C02 雪青]'
+    )
+
+    // 无产品名但有产品编码
+    const itemCodeOnly: ColorInstructionApi.ColorInstructionVO = {
+      id: 2,
+      instructionNo: 'DS20261013002',
+      clientName: '客户B',
+      productCode: 'P-1002'
+    }
+    expect(ColorInstructionApi.formatColorInstructionOptionLabel(itemCodeOnly)).toBe(
+      'DS20261013002 | 客户B | P-1002'
+    )
+
+    // 存量回填的快照（仅有单号）
+    const itemSnapshotOnly: ColorInstructionApi.ColorInstructionVO = {
+      id: 3,
+      instructionNo: 'DS20261013003'
+    }
+    expect(ColorInstructionApi.formatColorInstructionOptionLabel(itemSnapshotOnly)).toBe(
+      'DS20261013003'
+    )
+  })
+
+  it('downstream selector should set and clear color instruction snapshot', () => {
+    const formData: { colorInstructionId?: number | null; colorInstructionNo?: string | null } = {
+      colorInstructionId: undefined,
+      colorInstructionNo: undefined
+    }
+
+    const options: ColorInstructionApi.ColorInstructionVO[] = [
+      { id: 10, instructionNo: 'DS20261013001' }
+    ]
+
+    const onSelect = (id?: number) => {
+      if (!id) {
+        formData.colorInstructionId = undefined
+        formData.colorInstructionNo = ''
+        return
+      }
+      const found = options.find((o) => o.id === id)
+      formData.colorInstructionId = id
+      formData.colorInstructionNo = found?.instructionNo || ''
+    }
+
+    // 选中打色单
+    onSelect(10)
+    expect(formData.colorInstructionId).toBe(10)
+    expect(formData.colorInstructionNo).toBe('DS20261013001')
+
+    // 清空选择
+    onSelect(undefined)
+    expect(formData.colorInstructionId).toBeUndefined()
+    expect(formData.colorInstructionNo).toBe('')
   })
 })
 

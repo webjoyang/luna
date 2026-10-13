@@ -20,6 +20,12 @@ public class DyeingOrderRespVO {
     @Schema(description = "合同号快照", example = "CH20260001")
     private String contractNo;
 
+    @Schema(description = "打色指示单ID", example = "5001")
+    private Long colorInstructionId;
+
+    @Schema(description = "打色指示单号快照", example = "DS20261007001")
+    private String colorInstructionNo;
+
     @Schema(description = "客户ID", example = "1024")
     private Long customerId;
 

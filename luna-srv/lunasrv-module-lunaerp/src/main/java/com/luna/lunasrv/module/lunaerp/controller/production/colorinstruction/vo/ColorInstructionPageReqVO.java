@@ -30,6 +30,12 @@ public class ColorInstructionPageReqVO extends PageParam {
     @Schema(description = "单据状态：PENDING/IN_PROGRESS/CONFIRMED/IN_PRODUCTION/VOID", example = "PENDING")
     private String status;
 
+    @Schema(description = "单据状态列表（如查询可引用的打色单 CONFIRMED,IN_PRODUCTION）", example = "[\"CONFIRMED\", \"IN_PRODUCTION\"]")
+    private java.util.List<String> statusList;
+
+    @Schema(description = "关键字（同时匹配单号、客户名称、产品编号/名称）", example = "纯棉")
+    private String keyword;
+
     @Schema(description = "单据日期区间", example = "[2026-10-01, 2026-10-31]")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY)
     private LocalDate[] instructionDateRange;

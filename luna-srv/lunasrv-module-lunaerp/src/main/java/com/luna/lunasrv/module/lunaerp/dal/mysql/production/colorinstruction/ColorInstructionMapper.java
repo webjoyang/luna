@@ -1,5 +1,6 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.production.colorinstruction;
 
+import cn.hutool.core.collection.CollUtil;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -28,6 +29,15 @@ public interface ColorInstructionMapper extends BaseMapperX<ColorInstructionDO> 
     static LambdaQueryWrapperX<ColorInstructionDO> buildQueryWrapper(ColorInstructionPageReqVO reqVO) {
         LambdaQueryWrapperX<ColorInstructionDO> wrapper = new LambdaQueryWrapperX<>();
 
+        // 统一关键字模糊（单号、客户名称、产品编号、产品名称）
+        if (StringUtils.hasText(reqVO.getKeyword())) {
+            String kw = "%" + reqVO.getKeyword().trim() + "%";
+            wrapper.and(w -> w.apply("LOWER(instruction_no) LIKE LOWER({0})", kw)
+                    .or().apply("LOWER(client_name) LIKE LOWER({0})", kw)
+                    .or().apply("LOWER(product_code) LIKE LOWER({0})", kw)
+                    .or().apply("LOWER(product_name) LIKE LOWER({0})", kw));
+        }
+
         // 单号模糊
         if (StringUtils.hasText(reqVO.getInstructionNo())) {
             wrapper.apply("LOWER(instruction_no) LIKE LOWER({0})", "%" + reqVO.getInstructionNo().trim() + "%");
@@ -54,8 +64,10 @@ public interface ColorInstructionMapper extends BaseMapperX<ColorInstructionDO> 
             }
         }
 
-        // 状态过滤
-        if (StringUtils.hasText(reqVO.getStatus())) {
+        // 状态过滤（优先 statusList 多选，次选 status 单选）
+        if (CollUtil.isNotEmpty(reqVO.getStatusList())) {
+            wrapper.in(ColorInstructionDO::getStatus, reqVO.getStatusList());
+        } else if (StringUtils.hasText(reqVO.getStatus())) {
             wrapper.eq(ColorInstructionDO::getStatus, reqVO.getStatus().trim());
         }
 
