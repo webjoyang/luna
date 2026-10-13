@@ -87,6 +87,23 @@ lunaerp 错误码统一格式 `1-030-NNN-xxx`，段位（NNN）按业务模块�
 | `1_030_031_101` | `EXCEL_IMPORT_FILE_EMPTY` | 导入文件为空或无有效数据行 | Excel 导入 (100–199) |
 | `1_030_031_102` | `EXCEL_IMPORT_PERMISSION_DENIED` | 导入人缺少【{}】权限，无法导入含该字段的数据 | Excel 导入 (100–199) |
 
+### 打色指示单错误码明细（1-030-032）
+
+`1-030-032-xxx` 打色指示单（`lunaerp.production.colorinstruction` 业务域 production）：
+段内分配：`000–099` 主表；`100–199` 颜色行。
+
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_032_000` | `COLOR_INSTRUCTION_NOT_EXISTS` | 打色单不存在 | 主表 (000–099) |
+| `1_030_032_001` | `COLOR_INSTRUCTION_NO_DUPLICATE` | 打色单号【{}】已存在 | 主表 (000–099) |
+| `1_030_032_002` | `COLOR_INSTRUCTION_STATUS_NOT_ALLOWED` | 打色单当前状态不允许该操作 | 主表 (000–099) |
+| `1_030_032_003` | `COLOR_INSTRUCTION_REFERENCE_NOT_FOUND` | 关联引用不存在（客户/产品/供应商） | 主表 (000–099) |
+| `1_030_032_004` | `COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET` | 存在未决颜色行或无通过行，不能确认 | 主表 (000–099) |
+| `1_030_032_005` | `COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE` | 已被下游有效单据引用，不能作废或删除 | 主表 (000–099) |
+| `1_030_032_006` | `COLOR_INSTRUCTION_LINE_FROZEN` | 颜色行当前状态不允许修改或删除 | 主表 (000–099) |
+| `1_030_032_007` | `COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT` | 灯源或确认类型非法 | 主表 (000–099) |
+| `1_030_032_100` | `COLOR_INSTRUCTION_COLOR_NOT_EXISTS` | 颜色行不存在 | 颜色行 (100–199) |
+
 ### 出口单证错误码明细（1-030-033）
 
 `1-030-033-xxx` 出口单证（`lunaerp.business.exportdoc` 业务域 business）：

@@ -239,5 +239,49 @@ public class ErrorCodeConstantsTest {
         assertEquals(CostCardQuotationErrorCodeConstants.YARN_PRICE_NOT_EXISTS, ErrorCodeConstants.YARN_PRICE_NOT_EXISTS);
         assertEquals(CostCardQuotationErrorCodeConstants.YARN_PRICE_DUPLICATE_DATE, ErrorCodeConstants.YARN_PRICE_DUPLICATE_DATE);
     }
+
+    @Test
+    void testColorInstructionErrorCodes() {
+        // 主表 1-030-032-000 ~ 099
+        assertEquals(1_030_032_000, ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_NOT_EXISTS.getCode());
+        assertEquals("打色单不存在", ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_032_001, ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_NO_DUPLICATE.getCode());
+        assertTrue(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_NO_DUPLICATE.getMsg().contains("打色单号"));
+
+        assertEquals(1_030_032_002, ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode());
+        assertEquals("打色单当前状态不允许该操作", ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getMsg());
+
+        assertEquals(1_030_032_003, ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_REFERENCE_NOT_FOUND.getCode());
+        assertTrue(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_REFERENCE_NOT_FOUND.getMsg().contains("关联引用不存在"));
+
+        assertEquals(1_030_032_004, ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET.getCode());
+        assertTrue(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET.getMsg().contains("存在未决颜色行"));
+
+        assertEquals(1_030_032_005, ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE.getCode());
+        assertTrue(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE.getMsg().contains("已被下游有效单据引用"));
+
+        assertEquals(1_030_032_006, ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_LINE_FROZEN.getCode());
+        assertTrue(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_LINE_FROZEN.getMsg().contains("颜色行当前状态不允许修改或删除"));
+
+        assertEquals(1_030_032_007, ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT.getCode());
+        assertEquals("灯源或确认类型非法", ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT.getMsg());
+
+        // 颜色行 1-030-032-100 ~ 199
+        assertEquals(1_030_032_100, ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_COLOR_NOT_EXISTS.getCode());
+        assertEquals("颜色行不存在", ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_COLOR_NOT_EXISTS.getMsg());
+
+        // 验证 ErrorCodeConstants 继承所有 ColorInstructionErrorCodeConstants 错误码
+        assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_NOT_EXISTS, ErrorCodeConstants.COLOR_INSTRUCTION_NOT_EXISTS);
+        assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_NO_DUPLICATE, ErrorCodeConstants.COLOR_INSTRUCTION_NO_DUPLICATE);
+        assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_STATUS_NOT_ALLOWED, ErrorCodeConstants.COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_REFERENCE_NOT_FOUND, ErrorCodeConstants.COLOR_INSTRUCTION_REFERENCE_NOT_FOUND);
+        assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET, ErrorCodeConstants.COLOR_INSTRUCTION_CONFIRM_CONDITION_NOT_MET);
+        assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE, ErrorCodeConstants.COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE);
+        assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_LINE_FROZEN, ErrorCodeConstants.COLOR_INSTRUCTION_LINE_FROZEN);
+        assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT, ErrorCodeConstants.COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT);
+        assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_COLOR_NOT_EXISTS, ErrorCodeConstants.COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
+    }
 }
+
 
