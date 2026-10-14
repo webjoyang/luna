@@ -118,6 +118,7 @@ public class SchedulingServiceImpl implements SchedulingService {
             bar.setWeavingOrderId(task.getWeavingOrderId());
             bar.setPlannedQty(task.getPlannedQty());
             bar.setActualQty(task.getActualQty());
+            bar.setWorkerUserId(task.getWorkerUserId());
             bar.setWorkerName(task.getWorkerName());
             bar.setPlannedStart(task.getPlannedStart());
             bar.setPlannedEnd(task.getPlannedEnd());

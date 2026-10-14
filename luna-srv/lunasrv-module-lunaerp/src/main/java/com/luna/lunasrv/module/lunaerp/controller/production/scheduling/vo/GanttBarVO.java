@@ -36,6 +36,9 @@ public class GanttBarVO {
     @Schema(description = "完工/实织匹数", requiredMode = Schema.RequiredMode.REQUIRED, example = "12")
     private Integer actualQty;
 
+    @Schema(description = "挡车工用户ID", example = "1001")
+    private Long workerUserId;
+
     @Schema(description = "挡车工姓名", example = "张三")
     private String workerName;
 

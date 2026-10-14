@@ -117,6 +117,7 @@
             :loading="transferring"
             :disabled="!targetLoomId || targetLoomId === task.loomId"
             @click="handleTransferLoom"
+            v-hasPermi="['lunaerp:production:weaving-order-task:update']"
           >
             确认转机
           </el-button>
@@ -132,7 +133,12 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { LoomVO } from '@/api/lunaerp-elmui/production/loom'
 import { updateMachineTask } from '@/api/lunaerp-elmui/production/machine-task'
-import { TASK_STATUS_THEME_MAP, type MachineTaskStatus } from '../gantt-theme'
+import {
+  TASK_STATUS_THEME_MAP,
+  SCHEDULE_CONFLICT_CODE,
+  parseErrorMessage,
+  type MachineTaskStatus
+} from '../gantt-theme'
 import type { MachineTaskGanttBar } from '../model/gantt-adapter'
 
 const props = withDefaults(
@@ -207,7 +213,9 @@ async function handleTransferLoom() {
       loomId: targetLoomId.value,
       plannedStart: task.value.startDate,
       plannedEnd: task.value.endDate,
-      plannedQty: task.value.plannedQty
+      plannedQty: task.value.plannedQty,
+      workerUserId: task.value.workerUserId,
+      workerName: task.value.workerName
     })
 
     if (res.warning) {
@@ -217,8 +225,8 @@ async function handleTransferLoom() {
     drawerVisible.value = false
     emit('transfer-success')
   } catch (err: any) {
-    const errorMsg = err?.message || err?.msg || (typeof err === 'string' ? err : '转机操作失败')
-    if (err?.code === 1030036000 || errorMsg.includes('冲突')) {
+    const errorMsg = parseErrorMessage(err, '转机操作失败')
+    if (err?.code === SCHEDULE_CONFLICT_CODE || errorMsg.includes('冲突')) {
       transferConflictError.value = errorMsg
     } else {
       ElMessage.error(errorMsg)

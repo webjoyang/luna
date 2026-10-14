@@ -25,6 +25,7 @@ describe('Seam 2: Gantt Adapter & Optimistic Drag-and-Drop Model', () => {
       productName: '棉汗布',
       plannedQty: 30,
       actualQty: 10,
+      workerUserId: 99,
       workerName: '张三',
       plannedStart: '2026-10-05',
       plannedEnd: '2026-10-10',
@@ -118,6 +119,31 @@ describe('Seam 2: Gantt Adapter & Optimistic Drag-and-Drop Model', () => {
       expect(loom1Bars.find((b) => b.taskId === 105)).toBeUndefined()
     })
 
+    it('单边日期任务自动归一为起止同天的单日甘特条', () => {
+      const singleDateBars: GanttBarVO[] = [
+        {
+          taskId: 106,
+          taskCode: 'MT-WO20261006-01',
+          loomId: 1,
+          weavingOrderId: 15,
+          weavingOrderCode: 'WO20261006',
+          productCode: 'P06',
+          productName: '单面布',
+          plannedQty: 10,
+          actualQty: 0,
+          plannedStart: '2026-10-09',
+          plannedEnd: undefined,
+          status: 'PENDING',
+          conflict: false
+        }
+      ]
+      const rows = buildGanttRows(mockLooms, singleDateBars)
+      const loom1Bars = rows[0].bars
+      expect(loom1Bars).toHaveLength(1)
+      expect(loom1Bars[0].startDate).toBe('2026-10-09')
+      expect(loom1Bars[0].endDate).toBe('2026-10-09')
+    })
+
     it('条带文字包含织造单尾号与计划匹数，状态色与冲突样式正确', () => {
       const rows = buildGanttRows(mockLooms, mockBars)
       const barInProgress = rows[0].bars.find((b) => b.taskId === 101)!
@@ -189,7 +215,9 @@ describe('Seam 2: Gantt Adapter & Optimistic Drag-and-Drop Model', () => {
         expect.objectContaining({
           id: bar.taskId,
           plannedStart: '2026-10-07',
-          plannedEnd: '2026-10-12'
+          plannedEnd: '2026-10-12',
+          workerUserId: 99,
+          workerName: '张三'
         })
       )
     })

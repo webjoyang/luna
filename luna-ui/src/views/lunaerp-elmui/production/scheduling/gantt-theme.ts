@@ -92,3 +92,15 @@ export function getTaskDragDisabledReason(status: MachineTaskStatus | string): s
   }
   return null
 }
+
+/**
+ * 排产时段冲突错误码常量 (1-030-036-000)
+ */
+export const SCHEDULE_CONFLICT_CODE = 1030036000
+
+/**
+ * 安全解析接口错误提示文本
+ */
+export function parseErrorMessage(err: any, fallback: string = '操作失败'): string {
+  return err?.message || err?.msg || (typeof err === 'string' ? err : fallback)
+}

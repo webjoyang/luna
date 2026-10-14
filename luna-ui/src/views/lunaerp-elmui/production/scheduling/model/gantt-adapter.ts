@@ -4,7 +4,12 @@ import type {
   MachineTaskSaveReqVO,
   MachineTaskSaveRespVO
 } from '@/api/lunaerp-elmui/production/machine-task'
-import { getGanttBarClasses, isTaskDraggable, type MachineTaskStatus } from '../gantt-theme'
+import {
+  getGanttBarClasses,
+  isTaskDraggable,
+  parseErrorMessage,
+  type MachineTaskStatus
+} from '../gantt-theme'
 
 /**
  * 适配 vue-ganttastic 的任务条带对象
@@ -19,6 +24,7 @@ export interface MachineTaskGanttBar extends GanttBarObject {
   productName?: string
   plannedQty: number
   actualQty: number
+  workerUserId?: number
   workerName?: string
   startDate: string
   endDate: string
@@ -62,9 +68,11 @@ export function buildGanttRows(looms: GanttLoomVO[] = [], bars: GanttBarVO[] = [
     loomMap.set(loom.loomId, [])
   }
 
-  // 仅将起止日期均非空的任务条带映射到甘特行（无排期任务只进待排池）
+  // 过滤有日期的任务条带（单侧日期按 spec §3.1 coalesce 折算为单日区间，两端皆空才仅进待排池）
   for (const bar of bars) {
-    if (!bar.plannedStart || !bar.plannedEnd) {
+    const start = bar.plannedStart || bar.plannedEnd
+    const end = bar.plannedEnd || bar.plannedStart
+    if (!start || !end) {
       continue
     }
 
@@ -88,9 +96,10 @@ export function buildGanttRows(looms: GanttLoomVO[] = [], bars: GanttBarVO[] = [
       productName: bar.productName,
       plannedQty: bar.plannedQty,
       actualQty: bar.actualQty ?? 0,
+      workerUserId: bar.workerUserId,
       workerName: bar.workerName,
-      startDate: bar.plannedStart,
-      endDate: bar.plannedEnd,
+      startDate: start,
+      endDate: end,
       status: bar.status,
       conflict: !!bar.conflict,
       ganttBarConfig: {
@@ -146,7 +155,9 @@ export async function optimisticBarUpdate(
       loomId: bar.loomId,
       plannedStart: newStart,
       plannedEnd: newEnd,
-      plannedQty: bar.plannedQty
+      plannedQty: bar.plannedQty,
+      workerUserId: bar.workerUserId,
+      workerName: bar.workerName
     })
 
     return {
@@ -158,7 +169,7 @@ export async function optimisticBarUpdate(
     bar.startDate = oldStart
     bar.endDate = oldEnd
 
-    const errorMsg = err?.message || err?.msg || (typeof err === 'string' ? err : '操作失败')
+    const errorMsg = parseErrorMessage(err, '操作失败')
     const errorCode = err?.code
 
     return {

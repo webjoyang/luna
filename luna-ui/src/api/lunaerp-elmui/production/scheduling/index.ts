@@ -32,6 +32,7 @@ export interface GanttBarVO {
   productName?: string
   plannedQty: number
   actualQty: number
+  workerUserId?: number
   workerName?: string
   plannedStart?: string
   plannedEnd?: string

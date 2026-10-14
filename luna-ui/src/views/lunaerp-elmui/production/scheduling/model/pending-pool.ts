@@ -3,6 +3,7 @@ import type {
   MachineTaskSaveReqVO,
   MachineTaskSaveRespVO
 } from '@/api/lunaerp-elmui/production/machine-task'
+import { SCHEDULE_CONFLICT_CODE, parseErrorMessage } from '../gantt-theme'
 
 /**
  * 派工表单数据结构
@@ -48,10 +49,12 @@ export function initDispatchFromPendingOrder(order: PendingOrderVO): DispatchFor
 
 /**
  * 从待排池无日期任务（组一）初始化派工表单
- * 规则：带入织造单与任务已有织机、匹数快照
+ * 规则：带入任务ID与编号（用于update）、织造单与任务已有织机、匹数快照
  */
 export function initDispatchFromPendingTask(task: PendingTaskVO): DispatchFormData {
   return {
+    id: task.taskId,
+    code: task.taskCode,
     weavingOrderId: task.weavingOrderId,
     weavingOrderCode: task.weavingOrderCode,
     loomId: task.loomId,
@@ -108,7 +111,7 @@ export interface DispatchSubmitResult {
  */
 export async function submitDispatch(
   form: DispatchFormData,
-  apiCreate: (data: MachineTaskSaveReqVO) => Promise<MachineTaskSaveRespVO>
+  apiSave: (data: MachineTaskSaveReqVO) => Promise<MachineTaskSaveRespVO>
 ): Promise<DispatchSubmitResult> {
   const reqData: MachineTaskSaveReqVO = {
     id: form.id,
@@ -124,7 +127,7 @@ export async function submitDispatch(
   }
 
   try {
-    const res = await apiCreate(reqData)
+    const res = await apiSave(reqData)
     return {
       success: true,
       id: res.id,
@@ -132,9 +135,9 @@ export async function submitDispatch(
       warning: res.warning
     }
   } catch (err: any) {
-    const errorMsg = err?.message || err?.msg || (typeof err === 'string' ? err : '派工保存失败')
+    const errorMsg = parseErrorMessage(err, '派工保存失败')
     const errorCode = err?.code
-    const isConflict = errorCode === 1030036000 || errorMsg.includes('冲突')
+    const isConflict = errorCode === SCHEDULE_CONFLICT_CODE || errorMsg.includes('冲突')
 
     return {
       success: false,

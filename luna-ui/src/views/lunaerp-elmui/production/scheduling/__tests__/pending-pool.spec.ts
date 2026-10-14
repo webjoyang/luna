@@ -45,6 +45,8 @@ describe('Seam 3: Pending Pool & Dispatch Form Logic', () => {
 
       const form = initDispatchFromPendingTask(pendingTask)
 
+      expect(form.id).toBe(11)
+      expect(form.code).toBe('MT-WO20261007-02')
       expect(form.weavingOrderId).toBe(7)
       expect(form.weavingOrderCode).toBe('WO20261007')
       expect(form.loomId).toBe(1)
