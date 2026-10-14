@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import * as ApprovalInstanceApi from '@/api/approval/instance'
 import request from '@/config/axios'
-import { DICT_TYPE, getDictOptions, getStrDictOptions } from '@/utils/dict'
+import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 
 vi.mock('@/config/axios', () => ({
   default: {
@@ -15,7 +15,7 @@ vi.mock('@/config/axios', () => ({
 describe('Approval Instance API & Sales Contract Approval States', () => {
   it('submitInstance should post to /lunaerp/approval/instance/submit', async () => {
     vi.mocked(request.post).mockResolvedValueOnce({ data: 5001 } as any)
-    const res = await ApprovalInstanceApi.submitInstance({
+    await ApprovalInstanceApi.submitInstance({
       bizType: 'sales_contract',
       bizId: 1024,
       comment: '请领导审批'

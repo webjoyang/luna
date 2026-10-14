@@ -99,7 +99,7 @@
           <DictTag :type="DICT_TYPE.LUNAERP_APPROVAL_INSTANCE_STATUS" :value="row.approvalStatus || 'DRAFT'" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" align="center" fixed="right">
+      <el-table-column label="操作" width="260" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -117,6 +117,14 @@
             v-hasPermi="['lunaerp:business:sales-contract:update']"
           >
             <Icon icon="ep:edit" class="mr-2px" />编辑
+          </el-button>
+          <el-button
+            link
+            type="primary"
+            @click="handleReleaseProduction(row.id)"
+            v-hasPermi="['lunaerp:production:release-production:release']"
+          >
+            <Icon icon="ep:promotion" class="mr-2px" />下达生产
           </el-button>
           <el-button
             link
@@ -214,6 +222,11 @@ const openEdit = (id?: number) => {
 /** 查看：同一表单页只读模式打开 */
 const openView = (id: number) => {
   router.push(`/business/sales-contract/edit/${id}?mode=view`)
+}
+
+/** 下达生产：跳详情并激活「生产」Tab */
+const handleReleaseProduction = (id: number) => {
+  router.push(`/business/sales-contract/edit/${id}?tab=production`)
 }
 
 /** 删除合同（二次确认） */

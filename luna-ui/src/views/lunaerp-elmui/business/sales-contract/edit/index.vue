@@ -21,23 +21,39 @@
       </el-page-header>
     </div>
 
-    <el-alert
-      v-if="expiredWarningVisible"
-      title="提示：此销售合同关联的报价单已过有效期，请核对价格后再行签订"
-      type="warning"
-      show-icon
-      closable
-      class="mb-12px"
-    />
-
-    <el-form
-      ref="formRef"
-      :model="formData"
-      :rules="rules"
-      label-width="100px"
-      class="contract-form"
-      v-loading="loading"
+    <!-- 工作台 Tab（编辑/查看已有合同展示） -->
+    <el-tabs
+      v-if="!isCreateMode"
+      v-model="activeTab"
+      class="contract-tabs mb-16px"
+      @tab-change="handleTabChange"
     >
+      <el-tab-pane label="合同详情" name="contract" />
+      <el-tab-pane
+        label="生产"
+        name="production"
+        v-hasPermi="['lunaerp:production:release-production:query']"
+      />
+    </el-tabs>
+
+    <div v-show="isCreateMode || activeTab === 'contract'">
+      <el-alert
+        v-if="expiredWarningVisible"
+        title="提示：此销售合同关联的报价单已过有效期，请核对价格后再行签订"
+        type="warning"
+        show-icon
+        closable
+        class="mb-12px"
+      />
+
+      <el-form
+        ref="formRef"
+        :model="formData"
+        :rules="rules"
+        label-width="100px"
+        class="contract-form"
+        v-loading="loading"
+      >
       <div class="section-title">基本信息</div>
       <el-row :gutter="20">
         <el-col :span="12">
@@ -419,6 +435,16 @@
         <el-button @click="handleBack">返回</el-button>
       </div>
     </el-form>
+    </div>
+
+    <!-- 生产 Tab 内容 -->
+    <div v-if="!isCreateMode && activeTab === 'production'">
+      <ReleaseProductionTab
+        :contract-id="Number(contractId)"
+        :contract="formData"
+        @refresh="loadContract"
+      />
+    </div>
   </ContentWrap>
 </template>
 
@@ -435,7 +461,8 @@ import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
 import * as QuotationApi from '@/api/lunaerp/business/quotation'
 import * as ApprovalInstanceApi from '@/api/approval/instance'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, type TabPaneName } from 'element-plus'
+import ReleaseProductionTab from '../workspace/tabs/ReleaseProductionTab.vue'
 
 defineOptions({ name: 'LunaerpElmuiBusinessSalesContractEdit' })
 
@@ -448,6 +475,31 @@ const loading = ref(false)
 const submitting = ref(false)
 const approvalLoading = ref(false)
 const activeInstanceId = ref<number | null>(null)
+
+const activeTab = ref('contract')
+
+const handleTabChange = (tabName: TabPaneName) => {
+  activeTab.value = tabName
+  router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      tab: tabName
+    }
+  })
+}
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (tab === 'production') {
+      activeTab.value = 'production'
+    } else {
+      activeTab.value = 'contract'
+    }
+  },
+  { immediate: true }
+)
 
 const formData = reactive<SalesContractVO>({
   contractNo: '',
@@ -488,6 +540,7 @@ const isReadOnly = computed(() => isViewMode.value || isApproving.value)
 
 const pageTitle = computed(() => {
   if (isCreateMode.value) return '新建销售合同'
+  if (activeTab.value === 'production') return '下达生产工作台'
   return isViewMode.value ? '查看销售合同' : '编辑销售合同'
 })
 
