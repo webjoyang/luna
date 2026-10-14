@@ -22,7 +22,8 @@ export const RECYCLE_BIZ_TYPES = [
   { label: '纱线采购单', value: 'YARN_PURCHASE_ORDER' },
   { label: '入库单', value: 'STOCK_IN' },
   { label: '织造单', value: 'WEAVING_ORDER' },
-  { label: '发货单', value: 'SHIPMENT' }
+  { label: '发货单', value: 'SHIPMENT' },
+  { label: '打色指示单', value: 'COLOR_INSTRUCTION' }
 ] as const
 
 /** 回收站分页 Request VO */

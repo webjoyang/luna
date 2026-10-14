@@ -4,7 +4,9 @@ import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.color.ColorInstructionColorDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -52,5 +54,19 @@ public interface ColorInstructionColorMapper extends BaseMapperX<ColorInstructio
         return delete(new LambdaQueryWrapperX<ColorInstructionColorDO>()
                 .eq(ColorInstructionColorDO::getInstructionId, instructionId));
     }
+
+    /**
+     * 级联恢复颜色明细（手写 XML：显式 SET deleted=0 WHERE instruction_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByInstructionId(@Param("instructionId") Long instructionId,
+                              @Param("tenantId") Long tenantId,
+                              @Param("updater") String updater,
+                              @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除颜色明细（手写 XML：显式 DELETE WHERE instruction_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByInstructionId(@Param("instructionId") Long instructionId,
+                            @Param("tenantId") Long tenantId);
 
 }
