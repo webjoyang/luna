@@ -4,11 +4,11 @@
 
 **Blocked by:** 02: 机台任务同织机时段冲突硬校验（后端）——甘特 conflict 口径须与冲突校验同源
 
-**Status:** ready-for-agent
+**Status:** closed
 
 **参考**：本目录上级 spec.md §3、§7；ADR-0041
 
-- [ ] 甘特返回含空行的全部 ACTIVE 织机，INACTIVE 不返回；窗口外条带不返回；conflict 标记存量互叠任务均 true、COMPLETED 不影响他任务
-- [ ] 待排池两组口径正确：无日期 PENDING 入组一；Σ占用态匹数 < plannedQty 入组二且 remainingQty 正确；无任务单入池；COMPLETED/CANCELLED 单排除
-- [ ] 跨单分页 weavingOrderId 缺省返回多单数据；loomId/conflictOnly 过滤生效；快照字段批量查询无 N+1；排序符合预期
-- [ ] 纯 Mockito 单测（SchedulingServiceImplTest）覆盖以上全部场景
+- [x] 甘特返回含空行的全部 ACTIVE 织机，INACTIVE 不返回；窗口外条带不返回；conflict 标记存量互叠任务均 true、COMPLETED 不影响他任务
+- [x] 待排池两组口径正确：无日期 PENDING 入组一；Σ占用态匹数 < plannedQty 入组二且 remainingQty 正确；无任务单入池；COMPLETED/CANCELLED 单排除
+- [x] 跨单分页 weavingOrderId 缺省返回多单数据；loomId/conflictOnly 过滤生效；快照字段批量查询无 N+1；排序符合预期
+- [x] 纯 Mockito 单测（SchedulingServiceImplTest）覆盖以上全部场景

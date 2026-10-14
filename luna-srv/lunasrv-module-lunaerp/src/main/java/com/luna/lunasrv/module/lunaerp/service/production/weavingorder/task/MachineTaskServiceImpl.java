@@ -80,6 +80,10 @@ public class MachineTaskServiceImpl implements MachineTaskService {
     @Resource
     private com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService weavingTicketService;
 
+    @org.springframework.context.annotation.Lazy
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.service.production.scheduling.SchedulingService schedulingService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public MachineTaskSaveRespVO createMachineTask(MachineTaskSaveReqVO createReqVO) {
@@ -257,6 +261,9 @@ public class MachineTaskServiceImpl implements MachineTaskService {
 
     @Override
     public PageResult<MachineTaskRespVO> getMachineTaskPage(MachineTaskPageReqVO pageReqVO) {
+        if (schedulingService != null) {
+            return schedulingService.getMachineTaskPage(pageReqVO);
+        }
         PageResult<MachineTaskDO> pageResult = machineTaskMapper.selectPage(pageReqVO);
         return BeanUtils.toBean(pageResult, MachineTaskRespVO.class);
     }

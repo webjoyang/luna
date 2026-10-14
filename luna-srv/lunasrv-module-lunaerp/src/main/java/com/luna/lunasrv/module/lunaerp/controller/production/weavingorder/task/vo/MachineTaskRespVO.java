@@ -19,6 +19,15 @@ public class MachineTaskRespVO {
     @Schema(description = "关联织造单ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
     private Long weavingOrderId;
 
+    @Schema(description = "织造单号快照", example = "WO2026100701")
+    private String weavingOrderCode;
+
+    @Schema(description = "产品编号快照", example = "P001")
+    private String productCode;
+
+    @Schema(description = "产品名称快照", example = "纯棉汗布")
+    private String productName;
+
     @Schema(description = "关联织机ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "2048")
     private Long loomId;
 
@@ -45,6 +54,9 @@ public class MachineTaskRespVO {
 
     @Schema(description = "任务状态（字典 lunaerp_weaving_task_status：PENDING/IN_PROGRESS/HALTED/COMPLETED）", requiredMode = Schema.RequiredMode.REQUIRED, example = "PENDING")
     private String status;
+
+    @Schema(description = "时段冲突标记（与其他占用态任务时段重叠即为 true）", example = "false")
+    private Boolean conflict;
 
     @Schema(description = "停机原因", example = "机械故障检修")
     private String haltReason;

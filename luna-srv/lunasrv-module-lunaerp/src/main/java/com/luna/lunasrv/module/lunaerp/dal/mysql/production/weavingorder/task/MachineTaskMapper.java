@@ -119,19 +119,46 @@ public interface MachineTaskMapper extends BaseMapperX<MachineTaskDO> {
     }
 
     /**
-     * 分页查询机台任务
+     * 查询指定织机集合（或全部织机）下处于占用态（PENDING/IN_PROGRESS/HALTED）的有效机台任务
      *
-     * @param reqVO 分页查询条件
+     * @param loomIds 织机ID集合（为空查全部织机占用态任务）
+     * @return 占用态任务列表
+     */
+    default List<MachineTaskDO> selectOccupiedTasks(java.util.Collection<Long> loomIds) {
+        return selectList(new LambdaQueryWrapperX<MachineTaskDO>()
+                .inIfPresent(MachineTaskDO::getLoomId, loomIds)
+                .in(MachineTaskDO::getStatus, List.of("PENDING", "IN_PROGRESS", "HALTED"))
+                .orderByAsc(MachineTaskDO::getPlannedStart)
+                .orderByAsc(MachineTaskDO::getId));
+    }
+
+    /**
+     * 分页查询机台任务（按计划开始日期升序、创建时间降序排序，支持限制 ID 集合）
+     *
+     * @param reqVO      分页查询条件
+     * @param includeIds 允许包含的任务ID集合（如冲突任务ID集合，可为 null）
      * @return 分页结果
      */
-    default PageResult<MachineTaskDO> selectPage(MachineTaskPageReqVO reqVO) {
+    default PageResult<MachineTaskDO> selectPage(MachineTaskPageReqVO reqVO, java.util.Collection<Long> includeIds) {
         return selectPage(reqVO, new LambdaQueryWrapperX<MachineTaskDO>()
                 .eqIfPresent(MachineTaskDO::getWeavingOrderId, reqVO.getWeavingOrderId())
                 .eqIfPresent(MachineTaskDO::getLoomId, reqVO.getLoomId())
                 .eqIfPresent(MachineTaskDO::getWorkerUserId, reqVO.getWorkerUserId())
                 .eqIfPresent(MachineTaskDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(MachineTaskDO::getCode, reqVO.getCode())
-                .orderByDesc(MachineTaskDO::getId));
+                .inIfPresent(MachineTaskDO::getId, includeIds)
+                .orderByAsc(MachineTaskDO::getPlannedStart)
+                .orderByDesc(MachineTaskDO::getCreateTime));
+    }
+
+    /**
+     * 分页查询机台任务
+     *
+     * @param reqVO 分页查询条件
+     * @return 分页结果
+     */
+    default PageResult<MachineTaskDO> selectPage(MachineTaskPageReqVO reqVO) {
+        return selectPage(reqVO, (java.util.Collection<Long>) null);
     }
 
 }
