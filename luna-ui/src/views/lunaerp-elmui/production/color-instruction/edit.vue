@@ -34,6 +34,25 @@
             >
               <Icon icon="ep:circle-check" class="mr-1" /> 确认
             </el-button>
+            <el-button
+              v-if="canRollback"
+              type="warning"
+              plain
+              :loading="rollbackSubmitting"
+              @click="handleRollback"
+              v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+            >
+              <Icon icon="ep:back" class="mr-1" /> 回退
+            </el-button>
+            <el-button
+              v-if="canVoid"
+              type="danger"
+              plain
+              @click="openVoidDialog"
+              v-hasPermi="['lunaerp:production:color-instruction:confirm']"
+            >
+              <Icon icon="ep:circle-close" class="mr-1" /> 作废
+            </el-button>
             <el-button v-if="!isViewMode" type="primary" :loading="submitting" @click="handleSave">
               <Icon icon="ep:check" class="mr-1" /> 保存
             </el-button>
@@ -51,6 +70,37 @@
       label-width="110px"
       v-loading="loading"
     >
+      <!-- 终态 / 作废提示横幅 -->
+      <el-alert
+        v-if="formData.status === 'VOID'"
+        type="error"
+        :closable="false"
+        show-icon
+        class="mb-20px"
+      >
+        <template #title>
+          <div class="font-bold">该打色指示单已作废</div>
+        </template>
+        <div v-if="formData.voidReason" class="mt-1 text-13px">
+          作废原因：{{ formData.voidReason }}
+        </div>
+      </el-alert>
+
+      <el-alert
+        v-else-if="formData.status === 'IN_PRODUCTION'"
+        type="info"
+        :closable="false"
+        show-icon
+        class="mb-20px"
+      >
+        <template #title>
+          <div class="font-bold">该打色指示单已投产</div>
+        </template>
+        <div class="mt-1 text-13px">
+          已生成下游生产单据，单据已进入终态，处于全只读状态。
+        </div>
+      </el-alert>
+
       <!-- 基本信息卡片 -->
       <el-card shadow="never" class="mb-20px">
         <template #header>
@@ -491,6 +541,41 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 作废打色指示单弹窗 -->
+    <el-dialog
+      v-model="voidDialogVisible"
+      title="作废打色指示单"
+      width="480px"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="voidFormRef"
+        :model="voidFormData"
+        :rules="voidFormRules"
+        label-width="90px"
+      >
+        <el-form-item label="作废原因" prop="voidReason">
+          <el-input
+            v-model="voidFormData.voidReason"
+            type="textarea"
+            :rows="3"
+            maxlength="255"
+            show-word-limit
+            placeholder="请输入作废原因（必填）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="voidDialogVisible = false">取消</el-button>
+          <el-button type="danger" :loading="voidSubmitting" @click="handleConfirmVoid">
+            确认作废
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </ContentWrap>
 </template>
 
@@ -530,8 +615,9 @@ const id = computed(() => {
 })
 
 const isCreateMode = computed(() => !id.value)
+const isExplicitViewMode = computed(() => route.query.mode === 'view')
 const isViewMode = computed(() => {
-  if (route.query.mode === 'view') {
+  if (isExplicitViewMode.value) {
     return true
   }
   // 非可编辑态（非 PENDING / IN_PROGRESS）自动进入只读模式
@@ -539,6 +625,18 @@ const isViewMode = computed(() => {
     return true
   }
   return false
+})
+
+const canRollback = computed(() => {
+  return !isExplicitViewMode.value && !!formData.id && formData.status === 'CONFIRMED'
+})
+
+const canVoid = computed(() => {
+  return (
+    !isExplicitViewMode.value &&
+    !!formData.id &&
+    ['PENDING', 'IN_PROGRESS', 'CONFIRMED'].includes(formData.status || '')
+  )
 })
 
 const canDoLineAction = computed(() => !isViewMode.value && (formData.status === 'PENDING' || formData.status === 'IN_PROGRESS'))
@@ -560,6 +658,7 @@ const formData = reactive<ColorInstructionVO>({
   width: '',
   gsm: '',
   status: 'PENDING',
+  voidReason: '',
   remark: '',
   colors: []
 })
@@ -977,6 +1076,58 @@ const handleConfirmInstruction = async () => {
     await loadData(formData.id)
   } finally {
     confirmSubmitting.value = false
+  }
+}
+
+// 回退打色指示单逻辑
+const rollbackSubmitting = ref(false)
+const handleRollback = async () => {
+  if (!formData.id) return
+  try {
+    await message.confirm('回退将把打色单从“已确认”变为“进行中”，已批准颜色行保持批准状态。确认回退吗？')
+    rollbackSubmitting.value = true
+    await ColorInstructionApi.rollbackColorInstruction({ id: formData.id })
+    message.success('回退成功')
+    await loadData(formData.id)
+  } catch {
+  } finally {
+    rollbackSubmitting.value = false
+  }
+}
+
+// 作废打色指示单弹窗逻辑
+const voidDialogVisible = ref(false)
+const voidSubmitting = ref(false)
+const voidFormRef = ref()
+const voidFormData = reactive({
+  voidReason: ''
+})
+const voidFormRules = {
+  voidReason: [{ required: true, message: '请输入作废原因', trigger: 'blur' }]
+}
+
+const openVoidDialog = () => {
+  voidFormData.voidReason = ''
+  voidDialogVisible.value = true
+}
+
+const handleConfirmVoid = async () => {
+  if (!voidFormRef.value) return
+  const valid = await voidFormRef.value.validate()
+  if (!valid) return
+  if (!formData.id) return
+
+  voidSubmitting.value = true
+  try {
+    await ColorInstructionApi.voidColorInstruction({
+      id: formData.id,
+      voidReason: voidFormData.voidReason.trim()
+    })
+    message.success('打色指示单已作废')
+    voidDialogVisible.value = false
+    await loadData(formData.id)
+  } finally {
+    voidSubmitting.value = false
   }
 }
 

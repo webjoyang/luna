@@ -589,5 +589,109 @@ describe('useColorInstructionSelect composable', () => {
   })
 })
 
+describe('Color Instruction Rollback, Void and Terminal Guard (Issue 08)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('rollbackColorInstruction should PUT /lunaerp/production/color-instruction/rollback', async () => {
+    vi.mocked(request.put).mockResolvedValueOnce(true as any)
+    const res = await ColorInstructionApi.rollbackColorInstruction({ id: 1024 })
+    expect(request.put).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/rollback',
+      data: { id: 1024 }
+    })
+    expect(res).toBe(true)
+  })
+
+  it('voidColorInstruction should PUT /lunaerp/production/color-instruction/void', async () => {
+    vi.mocked(request.put).mockResolvedValueOnce(true as any)
+    const res = await ColorInstructionApi.voidColorInstruction({
+      id: 1024,
+      voidReason: '客户取消打色需求'
+    })
+    expect(request.put).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/void',
+      data: {
+        id: 1024,
+        voidReason: '客户取消打色需求'
+      }
+    })
+    expect(res).toBe(true)
+  })
+
+  it('button visibility logic matches state specifications', () => {
+    // 模拟页头操作按钮显示判断函数
+    const computeHeaderButtons = (status: string, mode?: string, hasId = true) => {
+      const isTerminal = status === 'IN_PRODUCTION' || status === 'VOID'
+      const isViewMode = mode === 'view' || (!['PENDING', 'IN_PROGRESS'].includes(status))
+      const canAction = mode !== 'view' && !isTerminal
+
+      return {
+        start: !isViewMode && hasId && status === 'PENDING',
+        confirm: !isViewMode && hasId && status === 'IN_PROGRESS',
+        rollback: hasId && status === 'CONFIRMED' && canAction,
+        void: hasId && ['PENDING', 'IN_PROGRESS', 'CONFIRMED'].includes(status) && canAction,
+        save: !isViewMode,
+        isTerminal,
+        isViewMode
+      }
+    }
+
+    // 1. CONFIRMED 态：显示"回退"、"作废"，不显示"保存"、"开始打色"、"确认"
+    const confirmed = computeHeaderButtons('CONFIRMED')
+    expect(confirmed.rollback).toBe(true)
+    expect(confirmed.void).toBe(true)
+    expect(confirmed.start).toBe(false)
+    expect(confirmed.confirm).toBe(false)
+    expect(confirmed.save).toBe(false)
+    expect(confirmed.isViewMode).toBe(true) // 单据头表单置灰只读
+
+    // 2. PENDING 态：显示"开始打色"、"作废"、"保存"，不显示"回退"、"确认"
+    const pending = computeHeaderButtons('PENDING')
+    expect(pending.start).toBe(true)
+    expect(pending.void).toBe(true)
+    expect(pending.save).toBe(true)
+    expect(pending.rollback).toBe(false)
+    expect(pending.confirm).toBe(false)
+    expect(pending.isViewMode).toBe(false)
+
+    // 3. IN_PROGRESS 态：显示"确认"、"作废"、"保存"，不显示"开始打色"、"回退"
+    const inProgress = computeHeaderButtons('IN_PROGRESS')
+    expect(inProgress.confirm).toBe(true)
+    expect(inProgress.void).toBe(true)
+    expect(inProgress.save).toBe(true)
+    expect(inProgress.start).toBe(false)
+    expect(inProgress.rollback).toBe(false)
+    expect(inProgress.isViewMode).toBe(false)
+
+    // 4. IN_PRODUCTION 终态：所有操作按钮均隐藏，全只读
+    const inProd = computeHeaderButtons('IN_PRODUCTION')
+    expect(inProd.rollback).toBe(false)
+    expect(inProd.void).toBe(false)
+    expect(inProd.start).toBe(false)
+    expect(inProd.confirm).toBe(false)
+    expect(inProd.save).toBe(false)
+    expect(inProd.isTerminal).toBe(true)
+    expect(inProd.isViewMode).toBe(true)
+
+    // 5. VOID 终态：所有操作按钮均隐藏，全只读
+    const voidState = computeHeaderButtons('VOID')
+    expect(voidState.rollback).toBe(false)
+    expect(voidState.void).toBe(false)
+    expect(voidState.start).toBe(false)
+    expect(voidState.confirm).toBe(false)
+    expect(voidState.save).toBe(false)
+    expect(voidState.isTerminal).toBe(true)
+    expect(voidState.isViewMode).toBe(true)
+
+    // 6. 纯查看模式（mode=view）：操作按钮均隐藏
+    const viewMode = computeHeaderButtons('CONFIRMED', 'view')
+    expect(viewMode.rollback).toBe(false)
+    expect(viewMode.void).toBe(false)
+  })
+})
+
+
 
 

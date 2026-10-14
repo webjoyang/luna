@@ -35,7 +35,12 @@ import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionConfirmReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionVoidReqVO;
 import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionConfirmTypeEnum;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionLineStatusEnum;
 import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionStatusEnum;
 
@@ -66,6 +71,12 @@ public class ColorInstructionServiceImplTest {
     @Mock
     private com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper supplierMapper;
 
+    @Mock
+    private GreigeOrderMapper greigeOrderMapper;
+
+    @Mock
+    private DyeingOrderMapper dyeingOrderMapper;
+
     @InjectMocks
     private ColorInstructionServiceImpl colorInstructionService;
 
@@ -76,6 +87,10 @@ public class ColorInstructionServiceImplTest {
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), ColorInstructionDO.class);
         TableInfoHelper.initTableInfo(
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), ColorInstructionColorDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), GreigeOrderDO.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), DyeingOrderDO.class);
     }
 
     @Test
@@ -2197,6 +2212,357 @@ public class ColorInstructionServiceImplTest {
 
         assertDoesNotThrow(() -> colorInstructionService.markInProduction(501L));
         verify(colorInstructionMapper).update(any(ColorInstructionDO.class), any());
+    }
+
+    // ==================== Issue 08: 下游引用查询服务 (hasActiveDownstreamRef) ====================
+
+    @Test
+    @DisplayName("下游引用查询：id 为空时返回 false 且不查询任何下游表")
+    void testHasActiveDownstreamRef_nullId_returnsFalse() {
+        assertFalse(colorInstructionService.hasActiveDownstreamRef(null));
+        verify(greigeOrderMapper, never()).selectCount(any());
+        verify(dyeingOrderMapper, never()).selectCount(any());
+    }
+
+    @Test
+    @DisplayName("下游引用查询：存在有效胚布单引用（status≠CANCELLED且未删）时返回 true，短路跳过染色单查询")
+    void testHasActiveDownstreamRef_activeGreigeOrder_returnsTrue() {
+        when(greigeOrderMapper.selectCount(any())).thenReturn(1L);
+
+        boolean hasRef = colorInstructionService.hasActiveDownstreamRef(501L);
+
+        assertTrue(hasRef);
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<GreigeOrderDO>> captor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        verify(greigeOrderMapper).selectCount(captor.capture());
+        String sql = captor.getValue().getCustomSqlSegment();
+        assertTrue(sql.contains("color_instruction_id"));
+        assertTrue(sql.contains("status"));
+        assertTrue(captor.getValue().getParamNameValuePairs().containsValue("CANCELLED"));
+        verify(dyeingOrderMapper, never()).selectCount(any());
+    }
+
+    @Test
+    @DisplayName("下游引用查询：无有效胚布单但存在有效染色单引用（含DRAFT态，status≠CANCELLED且未删）时返回 true")
+    void testHasActiveDownstreamRef_activeDyeingOrder_returnsTrue() {
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(2L);
+
+        boolean hasRef = colorInstructionService.hasActiveDownstreamRef(501L);
+
+        assertTrue(hasRef);
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<DyeingOrderDO>> captor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        verify(dyeingOrderMapper).selectCount(captor.capture());
+        String sql = captor.getValue().getCustomSqlSegment();
+        assertTrue(sql.contains("color_instruction_id"));
+        assertTrue(sql.contains("status"));
+        assertTrue(captor.getValue().getParamNameValuePairs().containsValue("CANCELLED"));
+    }
+
+    @Test
+    @DisplayName("下游引用查询：胚布单和染色单均无有效引用时返回 false")
+    void testHasActiveDownstreamRef_noDownstreamRef_returnsFalse() {
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+
+        boolean hasRef = colorInstructionService.hasActiveDownstreamRef(501L);
+
+        assertFalse(hasRef);
+    }
+
+    // ==================== Issue 08: 打色单回退 (rollbackColorInstruction) ====================
+
+    @Test
+    @DisplayName("打色单回退：id 为空或单据不存在时抛 1_030_032_000")
+    void testRollbackColorInstruction_orderNotFound_throwsNotExists() {
+        ServiceException exNull = assertThrows(ServiceException.class, () ->
+                colorInstructionService.rollbackColorInstruction(null));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), exNull.getCode());
+
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+        ServiceException exNotFound = assertThrows(ServiceException.class, () ->
+                colorInstructionService.rollbackColorInstruction(999L));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), exNotFound.getCode());
+    }
+
+    @Test
+    @DisplayName("打色单回退：非 CONFIRMED 态（PENDING/IN_PROGRESS/IN_PRODUCTION/VOID）回退抛 1_030_032_002")
+    void testRollbackColorInstruction_nonConfirmedStatus_throwsStatusNotAllowed() {
+        for (String status : List.of("PENDING", "IN_PROGRESS", "IN_PRODUCTION", "VOID")) {
+            ColorInstructionDO order = new ColorInstructionDO();
+            order.setId(501L);
+            order.setStatus(status);
+            when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+            ServiceException ex = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.rollbackColorInstruction(501L));
+            assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode(),
+                    "状态 " + status + " 下回退应抛 1_030_032_002");
+        }
+    }
+
+    @Test
+    @DisplayName("打色单回退：存在有效下游引用（胚布单或染色单有效引用）时抛 1_030_032_005")
+    void testRollbackColorInstruction_hasActiveDownstreamRef_throwsHasDownstreamRef() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setInstructionNo("DS20261013001");
+        order.setStatus("CONFIRMED");
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+        // 模拟存在有效胚布单引用
+        when(greigeOrderMapper.selectCount(any())).thenReturn(1L);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.rollbackColorInstruction(501L));
+        assertEquals(COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("打色单回退：无下游引用成功回退 CONFIRMED -> IN_PROGRESS，条件更新带 CONFIRMED 态防并发，颜色行状态不回退")
+    void testRollbackColorInstruction_success_updatesToInProgressAndKeepsLineStatus() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setInstructionNo("DS20261013001");
+        order.setStatus("CONFIRMED");
+        order.setConfirmType("CUSTOMER");
+        order.setCustomerFeedback("客户满意");
+        order.setConfirmedBy(100L);
+        order.setConfirmedAt(java.time.LocalDateTime.now());
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+        // 模拟无下游引用
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+        when(colorInstructionMapper.update(any(ColorInstructionDO.class), any())).thenReturn(1);
+
+        colorInstructionService.rollbackColorInstruction(501L);
+
+        ArgumentCaptor<ColorInstructionDO> updateCaptor = ArgumentCaptor.forClass(ColorInstructionDO.class);
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ColorInstructionDO>> wrapperCaptor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        verify(colorInstructionMapper).update(updateCaptor.capture(), any());
+
+        ColorInstructionDO updated = updateCaptor.getValue();
+        assertEquals(ColorInstructionStatusEnum.IN_PROGRESS.getValue(), updated.getStatus());
+        assertNull(updated.getConfirmType(), "回退后确认类型应清空");
+        assertNull(updated.getCustomerFeedback(), "回退后客户反馈应清空");
+        assertNull(updated.getConfirmedBy(), "回退后确认人应清空");
+        assertNull(updated.getConfirmedAt(), "回退后确认时间应清空");
+
+        // 颜色行状态不回退：未对颜色行子表做任何更新操作
+        verify(colorInstructionColorMapper, never()).update(any(), any());
+        verify(colorInstructionColorMapper, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("打色单回退：并发更新影响行数 0 时抛 1_030_032_002 防并发冲突")
+    void testRollbackColorInstruction_concurrencyConflict_throwsStatusNotAllowed() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setStatus("CONFIRMED");
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+        // 并发影响行数 0
+        when(colorInstructionMapper.update(any(ColorInstructionDO.class), any())).thenReturn(0);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.rollbackColorInstruction(501L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    // ==================== Issue 08: 打色单作废 (voidColorInstruction) ====================
+
+    @Test
+    @DisplayName("打色单作废：reqVO 为空或 id 为空或单据不存在时抛 1_030_032_000")
+    void testVoidColorInstruction_nullOrNotFound_throwsNotExists() {
+        ServiceException exNullReq = assertThrows(ServiceException.class, () ->
+                colorInstructionService.voidColorInstruction(null));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), exNullReq.getCode());
+
+        ColorInstructionVoidReqVO reqNullId = new ColorInstructionVoidReqVO();
+        reqNullId.setVoidReason("测试原因");
+        ServiceException exNullId = assertThrows(ServiceException.class, () ->
+                colorInstructionService.voidColorInstruction(reqNullId));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), exNullId.getCode());
+
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+        ColorInstructionVoidReqVO reqNotFound = new ColorInstructionVoidReqVO();
+        reqNotFound.setId(999L);
+        reqNotFound.setVoidReason("测试原因");
+        ServiceException exNotFound = assertThrows(ServiceException.class, () ->
+                colorInstructionService.voidColorInstruction(reqNotFound));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), exNotFound.getCode());
+    }
+
+    @Test
+    @DisplayName("打色单作废：IN_PRODUCTION 禁作废（终态守卫抛 1_030_032_002），VOID 态拒绝二次作废（抛 1_030_032_002）")
+    void testVoidColorInstruction_inProductionOrVoidStatus_throwsStatusNotAllowed() {
+        for (String status : List.of("IN_PRODUCTION", "VOID")) {
+            ColorInstructionDO order = new ColorInstructionDO();
+            order.setId(501L);
+            order.setStatus(status);
+            when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+            ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO();
+            reqVO.setId(501L);
+            reqVO.setVoidReason("需求变更");
+
+            ServiceException ex = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.voidColorInstruction(reqVO));
+            assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode(),
+                    "状态 " + status + " 下作废应抛 1_030_032_002");
+        }
+    }
+
+    @Test
+    @DisplayName("打色单作废：存在有效下游引用（包含下游 DRAFT 染色单）时抛 1_030_032_005")
+    void testVoidColorInstruction_hasActiveDownstreamRef_throwsHasDownstreamRef() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setInstructionNo("DS20261013001");
+        order.setStatus("CONFIRMED");
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+        // 模拟下游存在有效染色单（例如处于 DRAFT 状态）
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(1L);
+
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO();
+        reqVO.setId(501L);
+        reqVO.setVoidReason("客户取消");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.voidColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("打色单作废：各允许状态（PENDING/IN_PROGRESS/CONFIRMED）无下游引用时成功作废，写入 voidReason 与 status=VOID")
+    void testVoidColorInstruction_allowedStatuses_successUpdatesToVoid() {
+        for (String status : List.of("PENDING", "IN_PROGRESS", "CONFIRMED")) {
+            ColorInstructionDO order = new ColorInstructionDO();
+            order.setId(501L);
+            order.setInstructionNo("DS20261013001");
+            order.setStatus(status);
+            when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+            when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+            when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+            when(colorInstructionMapper.update(any(ColorInstructionDO.class), any())).thenReturn(1);
+
+            ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO();
+            reqVO.setId(501L);
+            reqVO.setVoidReason("  打色多次不合格，客户取消需求  ");
+
+            colorInstructionService.voidColorInstruction(reqVO);
+
+            ArgumentCaptor<ColorInstructionDO> updateCaptor = ArgumentCaptor.forClass(ColorInstructionDO.class);
+            verify(colorInstructionMapper, atLeastOnce()).update(updateCaptor.capture(), any());
+
+            ColorInstructionDO updated = updateCaptor.getValue();
+            assertEquals(ColorInstructionStatusEnum.VOID.getValue(), updated.getStatus());
+            assertEquals("打色多次不合格，客户取消需求", updated.getVoidReason());
+        }
+    }
+
+    @Test
+    @DisplayName("打色单作废：并发更新影响行数 0 时抛 1_030_032_002 防并发冲突")
+    void testVoidColorInstruction_concurrencyConflict_throwsStatusNotAllowed() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setStatus("IN_PROGRESS");
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+        when(greigeOrderMapper.selectCount(any())).thenReturn(0L);
+        when(dyeingOrderMapper.selectCount(any())).thenReturn(0L);
+        // 并发影响行数 0
+        when(colorInstructionMapper.update(any(ColorInstructionDO.class), any())).thenReturn(0);
+
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO();
+        reqVO.setId(501L);
+        reqVO.setVoidReason("客户取消");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.voidColorInstruction(reqVO));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    // ==================== Issue 08: 终态守卫强化 (IN_PRODUCTION / VOID 拒绝一切写操作) ====================
+
+    @Test
+    @DisplayName("终态守卫：IN_PRODUCTION 和 VOID 单据拒绝一切写操作（update/delete/void/approve/reject-restrike），均抛 1_030_032_002")
+    void testTerminalGuard_inProductionAndVoid_rejectAllWriteOperations() {
+        for (String terminalStatus : List.of("IN_PRODUCTION", "VOID")) {
+            ColorInstructionDO order = new ColorInstructionDO();
+            order.setId(501L);
+            order.setStatus(terminalStatus);
+            when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+            // 1. update
+            ColorInstructionSaveReqVO updateReq = new ColorInstructionSaveReqVO();
+            updateReq.setId(501L);
+            ServiceException exUpdate = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.updateColorInstruction(updateReq));
+            assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), exUpdate.getCode());
+
+            // 2. delete
+            ServiceException exDelete = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.deleteColorInstruction(501L));
+            assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), exDelete.getCode());
+
+            // 3. void
+            ColorInstructionVoidReqVO voidReq = new ColorInstructionVoidReqVO();
+            voidReq.setId(501L);
+            voidReq.setVoidReason("终态尝试作废");
+            ServiceException exVoid = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.voidColorInstruction(voidReq));
+            assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), exVoid.getCode());
+
+            // 4. approve line
+            ColorInstructionColorDO colorLine = new ColorInstructionColorDO();
+            colorLine.setId(11L);
+            colorLine.setInstructionId(501L);
+            colorLine.setStatus("PENDING");
+            when(colorInstructionColorMapper.selectById(11L)).thenReturn(colorLine);
+
+            ServiceException exApprove = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.approveColorLine(11L));
+            assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), exApprove.getCode());
+
+            // 5. reject-restrike line
+            ServiceException exReject = assertThrows(ServiceException.class, () ->
+                    colorInstructionService.rejectRestrikeColorLine(11L, "颜色不符"));
+            assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), exReject.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("软删守卫：CONFIRMED 态单据软删拦截报 1_030_032_002（CONFIRMED 取消走作废）")
+    void testDeleteColorInstruction_confirmedStatus_throwsStatusNotAllowed() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setStatus("CONFIRMED");
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.deleteColorInstruction(501L));
+        assertEquals(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("软删守卫：PENDING 态单据若存在有效下游引用，软删被拦截报 1_030_032_005")
+    void testDeleteColorInstruction_pendingWithActiveDownstreamRef_throwsHasDownstreamRef() {
+        ColorInstructionDO order = new ColorInstructionDO();
+        order.setId(501L);
+        order.setStatus("PENDING");
+        when(colorInstructionMapper.selectById(501L)).thenReturn(order);
+        // 模拟存在有效下游引用
+        when(greigeOrderMapper.selectCount(any())).thenReturn(1L);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.deleteColorInstruction(501L));
+        assertEquals(COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE.getCode(), ex.getCode());
+        verify(colorInstructionMapper, never()).deleteById(any());
     }
 
 }

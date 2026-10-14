@@ -102,5 +102,21 @@ public class ColorInstructionController {
         return success(true);
     }
 
+    @PutMapping("/rollback")
+    @Operation(summary = "回退打色指示单（CONFIRMED -> IN_PROGRESS）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:confirm')")
+    public CommonResult<Boolean> rollbackColorInstruction(@Valid @RequestBody ColorInstructionRollbackReqVO reqVO) {
+        colorInstructionService.rollbackColorInstruction(reqVO.getId());
+        return success(true);
+    }
+
+    @PutMapping("/void")
+    @Operation(summary = "作废打色指示单（PENDING/IN_PROGRESS/CONFIRMED -> VOID）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:color-instruction:confirm')")
+    public CommonResult<Boolean> voidColorInstruction(@Valid @RequestBody ColorInstructionVoidReqVO reqVO) {
+        colorInstructionService.voidColorInstruction(reqVO);
+        return success(true);
+    }
+
 }
 

@@ -295,10 +295,10 @@ const openView = (id?: number) => {
   })
 }
 
-// 编辑打色单（非可编辑态点编辑进入只读模式）
+// 编辑打色单（可操作态 PENDING / IN_PROGRESS / CONFIRMED 进入，终态单据进入只读模式）
 const openEdit = (row: ColorInstructionVO) => {
   if (!row?.id) return
-  const isEditable = row.status === 'PENDING' || row.status === 'IN_PROGRESS'
+  const isEditable = row.status === 'PENDING' || row.status === 'IN_PROGRESS' || row.status === 'CONFIRMED'
   router.push({
     path: `/production/color-instruction/edit/${row.id}`,
     query: isEditable ? {} : { mode: 'view' }

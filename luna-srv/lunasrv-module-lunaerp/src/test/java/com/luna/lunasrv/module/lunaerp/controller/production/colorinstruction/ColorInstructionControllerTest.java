@@ -175,5 +175,56 @@ public class ColorInstructionControllerTest {
         org.junit.jupiter.api.Assertions.assertEquals("@ss.hasPermission('lunaerp:production:color-instruction:confirm')", preAuth.value());
     }
 
+    @Test
+    @DisplayName("Controller回退打色单：委托Service并返回成功，具备:confirm权限注解")
+    void testRollbackColorInstruction() throws NoSuchMethodException {
+        ColorInstructionRollbackReqVO reqVO = new ColorInstructionRollbackReqVO();
+        reqVO.setId(1024L);
+
+        doNothing().when(colorInstructionService).rollbackColorInstruction(1024L);
+
+        CommonResult<Boolean> result = colorInstructionController.rollbackColorInstruction(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(colorInstructionService).rollbackColorInstruction(1024L);
+
+        // 校验注解
+        var method = ColorInstructionController.class.getMethod("rollbackColorInstruction", ColorInstructionRollbackReqVO.class);
+        var putMapping = method.getAnnotation(org.springframework.web.bind.annotation.PutMapping.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(putMapping);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new String[]{"/rollback"}, putMapping.value());
+
+        var preAuth = method.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(preAuth);
+        org.junit.jupiter.api.Assertions.assertEquals("@ss.hasPermission('lunaerp:production:color-instruction:confirm')", preAuth.value());
+    }
+
+    @Test
+    @DisplayName("Controller作废打色单：委托Service并返回成功，具备:confirm权限注解")
+    void testVoidColorInstruction() throws NoSuchMethodException {
+        ColorInstructionVoidReqVO reqVO = new ColorInstructionVoidReqVO();
+        reqVO.setId(1024L);
+        reqVO.setVoidReason("客户取消");
+
+        doNothing().when(colorInstructionService).voidColorInstruction(reqVO);
+
+        CommonResult<Boolean> result = colorInstructionController.voidColorInstruction(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(colorInstructionService).voidColorInstruction(reqVO);
+
+        // 校验注解
+        var method = ColorInstructionController.class.getMethod("voidColorInstruction", ColorInstructionVoidReqVO.class);
+        var putMapping = method.getAnnotation(org.springframework.web.bind.annotation.PutMapping.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(putMapping);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new String[]{"/void"}, putMapping.value());
+
+        var preAuth = method.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(preAuth);
+        org.junit.jupiter.api.Assertions.assertEquals("@ss.hasPermission('lunaerp:production:color-instruction:confirm')", preAuth.value());
+    }
+
 }
 

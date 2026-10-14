@@ -120,6 +120,42 @@ public interface ColorInstructionService {
      */
     void markInProduction(Long id);
 
+    /**
+     * 检查打色指示单是否存在有效下游单据引用（胚布单 / 染色单）
+     * <p>
+     * 规则：查胚布单 + 染色单 status ≠ 'CANCELLED' 且 deleted = 0 且 color_instruction_id = id 的行数 > 0
+     *
+     * @param id 打色指示单ID
+     * @return 是否存在有效下游引用
+     */
+    boolean hasActiveDownstreamRef(Long id);
+
+    /**
+     * 回退打色指示单（CONFIRMED -> IN_PROGRESS）
+     * <p>
+     * 守卫：
+     * 1. 单据存在且状态为 CONFIRMED
+     * 2. 无任何下游有效引用（status ≠ CANCELLED 且未删除）
+     * 3. 条件更新防并发
+     * 4. 颜色行状态保持不回退
+     *
+     * @param id 打色指示单ID
+     */
+    void rollbackColorInstruction(Long id);
+
+    /**
+     * 作废打色指示单（PENDING / IN_PROGRESS / CONFIRMED -> VOID）
+     * <p>
+     * 守卫：
+     * 1. 单据存在且状态 ∈ {PENDING, IN_PROGRESS, CONFIRMED}
+     * 2. IN_PRODUCTION 禁作废（报 1_030_032_002）
+     * 3. 无任何下游有效引用（status ≠ CANCELLED 且未删除），存在则报 1_030_032_005
+     * 4. 写入 voidReason，条件更新防并发
+     *
+     * @param reqVO 作废请求参数
+     */
+    void voidColorInstruction(com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionVoidReqVO reqVO);
+
 }
 
 

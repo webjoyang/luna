@@ -37,6 +37,12 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.Supplier
 
 import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionConfirmReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionRollbackReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionVoidReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.DyeingOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionConfirmTypeEnum;
 import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionLineStatusEnum;
 import com.luna.lunasrv.module.lunaerp.enums.production.colorinstruction.ColorInstructionStatusEnum;
@@ -98,6 +104,12 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
 
     @Resource
     private com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper supplierMapper;
+
+    @Resource
+    private GreigeOrderMapper greigeOrderMapper;
+
+    @Resource
+    private DyeingOrderMapper dyeingOrderMapper;
 
     @Override
     public PageResult<ColorInstructionRespVO> getColorInstructionPage(ColorInstructionPageReqVO pageReqVO) {
@@ -284,6 +296,11 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         // 2. 状态守卫：仅 PENDING 状态可软删进回收站，其他状态报 COLOR_INSTRUCTION_STATUS_NOT_ALLOWED (1_030_032_002)
         if (!"PENDING".equals(order.getStatus())) {
             throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 下游守卫：若存在下游有效引用，报 COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE (1_030_032_005)
+        if (hasActiveDownstreamRef(id)) {
+            throw exception(COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE);
         }
 
         LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
@@ -991,6 +1008,116 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         } else {
             log.debug("[markInProduction] 打色指示单状态非 CONFIRMED 或不存在，幂等跳过, id={}", id);
         }
+    }
+
+    @Override
+    public boolean hasActiveDownstreamRef(Long id) {
+        if (id == null) {
+            return false;
+        }
+        Long greigeCount = greigeOrderMapper.selectCount(new LambdaQueryWrapperX<GreigeOrderDO>()
+                .eq(GreigeOrderDO::getColorInstructionId, id)
+                .ne(GreigeOrderDO::getStatus, "CANCELLED"));
+        if (greigeCount != null && greigeCount > 0) {
+            return true;
+        }
+        Long dyeingCount = dyeingOrderMapper.selectCount(new LambdaQueryWrapperX<DyeingOrderDO>()
+                .eq(DyeingOrderDO::getColorInstructionId, id)
+                .ne(DyeingOrderDO::getStatus, "CANCELLED"));
+        return dyeingCount != null && dyeingCount > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "COLOR_INSTRUCTION", subType = "ROLLBACK", bizNo = "{{#id}}",
+            success = "回退打色指示单【{{#instructionNo}}】")
+    public void rollbackColorInstruction(Long id) {
+        if (id == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 1. 存在性校验
+        ColorInstructionDO order = colorInstructionMapper.selectById(id);
+        if (order == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 2. 状态守卫：仅 CONFIRMED 态单据允许回退
+        if (!ColorInstructionStatusEnum.CONFIRMED.getValue().equals(order.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 守卫：无任何下游有效引用（status ≠ CANCELLED 且未删除）
+        if (hasActiveDownstreamRef(id)) {
+            throw exception(COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE);
+        }
+
+        // 4. 条件更新防并发：CONFIRMED -> IN_PROGRESS，清空确认信息（行状态保持不回退）
+        ColorInstructionDO updateDO = new ColorInstructionDO();
+        updateDO.setStatus(ColorInstructionStatusEnum.IN_PROGRESS.getValue());
+        updateDO.setConfirmType(null);
+        updateDO.setCustomerFeedback(null);
+        updateDO.setConfirmedBy(null);
+        updateDO.setConfirmedAt(null);
+
+        int updated = colorInstructionMapper.update(updateDO,
+                new LambdaUpdateWrapper<ColorInstructionDO>()
+                        .eq(ColorInstructionDO::getId, id)
+                        .eq(ColorInstructionDO::getStatus, ColorInstructionStatusEnum.CONFIRMED.getValue()));
+        if (updated == 0) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+
+        // 5. 日志变量填充
+        LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "COLOR_INSTRUCTION", subType = "VOID", bizNo = "{{#reqVO.id}}",
+            success = "作废打色指示单【{{#instructionNo}}】，原因：{{#reqVO.voidReason}}")
+    public void voidColorInstruction(ColorInstructionVoidReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 1. 存在性校验
+        ColorInstructionDO order = colorInstructionMapper.selectById(reqVO.getId());
+        if (order == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 2. 状态守卫：仅 PENDING / IN_PROGRESS / CONFIRMED 允许作废；IN_PRODUCTION 禁作废（报 1_030_032_002），已作废等其他状态同报
+        if (!ColorInstructionStatusEnum.PENDING.getValue().equals(order.getStatus())
+                && !ColorInstructionStatusEnum.IN_PROGRESS.getValue().equals(order.getStatus())
+                && !ColorInstructionStatusEnum.CONFIRMED.getValue().equals(order.getStatus())) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 守卫：无任何下游有效引用（status ≠ CANCELLED 且未删除，含下游 DRAFT 染色单）
+        if (hasActiveDownstreamRef(reqVO.getId())) {
+            throw exception(COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE);
+        }
+
+        // 4. 条件更新防并发：写入 voidReason 与 status=VOID
+        ColorInstructionDO updateDO = new ColorInstructionDO();
+        updateDO.setStatus(ColorInstructionStatusEnum.VOID.getValue());
+        updateDO.setVoidReason(StringUtils.hasText(reqVO.getVoidReason()) ? reqVO.getVoidReason().trim() : null);
+
+        int updated = colorInstructionMapper.update(updateDO,
+                new LambdaUpdateWrapper<ColorInstructionDO>()
+                        .eq(ColorInstructionDO::getId, reqVO.getId())
+                        .in(ColorInstructionDO::getStatus, List.of(
+                                ColorInstructionStatusEnum.PENDING.getValue(),
+                                ColorInstructionStatusEnum.IN_PROGRESS.getValue(),
+                                ColorInstructionStatusEnum.CONFIRMED.getValue()
+                        )));
+        if (updated == 0) {
+            throw exception(COLOR_INSTRUCTION_STATUS_NOT_ALLOWED);
+        }
+
+        // 5. 日志变量填充
+        LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
     }
 
 }
