@@ -65,5 +65,21 @@
 - **业务操作提交助手单一来源 (DRY Submit Helpers)**：
   - 同一领域实体的更新逻辑可能散布在多个交互场景（如甘特图拖拽调整、行内操作菜单、独立编辑弹窗）。
   - **强制规约**：对同一后端修改 API 的参数对齐、冲突错误码拦截（如 `SCHEDULE_CONFLICT_CODE`）、消息提示与局部/全局数据刷新，应提取统一的 Composable 或 Model 辅助函数封装，严禁在多处 Vue 组件模板中复制散落的 `try-catch` 和错误分支拼装代码。
+- **远程搜索多选下拉选项防脱落守卫 (Remote Select Option Eviction Guard)**：
+  - 在 Element Plus 远程多选下拉（`el-select multiple filterable remote`）中，`remote-method` 返回的新分页结果若直接覆写 `options`，会导致当前已被勾选但不在新结果页内的项丢失 label，标签退化显示为纯数字 ID。
+  - **强制规约**：远程搜索回调更新 options 时，必须提取 Map 合并保留当前已选中的实体集合（`queryParams.xxxIds`），保持已选标签名称稳定呈现。
+- **跨页跳转过滤参数的主键 ID 优先透传规约 (Cross-page ID Parity)**：
+  - 跨模块跳转携带过滤条件时（如齐套检查跳转配比 BOM 或采购单列表），若目标查询接口支持实体领域主键（如 `productId`、`customerId`），路由参数**必须**优先透传主键 ID，并在目标列表页的 `queryParams` 中优先绑定，同时可附带可读编码/名称快照，严禁单向降级为纯文本而丢弃主键 ID。
+- **看板汇总口径派生与交互解耦 (Metric Switch Decoupling)**：
+  - 看板中的纯口径切换（如“含在途/不含在途”切换）：若仅影响顶部统计徽标或卡片，结果表格两口径列常驻展示，必须通过客户端响应式（`computed` / Model 纯函数）即时派生，严禁在无必要时触发全局表格重新请求与阻塞加载动画。
+
+## 7. 前端单测与 Vitest 纯 Node 环境守卫 (Frontend Vitest Hygiene)
+
+- **Node 环境与无 DOM/SFC 边界**：
+  - `luna-ui/vitest.config.ts` 配置为纯 `node` 环境，未挂载 `@vitejs/plugin-vue` 与 JSDOM。
+  - **强制规约**：前端单测定位为领域纯函数与数据适配器测试（`model/*.ts`、`utils/*.ts`），**严禁在单测中直接 import `.vue` 组件**。
+- **Axios 顶层打桩规约**：
+  - `@/config/axios` 会级联导入系统路由并在根作用域执行 `createWebHistory`（依赖 `window`）。
+  - **强制规约**：单测中若间接依赖 API 调用，必须在测试文件顶层显式声明 `vi.mock('@/config/axios', ...)`，避免在纯 Node 运行环境中报 `ReferenceError: window is not defined`。
 
 

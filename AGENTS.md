@@ -34,6 +34,8 @@
 - 技术实现：Vue3 + TypeScript + ElementPlus
 - 目录导航：业务视图集中在 `src/views/lunaerp-elmui/`（Element Plus 版），接口集中在 `src/api/lunaerp-elmui/`
 - 类型与语法检查：当前项目全量 `pnpm ts:check` 存在历史存量错误，严禁在单个特性工单开发中无差别调用全量 `vue-tsc` 进行阻塞检查；优先通过针对当前开发目录的 `eslint`、`prettier` 以及 `vitest` 实现单模块质量闭环。
+- 单测执行：`Cwd` 必须切换至 `luna-ui` 目录，直接执行 `pnpm test <path>`（如 `pnpm test src/views/lunaerp-elmui/production/material-check/__tests__/material-check.spec.ts`）；仓库根目录非 monorepo workspace，勿使用 `--filter`。
+- Vitest 纯 Node 环境守卫：`vitest.config.ts` 采用纯 Node 环境且未加载 Vue 编译插件与 JSDOM，单测仅覆盖纯 TS 领域模型（`model/*.ts`）与工具函数，严禁在单测中直接 import `.vue` 组件；若单测被测模块引用了 `@/config/axios`，必须在测试文件顶层显式声明 `vi.mock('@/config/axios', ...)`，防止级联执行路由 `createWebHistory` 触发 `window is not defined` 报错。
 
 ## 后端项目
 - 在luna-srv项目中
