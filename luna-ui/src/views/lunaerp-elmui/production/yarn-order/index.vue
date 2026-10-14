@@ -1,7 +1,13 @@
 <template>
   <ContentWrap>
     <!-- 搜索区 -->
-    <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
+    <el-form
+      class="-mb-15px"
+      :model="queryParams"
+      ref="queryFormRef"
+      :inline="true"
+      label-width="80px"
+    >
       <el-form-item label="关键词" prop="keyword">
         <el-input
           v-model="queryParams.keyword"
@@ -74,7 +80,12 @@
           <DictTag :type="DICT_TYPE.LUNAERP_YARN_ORDER_STATUS" :value="row.status" />
         </template>
       </el-table-column>
-      <el-table-column label="关联胚布单号" prop="sourceGreigeOrderNos" min-width="180" show-overflow-tooltip>
+      <el-table-column
+        label="关联胚布单号"
+        prop="sourceGreigeOrderNos"
+        min-width="180"
+        show-overflow-tooltip
+      >
         <template #default="{ row }">{{ row.sourceGreigeOrderNos || '—' }}</template>
       </el-table-column>
       <el-table-column label="明细数" prop="itemCount" width="90" align="right">
@@ -148,6 +159,7 @@ import type { YarnOrderVO, YarnOrderPageReqVO } from '@/api/lunaerp-elmui/produc
 defineOptions({ name: 'LunaerpElmuiProductionYarnOrder' })
 
 const router = useRouter()
+const route = useRoute()
 const message = useMessage()
 
 const loading = ref(true)
@@ -167,7 +179,7 @@ interface QueryParams {
 const queryParams = reactive<QueryParams>({
   pageNo: 1,
   pageSize: 20,
-  keyword: '',
+  keyword: (route.query?.keyword as string) || '',
   status: '',
   orderDate: undefined,
   deliveryDate: undefined
