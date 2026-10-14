@@ -589,6 +589,10 @@ class ReleaseProductionServiceImplTest {
         when(productMapper.selectByCode("P001")).thenReturn(productDO);
 
         when(colorInstructionService.createColorInstruction(any())).thenReturn(88L);
+        ColorInstructionDO ciDO = new ColorInstructionDO();
+        ciDO.setId(88L);
+        ciDO.setInstructionNo("DS20261014088");
+        when(colorInstructionMapper.selectById(88L)).thenReturn(ciDO);
         when(greigeOrderService.createGreigeOrder(any())).thenReturn(11L);
         when(dyeingOrderService.createDyeingOrder(any())).thenReturn(21L);
         when(inspectionOrderService.createInspectionOrder(any())).thenReturn(31L);
@@ -603,7 +607,7 @@ class ReleaseProductionServiceImplTest {
                         .newColorInstruction(ReleaseProductionReqVO.NewColorInstruction.builder()
                                 .labFactoryId(3001L)
                                 .colors(Collections.singletonList(ReleaseProductionReqVO.ColorLine.builder()
-                                        .contractLineId(1L)
+                                         .contractLineId(1L)
                                         .customerColorNo("C101")
                                         .colorName("藏青")
                                         .lightPrimary("D65")
@@ -622,6 +626,7 @@ class ReleaseProductionServiceImplTest {
         assertNotNull(resp);
         assertEquals(1, resp.getColorInstructions().size());
         assertEquals(88L, resp.getColorInstructions().get(0).getId());
+        assertEquals("DS20261014088", resp.getColorInstructions().get(0).getInstructionNo());
 
         // 验证打色单参数
         ArgumentCaptor<ColorInstructionSaveReqVO> ciCaptor = ArgumentCaptor.forClass(ColorInstructionSaveReqVO.class);

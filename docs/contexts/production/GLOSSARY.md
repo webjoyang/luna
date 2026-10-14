@@ -315,6 +315,17 @@ _避免_：车间 App、小程序（Q6=A 否决原生端）、扫码报工系统
 **胚布扫码自动交接 (Scan-triggered handoff)**：
 检验员在 H5 扫完工布票录检时，若该票所属织造单尚未在 PC 做"完工交接检验"，H5 后端以服务内调用幂等完成 find-or-create 胚布检验单表头（规则同 ADR-0025 交接：按胚布单归一、要求有完工票），再按 `weavingTicketId` 定位或新建录检行（PIECE 匹号缺省取布票完整 code，胚布缸号可空）。移动端点不要求检验员持有 PC 的交接权限码；交接仍是织造单侧的幂等动作，H5 只是触发者。
 
+## 生产管理：下达生产
+
+**下达生产 (ReleaseProduction)**：
+将销售合同（SalesContract）转化为下游生产单据的编排业务（ADR-0040）。在一个原子事务内：
+1. 校验销售合同状态非 CANCELLED，合同明细行均属于该合同且未超下达；
+2. 条件累加合同明细 `released_qty`，影响行数为 0 时拦截超下达与并发冲突；
+3. 处理打色指示单（EXISTING 选已有已确认单、NEW 创建 PENDING 单、NONE 不关联）；
+4. 按同产品合并分组，生成状态为 ACTIVE 的胚布单（GreigeOrder）、状态为 ACTIVE 的染色单（DyeingOrder）以及状态为 DRAFT 的胚布检验单（InspectionOrder，type=GREIGE），并在下游明细行中记录 `contractLineId` 与 `contractLineNo` 快照；
+5. 下游单据生命周期演进零回写合同明细已下达量。
+_避免_：合同转生产、合同下推（下推含自动审批/同步状态机等误导语义）。
+
 ## 模块边界
 
 打色指示单落 `production` 子包（与胚布单/染色单同层）：后端 `com.luna.lunasrv.module.lunaerp.{controller,service,dal.*}.production.colorinstruction[.color]`；前端视图 `luna-ui/src/views/lunaerp-elmui/production/color-instruction/`（列表+编辑页+就近打印模板）、前端 API 目录镜像。URL 前缀 `/lunaerp/production/color-instruction`，权限码前缀 `lunaerp:production:color-instruction:`，错误码段 `1-030-032-xxx`（主表与颜色行共用）。菜单挂 10200 生产管理：**10230 打色指示单 + 10231-10235 五个按钮位**（create/update/delete/confirm/print）。胚布单、染色单主表各加 `color_instruction_id`+`color_instruction_no` 可空显式列引用打色单。建表 SQL：`luna-srv/sql/postgresql/lunaerp-production-color-instruction.sql`。spec 见 `.scratch/color-instruction/spec.md`。
@@ -384,6 +395,6 @@ _避免_：车间 App、小程序（Q6=A 否决原生端）、扫码报工系统
 - `1-030-017-xxx` 进度反馈（反馈缸/反馈记录共用）：000 反馈缸不存在 / 001 同单同色缸号重复 / 002 染色单不存在或状态不允许建缸（仅 ACTIVE/COMPLETED 单的颜色行可建缸）/ 003 染色颜色行不存在 / 004 颜色行下存在反馈缸不能移除（须先删除缸反馈；染色单差异保存删除守卫跨模块使用本段）/ 100 反馈记录不存在 / 101 问题已闭环不可操作。
 
 - `1-030-032-xxx` 打色指示单（主表与颜色行共用）：000 打色单不存在 / 001 打色单号重复 / 002 单据状态不允许该操作 / 003 关联引用不存在（客户/产品/供应商）/ 004 存在未决颜色行或无通过行，不能确认 / 005 已被下游有效单据引用，不能作废或删除 / 006 颜色行状态不允许修改或删除 / 007 灯源或确认类型非法 / 100 颜色行不存在。
-- `1-030-035-xxx` 下达生产（release-production 编排，ADR-0040）：000 销售合同不存在 / 001 合同已取消，不能下达生产 / 002 合同行已下达量超出合同数量（超下达或并发冲突）/ 003 打色单状态不允许被引用（须 CONFIRMED/IN_PRODUCTION）/ 004 打色单颜色行主灯源不能为空 / 005 存在相同染色单的成品检验单，请勿重复创建。
+- `1-030-035-xxx` 下达生产（release-production 编排，ADR-0040）：000 销售合同或合同行不存在 / 001 合同已取消，不能下达生产 / 002 合同行已下达量超出合同数量（超下达或并发冲突）/ 003 打色单状态不允许被引用（须 CONFIRMED/IN_PRODUCTION）/ 004 打色单颜色行主灯源不能为空 / 005 存在相同染色单的成品检验单，请勿重复创建。
 - `1-030-036-xxx` 排产与齐套（零新表模块，冲突校验从机台任务 Service 抛出，跨模块使用本段；齐套/甘特/日历为只读查询不设业务码）：000 织机计划时段冲突（返回冲突任务号与日期，ADR-0041）。001+ 预留。
 - `1-030-039-xxx` 车间移动 H5 接入层（ADR-0045；业务守卫复用 015/010 段，本段仅新增 H5 场景码）：001 布票不存在或已作废（含跨租户落空，统一文案防枚举）/ 002 机台任务已派他人（含自助认领并发落败）/ 003 布票未完工不能扫码质检 / 004 布票当前状态不可录检 / 005 缸号+卷号录检记录已存在（返回已存在行供改录，非致命）/ 006 领纱单不属于本人机台任务 / 007 默认发纱仓库未配置 / 008 照片超 6 张或非图片。009+ 预留。

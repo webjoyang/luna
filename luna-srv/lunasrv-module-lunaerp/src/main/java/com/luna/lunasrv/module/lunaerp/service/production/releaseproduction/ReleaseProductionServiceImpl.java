@@ -44,9 +44,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
+import com.luna.lunasrv.module.lunaerp.enums.production.releaseproduction.ReleaseColorInstructionModeEnum;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
@@ -116,20 +118,28 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
         }
 
         List<ReleaseFromContractRespVO.ExistingColorInstruction> existingColorInstructions = new ArrayList<>();
-        if (contract.getCustomerId() != null) {
-            List<ColorInstructionDO> cis = colorInstructionMapper.selectList(new LambdaQueryWrapperX<ColorInstructionDO>()
-                    .eq(ColorInstructionDO::getCustomerId, contract.getCustomerId())
-                    .in(ColorInstructionDO::getStatus, Arrays.asList("CONFIRMED", "IN_PRODUCTION"))
-                    .orderByDesc(ColorInstructionDO::getId));
-            if (CollUtil.isNotEmpty(cis)) {
-                for (ColorInstructionDO ci : cis) {
-                    existingColorInstructions.add(ReleaseFromContractRespVO.ExistingColorInstruction.builder()
-                            .id(ci.getId())
-                            .instructionNo(ci.getInstructionNo())
-                            .status(ci.getStatus())
-                            .productCode(ci.getProductCode())
-                            .productName(ci.getProductName())
-                            .build());
+        if (contract.getCustomerId() != null && CollUtil.isNotEmpty(items)) {
+            Set<String> contractProductCodes = items.stream()
+                    .map(SalesContractItemDO::getProductCode)
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.toSet());
+
+            if (!contractProductCodes.isEmpty()) {
+                List<ColorInstructionDO> cis = colorInstructionMapper.selectList(new LambdaQueryWrapperX<ColorInstructionDO>()
+                        .eq(ColorInstructionDO::getCustomerId, contract.getCustomerId())
+                        .in(ColorInstructionDO::getStatus, Arrays.asList("CONFIRMED", "IN_PRODUCTION"))
+                        .in(ColorInstructionDO::getProductCode, contractProductCodes)
+                        .orderByDesc(ColorInstructionDO::getId));
+                if (CollUtil.isNotEmpty(cis)) {
+                    for (ColorInstructionDO ci : cis) {
+                        existingColorInstructions.add(ReleaseFromContractRespVO.ExistingColorInstruction.builder()
+                                .id(ci.getId())
+                                .instructionNo(ci.getInstructionNo())
+                                .status(ci.getStatus())
+                                .productCode(ci.getProductCode())
+                                .productName(ci.getProductName())
+                                .build());
+                    }
                 }
             }
         }
@@ -230,9 +240,9 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
                 // 3.1 打色单处理（EXISTING / NEW / NONE）
                 Long colorInstructionId = null;
                 String colorInstructionNo = null;
-                String mode = group.getColorInstructionMode();
+                ReleaseColorInstructionModeEnum mode = ReleaseColorInstructionModeEnum.of(group.getColorInstructionMode());
 
-                if ("EXISTING".equalsIgnoreCase(mode)) {
+                if (ReleaseColorInstructionModeEnum.EXISTING == mode) {
                     Long existingCiId = group.getExistingColorInstructionId();
                     if (existingCiId == null) {
                         throw exception(RELEASE_PRODUCTION_COLOR_INSTRUCTION_STATUS_NOT_ALLOWED, "");
@@ -256,7 +266,7 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
                     }
                     colorInstructionId = ci.getId();
                     colorInstructionNo = ci.getInstructionNo();
-                } else if ("NEW".equalsIgnoreCase(mode)) {
+                } else if (ReleaseColorInstructionModeEnum.NEW == mode) {
                     // NEW 模式：主灯源必填校验
                     ReleaseProductionReqVO.NewColorInstruction newCiConfig = group.getNewColorInstruction();
                     if (newCiConfig == null || CollUtil.isEmpty(newCiConfig.getColors())) {
@@ -292,23 +302,16 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
                     ciSaveReq.setColors(ciColors);
 
                     Long newCiId = colorInstructionService.createColorInstruction(ciSaveReq);
-                    respVO.getColorInstructions().add(new ReleaseProductionRespVO.ColorInstructionSimpleVO(newCiId));
+                    String newCiNo = getInstructionNoSilently(newCiId);
+                    respVO.getColorInstructions().add(new ReleaseProductionRespVO.ColorInstructionSimpleVO(newCiId, newCiNo));
                     // 规范：新建 PENDING 打色单不可被下游引用，零回写
                     colorInstructionId = null;
                     colorInstructionNo = null;
                 }
 
-                // 组内数量汇总
-                BigDecimal groupTotalReleaseQty = group.getLines().stream()
-                        .map(ReleaseProductionReqVO.Line::getReleaseQty)
-                        .filter(Objects::nonNull)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-                BigDecimal maxLoss = group.getLines().stream()
-                        .map(ReleaseProductionReqVO.Line::getLossRate)
-                        .filter(Objects::nonNull)
-                        .max(BigDecimal::compareTo)
-                        .orElse(BigDecimal.ZERO);
+                // 组内数量汇总（使用 Group 内聚方法）
+                BigDecimal groupTotalReleaseQty = group.calculateTotalReleaseQty();
+                BigDecimal maxLoss = group.calculateMaxLossRate();
 
                 // 3.2 创建胚布单（ACTIVE）
                 GreigeOrderSaveReqVO greigeReq = new GreigeOrderSaveReqVO();
@@ -345,12 +348,7 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
                 greigeReq.setColors(greigeColors);
 
                 Long greigeOrderId = greigeOrderService.createGreigeOrder(greigeReq);
-                GreigeOrderRespVO greigeResp = null;
-                try {
-                    greigeResp = greigeOrderService.getGreigeOrder(greigeOrderId);
-                } catch (Exception ignored) {
-                }
-                String greigeOrderNo = greigeResp != null ? greigeResp.getOrderNo() : null;
+                String greigeOrderNo = getGreigeOrderNoSilently(greigeOrderId);
                 respVO.getGreigeOrders().add(new ReleaseProductionRespVO.GreigeOrderSimpleVO(greigeOrderId, greigeOrderNo));
                 if (StringUtils.hasText(greigeOrderNo)) {
                     greigeOrderNos.add(greigeOrderNo);
@@ -404,14 +402,8 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
                 inspectionReq.setOrderDate(LocalDate.now());
 
                 Long inspectionOrderId = inspectionOrderService.createInspectionOrder(inspectionReq);
-                InspectionOrderRespVO inspectionResp = null;
-                try {
-                    inspectionResp = inspectionOrderService.getInspectionOrder(inspectionOrderId);
-                } catch (Exception ignored) {
-                }
-                String inspectionCode = inspectionResp != null ? inspectionResp.getCode() : null;
-                String inspectionType = inspectionResp != null ? inspectionResp.getType() : "GREIGE";
-                respVO.getInspectionOrders().add(new ReleaseProductionRespVO.InspectionOrderSimpleVO(inspectionOrderId, inspectionCode, inspectionType));
+                String inspectionCode = getInspectionOrderCodeSilently(inspectionOrderId);
+                respVO.getInspectionOrders().add(new ReleaseProductionRespVO.InspectionOrderSimpleVO(inspectionOrderId, inspectionCode, "GREIGE"));
                 if (StringUtils.hasText(inspectionCode)) {
                     inspectionOrderCodes.add(inspectionCode);
                 } else {
@@ -426,6 +418,42 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
         LogRecordContext.putVariable("inspectionOrderCodes", String.join(",", inspectionOrderCodes));
 
         return respVO;
+    }
+
+    private String getInstructionNoSilently(Long colorInstructionId) {
+        if (colorInstructionId == null) {
+            return null;
+        }
+        try {
+            ColorInstructionDO ci = colorInstructionMapper.selectById(colorInstructionId);
+            return ci != null ? ci.getInstructionNo() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String getGreigeOrderNoSilently(Long greigeOrderId) {
+        if (greigeOrderId == null) {
+            return null;
+        }
+        try {
+            GreigeOrderRespVO greigeResp = greigeOrderService.getGreigeOrder(greigeOrderId);
+            return greigeResp != null ? greigeResp.getOrderNo() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String getInspectionOrderCodeSilently(Long inspectionOrderId) {
+        if (inspectionOrderId == null) {
+            return null;
+        }
+        try {
+            InspectionOrderRespVO inspectionResp = inspectionOrderService.getInspectionOrder(inspectionOrderId);
+            return inspectionResp != null ? inspectionResp.getCode() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
 }

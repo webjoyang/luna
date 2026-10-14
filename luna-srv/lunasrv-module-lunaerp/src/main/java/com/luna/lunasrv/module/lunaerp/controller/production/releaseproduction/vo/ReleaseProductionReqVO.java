@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
 
 @Schema(description = "管理后台 - 下达生产 Request VO")
 @Data
@@ -75,6 +76,33 @@ public class ReleaseProductionReqVO {
         @NotEmpty(message = "下达明细行不能为空")
         @Valid
         private List<Line> lines;
+
+        /**
+         * 计算该分组所有下达行的下达数量合计
+         */
+        public BigDecimal calculateTotalReleaseQty() {
+            if (lines == null || lines.isEmpty()) {
+                return BigDecimal.ZERO;
+            }
+            return lines.stream()
+                    .map(Line::getReleaseQty)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        /**
+         * 计算该分组所有下达行中的最大损耗率
+         */
+        public BigDecimal calculateMaxLossRate() {
+            if (lines == null || lines.isEmpty()) {
+                return BigDecimal.ZERO;
+            }
+            return lines.stream()
+                    .map(Line::getLossRate)
+                    .filter(Objects::nonNull)
+                    .max(BigDecimal::compareTo)
+                    .orElse(BigDecimal.ZERO);
+        }
     }
 
     @Schema(description = "新建打色单配置")
