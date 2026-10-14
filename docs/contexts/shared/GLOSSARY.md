@@ -235,3 +235,13 @@ lunaerp 错误码统一格式 `1-030-NNN-xxx`，段位（NNN）按业务模块�
 
 **客户联系人继承归属**：
 客户联系人不持有自己的归属人/归属部门，其可见性始终实时继承所属客户：看不见客户就看不见（也探测不到）该客户的任何联系人。这是归属链上唯一的实时继承例外。
+
+## 编码与单测规约（横切）
+
+**错误码与消息占位符契约**：
+- 依赖 `ServiceExceptionUtil.exception(ErrorCode, Object... params)` 动态拼接业务信息的错误码，模版字符串**必须**显式包含 `{}` 占位符（例如 `"织机【{}】在 {}~{} 已排任务【{}】..."`）。
+- 若错误码模版中没有 `{}` 占位符，`ServiceExceptionUtil` 检测到多余参数时会仅记录 ERROR 日志并丢弃追加参数，直接返回原始模版文案。在编写单元测试断言此类静态守卫异常时，应直接断言错误码编号 `ex.getCode()`，不要依赖追加的文本。
+
+**MyBatis-Plus BaseMapperX 与 Mockito 编译**：
+- `BaseMapperX` 同时重载了单实体 `insert(T)`/`updateById(T)` 与批量集合 `insert(Collection<T>)`/`updateById(Collection<T>)` 方法。
+- 在 Mockito 测试中使用 `verify(mapper).insert(...)` 或 `verify(mapper).updateById(...)` 时，禁止使用无泛型限定的 `any()`，必须显式指定实体类型，例如 `any(MachineTaskDO.class)`，避免 Java 编译器因重载歧义而报错。
