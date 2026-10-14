@@ -4,9 +4,9 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** closed
 
 **参考**：本目录上级 spec.md §8（菜单与权限）
 
-- [ ] SQL 执行后超管角色可见并进入两菜单；无该权限的角色菜单不可见
-- [ ] 零 DDL：无建表/加列/字典/序列，命名遵循 `lunaerp-production-*.sql` 既有惯例
+- [x] SQL 执行后超管角色可见并进入两菜单；无该权限的角色菜单不可见
+- [x] 零 DDL：无建表/加列/字典/序列，命名遵循 `lunaerp-production-*.sql` 既有惯例
