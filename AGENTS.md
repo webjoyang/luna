@@ -14,11 +14,11 @@
 
 ### Coding standards
 
-开发规约与 Reviewer 审查基准（集合空安全、防 N+1 批量快照、只读聚合、单测匹配）：见 `docs/agents/coding-standards.md`。
+开发规约与 Reviewer 审查基准（集合空安全、防 N+1 批量快照、只读聚合、单测匹配、Wrapper 链式调用）：见 `docs/agents/coding-standards.md`。
 
-### 文件检索
+### 代码与文件检索
 
-混合工作区文件检索优先使用 `git ls-files "*<keyword>*"`，严禁未排除 `node_modules` / `target` 进行递归深搜。
+混合工作区文件定标优先使用 `git ls-files "*<keyword>*"`，严禁未排除 `node_modules` / `target` 进行递归深搜；内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`，严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道。
 
 ### 以上文档请尽量用中文编写
 
