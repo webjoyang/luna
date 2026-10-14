@@ -2160,6 +2160,45 @@ public class ColorInstructionServiceImplTest {
         }
     }
 
+    // ==================== Issue 07: 投产自动触发 (markInProduction) ====================
+
+    @Test
+    @DisplayName("自动标记投产：id 为空时安全返回不执行任何数据库操作")
+    void testMarkInProduction_nullId_safelyReturns() {
+        colorInstructionService.markInProduction(null);
+        verify(colorInstructionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("自动标记投产：CONFIRMED 态单据条件更新成功，status 置为 IN_PRODUCTION")
+    void testMarkInProduction_confirmedStatus_successUpdatesToInProduction() {
+        when(colorInstructionMapper.update(any(ColorInstructionDO.class), any())).thenReturn(1);
+
+        colorInstructionService.markInProduction(501L);
+
+        ArgumentCaptor<ColorInstructionDO> updateCaptor = ArgumentCaptor.forClass(ColorInstructionDO.class);
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.Wrapper<ColorInstructionDO>> wrapperCaptor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(colorInstructionMapper).update(updateCaptor.capture(), wrapperCaptor.capture());
+
+        ColorInstructionDO updated = updateCaptor.getValue();
+        assertEquals(ColorInstructionStatusEnum.IN_PRODUCTION.getValue(), updated.getStatus());
+
+        com.baomidou.mybatisplus.core.conditions.Wrapper<ColorInstructionDO> wrapper = wrapperCaptor.getValue();
+        assertNotNull(wrapper);
+        String sqlSegment = wrapper.getCustomSqlSegment();
+        assertTrue(sqlSegment.contains("status") || sqlSegment.contains("CONFIRMED"));
+    }
+
+    @Test
+    @DisplayName("自动标记投产：更新影响行数 0 时幂等静默不报错（已投产/已作废/已回退均安全）")
+    void testMarkInProduction_zeroRowsUpdated_idempotentSilentNotThrowException() {
+        when(colorInstructionMapper.update(any(ColorInstructionDO.class), any())).thenReturn(0);
+
+        assertDoesNotThrow(() -> colorInstructionService.markInProduction(501L));
+        verify(colorInstructionMapper).update(any(ColorInstructionDO.class), any());
+    }
+
 }
 
 

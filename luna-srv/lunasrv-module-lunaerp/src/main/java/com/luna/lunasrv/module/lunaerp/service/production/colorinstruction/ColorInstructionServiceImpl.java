@@ -968,4 +968,29 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         return colorInstruction;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class, propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void markInProduction(Long id) {
+        if (id == null) {
+            return;
+        }
+        LambdaUpdateWrapper<ColorInstructionDO> updateWrapper = new LambdaUpdateWrapper<ColorInstructionDO>()
+                .eq(ColorInstructionDO::getId, id)
+                .eq(ColorInstructionDO::getStatus, ColorInstructionStatusEnum.CONFIRMED.getValue());
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (tenantId != null) {
+            updateWrapper.eq(ColorInstructionDO::getTenantId, tenantId);
+        }
+
+        ColorInstructionDO updateDO = new ColorInstructionDO();
+        updateDO.setStatus(ColorInstructionStatusEnum.IN_PRODUCTION.getValue());
+
+        int updated = colorInstructionMapper.update(updateDO, updateWrapper);
+        if (updated > 0) {
+            log.info("[markInProduction] 打色指示单投产成功, id={}", id);
+        } else {
+            log.debug("[markInProduction] 打色指示单状态非 CONFIRMED 或不存在，幂等跳过, id={}", id);
+        }
+    }
+
 }

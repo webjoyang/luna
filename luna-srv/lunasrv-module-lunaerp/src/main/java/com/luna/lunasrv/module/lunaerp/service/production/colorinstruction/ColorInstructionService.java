@@ -110,6 +110,16 @@ public interface ColorInstructionService {
             String productCode,
             com.luna.lunasrv.framework.common.exception.ErrorCode notFoundErrorCode);
 
+    /**
+     * 自动标记打色指示单为已投产（CONFIRMED -> IN_PRODUCTION）
+     * <p>
+     * 条件更新：WHERE id=? AND tenant_id=? AND status='CONFIRMED' AND deleted=0
+     * 影响行数 0 幂等静默不报错（已投产、已作废、已回退或单据不存在均安全静默）
+     *
+     * @param id 打色指示单ID
+     */
+    void markInProduction(Long id);
+
 }
 
 

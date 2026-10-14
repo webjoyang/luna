@@ -1463,4 +1463,92 @@ class GreigeOrderServiceImplTest {
         assertEquals("DS20261007002", updateCaptor.getValue().getColorInstructionNo());
     }
 
+    // ==================== Issue 07: 投产自动触发 (胚布单保存触发) ====================
+
+    @Test
+    void createGreigeOrder_withColorInstruction_triggersMarkInProduction() {
+        stubSupplier(100L, "海宁坯布厂");
+        ColorInstructionDO ci = stubColorInstruction(501L, "DS20261007001", 10L, 20L, "P001", "CONFIRMED");
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), any(), any(), any())).thenReturn(ci);
+
+        GreigeOrderSaveReqVO req = new GreigeOrderSaveReqVO();
+        req.setProductionMode("OUTSOURCE");
+        req.setGreigeFactoryId(100L);
+        req.setPlannedQty(new BigDecimal("1000"));
+        req.setColorInstructionId(501L);
+
+        greigeOrderService.createGreigeOrder(req);
+
+        verify(colorInstructionService).markInProduction(501L);
+    }
+
+    @Test
+    void createGreigeOrder_withoutColorInstruction_doesNotTriggerMarkInProduction() {
+        stubSupplier(100L, "海宁坯布厂");
+
+        GreigeOrderSaveReqVO req = new GreigeOrderSaveReqVO();
+        req.setProductionMode("OUTSOURCE");
+        req.setGreigeFactoryId(100L);
+        req.setPlannedQty(new BigDecimal("1000"));
+        req.setColorInstructionId(null);
+
+        greigeOrderService.createGreigeOrder(req);
+
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void updateGreigeOrder_withColorInstruction_triggersMarkInProduction() {
+        stubSupplier(100L, "海宁坯布厂");
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919001");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+
+        ColorInstructionDO ci = stubColorInstruction(501L, "DS20261007001", 10L, 20L, "P001", "CONFIRMED");
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), any(), any(), any())).thenReturn(ci);
+
+        GreigeOrderSaveReqVO req = new GreigeOrderSaveReqVO();
+        req.setId(1L);
+        req.setOrderNo("PB0919001");
+        req.setProductionMode("OUTSOURCE");
+        req.setGreigeFactoryId(100L);
+        req.setPlannedQty(new BigDecimal("1000"));
+        req.setColorInstructionId(501L);
+
+        greigeOrderService.updateGreigeOrder(req);
+
+        verify(colorInstructionService).markInProduction(501L);
+    }
+
+    @Test
+    void updateGreigeOrder_withoutColorInstruction_doesNotTriggerMarkInProduction() {
+        stubSupplier(100L, "海宁坯布厂");
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919001");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+
+        GreigeOrderSaveReqVO req = new GreigeOrderSaveReqVO();
+        req.setId(1L);
+        req.setOrderNo("PB0919001");
+        req.setProductionMode("OUTSOURCE");
+        req.setGreigeFactoryId(100L);
+        req.setPlannedQty(new BigDecimal("1000"));
+        req.setColorInstructionId(null);
+
+        greigeOrderService.updateGreigeOrder(req);
+
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void deleteGreigeOrder_doesNotRollbackColorInstruction() {
+        GreigeOrderDO existing = greigeOrder(1L, "PB0919001");
+        existing.setColorInstructionId(501L);
+        existing.setColorInstructionNo("DS20261007001");
+        when(greigeOrderMapper.selectById(1L)).thenReturn(existing);
+
+        greigeOrderService.deleteGreigeOrder(1L);
+
+        verify(greigeOrderMapper).deleteById(1L);
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
 }

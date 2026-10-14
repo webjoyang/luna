@@ -48,6 +48,7 @@ import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.Color
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_ORDER_STATUS_NOT_ALLOWED;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PROGRESS_FEEDBACK_COLOR_HAS_VATS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -1327,6 +1328,176 @@ class DyeingOrderServiceImplTest {
         verify(dyeingOrderMapper).updateById(updateCaptor.capture());
         assertEquals(502L, updateCaptor.getValue().getColorInstructionId());
         assertEquals("DS20261007002", updateCaptor.getValue().getColorInstructionNo());
+    }
+
+    // ==================== Issue 07: 投产自动触发 (染色单路径) ====================
+
+    @Test
+    void createDyeingOrder_withColorInstruction_doesNotTriggerMarkInProduction() {
+        stubContract(1L, "CH20260001", 100L, "优衣纺织");
+        stubSupplier(2L, "海宁染厂");
+
+        ColorInstructionDO ci = stubColorInstruction(501L, "DS20261007001", 100L, 10L, "P001", "CONFIRMED");
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), any(), any(), any())).thenReturn(ci);
+
+        DyeingOrderSaveReqVO req = new DyeingOrderSaveReqVO();
+        req.setSalesContractId(1L);
+        req.setDyeingFactoryId(2L);
+        req.setColorInstructionId(501L);
+
+        dyeingOrderService.createDyeingOrder(req);
+
+        // DRAFT 态创建保存，严格不触发打色单投产
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void updateDyeingOrder_draftStatus_withColorInstruction_doesNotTriggerMarkInProduction() {
+        stubContract(1L, "CH20260001", 100L, "优衣纺织");
+        stubSupplier(2L, "海宁染厂");
+
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setOrderDate(LocalDate.now());
+        when(dyeingOrderMapper.selectById(10L)).thenReturn(existing);
+
+        ColorInstructionDO ci = stubColorInstruction(501L, "DS20261007001", 100L, 10L, "P001", "CONFIRMED");
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), any(), any(), any())).thenReturn(ci);
+
+        DyeingOrderSaveReqVO updateReq = new DyeingOrderSaveReqVO();
+        updateReq.setId(10L);
+        updateReq.setSalesContractId(1L);
+        updateReq.setDyeingFactoryId(2L);
+        updateReq.setColorInstructionId(501L);
+
+        dyeingOrderService.updateDyeingOrder(updateReq);
+
+        // DRAFT 态更新保存，同样不触发打色单投产
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void effectDyeingOrder_withColorInstruction_triggersMarkInProduction() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setColorInstructionId(501L);
+        existing.setColorInstructionNo("DS20261007001");
+        when(dyeingOrderMapper.selectById(10L)).thenReturn(existing);
+
+        dyeingOrderService.effectDyeingOrder(10L);
+
+        // 下达时 status 变为 ACTIVE 并触发投产
+        verify(colorInstructionService).markInProduction(501L);
+    }
+
+    @Test
+    void effectDyeingOrder_withoutColorInstruction_doesNotTriggerMarkInProduction() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setColorInstructionId(null);
+        when(dyeingOrderMapper.selectById(10L)).thenReturn(existing);
+
+        dyeingOrderService.effectDyeingOrder(10L);
+
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void updateDyeingOrder_activeStatus_backfillColorInstruction_successAndTriggersMarkInProduction() {
+        stubContract(1L, "CH20260001", 100L, "优衣纺织");
+        stubSupplier(2L, "海宁染厂");
+
+        // 原单据为 ACTIVE 且未引用打色单
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(10L);
+        existing.setStatus("ACTIVE");
+        existing.setColorInstructionId(null);
+        existing.setOrderDate(LocalDate.now());
+        when(dyeingOrderMapper.selectById(10L)).thenReturn(existing);
+
+        ColorInstructionDO ci = stubColorInstruction(501L, "DS20261007001", 100L, 10L, "P001", "CONFIRMED");
+        when(colorInstructionService.validateColorInstructionForDownstream(eq(501L), any(), any(), any(), any())).thenReturn(ci);
+
+        DyeingOrderSaveReqVO updateReq = new DyeingOrderSaveReqVO();
+        updateReq.setId(10L);
+        updateReq.setSalesContractId(1L);
+        updateReq.setDyeingFactoryId(2L);
+        updateReq.setColorInstructionId(501L);
+
+        dyeingOrderService.updateDyeingOrder(updateReq);
+
+        // 验证保持 ACTIVE 状态落库并立即触发投产
+        ArgumentCaptor<DyeingOrderDO> updateCaptor = ArgumentCaptor.forClass(DyeingOrderDO.class);
+        verify(dyeingOrderMapper).updateById(updateCaptor.capture());
+        assertEquals("ACTIVE", updateCaptor.getValue().getStatus(), "已 ACTIVE 单补填打色单后必须保持 ACTIVE 态");
+        assertEquals(501L, updateCaptor.getValue().getColorInstructionId());
+        assertEquals("DS20261007001", updateCaptor.getValue().getColorInstructionNo());
+
+        verify(colorInstructionService).markInProduction(501L);
+    }
+
+    @Test
+    void updateDyeingOrder_activeStatus_alreadyHasColorInstruction_throwsStatusNotAllowed() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(10L);
+        existing.setStatus("ACTIVE");
+        existing.setColorInstructionId(501L);
+        when(dyeingOrderMapper.selectById(10L)).thenReturn(existing);
+
+        DyeingOrderSaveReqVO updateReq = new DyeingOrderSaveReqVO();
+        updateReq.setId(10L);
+        updateReq.setColorInstructionId(502L);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> dyeingOrderService.updateDyeingOrder(updateReq));
+        assertEquals(DYEING_ORDER_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void updateDyeingOrder_activeStatus_colorInstructionRemainsNull_throwsStatusNotAllowed() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(10L);
+        existing.setStatus("ACTIVE");
+        existing.setColorInstructionId(null);
+        when(dyeingOrderMapper.selectById(10L)).thenReturn(existing);
+
+        DyeingOrderSaveReqVO updateReq = new DyeingOrderSaveReqVO();
+        updateReq.setId(10L);
+        updateReq.setColorInstructionId(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> dyeingOrderService.updateDyeingOrder(updateReq));
+        assertEquals(DYEING_ORDER_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void deleteDyeingOrder_doesNotRollbackColorInstruction() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(10L);
+        existing.setStatus("DRAFT");
+        existing.setColorInstructionId(501L);
+        when(dyeingOrderMapper.selectById(10L)).thenReturn(existing);
+
+        dyeingOrderService.deleteDyeingOrder(10L);
+
+        verify(dyeingOrderMapper).deleteById(10L);
+        verify(colorInstructionService, never()).markInProduction(any());
+    }
+
+    @Test
+    void cancelDyeingOrder_doesNotRollbackColorInstruction() {
+        DyeingOrderDO existing = new DyeingOrderDO();
+        existing.setId(10L);
+        existing.setStatus("ACTIVE");
+        existing.setColorInstructionId(501L);
+        when(dyeingOrderMapper.selectById(10L)).thenReturn(existing);
+
+        dyeingOrderService.cancelDyeingOrder(10L);
+
+        verify(colorInstructionService, never()).markInProduction(any());
     }
 
 }

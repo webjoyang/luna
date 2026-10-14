@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import java.util.Objects;
 
 import java.math.BigDecimal;
@@ -35,6 +36,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
@@ -52,6 +57,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.DYEING_OR
  * @author luna
  */
 @Service
+@Slf4j
 public class DyeingOrderServiceImpl implements DyeingOrderService {
 
     @Resource
@@ -114,11 +120,37 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
     public void updateDyeingOrder(DyeingOrderSaveReqVO updateReqVO) {
         // 1. 存在性校验：目标单据不存在报 DYEING_ORDER_NOT_EXISTS
         DyeingOrderDO existing = validateDyeingOrderExists(updateReqVO.getId());
-        // 2. 状态校验：仅 DRAFT 态可更新，非 DRAFT 态更新报 DYEING_ORDER_STATUS_NOT_ALLOWED
-        if (!"DRAFT".equals(existing.getStatus())) {
+        // 2. 状态校验：
+        //    DRAFT 态：允许常规完整更新（保持 DRAFT 态，不触发打色单投产）；
+        //    ACTIVE 态：仅允许"补填打色单"（原引用为空且新引用非空），更新后保持 ACTIVE 态并立即触发投产；
+        //    其它状态或 ACTIVE 态非补填场景报 DYEING_ORDER_STATUS_NOT_ALLOWED (ADR-0008)
+        boolean isDraft = "DRAFT".equals(existing.getStatus());
+        boolean isActiveBackfill = "ACTIVE".equals(existing.getStatus())
+                && existing.getColorInstructionId() == null
+                && updateReqVO.getColorInstructionId() != null;
+        if (!isDraft && !isActiveBackfill) {
             throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
         }
-        // 3. 引用校验：销售合同必填且存在；承染方供应商必填且存在
+
+        // 2.1 ACTIVE 态受限更新（仅允许补填打色单引用与单号快照，严格保护主表与明细数据不被篡改）
+        if (isActiveBackfill) {
+            ColorInstructionDO colorInstruction = colorInstructionService.validateColorInstructionForDownstream(
+                    updateReqVO.getColorInstructionId(),
+                    existing.getCustomerId(),
+                    null,
+                    existing.getProductCode(),
+                    DYEING_ORDER_REFERENCE_NOT_FOUND);
+            DyeingOrderDO updateDO = new DyeingOrderDO();
+            updateDO.setId(existing.getId());
+            updateDO.setStatus(existing.getStatus());
+            updateDO.setColorInstructionId(colorInstruction.getId());
+            updateDO.setColorInstructionNo(colorInstruction.getInstructionNo());
+            dyeingOrderMapper.updateById(updateDO);
+            triggerMarkInProductionAfterCommit(colorInstruction.getId());
+            return;
+        }
+
+        // 3. 引用校验（DRAFT 态常规完整更新）
         ValidatedRefs refs = validateReferences(updateReqVO);
         // 4. 组装 DO
         DyeingOrderDO order = BeanUtils.toBean(updateReqVO, DyeingOrderDO.class);
@@ -140,7 +172,14 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void effectDyeingOrder(Long id) {
-        transitionStatus(id, "DRAFT", "ACTIVE");
+        DyeingOrderDO order = validateDyeingOrderExists(id);
+        if (!"DRAFT".equals(order.getStatus())) {
+            throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
+        }
+        dyeingOrderMapper.update(null, new LambdaUpdateWrapper<DyeingOrderDO>()
+                .eq(DyeingOrderDO::getId, id)
+                .set(DyeingOrderDO::getStatus, "ACTIVE"));
+        triggerMarkInProductionAfterCommit(order.getColorInstructionId());
     }
 
     @Override
@@ -414,6 +453,33 @@ public class DyeingOrderServiceImpl implements DyeingOrderService {
         // 5. 执行新增
         for (DyeingColorDO insertColorDO : toInsert) {
             dyeingColorMapper.insert(insertColorDO);
+        }
+    }
+
+    /**
+     * 事务提交后同进程触发打色指示单自动标记投产（Issue 07）
+     * <p>
+     * 事务边界策略选择：
+     * 下游保存事务成功提交后再调用 markInProduction，避免下游事务回滚而打色单已被投产的数据不一致风险；
+     * 若当前处于非事务上下文（如纯单测环境），则直接同步调用保证行为一致。
+     */
+    private void triggerMarkInProductionAfterCommit(Long colorInstructionId) {
+        if (colorInstructionId == null) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        colorInstructionService.markInProduction(colorInstructionId);
+                    } catch (Exception e) {
+                        log.error("[triggerMarkInProductionAfterCommit] 自动标记投产异常, colorInstructionId={}", colorInstructionId, e);
+                    }
+                }
+            });
+        } else {
+            colorInstructionService.markInProduction(colorInstructionId);
         }
     }
 

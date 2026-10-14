@@ -44,6 +44,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_NOT_EXISTS;
@@ -61,6 +65,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_OR
  * @author luna
  */
 @Service
+@Slf4j
 public class GreigeOrderServiceImpl implements GreigeOrderService {
 
     /**
@@ -156,6 +161,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         // 6. 保存主表 → 插入颜色行（回填 orderId）
         greigeOrderMapper.insert(order);
         saveColors(order.getId(), colorDOList);
+        triggerMarkInProductionAfterCommit(order.getColorInstructionId());
         return order.getId();
     }
 
@@ -198,6 +204,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         greigeOrderMapper.updateById(order);
         // 7. 颜色投胚分配差异保存（ADR-0032）：按 id 三分流（update / insert / deleteByIds）
         diffSaveColors(updateReqVO.getId(), updateReqVO.getColors(), order.getSuggestedLoss());
+        triggerMarkInProductionAfterCommit(order.getColorInstructionId());
     }
 
     @Override
@@ -636,6 +643,33 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
      */
     private BigDecimal zeroIfNull(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    /**
+     * 事务提交后同进程触发打色指示单自动标记投产（Issue 07）
+     * <p>
+     * 事务边界策略选择：
+     * 下游保存事务成功提交后再调用 markInProduction，避免下游事务回滚而打色单已被投产的数据不一致风险；
+     * 若当前处于非事务上下文（如纯单测环境），则直接同步调用保证行为一致。
+     */
+    private void triggerMarkInProductionAfterCommit(Long colorInstructionId) {
+        if (colorInstructionId == null) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        colorInstructionService.markInProduction(colorInstructionId);
+                    } catch (Exception e) {
+                        log.error("[triggerMarkInProductionAfterCommit] 自动标记投产异常, colorInstructionId={}", colorInstructionId, e);
+                    }
+                }
+            });
+        } else {
+            colorInstructionService.markInProduction(colorInstructionId);
+        }
     }
 
 }
