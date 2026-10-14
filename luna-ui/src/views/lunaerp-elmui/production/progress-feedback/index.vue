@@ -1,6 +1,17 @@
 <template>
   <div class="progress-feedback-container">
-    <!-- 顶部统计条 -->
+    <!-- 顶部视图切换：缸卡墙 / 排缸日历 -->
+    <div class="view-switch-header">
+      <el-segmented
+        v-model="activeView"
+        :options="viewOptions"
+        size="default"
+      />
+    </div>
+
+    <!-- 缸卡墙视图 -->
+    <template v-if="activeView === 'wall'">
+      <!-- 顶部统计条 -->
     <div class="statistics-bar">
       <div
         class="stat-card"
@@ -267,6 +278,12 @@
 
       <el-empty v-else-if="!loading" description="暂无进度反馈数据" :image-size="120" />
     </div>
+    </template>
+
+    <!-- 排缸日历视图 -->
+    <template v-else-if="activeView === 'calendar'">
+      <VatCalendar />
+    </template>
 
     <!-- 新建缸弹窗 -->
     <VatCreateDialog ref="vatCreateDialogRef" @success="handleCreateSuccess" />
@@ -301,6 +318,7 @@ import ColorSection from './components/ColorSection.vue'
 import VatCreateDialog from './components/VatCreateDialog.vue'
 import VatDetailDrawer from './components/VatDetailDrawer.vue'
 import FeedbackDialog from './components/FeedbackDialog.vue'
+import VatCalendar from './components/VatCalendar.vue'
 import {
   getProgressFeedbackPage,
   getProgressFeedbackStatistics,
@@ -311,6 +329,13 @@ import {
 } from '@/api/lunaerp-elmui/production/progress-feedback'
 
 defineOptions({ name: 'LunaerpElmuiProductionProgressFeedback' })
+
+// 视图切换：缸卡墙 / 排缸日历
+const activeView = ref<'wall' | 'calendar'>('wall')
+const viewOptions = [
+  { label: '缸卡墙', value: 'wall' },
+  { label: '排缸日历', value: 'calendar' }
+]
 
 const loading = ref(false)
 const sectionList = ref<ProgressFeedbackColorSectionVO[]>([])
@@ -659,6 +684,21 @@ onMounted(() => {
 <style scoped lang="scss">
 .progress-feedback-container {
   padding: 20px;
+}
+
+.view-switch-header {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 16px;
+
+  :deep(.el-segmented) {
+    --el-segmented-bg-color: #f1f5f9;
+    --el-segmented-color: #64748b;
+    --el-segmented-item-selected-color: #ffffff;
+    --el-segmented-item-selected-bg-color: #409eff;
+    font-weight: 500;
+  }
 }
 
 .statistics-bar {

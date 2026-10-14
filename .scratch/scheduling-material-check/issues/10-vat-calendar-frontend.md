@@ -4,10 +4,10 @@
 
 **Blocked by:** 06: 排缸日历后端——月历扁平缸数据
 
-**Status:** ready-for-agent
+**Status:** closed
 
 **参考**：本目录上级 spec.md §6.3、§5.2；ADR-0031
 
-- [ ] 月切换/今天回位/染厂与状态筛选生效；缸点状态色正确、COMPLETED 灰化
-- [ ] 点缸改期成功后当月数据局部刷新；COMPLETED 缸禁改（前端禁用+后端守卫兜底）
-- [ ] 缸卡墙原有交互零回归；ts:check、lint 通过
+- [x] 月切换/今天回位/染厂与状态筛选生效；缸点状态色正确、COMPLETED 灰化
+- [x] 点缸改期成功后当月数据局部刷新；COMPLETED 缸禁改（前端禁用+后端守卫兜底）
+- [x] 缸卡墙原有交互零回归；ts:check、lint 通过
