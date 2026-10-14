@@ -12,6 +12,9 @@ import ExportDocPrintPl from '@/views/lunaerp-elmui/business/export-doc/componen
 import { exportDocPrintCss } from '@/views/lunaerp-elmui/business/export-doc/components/print/print-styles'
 import { getPrintData as getQuotationPrintData } from '@/api/lunaerp/business/quotation'
 import QuotationPrintTemplate from '@/views/lunaerp/business/quotation/print/QuotationPrintTemplate.vue'
+import { getColorInstructionPrintData } from '@/api/lunaerp-elmui/production/color-instruction'
+import ColorInstructionSheet from '@/views/lunaerp-elmui/production/color-instruction/components/print/ColorInstructionSheet.vue'
+import { colorInstructionPrintCss } from '@/views/lunaerp-elmui/production/color-instruction/components/print/print-styles'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -106,6 +109,16 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
     permission: 'lunaerp:business:quotation:print',
     component: QuotationPrintTemplate,
     fetchApi: (bizId: string | number) => getQuotationPrintData(Number(bizId))
+  },
+  {
+    bizType: 'COLOR_INSTRUCTION',
+    templateCode: 'COLOR_INSTRUCTION_SHEET',
+    name: '打色指示单',
+    paper: 'A4',
+    permission: 'lunaerp:production:color-instruction:print',
+    component: ColorInstructionSheet,
+    fetchApi: (bizId: string | number) => getColorInstructionPrintData(bizId),
+    customCss: colorInstructionPrintCss
   }
 ]
 

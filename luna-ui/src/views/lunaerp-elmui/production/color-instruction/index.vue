@@ -161,14 +161,22 @@
           >
             <Icon icon="ep:edit" class="mr-2px" />编辑
           </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="handlePrint(row.id)"
-            v-hasPermi="['lunaerp:production:color-instruction:print']"
+          <PrintDispatcher
+            biz-type="COLOR_INSTRUCTION"
+            :biz-id="row.id"
+            class="inline-block"
           >
-            <Icon icon="ep:printer" class="mr-2px" />打印
-          </el-button>
+            <template #default="{ open }">
+              <el-button
+                link
+                type="primary"
+                @click="open()"
+                v-hasPermi="['lunaerp:production:color-instruction:print']"
+              >
+                <Icon icon="ep:printer" class="mr-2px" />打印
+              </el-button>
+            </template>
+          </PrintDispatcher>
           <el-button
             v-if="row.status === 'PENDING'"
             link
@@ -205,6 +213,7 @@ import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import * as ColorInstructionApi from '@/api/lunaerp-elmui/production/color-instruction'
 import type { ColorInstructionVO, ColorInstructionPageReqVO } from '@/api/lunaerp-elmui/production/color-instruction'
+import { PrintDispatcher } from '@/components/Print'
 
 defineOptions({ name: 'LunaerpElmuiProductionColorInstruction' })
 
@@ -303,11 +312,6 @@ const openEdit = (row: ColorInstructionVO) => {
     path: `/production/color-instruction/edit/${row.id}`,
     query: isEditable ? {} : { mode: 'view' }
   })
-}
-
-// 打印占位
-const handlePrint = (id?: number) => {
-  message.info(`打印功能将在 10 票提供套打模板，单据 ID: ${id}`)
 }
 
 // 删除打色单（仅 PENDING 状态，级联逻辑删除颜色行）

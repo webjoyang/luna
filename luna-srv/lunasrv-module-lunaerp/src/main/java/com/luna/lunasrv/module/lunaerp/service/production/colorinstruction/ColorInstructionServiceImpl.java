@@ -22,7 +22,9 @@ import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPrintRespVO;
 import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -1123,6 +1125,76 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
 
         // 5. 日志变量填充
         LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
+    }
+
+    @Override
+    @LogRecord(type = "打印", subType = "打色指示单", bizNo = "{{#id}}", success = "打印了打色指示单 {{#no}}")
+    public ColorInstructionPrintRespVO getColorInstructionPrintData(Long id) {
+        // 1. 校验单据存在
+        ColorInstructionDO instruction = colorInstructionMapper.selectById(id);
+        if (instruction == null) {
+            throw exception(COLOR_INSTRUCTION_NOT_EXISTS);
+        }
+
+        // 2. 留痕上下文
+        LogRecordContext.putVariable("no", instruction.getInstructionNo());
+        LogRecordContext.putVariable("id", instruction.getId());
+
+        // 3. 查询颜色行（全部轮次，按 lineNo 升序排序）
+        List<ColorInstructionColorDO> colorDOList = colorInstructionColorMapper.selectListByInstructionId(id);
+        List<ColorInstructionPrintRespVO.ColorItemVO> colorVOList = new ArrayList<>();
+        if (colorDOList != null && !colorDOList.isEmpty()) {
+            for (ColorInstructionColorDO colorDO : colorDOList) {
+                colorVOList.add(ColorInstructionPrintRespVO.ColorItemVO.builder()
+                        .id(colorDO.getId())
+                        .instructionId(colorDO.getInstructionId())
+                        .lineNo(colorDO.getLineNo())
+                        .customerColorNo(colorDO.getCustomerColorNo())
+                        .colorName(colorDO.getColorName())
+                        .factoryColorNo(colorDO.getFactoryColorNo())
+                        .colorHex(colorDO.getColorHex())
+                        .lightPrimary(colorDO.getLightPrimary())
+                        .lightSecondary(colorDO.getLightSecondary())
+                        .colorCardRef(colorDO.getColorCardRef())
+                        .samplePhotos(colorDO.getSamplePhotos())
+                        .copies(colorDO.getCopies())
+                        .round(colorDO.getRound())
+                        .status(colorDO.getStatus())
+                        .rejectReason(colorDO.getRejectReason())
+                        .remark(colorDO.getRemark())
+                        .build());
+            }
+        }
+
+        // 4. 组装打印 VO（不脱敏，联系人全量）
+        return ColorInstructionPrintRespVO.builder()
+                .id(instruction.getId())
+                .instructionNo(instruction.getInstructionNo())
+                .instructionDate(instruction.getInstructionDate())
+                .customerId(instruction.getCustomerId())
+                .clientName(instruction.getClientName())
+                .contactPerson(instruction.getContactPerson())
+                .productId(instruction.getProductId())
+                .productCode(instruction.getProductCode())
+                .productName(instruction.getProductName())
+                .composition(instruction.getComposition())
+                .width(instruction.getWidth())
+                .gsm(instruction.getGsm())
+                .labFactoryId(instruction.getLabFactoryId())
+                .labFactoryName(instruction.getLabFactoryName())
+                .deliveryDate(instruction.getDeliveryDate())
+                .status(instruction.getStatus())
+                .confirmType(instruction.getConfirmType())
+                .customerFeedback(instruction.getCustomerFeedback())
+                .confirmedBy(instruction.getConfirmedBy())
+                .confirmedAt(instruction.getConfirmedAt())
+                .voidReason(instruction.getVoidReason())
+                .remark(instruction.getRemark())
+                .creator(instruction.getCreator())
+                .createTime(instruction.getCreateTime())
+                .printTime(LocalDateTime.now())
+                .colors(colorVOList)
+                .build();
     }
 
 }

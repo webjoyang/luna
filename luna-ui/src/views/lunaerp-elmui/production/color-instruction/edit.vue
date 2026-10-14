@@ -53,6 +53,23 @@
             >
               <Icon icon="ep:circle-close" class="mr-1" /> 作废
             </el-button>
+            <PrintDispatcher
+              v-if="formData.id"
+              biz-type="COLOR_INSTRUCTION"
+              :biz-id="formData.id"
+              class="inline-block"
+            >
+              <template #default="{ open }">
+                <el-button
+                  type="primary"
+                  plain
+                  @click="open()"
+                  v-hasPermi="['lunaerp:production:color-instruction:print']"
+                >
+                  <Icon icon="ep:printer" class="mr-1" /> 打印
+                </el-button>
+              </template>
+            </PrintDispatcher>
             <el-button v-if="!isViewMode" type="primary" :loading="submitting" @click="handleSave">
               <Icon icon="ep:check" class="mr-1" /> 保存
             </el-button>
@@ -596,6 +613,7 @@ import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
+import { PrintDispatcher } from '@/components/Print'
 
 defineOptions({ name: 'LunaerpElmuiProductionColorInstructionEdit' })
 

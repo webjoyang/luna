@@ -156,6 +156,14 @@ public interface ColorInstructionService {
      */
     void voidColorInstruction(com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionVoidReqVO reqVO);
 
+    /**
+     * 获得打色指示单独立打印数据（豁免脱敏，全部轮次颜色行）
+     *
+     * @param id 打色指示单ID
+     * @return 独立打印 VO
+     */
+    com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPrintRespVO getColorInstructionPrintData(Long id);
+
 }
 
 

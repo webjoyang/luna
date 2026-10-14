@@ -44,6 +44,14 @@ vi.mock('@/views/lunaerp/business/quotation/print/QuotationPrintTemplate.vue', (
   default: { name: 'QuotationPrintTemplate' }
 }))
 
+vi.mock('@/api/lunaerp-elmui/production/color-instruction', () => ({
+  getColorInstructionPrintData: vi.fn()
+}))
+
+vi.mock('@/views/lunaerp-elmui/production/color-instruction/components/print/ColorInstructionSheet.vue', () => ({
+  default: { name: 'ColorInstructionSheet' }
+}))
+
 import {
   getTemplatesByBizType,
   getTemplate,
@@ -114,6 +122,18 @@ describe('Print Template Registry', () => {
     expect(tpl.name).toBe('报价单')
     expect(tpl.paper).toBe('A4')
     expect(tpl.permission).toBe('lunaerp:business:quotation:print')
+    expect(typeof tpl.fetchApi).toBe('function')
+  })
+
+  it('should have COLOR_INSTRUCTION_SHEET statically registered for COLOR_INSTRUCTION', () => {
+    const colorTemplates = getTemplatesByBizType('COLOR_INSTRUCTION')
+    expect(colorTemplates).toHaveLength(1)
+
+    const tpl = colorTemplates[0]
+    expect(tpl.templateCode).toBe('COLOR_INSTRUCTION_SHEET')
+    expect(tpl.name).toBe('打色指示单')
+    expect(tpl.paper).toBe('A4')
+    expect(tpl.permission).toBe('lunaerp:production:color-instruction:print')
     expect(typeof tpl.fetchApi).toBe('function')
   })
 

@@ -711,6 +711,15 @@ describe('Color Instruction Rollback, Void and Terminal Guard (Issue 08)', () =>
     expect(ColorInstructionApi.isColorInstructionTerminal('PENDING')).toBe(false)
     expect(ColorInstructionApi.isColorInstructionTerminal(undefined)).toBe(false)
   })
+
+  it('getColorInstructionPrintData should call GET /lunaerp/production/color-instruction/{id}/print-data', async () => {
+    vi.mocked(request.get).mockResolvedValueOnce({ id: 1024, instructionNo: 'DS20261014001' } as any)
+    const res = await ColorInstructionApi.getColorInstructionPrintData(1024)
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/production/color-instruction/1024/print-data'
+    })
+    expect(res).toEqual({ id: 1024, instructionNo: 'DS20261014001' })
+  })
 })
 
 

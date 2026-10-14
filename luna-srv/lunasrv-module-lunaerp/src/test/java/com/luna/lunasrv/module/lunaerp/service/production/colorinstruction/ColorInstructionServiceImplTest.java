@@ -22,7 +22,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionPrintRespVO;
 
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionColorSaveVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.colorinstruction.vo.ColorInstructionSaveReqVO;
@@ -2563,6 +2565,142 @@ public class ColorInstructionServiceImplTest {
                 colorInstructionService.deleteColorInstruction(501L));
         assertEquals(COLOR_INSTRUCTION_HAS_DOWNSTREAM_REFERENCE.getCode(), ex.getCode());
         verify(colorInstructionMapper, never()).deleteById(any());
+    }
+
+    // ==================== Issue 10: 打色指示单独立打印接口测试 ====================
+
+    @Test
+    @DisplayName("打印数据：打色指示单不存在时抛出 1_030_032_001")
+    void testPrintData_instructionNotExists() {
+        when(colorInstructionMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                colorInstructionService.getColorInstructionPrintData(999L));
+        assertEquals(COLOR_INSTRUCTION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("打印数据：成功返回独立打印VO（不脱敏、联系人全量、输出全部轮次颜色行含REJECTED行标注）")
+    void testPrintData_success_allRounds_and_unmasked() {
+        ColorInstructionDO instruction = new ColorInstructionDO();
+        instruction.setId(1024L);
+        instruction.setInstructionNo("DS20261014001");
+        instruction.setInstructionDate(LocalDate.of(2026, 10, 14));
+        instruction.setCustomerId(100L);
+        instruction.setClientName("广州某某服饰有限公司");
+        instruction.setContactPerson("张三 13800138000"); // 打印豁免全量联系人，不脱敏
+        instruction.setProductId(200L);
+        instruction.setProductCode("P001");
+        instruction.setProductName("人棉弹力汗布");
+        instruction.setComposition("95%人棉 5%氨纶");
+        instruction.setWidth("180cm");
+        instruction.setGsm("180gsm");
+        instruction.setLabFactoryId(300L);
+        instruction.setLabFactoryName("绍兴某某印染打色房");
+        instruction.setDeliveryDate(LocalDate.of(2026, 10, 20));
+        instruction.setStatus("CONFIRMED");
+        instruction.setConfirmType("CUSTOMER");
+        instruction.setCustomerFeedback("A样通过，打样色光光泽良好");
+        instruction.setConfirmedBy(1L);
+        instruction.setConfirmedAt(LocalDateTime.of(2026, 10, 15, 14, 0, 0));
+        instruction.setRemark("加急打样");
+        instruction.setCreator("admin");
+        instruction.setCreateTime(LocalDateTime.of(2026, 10, 14, 9, 30, 0));
+
+        when(colorInstructionMapper.selectById(1024L)).thenReturn(instruction);
+
+        // 模拟多轮颜色行：含历史 REJECTED 轮次与最新 APPROVED 轮次
+        ColorInstructionColorDO color1 = new ColorInstructionColorDO();
+        color1.setId(11L);
+        color1.setInstructionId(1024L);
+        color1.setLineNo(1);
+        color1.setCustomerColorNo("C-101");
+        color1.setColorName("藏青");
+        color1.setFactoryColorNo("F-808");
+        color1.setColorHex("#1B2A4A");
+        color1.setLightPrimary("D65");
+        color1.setLightSecondary("TL84");
+        color1.setColorCardRef("Pantone TPX 19-4052");
+        color1.setCopies(3);
+        color1.setRound(1);
+        color1.setStatus("REJECTED");
+        color1.setRejectReason("偏红，色光不符要求");
+        color1.setRemark("第一轮打样");
+
+        ColorInstructionColorDO color2 = new ColorInstructionColorDO();
+        color2.setId(12L);
+        color2.setInstructionId(1024L);
+        color2.setLineNo(2);
+        color2.setCustomerColorNo("C-101");
+        color2.setColorName("藏青");
+        color2.setFactoryColorNo("F-808-2");
+        color2.setColorHex("#1B2A4A");
+        color2.setLightPrimary("D65");
+        color2.setLightSecondary("TL84");
+        color2.setColorCardRef("Pantone TPX 19-4052");
+        color2.setCopies(3);
+        color2.setRound(2);
+        color2.setStatus("APPROVED");
+        color2.setRejectReason(null);
+        color2.setRemark("第二轮打样，通过");
+
+        when(colorInstructionColorMapper.selectListByInstructionId(1024L)).thenReturn(List.of(color1, color2));
+
+        ColorInstructionPrintRespVO result = colorInstructionService.getColorInstructionPrintData(1024L);
+
+        assertNotNull(result);
+        assertEquals(1024L, result.getId());
+        assertEquals("DS20261014001", result.getInstructionNo());
+        assertEquals(LocalDate.of(2026, 10, 14), result.getInstructionDate());
+        assertEquals(100L, result.getCustomerId());
+        assertEquals("广州某某服饰有限公司", result.getClientName());
+        assertEquals("张三 13800138000", result.getContactPerson(), "联系人信息必须全量展示，按打印豁免惯例不脱敏");
+        assertEquals("P001", result.getProductCode());
+        assertEquals("人棉弹力汗布", result.getProductName());
+        assertEquals("95%人棉 5%氨纶", result.getComposition());
+        assertEquals("180cm", result.getWidth());
+        assertEquals("180gsm", result.getGsm());
+        assertEquals(300L, result.getLabFactoryId());
+        assertEquals("绍兴某某印染打色房", result.getLabFactoryName());
+        assertEquals(LocalDate.of(2026, 10, 20), result.getDeliveryDate());
+        assertEquals("CONFIRMED", result.getStatus());
+        assertEquals("CUSTOMER", result.getConfirmType());
+        assertEquals("A样通过，打样色光光泽良好", result.getCustomerFeedback());
+        assertEquals("加急打样", result.getRemark());
+        assertEquals("admin", result.getCreator());
+        assertNotNull(result.getPrintTime(), "打印时间必须自动生成");
+
+        // 验证全部轮次颜色行输出
+        assertNotNull(result.getColors());
+        assertEquals(2, result.getColors().size(), "全部轮次颜色行均需输出");
+
+        ColorInstructionPrintRespVO.ColorItemVO item1 = result.getColors().get(0);
+        assertEquals(11L, item1.getId());
+        assertEquals(1, item1.getLineNo());
+        assertEquals("C-101", item1.getCustomerColorNo());
+        assertEquals("藏青", item1.getColorName());
+        assertEquals(1, item1.getRound());
+        assertEquals("REJECTED", item1.getStatus(), "历史驳回行必须包含在输出中");
+        assertEquals("偏红，色光不符要求", item1.getRejectReason(), "驳回行必须带出驳回意见");
+
+        ColorInstructionPrintRespVO.ColorItemVO item2 = result.getColors().get(1);
+        assertEquals(12L, item2.getId());
+        assertEquals(2, item2.getLineNo());
+        assertEquals("C-101", item2.getCustomerColorNo());
+        assertEquals(2, item2.getRound());
+        assertEquals("APPROVED", item2.getStatus());
+    }
+
+    @Test
+    @DisplayName("切面注解：getColorInstructionPrintData 接口正确标注 @LogRecord(type = '打印')")
+    void testPrintLogRecordAnnotation() throws NoSuchMethodException {
+        var printMethod = ColorInstructionServiceImpl.class.getMethod("getColorInstructionPrintData", Long.class);
+        var printLog = printMethod.getAnnotation(com.mzt.logapi.starter.annotation.LogRecord.class);
+        assertNotNull(printLog, "getColorInstructionPrintData 必须标注 @LogRecord");
+        assertEquals("打印", printLog.type(), "LogRecord type 必须为'打印'");
+        assertEquals("打色指示单", printLog.subType(), "LogRecord subType 必须为'打色指示单'");
+        assertEquals("{{#id}}", printLog.bizNo(), "LogRecord bizNo 必须为 {{#id}}");
+        assertEquals("打印了打色指示单 {{#no}}", printLog.success(), "LogRecord success 模板必须正确");
     }
 
 }
