@@ -200,5 +200,13 @@ public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalEr
     // ========== 生产管理 - 生产进度查询模块 1-030-019-000（只读聚合，ADR-0034） ==========
     ErrorCode PRODUCTION_PROGRESS_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_019_000, "销售合同不存在");
 
+    // ========== 生产管理 - 下达生产模块 1-030-035-000 ==========
+    ErrorCode RELEASE_PRODUCTION_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_035_000, "销售合同不存在");
+    ErrorCode RELEASE_PRODUCTION_CONTRACT_CANCELLED = new ErrorCode(1_030_035_001, "合同已取消，不能下达生产");
+    ErrorCode RELEASE_PRODUCTION_OVER_RELEASE = new ErrorCode(1_030_035_002, "合同行【{}】已下达量超出合同数量（超下达或并发冲突）");
+    ErrorCode RELEASE_PRODUCTION_COLOR_INSTRUCTION_STATUS_NOT_ALLOWED = new ErrorCode(1_030_035_003, "打色单【{}】状态不允许被引用（须 CONFIRMED/IN_PRODUCTION）");
+    ErrorCode RELEASE_PRODUCTION_LIGHT_PRIMARY_REQUIRED = new ErrorCode(1_030_035_004, "打色单颜色行主灯源不能为空");
+    ErrorCode RELEASE_PRODUCTION_FINISHED_INSPECTION_EXISTS = new ErrorCode(1_030_035_005, "存在相同染色单的成品检验单，请勿重复创建");
+
 }
 

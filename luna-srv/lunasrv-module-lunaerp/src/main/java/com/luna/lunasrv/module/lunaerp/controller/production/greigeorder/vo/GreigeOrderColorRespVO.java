@@ -18,6 +18,12 @@ public class GreigeOrderColorRespVO {
     @Schema(description = "行号（按 line_no 升序返回）", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Integer lineNo;
 
+    @Schema(description = "来源合同行 ID", example = "2048")
+    private Long contractLineId;
+
+    @Schema(description = "来源合同行号快照", example = "1")
+    private Integer contractLineNo;
+
     @Schema(description = "颜色", example = "大红")
     private String color;
 

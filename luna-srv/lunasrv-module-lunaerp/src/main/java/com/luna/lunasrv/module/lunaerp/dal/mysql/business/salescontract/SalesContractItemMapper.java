@@ -5,7 +5,9 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
@@ -69,5 +71,23 @@ public interface SalesContractItemMapper extends BaseMapperX<SalesContractItemDO
         return selectList(new LambdaQueryWrapperX<SalesContractItemDO>()
                 .in(SalesContractItemDO::getContractId, contractIds));
     }
+
+    /**
+     * 条件更新合同明细已下达数量（防并发与超下达）
+     *
+     * <p>仅当 released_qty + #{releaseQty} &lt;= quantity 且未软删时累加；影响行数 0 表示超下达或已被并发修改。</p>
+     *
+     * @param id 合同明细ID
+     * @param releaseQty 本次下达数量
+     * @param tenantId 租户ID
+     * @return 影响行数（1 成功，0 拦截）
+     */
+    @Update("UPDATE lunaerp_business_sales_contract_item "
+            + "SET released_qty = released_qty + #{releaseQty} "
+            + "WHERE id = #{id} AND tenant_id = #{tenantId} AND deleted = 0 "
+            + "AND released_qty + #{releaseQty} <= quantity")
+    int updateReleasedQty(@Param("id") Long id,
+                          @Param("releaseQty") BigDecimal releaseQty,
+                          @Param("tenantId") Long tenantId);
 
 }
