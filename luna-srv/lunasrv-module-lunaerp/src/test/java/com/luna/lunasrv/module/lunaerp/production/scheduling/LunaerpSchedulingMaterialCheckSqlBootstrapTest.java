@@ -46,9 +46,7 @@ public class LunaerpSchedulingMaterialCheckSqlBootstrapTest {
         String sql = loadSqlContent();
         assertFalse(sql.isBlank(), "SQL 文件内容不能为空");
 
-        String standardSql = sql.replaceAll("(?s)DO \\$\\$.*?\\$\\$;", "-- DO BLOCK OMITTED FOR PARSER;")
-                                .replaceAll("(?i)(CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+[^;]+?)\\s+WHERE\\s+[^;]+;", "$1;");
-        List<SQLStatement> statements = SQLUtils.parseStatements(standardSql, DbType.postgresql);
+        List<SQLStatement> statements = SQLUtils.parseStatements(sql, DbType.postgresql);
         assertFalse(statements.isEmpty(), "至少应成功解析出 DML 语句");
     }
 
