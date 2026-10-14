@@ -14,7 +14,7 @@ type TickCallback = (time: number, delta: number) => void
 let _rafId = 0
 let _running = false
 let _lastTime = 0
-let _callbacks = new Set<TickCallback>()
+const _callbacks = new Set<TickCallback>()
 let _fps = 60
 let _frameInterval = 1000 / 60
 let _lastFrameTime = 0

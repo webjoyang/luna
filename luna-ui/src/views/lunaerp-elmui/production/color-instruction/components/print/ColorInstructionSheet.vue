@@ -91,7 +91,7 @@
                 class="color-badge"
                 :style="{ backgroundColor: color.colorHex }"
                 :title="color.colorHex"
-              />
+              ></span>
               <span class="font-mono text-10px strike-target">{{ color.colorHex || '—' }}</span>
             </td>
             <td class="text-center strike-target">{{ color.lightPrimary || '—' }}</td>

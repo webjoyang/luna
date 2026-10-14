@@ -4,7 +4,7 @@
     :style="canvasStyle"
     role="img"
     :aria-label="ariaLabel"
-  />
+  ></canvas>
 </template>
 <script setup lang="ts">
 /**

@@ -14,7 +14,7 @@
 
 ### Coding standards
 
-开发规约与 Reviewer 审查基准（集合空安全、防 N+1 批量快照、只读聚合、单测匹配、Wrapper 链式调用）：见 `docs/agents/coding-standards.md`。
+开发规约与 Reviewer 审查基准（集合空安全、防 N+1 批量快照、只读聚合、单测匹配、Wrapper 链式调用、前端权限与错误码）：见 `docs/agents/coding-standards.md`。
 
 ### 代码与文件检索
 
@@ -25,6 +25,7 @@
 ## 前端项目
 - 在luna-ui项目中
 - 技术实现：Vue3 + TypeScript + ElementPlus
+- 目录导航：业务视图集中在 `src/views/lunaerp-elmui/`（Element Plus 版），接口集中在 `src/api/lunaerp-elmui/`
 
 ## 后端项目
 - 在luna-srv项目中

@@ -43,7 +43,7 @@
         <div
           class="pointer-events-none absolute -inset-px rounded-[2rem] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
           :style="glowStyle"
-        />
+        ></div>
 
         <!-- 登录卡片内容 -->
         <div class="relative">

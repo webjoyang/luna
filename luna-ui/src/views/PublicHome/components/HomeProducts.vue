@@ -60,9 +60,9 @@
           :key="i"
           class="animate-pulse rounded-[20px] bg-[#f5f5f7] p-[14px] pb-[18px]"
         >
-          <div class="aspect-square rounded-xl bg-[#e8e8ed]" />
-          <div class="mx-1.5 mt-3.5 h-4 w-2/3 rounded bg-[#e8e8ed]" />
-          <div class="mx-1.5 mt-2 h-3 w-1/2 rounded bg-[#e8e8ed]" />
+          <div class="aspect-square rounded-xl bg-[#e8e8ed]"></div>
+          <div class="mx-1.5 mt-3.5 h-4 w-2/3 rounded bg-[#e8e8ed]"></div>
+          <div class="mx-1.5 mt-2 h-3 w-1/2 rounded bg-[#e8e8ed]"></div>
         </div>
       </div>
 
@@ -100,7 +100,7 @@
               :style="{
                 background: `linear-gradient(180deg, transparent 32%, ${accent}22 68%, rgba(0,0,0,0.78) 100%)`,
               }"
-            />
+            ></div>
             <div class="absolute inset-x-0 bottom-0 p-6 text-white">
               <p class="text-[11px] font-semibold tracking-[0.2em] text-white/65">
                 BRAND STUDY 0{{ index + 1 }}
@@ -144,7 +144,7 @@
               v-else
               class="h-full w-full"
               :style="{ background: `linear-gradient(135deg, ${accent} 0%, #1d1d1f 100%)` }"
-            />
+            ></div>
           </div>
           <div class="px-1.5 pt-3.5">
             <p class="flex items-baseline justify-between gap-2 text-[15.5px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">

@@ -29,6 +29,8 @@
 - **仓储层跨域与分层倒置防范 (DAL Layer Hygiene)**：
   - DAL Mapper 严禁依赖 Controller 层的 VO 包（严禁分层倒置）。
   - 跨域只读聚合查询优先复用所属域的既有领域模型（如库存域的 `InventoryBalanceRespVO`、采购域的 `YarnOrderItemDO`），严禁在基础仓储层引入调用方只读子包的专属 VO/DTO。
+- **回写场景的投影 ID 保全规约 (Round-trip Projection Parity)**：
+  - 若前端交互支持基于只读投影直接触发关联实体的更新/转机/改派（调用既有实体 Update API），只读 VO **必须**投影并透传被引用实体的关联外键 ID（如 `workerUserId`、`customerId`），严禁仅投影纯文本展示字段，防止反向回写时底层实体外键被静默置空（数据丢失）。
 
 ## 4. Mapper 纯粹性与 Mockito 集合匹配 (Mapper Mocking)
 
@@ -45,3 +47,13 @@
   - 禁止在根目录使用无深度限制且未排除依赖目录的 `Get-ChildItem -Recurse`。
   - 文件路径定标优先使用 `git ls-files "*<keyword>*"`。
   - 文件内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`（或 `git grep -i "<pattern>"`），严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道。
+
+## 6. 前端组件与交互规范 (Frontend Standards)
+
+- **按钮级权限指令守卫 (`v-hasPermi`)**：
+  - 所有触发状态流转或数据写操作的按钮（新增、编辑/修改、删除、转机、调度/派工、审批等），必须显式绑定 `v-hasPermi="['<permission-code>']"`，禁止裸露可操作按钮。
+- **业务错误码常量化与异常拦截 (Error Code Constants)**：
+  - 接口业务异常与拦截（如排产时段冲突 `1030036000`）必须优先以常量形式定义并复用（如 `SCHEDULE_CONFLICT_CODE`），通过 `err.code === CONSTANT` 进行精确匹配；严禁仅依赖 `errorMsg.includes('...')` 模糊中文文本匹配作为核心业务逻辑分支。
+- **只读投影回写参数对齐 (Round-trip Form Payload)**：
+  - 在前端弹窗、抽屉或拖拽改期中回传实体保存接口时，必须完整回显/携带原有关键外键与快照（如操作员 ID、织机 ID、计划版本等），避免只提交修改项导致未改项被覆写清空。
+
