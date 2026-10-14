@@ -227,8 +227,8 @@ function load500TasksBenchmark() {
   background-color: var(--el-bg-color);
 
   .gantt-spike-toolbar {
-    margin-bottom: 12px;
     display: flex;
+    margin-bottom: 12px;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;

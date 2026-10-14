@@ -5,6 +5,9 @@ export interface MachineTaskVO {
   id?: number
   code?: string // 任务编号（MT-{织造单号去符号}-{单内 2 位序号}）
   weavingOrderId?: number // 关联织造单ID（必填）
+  weavingOrderCode?: string // 织造单号快照
+  productCode?: string // 产品编号快照
+  productName?: string // 产品名称快照
   loomId?: number // 关联织机ID（必填）
   loomNo?: string // 机台号快照
   workerUserId?: number // 挡车工用户ID（关联 system User，可空）
@@ -14,6 +17,7 @@ export interface MachineTaskVO {
   plannedStart?: string // 计划开始日期
   plannedEnd?: string // 计划结束日期
   status?: string // 状态：PENDING 待开始 / IN_PROGRESS 生产中 / HALTED 暂停异常 / COMPLETED 已完工
+  conflict?: boolean // 冲突标记
   haltReason?: string // 停机原因
   haltAt?: string // 停机时间
   warning?: string // 超量软警告信息
@@ -60,6 +64,7 @@ export interface MachineTaskPageParam {
   workerUserId?: number
   status?: string
   code?: string
+  conflictOnly?: boolean
 }
 
 // 查询机台任务分页

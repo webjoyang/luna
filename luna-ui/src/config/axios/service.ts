@@ -229,7 +229,10 @@ service.interceptors.response.use(
       } else {
         ElNotification.error({ title: msg })
       }
-      return Promise.reject('error')
+      const err: any = new Error(msg)
+      err.code = code
+      err.data = data
+      return Promise.reject(err)
     } else {
       return data
     }
