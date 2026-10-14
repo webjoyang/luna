@@ -83,4 +83,23 @@ public interface YarnOrderItemMapper extends BaseMapperX<YarnOrderItemDO> {
             + "ORDER BY update_time DESC, id DESC LIMIT 1")
     BigDecimal selectRecentUnitPriceBySpecId(@Param("yarnSpecId") Long yarnSpecId);
 
+    /**
+     * 批量按纱线规格ID集合聚合 ACTIVE 采购单在途采购数量（SUM(purchase_qty)）
+     *
+     * @param yarnSpecIds 纱线规格ID集合
+     * @return 聚合列表（包含 yarnSpecId 与 purchaseQty）
+     */
+    @Select("<script>"
+            + "SELECT i.yarn_spec_id AS yarnSpecId, COALESCE(SUM(i.purchase_qty), 0) AS purchaseQty "
+            + "FROM lunaerp_production_yarn_order_item i "
+            + "JOIN lunaerp_production_yarn_order o ON o.id = i.order_id "
+            + "WHERE i.deleted = 0 AND o.deleted = 0 "
+            + "AND o.status = 'ACTIVE' "
+            + "AND i.yarn_spec_id IN "
+            + "<foreach item='id' collection='yarnSpecIds' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "GROUP BY i.yarn_spec_id"
+            + "</script>")
+    List<YarnOrderItemDO> sumInTransitQtyByYarnSpecIds(
+            @Param("yarnSpecIds") java.util.Collection<Long> yarnSpecIds);
+
 }

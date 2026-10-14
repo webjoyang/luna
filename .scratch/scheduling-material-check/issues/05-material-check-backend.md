@@ -4,13 +4,13 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** closed
 
 **参考**：本目录上级 spec.md §4；ADR-0017（台账）、ADR-0011（配比 BOM）、ADR-0027（领纱测算口径）、ADR-0041
 
-- [ ] 两织造单同产品按 yarnSpecId 合并需求 = Σ(plannedWeight × ratio/100)，贡献行可展开
-- [ ] 可用库存=台账正负流水求和（含 YARN_OUT 扣减）；仓库筛选生效、缺省全仓；批量聚合无 N+1
-- [ ] 在途仅计 ACTIVE 采购单 purchase_qty；两缺口与建议采购量（含在途口径）计算正确，齐套/在途可覆盖/缺料三态数据源齐备（状态标签由前端派生，不入字典）
-- [ ] 缺 BOM、缺计划重量单分别入两个分区且不进聚合行
-- [ ] 租户隔离：他租户织造单/库存/采购单不进试算；传入不存在或他租户织造单 ID 抛不存在类错误
-- [ ] 纯 Mockito 单测（MaterialCheckServiceImplTest）覆盖以上全部场景
+- [x] 两织造单同产品按 yarnSpecId 合并需求 = Σ(plannedWeight × ratio/100)，贡献行可展开
+- [x] 可用库存=台账正负流水求和（含 YARN_OUT 扣减）；仓库筛选生效、缺省全仓；批量聚合无 N+1
+- [x] 在途仅计 ACTIVE 采购单 purchase_qty；两缺口与建议采购量（含在途口径）计算正确，齐套/在途可覆盖/缺料三态数据源齐备（状态标签由前端派生，不入字典）
+- [x] 缺 BOM、缺计划重量单分别入两个分区且不进聚合行
+- [x] 租户隔离：他租户织造单/库存/采购单不进试算；传入不存在或他租户织造单 ID 抛不存在类错误
+- [x] 纯 Mockito 单测（MaterialCheckServiceImplTest）覆盖以上全部场景
