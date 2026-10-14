@@ -58,7 +58,7 @@ describe('Seam 1 & 2 & 3: Task List Model & Logic (Issue 08)', () => {
       expect(params.pageSize).toBe(10)
     })
 
-    it('与甘特区共享顶部筛选：织机、状态与日期窗口正确映射', () => {
+    it('与甘特区共享顶部筛选：织机与状态正确映射，跨单列表不强制限制日期窗口保证未排期任务可展现', () => {
       const shared: SharedFilterState = {
         dateWindow: ['2026-10-01', '2026-10-31'],
         loomIds: [1, 2],
@@ -77,8 +77,8 @@ describe('Seam 1 & 2 & 3: Task List Model & Logic (Issue 08)', () => {
 
       expect(params.loomIds).toEqual([1, 2])
       expect(params.statuses).toEqual(['PENDING', 'IN_PROGRESS'])
-      expect(params.startDate).toBe('2026-10-01')
-      expect(params.endDate).toBe('2026-10-31')
+      expect(params.startDate).toBeUndefined()
+      expect(params.endDate).toBeUndefined()
       expect(params.code).toBe('MT-001')
     })
   })

@@ -147,7 +147,9 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit"> 确认派工 </el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">
+          {{ form.id ? '保存修改' : '确认派工' }}
+        </el-button>
       </div>
     </template>
   </el-dialog>
@@ -201,8 +203,10 @@ function open(initialData?: Partial<DispatchFormData>, isLockedOrder: boolean = 
     ...initialData
   }
 
-  if (initialData?.plannedStart && initialData?.plannedEnd) {
-    dateRange.value = [initialData.plannedStart, initialData.plannedEnd]
+  if (initialData?.plannedStart || initialData?.plannedEnd) {
+    const s = initialData.plannedStart || initialData.plannedEnd!
+    const e = initialData.plannedEnd || initialData.plannedStart!
+    dateRange.value = [s, e]
   } else {
     dateRange.value = []
   }

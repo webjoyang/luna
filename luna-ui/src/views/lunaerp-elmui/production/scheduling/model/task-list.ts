@@ -4,7 +4,7 @@ import type {
   MachineTaskSaveRespVO,
   MachineTaskPageParam
 } from '@/api/lunaerp-elmui/production/machine-task'
-import { SCHEDULE_CONFLICT_CODE, parseErrorMessage } from '../gantt-theme'
+import { submitDispatch } from './pending-pool'
 
 /**
  * 顶部共享筛选状态
@@ -67,7 +67,10 @@ export interface TaskEditSubmitResult {
 
 /**
  * 组装跨单机台任务分页查询参数（对接 Seam 1）
- * 规则：weavingOrderId 缺省不传以获得跨单全量数据
+ * 规则：
+ * 1. weavingOrderId 缺省不传以获得跨单全量数据；
+ * 2. 跨单列表不强制绑定甘特固定日期窗口，确保未排期任务与全周期任务均可按序出单（spec §3.2 / §6.1）；
+ * 3. 共享织机与状态多选过滤。
  */
 export function buildTaskPageParams(
   shared: SharedFilterState,
@@ -93,16 +96,6 @@ export function buildTaskPageParams(
 
   if (shared.statuses && shared.statuses.length > 0) {
     params.statuses = shared.statuses
-  }
-
-  if (
-    shared.dateWindow &&
-    shared.dateWindow.length === 2 &&
-    shared.dateWindow[0] &&
-    shared.dateWindow[1]
-  ) {
-    params.startDate = shared.dateWindow[0]
-    params.endDate = shared.dateWindow[1]
   }
 
   return params
@@ -159,34 +152,21 @@ export function formatTaskRow(task: MachineTaskVO): TaskRowFormatted {
 
 /**
  * 提交任务编辑保存（对接 Seam 2）
- * 规则：
- * 1. 000 冲突拦截（1_030_036_000 或错误消息含“冲突”）不关闭弹窗，回显红字
- * 2. 超量保存成功并保留软警告
+ * 统一委托至 submitDispatch，保持错误拦截与时段冲突判定单一来源（DRY）
  */
 export async function submitTaskEdit(
   data: MachineTaskSaveReqVO,
   apiUpdate: (data: MachineTaskSaveReqVO) => Promise<MachineTaskSaveRespVO>
 ): Promise<TaskEditSubmitResult> {
-  try {
-    const res = await apiUpdate(data)
-    return {
-      success: true,
-      id: res.id,
-      code: res.code,
-      warning: res.warning,
-      isConflict: false
-    }
-  } catch (err: any) {
-    const errorMsg = parseErrorMessage(err, '保存失败')
-    const errorCode = err?.code
-    const isConflict = errorCode === SCHEDULE_CONFLICT_CODE || errorMsg.includes('冲突')
-
-    return {
-      success: false,
-      isConflict,
-      conflictMessage: isConflict ? errorMsg : undefined,
-      error: errorMsg,
-      errorCode
-    }
+  const result = await submitDispatch(data, apiUpdate)
+  return {
+    success: result.success,
+    id: result.id,
+    code: result.code,
+    warning: result.warning,
+    isConflict: Boolean(result.isConflict),
+    conflictMessage: result.conflictMessage,
+    error: result.error,
+    errorCode: result.errorCode
   }
 }
