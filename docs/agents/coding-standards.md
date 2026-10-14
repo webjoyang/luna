@@ -11,6 +11,9 @@
 - **MyBatis-Plus Wrapper 链式调用类型截断陷阱**：
   - MyBatis-Plus 原生 `AbstractLambdaWrapper` 的泛型返回参数固定为 `LambdaQueryWrapper<T>`，一旦先调用原生 `.ge()` / `.le()` / `.eq()` / `.orderBy*()`，方法链返回类型退化为原生 Wrapper，导致后续链式调用 `eqIfPresent` / `inOrEmpty` 报编译错误（找不到符号）。
   - **强制规约**：`LambdaQueryWrapperX` 自定义方法（如 `*IfPresent`、`inOrEmpty`）必须链式书写在原生方法（`ge`、`le`、`orderBy*`）**之前**，或直接使用扩展提供的 `geIfPresent`、`leIfPresent`、`betweenIfPresent`。
+- **可空日期区间相交陷阱 (Nullable Date Range Overlap Pitfall)**：
+  - 在 SQL 中，闭区间重叠判定条件 `planned_end >= startDate AND planned_start <= endDate` 当记录的起止列允许为 `NULL`（如待排池中尚未排期的任务）时，三值逻辑比较会导致结果为 `UNKNOWN`（被 `WHERE` 视为 `false`），未排期或单侧日期的记录会被静默过滤剔除。
+  - **强制规约**：当查询语义要求包含未定日期的记录时，必须显式显化可空分支：`(planned_end IS NULL OR planned_end >= :startDate) AND (planned_start IS NULL OR planned_start <= :endDate)`，或通过 `COALESCE` 显式设置极端边界时间兜底，严禁直接对可空列进行裸比较。
 
 ## 2. 防 N+1 批量快照模式 (Batch Snapshot Pattern)
 
@@ -56,4 +59,11 @@
   - 接口业务异常与拦截（如排产时段冲突 `1030036000`）必须优先以常量形式定义并复用（如 `SCHEDULE_CONFLICT_CODE`），通过 `err.code === CONSTANT` 进行精确匹配；严禁仅依赖 `errorMsg.includes('...')` 模糊中文文本匹配作为核心业务逻辑分支。
 - **只读投影回写参数对齐 (Round-trip Form Payload)**：
   - 在前端弹窗、抽屉或拖拽改期中回传实体保存接口时，必须完整回显/携带原有关键外键与快照（如操作员 ID、织机 ID、计划版本等），避免只提交修改项导致未改项被覆写清空。
+- **看板图形视口与明细列表数据口径解耦 (View Disconnection)**：
+  - 在包含甘特图/时间轴图形与下挂明细表格/分页列表的复合页面中，图形视口通常受用户缩放（日/周/月）或水平滚动窗口裁剪；而明细列表承担全局检索与分页排查职责。
+  - **强制规约**：明细列表的筛选与查询请求必须且仅严格绑定顶部显式过滤条件（或独立分页器），严禁将明细列表静默绑定到图形视口的临时可见时间窗口，避免造成用户在列表中“搜不到视口外已有任务”的交互困惑。
+- **业务操作提交助手单一来源 (DRY Submit Helpers)**：
+  - 同一领域实体的更新逻辑可能散布在多个交互场景（如甘特图拖拽调整、行内操作菜单、独立编辑弹窗）。
+  - **强制规约**：对同一后端修改 API 的参数对齐、冲突错误码拦截（如 `SCHEDULE_CONFLICT_CODE`）、消息提示与局部/全局数据刷新，应提取统一的 Composable 或 Model 辅助函数封装，严禁在多处 Vue 组件模板中复制散落的 `try-catch` 和错误分支拼装代码。
+
 

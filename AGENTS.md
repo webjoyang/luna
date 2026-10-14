@@ -3,6 +3,7 @@
 ### Issue tracker
 
 问题（issue）以 Markdown 文件形式跟踪在 `.scratch/<feature>/` 下。见 `docs/agents/issue-tracker.md`。
+- 工单范围守卫：纯前端或纯后端工单若因联调需要扩展对侧契约，必须在实现前显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延（Scope Creep）。
 
 ### Triage labels
 
@@ -14,11 +15,17 @@
 
 ### Coding standards
 
-开发规约与 Reviewer 审查基准（集合空安全、防 N+1 批量快照、只读聚合、单测匹配、Wrapper 链式调用、前端权限与错误码）：见 `docs/agents/coding-standards.md`。
+开发规约与 Reviewer 审查基准（集合空安全、可空日期相交、防 N+1 批量快照、只读聚合、单测匹配、Wrapper 链式调用、前端权限与错误码）：见 `docs/agents/coding-standards.md`。
 
-### 代码与文件检索
+### 异步任务与工具经济性 (Zero-Poll 纪律)
 
-混合工作区文件定标优先使用 `git ls-files "*<keyword>*"`，严禁未排除 `node_modules` / `target` 进行递归深搜；内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`，严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道。
+系统具备反应式自动唤醒（Reactive Wakeup）。派发后台耗时任务（如 Maven 测试、构建命令）或通过 `invoke_subagent` 派发并行 Reviewer 子代理后，**严禁在会话中使用 `manage_task(status)` 或 `manage_subagents(list)` 进行高频自旋轮询**。派发后应立即停调工具并结束当前轮次，静待系统消息通知唤醒，消除无效 token 消耗与进程挂起。
+
+### 代码检索与命令行管道安全
+
+- 混合工作区文件定标优先使用 `git ls-files "*<keyword>*"`，严禁未排除 `node_modules` / `target` 进行递归深搜。
+- 内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`，严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道。
+- 严禁在 PowerShell 下将 `vue-tsc`、`mvn` 等长生命周期或海量输出的命令挂接管道传递给 `Select-String`（子进程标准流缓冲会导致进程假死 hang 住）。
 
 ### 以上文档请尽量用中文编写
 
@@ -26,6 +33,7 @@
 - 在luna-ui项目中
 - 技术实现：Vue3 + TypeScript + ElementPlus
 - 目录导航：业务视图集中在 `src/views/lunaerp-elmui/`（Element Plus 版），接口集中在 `src/api/lunaerp-elmui/`
+- 类型与语法检查：当前项目全量 `pnpm ts:check` 存在历史存量错误，严禁在单个特性工单开发中无差别调用全量 `vue-tsc` 进行阻塞检查；优先通过针对当前开发目录的 `eslint`、`prettier` 以及 `vitest` 实现单模块质量闭环。
 
 ## 后端项目
 - 在luna-srv项目中
