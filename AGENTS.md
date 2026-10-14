@@ -12,6 +12,14 @@
 
 多上下文布局：根目录 `GLOSSARY-MAP.md` 路由到 `docs/contexts/` 下各上下文的 `GLOSSARY.md`（shared + baseinfo/business/production/stock/sample/finance）；ADR 在 `docs/adr/` 全局连续编号。见 `docs/agents/domain.md`。
 
+### Coding standards
+
+开发规约与 Reviewer 审查基准（集合空安全、防 N+1 批量快照、只读聚合、单测匹配）：见 `docs/agents/coding-standards.md`。
+
+### 文件检索
+
+混合工作区文件检索优先使用 `git ls-files "*<keyword>*"`，严禁未排除 `node_modules` / `target` 进行递归深搜。
+
 ### 以上文档请尽量用中文编写
 
 ## 前端项目
