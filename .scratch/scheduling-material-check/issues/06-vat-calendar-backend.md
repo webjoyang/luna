@@ -4,11 +4,11 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** closed
 
 **参考**：本目录上级 spec.md §5.1；ADR-0031（进度反馈覆盖层）
 
-- [ ] month 区间只返回排缸日落月内的缸；status/dyeingFactoryId 筛选生效
-- [ ] COMPLETED 缸默认返回可回看且可被筛选；CANCELLED 染色单的缸不返回
-- [ ] 快照字段 join 正确（客户色号/色名/合同号/染厂名）
-- [ ] 纯 Mockito 单测（ProgressFeedbackCalendarTest）覆盖以上场景
+- [x] month 区间只返回排缸日落月内的缸；status/dyeingFactoryId 筛选生效
+- [x] COMPLETED 缸默认返回可回看且可被筛选；CANCELLED 染色单的缸不返回
+- [x] 快照字段 join 正确（客户色号/色名/合同号/染厂名）
+- [x] 纯 Mockito 单测（ProgressFeedbackCalendarTest）覆盖以上场景
