@@ -21,6 +21,8 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-032-xxx 段（打色指示单：主表 000–099、颜色行 100–199，见 ColorInstructionErrorCodeConstants）
  *                  与 1-030-033-xxx 段（出口单证：单证套 000–099、明细 100–199、卖方配置 200–299，见 ExportDocErrorCodeConstants）
  *                  与 1-030-034-xxx 段（成本卡与报价：成本卡 000–099、报价单 100–199、纱价追加 1-030-008-008/009，见 CostCardQuotationErrorCodeConstants）
+ *                  与 1-030-035-xxx 段（下达生产）
+ *                  与 1-030-036-xxx 段（排产与齐套）
  */
 public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ColorInstructionErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants {
 
@@ -207,6 +209,9 @@ public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalEr
     ErrorCode RELEASE_PRODUCTION_COLOR_INSTRUCTION_STATUS_NOT_ALLOWED = new ErrorCode(1_030_035_003, "打色单【{}】状态不允许被引用（须 CONFIRMED/IN_PRODUCTION）");
     ErrorCode RELEASE_PRODUCTION_LIGHT_PRIMARY_REQUIRED = new ErrorCode(1_030_035_004, "打色单颜色行主灯源不能为空");
     ErrorCode RELEASE_PRODUCTION_FINISHED_INSPECTION_EXISTS = new ErrorCode(1_030_035_005, "存在相同染色单的成品检验单，请勿重复创建");
+
+    // ========== 生产管理 - 排产与齐套模块 1-030-036-000 ==========
+    ErrorCode MACHINE_TASK_TIME_CONFLICT = new ErrorCode(1_030_036_000, "织机【{}】在 {}~{} 已排任务【{}】，计划时段冲突，请改期或转机");
 
 }
 

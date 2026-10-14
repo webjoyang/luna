@@ -282,6 +282,12 @@ public class ErrorCodeConstantsTest {
         assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT, ErrorCodeConstants.COLOR_INSTRUCTION_INVALID_CONFIRM_TYPE_OR_LIGHT);
         assertEquals(ColorInstructionErrorCodeConstants.COLOR_INSTRUCTION_COLOR_NOT_EXISTS, ErrorCodeConstants.COLOR_INSTRUCTION_COLOR_NOT_EXISTS);
     }
+
+    @Test
+    void testMachineTaskConflictErrorCode() {
+        assertEquals(1_030_036_000, ErrorCodeConstants.MACHINE_TASK_TIME_CONFLICT.getCode());
+        assertTrue(ErrorCodeConstants.MACHINE_TASK_TIME_CONFLICT.getMsg().contains("计划时段冲突"));
+    }
 }
 
 

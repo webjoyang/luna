@@ -103,6 +103,22 @@ public interface MachineTaskMapper extends BaseMapperX<MachineTaskDO> {
     }
 
     /**
+     * 查询指定织机下处于占用态（PENDING/IN_PROGRESS/HALTED）的有效机台任务
+     *
+     * @param loomId    织机ID
+     * @param excludeId 排除的任务ID（更新时排除自身，可为 null）
+     * @return 占用态任务列表
+     */
+    default List<MachineTaskDO> selectOccupiedTasksByLoomId(Long loomId, Long excludeId) {
+        return selectList(new LambdaQueryWrapperX<MachineTaskDO>()
+                .eq(MachineTaskDO::getLoomId, loomId)
+                .neIfPresent(MachineTaskDO::getId, excludeId)
+                .in(MachineTaskDO::getStatus, List.of("PENDING", "IN_PROGRESS", "HALTED"))
+                .orderByAsc(MachineTaskDO::getPlannedStart)
+                .orderByAsc(MachineTaskDO::getId));
+    }
+
+    /**
      * 分页查询机台任务
      *
      * @param reqVO 分页查询条件

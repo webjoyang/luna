@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** closed
 
 **参考**：本目录上级 spec.md §2、§9；ADR-0041、ADR-0024
 
-- [ ] 新建任务与同织机 PENDING 任务闭区间相交（含同日）→ 报错且事务回滚，消息含冲突任务号
-- [ ] 不相交/不同织机/他任务 COMPLETED/update 排除自身 → 通过；仅一端日期按 coalesce 单日判定，两端皆空不校验
-- [ ] 与 HALTED、IN_PROGRESS 任务相交均拦截；COMPLETED 任务自身修改仍被既有守卫（101）拦截
-- [ ] 超量软警告仍返回 warning 且不拦截（回归既有行为）；织造单工作台入口同样被硬拦截
-- [ ] 新增错误码常量；纯 Mockito 单测（MachineTaskConflictTest）覆盖以上全部场景
+- [x] 新建任务与同织机 PENDING 任务闭区间相交（含同日）→ 报错且事务回滚，消息含冲突任务号
+- [x] 不相交/不同织机/他任务 COMPLETED/update 排除自身 → 通过；仅一端日期按 coalesce 单日判定，两端皆空不校验
+- [x] 与 HALTED、IN_PROGRESS 任务相交均拦截；COMPLETED 任务自身修改仍被既有守卫（101）拦截
+- [x] 超量软警告仍返回 warning 且不拦截（回归既有行为）；织造单工作台入口同样被硬拦截
+- [x] 新增错误码常量；纯 Mockito 单测（MachineTaskConflictTest）覆盖以上全部场景
