@@ -89,12 +89,9 @@ export const colorInstructionPrintCss = `
     background-color: #fff5f5 !important;
     color: #777;
   }
-  .strike-text {
+  .rejected-row .strike-target {
     text-decoration: line-through;
     color: #888;
-  }
-  .strike-text .el-tag {
-    text-decoration: line-through;
   }
   .reject-reason-tip {
     color: #c53030;
@@ -112,27 +109,37 @@ export const colorInstructionPrintCss = `
     border: 1px solid #aaa;
     border-radius: 2px;
   }
-  .status-tag {
+  .el-tag {
     display: inline-block;
-    padding: 1px 4px;
+    padding: 0 4px;
+    height: 18px;
+    line-height: 16px;
+    font-size: 9.5px;
     border-radius: 2px;
-    font-size: 10px;
-    font-weight: 500;
+    border: 1px solid #dcdfe6;
+    background-color: #f4f4f5;
+    color: #606266;
+    vertical-align: middle;
   }
-  .status-tag.approved {
-    background-color: #e6f7ed;
-    color: #1e7e34;
-    border: 1px solid #a3cfbb;
+  .el-tag--success {
+    background-color: #e6f7ed !important;
+    color: #1e7e34 !important;
+    border: 1px solid #a3cfbb !important;
   }
-  .status-tag.rejected {
-    background-color: #fdf0f0;
-    color: #dc3545;
-    border: 1px solid #f5c2c7;
+  .el-tag--danger {
+    background-color: #fdf0f0 !important;
+    color: #dc3545 !important;
+    border: 1px solid #f5c2c7 !important;
   }
-  .status-tag.pending {
-    background-color: #f4f6f8;
-    color: #6c757d;
-    border: 1px solid #dee2e6;
+  .el-tag--info {
+    background-color: #f4f6f8 !important;
+    color: #6c757d !important;
+    border: 1px solid #dee2e6 !important;
+  }
+  .el-tag--warning {
+    background-color: #fdf6ec !important;
+    color: #e6a23c !important;
+    border: 1px solid #faecd8 !important;
   }
   .section-box {
     border: 1px solid #333;

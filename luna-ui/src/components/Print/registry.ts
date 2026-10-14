@@ -36,6 +36,8 @@ export interface PrintTemplateReg {
   fetchApi: (bizId: string | number) => Promise<any>
   /** 模板特定打印 CSS（注入独立打印 iframe） */
   customCss?: string
+  /** 可选：提取单据编号（用于弹窗标题展示） */
+  getDocNo?: (data: any) => string
 }
 
 /**
@@ -118,7 +120,8 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
     permission: 'lunaerp:production:color-instruction:print',
     component: ColorInstructionSheet,
     fetchApi: (bizId: string | number) => getColorInstructionPrintData(bizId),
-    customCss: colorInstructionPrintCss
+    customCss: colorInstructionPrintCss,
+    getDocNo: (data: any) => data?.instructionNo || ''
   }
 ]
 

@@ -79,10 +79,13 @@ describe('Color Instruction Print Template & Registry', () => {
       expect(sheetTpl.paper).toBe('A4')
       expect(sheetTpl.permission).toBe('lunaerp:production:color-instruction:print')
       expect(typeof sheetTpl.fetchApi).toBe('function')
+      expect(typeof sheetTpl.getDocNo).toBe('function')
+      expect(sheetTpl.getDocNo?.({ instructionNo: 'DS100' })).toBe('DS100')
       expect(sheetTpl.customCss).toBe(colorInstructionPrintCss)
       expect(sheetTpl.customCss).toContain('@page')
       expect(sheetTpl.customCss).toContain('rejected-row')
-      expect(sheetTpl.customCss).toContain('strike-text')
+      expect(sheetTpl.customCss).toContain('strike-target')
+      expect(sheetTpl.customCss).toContain('el-tag')
     })
 
     it('getTemplate should retrieve COLOR_INSTRUCTION_SHEET by default for COLOR_INSTRUCTION', () => {

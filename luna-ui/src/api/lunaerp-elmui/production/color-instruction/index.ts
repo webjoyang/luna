@@ -188,7 +188,6 @@ export interface ColorInstructionPrintColorItemVO {
   status?: string
   rejectReason?: string
   remark?: string
-  samplePhotos?: string[]
 }
 
 // 打色指示单独立打印 VO（豁免脱敏）
@@ -211,9 +210,6 @@ export interface ColorInstructionPrintVO {
   status?: string
   confirmType?: string
   customerFeedback?: string
-  confirmedBy?: number
-  confirmedAt?: string
-  voidReason?: string
   remark?: string
   creator?: string
   createTime?: string

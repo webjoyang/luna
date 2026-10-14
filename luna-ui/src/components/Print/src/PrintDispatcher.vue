@@ -170,12 +170,10 @@ const hasData = computed(() => {
 })
 
 const dialogTitle = computed(() => {
-  const docNo =
-    singlePrintData.value?.shipmentNo ||
-    singlePrintData.value?.code ||
-    singlePrintData.value?.instructionNo ||
-    singlePrintData.value?.quotationNo ||
-    ''
+  const getDocNo = currentTemplate.value?.getDocNo
+  const docNo = getDocNo
+    ? getDocNo(singlePrintData.value)
+    : (singlePrintData.value?.docNo || singlePrintData.value?.shipmentNo || singlePrintData.value?.code || '')
   const suffix = docNo ? ` - ${docNo}` : ''
   return `${currentTemplate.value?.name || '统一打印'}${suffix} - 打印预览`
 })

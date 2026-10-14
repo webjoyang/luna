@@ -71,15 +71,6 @@ public class ColorInstructionPrintRespVO {
     @Schema(description = "客户反馈意见", example = "A样确认，做大货")
     private String customerFeedback;
 
-    @Schema(description = "确认人用户ID", example = "1")
-    private Long confirmedBy;
-
-    @Schema(description = "确认时间")
-    private LocalDateTime confirmedAt;
-
-    @Schema(description = "作废原因", example = "客户取消打色需求")
-    private String voidReason;
-
     @Schema(description = "单据备注", example = "注意手感要求")
     private String remark;
 
@@ -146,8 +137,5 @@ public class ColorInstructionPrintRespVO {
 
         @Schema(description = "行备注", example = "加急")
         private String remark;
-
-        @Schema(description = "样布照片列表")
-        private List<String> samplePhotos;
     }
 }

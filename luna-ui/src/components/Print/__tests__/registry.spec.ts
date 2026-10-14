@@ -135,6 +135,8 @@ describe('Print Template Registry', () => {
     expect(tpl.paper).toBe('A4')
     expect(tpl.permission).toBe('lunaerp:production:color-instruction:print')
     expect(typeof tpl.fetchApi).toBe('function')
+    expect(typeof tpl.getDocNo).toBe('function')
+    expect(tpl.getDocNo?.({ instructionNo: 'DS20261014001' })).toBe('DS20261014001')
   })
 
   it('getTemplate should return default or specific template', () => {

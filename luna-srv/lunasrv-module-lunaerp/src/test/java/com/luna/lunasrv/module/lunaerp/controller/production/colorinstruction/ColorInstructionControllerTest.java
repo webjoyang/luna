@@ -228,13 +228,13 @@ public class ColorInstructionControllerTest {
 
     @Test
     @DisplayName("Controller获得打色指示单打印数据：通过 PathVariable 传入 ID，委托 Service 并返回打印 VO")
-    void testGetColorInstructionPrintData_byPathId() {
+    void testGetColorInstructionPrintData() {
         ColorInstructionPrintRespVO printRespVO = new ColorInstructionPrintRespVO();
         printRespVO.setId(1024L);
         printRespVO.setInstructionNo("DS20261014001");
         when(colorInstructionService.getColorInstructionPrintData(1024L)).thenReturn(printRespVO);
 
-        CommonResult<ColorInstructionPrintRespVO> result = colorInstructionController.getColorInstructionPrintData(1024L, null);
+        CommonResult<ColorInstructionPrintRespVO> result = colorInstructionController.getColorInstructionPrintData(1024L);
 
         assertTrue(result.isSuccess());
         assertEquals(printRespVO, result.getData());
@@ -242,27 +242,12 @@ public class ColorInstructionControllerTest {
     }
 
     @Test
-    @DisplayName("Controller获得打色指示单打印数据：通过 RequestParam 传入 ID，委托 Service 并返回打印 VO")
-    void testGetColorInstructionPrintData_byQueryId() {
-        ColorInstructionPrintRespVO printRespVO = new ColorInstructionPrintRespVO();
-        printRespVO.setId(1024L);
-        printRespVO.setInstructionNo("DS20261014001");
-        when(colorInstructionService.getColorInstructionPrintData(1024L)).thenReturn(printRespVO);
-
-        CommonResult<ColorInstructionPrintRespVO> result = colorInstructionController.getColorInstructionPrintData(null, 1024L);
-
-        assertTrue(result.isSuccess());
-        assertEquals(printRespVO, result.getData());
-        verify(colorInstructionService).getColorInstructionPrintData(1024L);
-    }
-
-    @Test
-    @DisplayName("Controller打印数据路由与权限注解：支持 /{id}/print-data 和 /print-data，具备:print权限")
+    @DisplayName("Controller打印数据路由与权限注解：严格映射 /{id}/print-data，具备:print权限")
     void testPrintDataAnnotations() throws NoSuchMethodException {
-        var method = ColorInstructionController.class.getMethod("getColorInstructionPrintData", Long.class, Long.class);
+        var method = ColorInstructionController.class.getMethod("getColorInstructionPrintData", Long.class);
         var getMapping = method.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class);
         org.junit.jupiter.api.Assertions.assertNotNull(getMapping);
-        org.junit.jupiter.api.Assertions.assertArrayEquals(new String[]{"/{id}/print-data", "/print-data"}, getMapping.value());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new String[]{"/{id}/print-data"}, getMapping.value());
 
         var preAuth = method.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
         org.junit.jupiter.api.Assertions.assertNotNull(preAuth);
