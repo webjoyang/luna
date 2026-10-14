@@ -61,10 +61,14 @@ export interface MachineTaskPageParam {
   pageSize?: number
   weavingOrderId?: number
   loomId?: number
+  loomIds?: number[]
   workerUserId?: number
   status?: string
+  statuses?: string[]
   code?: string
   conflictOnly?: boolean
+  startDate?: string
+  endDate?: string
 }
 
 // 查询机台任务分页
@@ -86,12 +90,18 @@ export const getNextMachineTaskCode = (weavingOrderId: number) => {
 
 // 新建机台任务（code 留空自动派生，超量软警告）
 export const createMachineTask = (data: MachineTaskSaveReqVO) => {
-  return request.post<MachineTaskSaveRespVO>({ url: '/lunaerp/production/weaving-order-task/create', data })
+  return request.post<MachineTaskSaveRespVO>({
+    url: '/lunaerp/production/weaving-order-task/create',
+    data
+  })
 }
 
 // 修改机台任务（排期/挡车工/匹数/织机）
 export const updateMachineTask = (data: MachineTaskSaveReqVO) => {
-  return request.put<MachineTaskSaveRespVO>({ url: '/lunaerp/production/weaving-order-task/update', data })
+  return request.put<MachineTaskSaveRespVO>({
+    url: '/lunaerp/production/weaving-order-task/update',
+    data
+  })
 }
 
 // 删除机台任务（仅待开始 PENDING 态允许）

@@ -128,7 +128,13 @@
       </el-tab-pane>
 
       <el-tab-pane label="跨单任务列表" name="taskList">
-        <TaskListPlaceholder />
+        <TaskListSection
+          ref="taskListSectionRef"
+          :shared-filter="sharedFilter"
+          :loom-list="activeLooms"
+          :worker-list="workerList"
+          @task-updated="handleTaskUpdated"
+        />
       </el-tab-pane>
     </el-tabs>
 
@@ -150,7 +156,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { GGanttChart, GGanttRow, type GanttBarObject } from 'vue-ganttastic'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
@@ -186,7 +192,8 @@ import { updateMachineTask } from '@/api/lunaerp-elmui/production/machine-task'
 import PendingPoolSection from './components/PendingPoolSection.vue'
 import DispatchDialog from './components/DispatchDialog.vue'
 import TaskDetailDrawer from './components/TaskDetailDrawer.vue'
-import TaskListPlaceholder from './components/TaskListPlaceholder.vue'
+import TaskListSection from './components/TaskListSection.vue'
+import type { SharedFilterState } from './model/task-list'
 
 defineOptions({ name: 'ProductionSchedulingCenter' })
 
@@ -225,6 +232,13 @@ const pendingPoolData = ref<{
 
 const dispatchDialogRef = ref()
 const taskDetailDrawerRef = ref()
+const taskListSectionRef = ref<InstanceType<typeof TaskListSection> | null>(null)
+
+const sharedFilter = computed<SharedFilterState>(() => ({
+  dateWindow: dateWindow.value,
+  loomIds: queryParams.value.loomIds,
+  statuses: queryParams.value.statuses
+}))
 
 const chartStartFormatted = computed(() => {
   return dateWindow.value[0] || defaultStart
@@ -306,7 +320,11 @@ async function fetchPendingPool() {
 }
 
 function handleQuery() {
-  fetchGanttData()
+  if (activeTab.value === 'gantt') {
+    fetchGanttData()
+  } else {
+    taskListSectionRef.value?.handleSearch()
+  }
 }
 
 function resetQuery() {
@@ -315,7 +333,11 @@ function resetQuery() {
     loomIds: [],
     statuses: []
   }
-  fetchGanttData()
+  if (activeTab.value === 'gantt') {
+    fetchGanttData()
+  } else {
+    taskListSectionRef.value?.resetLocalFilter()
+  }
 }
 
 /**
@@ -405,11 +427,20 @@ function handleDispatchFromTask(task: PendingTaskVO) {
 }
 
 /**
+ * 跨单任务列表数据更新回调
+ */
+function handleTaskUpdated() {
+  fetchGanttData(false)
+  fetchPendingPool()
+}
+
+/**
  * 派工成功回调
  */
 function handleDispatchSuccess() {
   fetchGanttData()
   fetchPendingPool()
+  taskListSectionRef.value?.fetchData()
 }
 
 /**
@@ -417,7 +448,17 @@ function handleDispatchSuccess() {
  */
 function handleTransferSuccess() {
   fetchGanttData()
+  taskListSectionRef.value?.fetchData()
 }
+
+watch(activeTab, (tab) => {
+  if (tab === 'gantt') {
+    fetchGanttData()
+    fetchPendingPool()
+  } else if (tab === 'taskList') {
+    taskListSectionRef.value?.fetchData()
+  }
+})
 
 onMounted(() => {
   loadBaseOptions()

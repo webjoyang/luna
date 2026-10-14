@@ -437,6 +437,32 @@ class SchedulingServiceImplTest {
         verify(machineTaskMapper, never()).selectPage(any(), nullable(Collection.class));
     }
 
+    @Test
+    @DisplayName("跨单分页：支持 loomIds 列表过滤与冲突计算")
+    void testMachineTaskPage_loomIdsList_filtersSpecifiedLooms() {
+        MachineTaskPageReqVO req = new MachineTaskPageReqVO();
+        req.setLoomIds(List.of(1L, 2L));
+        req.setConflictOnly(true);
+
+        MachineTaskDO task1 = buildTask(1L, "MT-01", 1L, 100L, "PENDING",
+                LocalDate.of(2026, 10, 8), LocalDate.of(2026, 10, 12));
+        MachineTaskDO task2 = buildTask(2L, "MT-02", 1L, 100L, "IN_PROGRESS",
+                LocalDate.of(2026, 10, 10), LocalDate.of(2026, 10, 14));
+
+        when(machineTaskMapper.selectOccupiedTasks(eq(List.of(1L, 2L)))).thenReturn(List.of(task1, task2));
+        PageResult<MachineTaskDO> conflictPage = new PageResult<>(List.of(task1, task2), 2L);
+        when(machineTaskMapper.selectPage(eq(req), nullable(Collection.class))).thenReturn(conflictPage);
+
+        WeavingOrderDO order = buildWeavingOrder(100L, "ZZ-01", "P01", "纯棉汗布");
+        when(weavingOrderMapper.selectBatchIds(any())).thenReturn(List.of(order));
+
+        PageResult<MachineTaskRespVO> pageResult = schedulingService.getMachineTaskPage(req);
+
+        assertEquals(2L, pageResult.getTotal());
+        assertTrue(pageResult.getList().stream().allMatch(MachineTaskRespVO::getConflict));
+        verify(machineTaskMapper, times(1)).selectOccupiedTasks(eq(List.of(1L, 2L)));
+    }
+
     // ==================== 辅助方法 ====================
 
     private LoomDO buildLoom(Long id, String loomNo, String model, String status) {

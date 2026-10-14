@@ -142,10 +142,14 @@ public interface MachineTaskMapper extends BaseMapperX<MachineTaskDO> {
     default PageResult<MachineTaskDO> selectPage(MachineTaskPageReqVO reqVO, java.util.Collection<Long> includeIds) {
         return selectPage(reqVO, new LambdaQueryWrapperX<MachineTaskDO>()
                 .eqIfPresent(MachineTaskDO::getWeavingOrderId, reqVO.getWeavingOrderId())
-                .eqIfPresent(MachineTaskDO::getLoomId, reqVO.getLoomId())
+                .inIfPresent(MachineTaskDO::getLoomId, reqVO.getLoomIds())
+                .eqIfPresent(MachineTaskDO::getLoomId, cn.hutool.core.collection.CollUtil.isEmpty(reqVO.getLoomIds()) ? reqVO.getLoomId() : null)
                 .eqIfPresent(MachineTaskDO::getWorkerUserId, reqVO.getWorkerUserId())
-                .eqIfPresent(MachineTaskDO::getStatus, reqVO.getStatus())
+                .inIfPresent(MachineTaskDO::getStatus, reqVO.getStatuses())
+                .eqIfPresent(MachineTaskDO::getStatus, cn.hutool.core.collection.CollUtil.isEmpty(reqVO.getStatuses()) ? reqVO.getStatus() : null)
                 .likeIfPresent(MachineTaskDO::getCode, reqVO.getCode())
+                .geIfPresent(MachineTaskDO::getPlannedEnd, reqVO.getStartDate())
+                .leIfPresent(MachineTaskDO::getPlannedStart, reqVO.getEndDate())
                 .inIfPresent(MachineTaskDO::getId, includeIds)
                 .orderByAsc(MachineTaskDO::getPlannedStart)
                 .orderByDesc(MachineTaskDO::getCreateTime));

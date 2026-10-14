@@ -225,7 +225,8 @@ public class SchedulingServiceImpl implements SchedulingService {
         Set<Long> conflictTaskIds = null;
         if (conflictOnly) {
             // 只看冲突红标任务：先计算所有冲突任务 ID 集合
-            List<Long> filterLoomIds = reqVO.getLoomId() != null ? List.of(reqVO.getLoomId()) : null;
+            List<Long> filterLoomIds = CollUtil.isNotEmpty(reqVO.getLoomIds()) ? reqVO.getLoomIds()
+                    : (reqVO.getLoomId() != null ? List.of(reqVO.getLoomId()) : null);
             List<MachineTaskDO> allOccupied = machineTaskMapper.selectOccupiedTasks(filterLoomIds);
             conflictTaskIds = findConflictTaskIds(allOccupied);
             if (CollUtil.isEmpty(conflictTaskIds)) {

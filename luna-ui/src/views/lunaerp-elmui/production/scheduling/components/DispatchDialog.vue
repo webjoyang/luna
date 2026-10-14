@@ -35,7 +35,13 @@
             disabled
             class="flex-1 font-mono font-bold"
           />
-          <el-button link type="primary" size="small" @click="lockedWeavingOrder = false">
+          <el-button
+            v-if="!form.id"
+            link
+            type="primary"
+            size="small"
+            @click="lockedWeavingOrder = false"
+          >
             更换
           </el-button>
         </div>
@@ -148,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { LoomVO } from '@/api/lunaerp-elmui/production/loom'
 import type { UserVO } from '@/api/system/user'
@@ -183,8 +189,6 @@ const orderOptions = ref<WeavingOrderVO[]>([])
 const form = ref<DispatchFormData>({
   plannedQty: 1
 })
-
-const formRef = ref()
 
 /**
  * 打开弹窗并预填数据

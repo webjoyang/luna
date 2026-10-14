@@ -1,10 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import {
-  buildGanttRows,
-  optimisticBarUpdate,
-  formatBarLabel,
-  type MachineTaskGanttBar
-} from '../model/gantt-adapter'
+import { buildGanttRows, optimisticBarUpdate, formatBarLabel } from '../model/gantt-adapter'
 import type { GanttLoomVO, GanttBarVO } from '@/api/lunaerp-elmui/production/scheduling'
 
 describe('Seam 2: Gantt Adapter & Optimistic Drag-and-Drop Model', () => {
