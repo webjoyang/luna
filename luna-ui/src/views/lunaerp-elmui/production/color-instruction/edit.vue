@@ -635,7 +635,7 @@ const canVoid = computed(() => {
   return (
     !isExplicitViewMode.value &&
     !!formData.id &&
-    ['PENDING', 'IN_PROGRESS', 'CONFIRMED'].includes(formData.status || '')
+    ColorInstructionApi.isColorInstructionOperable(formData.status)
   )
 })
 

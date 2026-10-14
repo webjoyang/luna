@@ -2238,7 +2238,7 @@ public class ColorInstructionServiceImplTest {
         String sql = captor.getValue().getCustomSqlSegment();
         assertTrue(sql.contains("color_instruction_id"));
         assertTrue(sql.contains("status"));
-        assertTrue(captor.getValue().getParamNameValuePairs().containsValue("CANCELLED"));
+        assertTrue(captor.getValue().getParamNameValuePairs().containsValue(ColorInstructionServiceImpl.DOWNSTREAM_STATUS_CANCELLED));
         verify(dyeingOrderMapper, never()).selectCount(any());
     }
 
@@ -2257,7 +2257,7 @@ public class ColorInstructionServiceImplTest {
         String sql = captor.getValue().getCustomSqlSegment();
         assertTrue(sql.contains("color_instruction_id"));
         assertTrue(sql.contains("status"));
-        assertTrue(captor.getValue().getParamNameValuePairs().containsValue("CANCELLED"));
+        assertTrue(captor.getValue().getParamNameValuePairs().containsValue(ColorInstructionServiceImpl.DOWNSTREAM_STATUS_CANCELLED));
     }
 
     @Test

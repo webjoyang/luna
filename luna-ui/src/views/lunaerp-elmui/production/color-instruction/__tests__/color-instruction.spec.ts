@@ -623,7 +623,7 @@ describe('Color Instruction Rollback, Void and Terminal Guard (Issue 08)', () =>
   it('button visibility logic matches state specifications', () => {
     // 模拟页头操作按钮显示判断函数
     const computeHeaderButtons = (status: string, mode?: string, hasId = true) => {
-      const isTerminal = status === 'IN_PRODUCTION' || status === 'VOID'
+      const isTerminal = ColorInstructionApi.isColorInstructionTerminal(status)
       const isViewMode = mode === 'view' || (!['PENDING', 'IN_PROGRESS'].includes(status))
       const canAction = mode !== 'view' && !isTerminal
 
@@ -631,7 +631,7 @@ describe('Color Instruction Rollback, Void and Terminal Guard (Issue 08)', () =>
         start: !isViewMode && hasId && status === 'PENDING',
         confirm: !isViewMode && hasId && status === 'IN_PROGRESS',
         rollback: hasId && status === 'CONFIRMED' && canAction,
-        void: hasId && ['PENDING', 'IN_PROGRESS', 'CONFIRMED'].includes(status) && canAction,
+        void: hasId && ColorInstructionApi.isColorInstructionOperable(status) && canAction,
         save: !isViewMode,
         isTerminal,
         isViewMode
@@ -689,6 +689,27 @@ describe('Color Instruction Rollback, Void and Terminal Guard (Issue 08)', () =>
     const viewMode = computeHeaderButtons('CONFIRMED', 'view')
     expect(viewMode.rollback).toBe(false)
     expect(viewMode.void).toBe(false)
+  })
+
+  it('COLOR_INSTRUCTION_OPERABLE_STATUSES and status helper functions contract', () => {
+    expect(ColorInstructionApi.COLOR_INSTRUCTION_OPERABLE_STATUSES).toEqual([
+      'PENDING',
+      'IN_PROGRESS',
+      'CONFIRMED'
+    ])
+
+    expect(ColorInstructionApi.isColorInstructionOperable('PENDING')).toBe(true)
+    expect(ColorInstructionApi.isColorInstructionOperable('IN_PROGRESS')).toBe(true)
+    expect(ColorInstructionApi.isColorInstructionOperable('CONFIRMED')).toBe(true)
+    expect(ColorInstructionApi.isColorInstructionOperable('IN_PRODUCTION')).toBe(false)
+    expect(ColorInstructionApi.isColorInstructionOperable('VOID')).toBe(false)
+    expect(ColorInstructionApi.isColorInstructionOperable(undefined)).toBe(false)
+
+    expect(ColorInstructionApi.isColorInstructionTerminal('IN_PRODUCTION')).toBe(true)
+    expect(ColorInstructionApi.isColorInstructionTerminal('VOID')).toBe(true)
+    expect(ColorInstructionApi.isColorInstructionTerminal('CONFIRMED')).toBe(false)
+    expect(ColorInstructionApi.isColorInstructionTerminal('PENDING')).toBe(false)
+    expect(ColorInstructionApi.isColorInstructionTerminal(undefined)).toBe(false)
   })
 })
 

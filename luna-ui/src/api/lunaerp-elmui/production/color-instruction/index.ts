@@ -175,3 +175,16 @@ export const rejectRestrikeColorLine = (data: { id: number; rejectReason: string
 export const getColorInstructionPrintData = (id: number) => {
   return request.get({ url: `/lunaerp/production/color-instruction/${id}/print-data` })
 }
+
+// 打色指示单可操作状态列表（非终态，可进入编辑页进行编辑、回退或作废操作）
+export const COLOR_INSTRUCTION_OPERABLE_STATUSES = ['PENDING', 'IN_PROGRESS', 'CONFIRMED'] as const
+
+// 是否处于可操作状态（PENDING / IN_PROGRESS / CONFIRMED）
+export const isColorInstructionOperable = (status?: string): boolean => {
+  return !!status && (COLOR_INSTRUCTION_OPERABLE_STATUSES as readonly string[]).includes(status)
+}
+
+// 是否处于终态（IN_PRODUCTION / VOID）
+export const isColorInstructionTerminal = (status?: string): boolean => {
+  return status === 'IN_PRODUCTION' || status === 'VOID'
+}

@@ -84,6 +84,11 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     /**
+     * 下游单据（胚布单/染色单）已取消状态（排除 CANCELLED）
+     */
+    public static final String DOWNSTREAM_STATUS_CANCELLED = "CANCELLED";
+
+    /**
      * 合法灯源字典集合（lunaerp_color_light_source: D65/TL84/CWF/A/UV/TL83）
      */
     private static final Set<String> VALID_LIGHT_SOURCES = Set.of(
@@ -305,7 +310,7 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
 
         LogRecordContext.putVariable("instructionNo", order.getInstructionNo());
 
-        // 3. 级联逻辑删除：主表 + 颜色行（单号不释放）
+        // 4. 级联逻辑删除：主表 + 颜色行（单号不释放）
         colorInstructionMapper.deleteById(id);
         colorInstructionColorMapper.deleteByInstructionId(id);
     }
@@ -1017,13 +1022,13 @@ public class ColorInstructionServiceImpl implements ColorInstructionService {
         }
         Long greigeCount = greigeOrderMapper.selectCount(new LambdaQueryWrapperX<GreigeOrderDO>()
                 .eq(GreigeOrderDO::getColorInstructionId, id)
-                .ne(GreigeOrderDO::getStatus, "CANCELLED"));
+                .ne(GreigeOrderDO::getStatus, DOWNSTREAM_STATUS_CANCELLED));
         if (greigeCount != null && greigeCount > 0) {
             return true;
         }
         Long dyeingCount = dyeingOrderMapper.selectCount(new LambdaQueryWrapperX<DyeingOrderDO>()
                 .eq(DyeingOrderDO::getColorInstructionId, id)
-                .ne(DyeingOrderDO::getStatus, "CANCELLED"));
+                .ne(DyeingOrderDO::getStatus, DOWNSTREAM_STATUS_CANCELLED));
         return dyeingCount != null && dyeingCount > 0;
     }
 
