@@ -40,4 +40,12 @@ public class ReleaseProductionController {
         return success(releaseProductionService.releaseProduction(reqVO));
     }
 
+    @PostMapping("/create-finished-inspection")
+    @Operation(summary = "从染色单便利生成成品检验单")
+    @Parameter(name = "dyeingOrderId", description = "染色单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:production:release-production:release')")
+    public CommonResult<Long> createFinishedInspection(@RequestParam("dyeingOrderId") Long dyeingOrderId) {
+        return success(releaseProductionService.createFinishedInspection(dyeingOrderId));
+    }
+
 }

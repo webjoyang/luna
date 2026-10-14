@@ -11,6 +11,10 @@ import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.Color
 import com.luna.lunasrv.module.lunaerp.service.production.dyeingorder.DyeingOrderService;
 import com.luna.lunasrv.module.lunaerp.service.production.greigeorder.GreigeOrderService;
 import com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.InspectionOrderService;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingColorRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.dyeingorder.vo.DyeingOrderRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -75,6 +79,9 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
 
     @Resource
     private InspectionOrderService inspectionOrderService;
+
+    @Resource
+    private InspectionOrderMapper inspectionOrderMapper;
 
     @Resource
     private ColorInstructionService colorInstructionService;
@@ -418,6 +425,71 @@ public class ReleaseProductionServiceImpl implements ReleaseProductionService {
         LogRecordContext.putVariable("inspectionOrderCodes", String.join(",", inspectionOrderCodes));
 
         return respVO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "PRODUCTION", subType = "CREATE_FINISHED_INSPECTION", bizNo = "{{#dyeingOrderId}}",
+            success = "染色单【{{#dyeingOrderId}}】生成成品检验单【{{#inspectionOrderCode}}】")
+    public Long createFinishedInspection(Long dyeingOrderId) {
+        // 1. 守卫：染色单校验（是否存在、是否 COMPLETED）
+        DyeingOrderRespVO dyeingOrder = dyeingOrderService.getDyeingOrder(dyeingOrderId);
+        if (dyeingOrder == null) {
+            throw exception(DYEING_ORDER_NOT_EXISTS);
+        }
+        if (!"COMPLETED".equals(dyeingOrder.getStatus())) {
+            throw exception(DYEING_ORDER_STATUS_NOT_ALLOWED);
+        }
+
+        // 2. 查重：已存在同 dyeingOrderId 的 FINISHED 非删除检验单则报错 1_030_035_005
+        InspectionOrderDO existing = inspectionOrderMapper.selectOne(new LambdaQueryWrapperX<InspectionOrderDO>()
+                .eq(InspectionOrderDO::getDyeingOrderId, dyeingOrderId)
+                .eq(InspectionOrderDO::getType, "FINISHED")
+                .last("LIMIT 1"));
+        if (existing != null) {
+            throw exception(RELEASE_PRODUCTION_FINISHED_INSPECTION_EXISTS);
+        }
+
+        // 3. 产品解析（必填）
+        Long productId = null;
+        if (StringUtils.hasText(dyeingOrder.getProductCode())) {
+            ProductDO product = productMapper.selectByCode(dyeingOrder.getProductCode());
+            if (product != null) {
+                productId = product.getId();
+            }
+        }
+        if (productId == null) {
+            throw exception(INSPECTION_ORDER_REFERENCE_NOT_FOUND, "产品");
+        }
+
+        // 4. 计算 targetWeight（染色单数量合计）
+        BigDecimal targetWeight = BigDecimal.ZERO;
+        if (CollUtil.isNotEmpty(dyeingOrder.getColors())) {
+            for (DyeingColorRespVO color : dyeingOrder.getColors()) {
+                if (color.getQuantity() != null) {
+                    targetWeight = targetWeight.add(color.getQuantity());
+                }
+            }
+        }
+
+        // 5. 组装并创建 type=FINISHED、status=DRAFT 检验单
+        InspectionOrderSaveReqVO inspectionReq = new InspectionOrderSaveReqVO();
+        inspectionReq.setType("FINISHED");
+        inspectionReq.setStatus("DRAFT");
+        inspectionReq.setPackageMode("ROLL");
+        inspectionReq.setProductId(productId);
+        inspectionReq.setDyeingOrderId(dyeingOrderId);
+        inspectionReq.setSalesContractId(dyeingOrder.getSalesContractId());
+        inspectionReq.setTargetWeight(targetWeight);
+        inspectionReq.setOrderDate(LocalDate.now());
+
+        Long inspectionOrderId = inspectionOrderService.createInspectionOrder(inspectionReq);
+
+        // 6. 记录日志变量
+        String inspectionCode = getInspectionOrderCodeSilently(inspectionOrderId);
+        LogRecordContext.putVariable("inspectionOrderCode", StringUtils.hasText(inspectionCode) ? inspectionCode : String.valueOf(inspectionOrderId));
+
+        return inspectionOrderId;
     }
 
     private String getInstructionNoSilently(Long colorInstructionId) {

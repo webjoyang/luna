@@ -65,4 +65,29 @@ class ReleaseProductionControllerTest {
         verify(releaseProductionService).releaseProduction(reqVO);
     }
 
+    @Test
+    @DisplayName("createFinishedInspection: 委托 Service 并返回生成的检验单ID")
+    void testCreateFinishedInspection() {
+        when(releaseProductionService.createFinishedInspection(1024L)).thenReturn(888L);
+
+        CommonResult<Long> result = releaseProductionController.createFinishedInspection(1024L);
+
+        assertTrue(result.isSuccess());
+        assertEquals(888L, result.getData());
+        verify(releaseProductionService).createFinishedInspection(1024L);
+    }
+
+    @Test
+    @DisplayName("createFinishedInspection: 校验端点注解与权限表达式")
+    void testCreateFinishedInspection_annotations() throws NoSuchMethodException {
+        java.lang.reflect.Method method = ReleaseProductionController.class.getMethod("createFinishedInspection", Long.class);
+        org.springframework.web.bind.annotation.PostMapping postMapping = method.getAnnotation(org.springframework.web.bind.annotation.PostMapping.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(postMapping);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new String[]{"/create-finished-inspection"}, postMapping.value());
+
+        org.springframework.security.access.prepost.PreAuthorize preAuthorize = method.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(preAuthorize);
+        assertEquals("@ss.hasPermission('lunaerp:production:release-production:release')", preAuthorize.value());
+    }
+
 }
