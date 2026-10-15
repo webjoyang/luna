@@ -127,6 +127,15 @@
 - **短路分支最小打桩纪律 (Minimal Mocking on Guard Branches)**：
   - 编写参数校验拦截、前置状态守卫或并发抢占拦截等异常单测时，仅打桩至触发异常的最短调用路径。
   - 严禁从正常链路无差别拷贝全量 Mock 打桩，避免业务路径优化或前置校验前移时触发 Mockito 5 严格模式下的 `UnnecessaryStubbingException`。
+- **纯 Mockito 单元测试下 MyBatis-Plus Lambda 缓存预热规约 (Lambda Cache Pre-initialization in Pure Unit Tests)**：
+  - **场景**：在采用 `@ExtendWith(MockitoExtension.class)` 的纯单元测试中，被测 Service 内部构建了 `new LambdaQueryWrapper<DO>()` 或 `new LambdaQueryWrapperX<DO>()`（如用于悲观锁条件构造、批量核销查询或分页筛选）。
+  - **缓存缺失陷阱**：纯 Mockito 环境不加载 Spring Boot 容器与 MyBatis-Plus 实体自动扫描器，首次执行 Lambda 条件提取时抛出 `com.baomidou.mybatisplus.core.exceptions.MybatisPlusException: can not find lambda cache for this entity [com.luna...DO]`。该未捕获异常不仅中断测试，还会因提前跳出方法体导致后续打桩未被执行，级联触发 Mockito 5 的 `UnnecessaryStubbingException`。
+  - **强制规约**：
+    1. 凡涉及 Lambda 条件包装器的纯 Mockito 单元测试，必须在 `@BeforeEach void setUp()` 中为被引用的实体显式预热注入 TableInfo 缓存：
+       ```java
+       TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TargetDO.class);
+       ```
+    2. 若被测方法级联涉及多个实体（如主表实体、明细实体及关联来源单实体），所有在 LambdaWrapper 泛型或方法引用中出现的实体类必须在 `setUp()` 中一并预热，杜绝运行时缓存缺失与误导性测试失败。
 
 ## 11. 跨服务涌现语义单测归位规约 (Cross-service Emergent Behavior & Anti-Tautological Mocking)
 
