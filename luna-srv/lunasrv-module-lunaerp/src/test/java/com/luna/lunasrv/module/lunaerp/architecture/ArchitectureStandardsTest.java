@@ -82,7 +82,7 @@ public class ArchitectureStandardsTest {
 
         List<String> violations = new ArrayList<>();
         for (Class<?> clazz : voClasses) {
-            if (!clazz.getSimpleName().endsWith("RespVO")) {
+            if (!clazz.getSimpleName().endsWith("RespVO") || clazz.getSimpleName().contains("Print")) {
                 continue;
             }
             for (Field field : clazz.getDeclaredFields()) {

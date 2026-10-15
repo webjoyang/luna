@@ -65,4 +65,26 @@ public interface SupplierReconService {
      */
     PageResult<SupplierReconRespVO> getSupplierReconPage(SupplierReconPageReqVO reqVO);
 
+    /**
+     * 确认供应商对账单（仅 DRAFT 状态，冻结快照）
+     *
+     * @param id 对账单ID
+     */
+    void confirmSupplierRecon(Long id);
+
+    /**
+     * 作废供应商对账单（仅 CONFIRMED 状态，释放指纹）
+     *
+     * @param id 对账单ID
+     */
+    void cancelSupplierRecon(Long id);
+
+    /**
+     * 获取供应商对账单打印数据（豁免金额脱敏）
+     *
+     * @param id 对账单ID
+     * @return 打印数据
+     */
+    SupplierReconPrintRespVO getSupplierReconPrintData(Long id);
+
 }

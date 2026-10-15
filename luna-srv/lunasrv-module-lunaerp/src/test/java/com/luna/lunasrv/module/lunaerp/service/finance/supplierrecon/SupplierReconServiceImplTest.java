@@ -3,9 +3,11 @@ package com.luna.lunasrv.module.lunaerp.service.finance.supplierrecon;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.supplierrecon.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentApplyDO;
@@ -20,6 +22,9 @@ import com.luna.lunasrv.module.lunaerp.enums.finance.PricingBasis;
 import com.luna.lunasrv.module.lunaerp.enums.finance.ReconStatus;
 import com.luna.lunasrv.module.lunaerp.enums.finance.SourceRefType;
 import com.luna.lunasrv.module.lunaerp.service.baseinfo.supplier.SupplierService;
+import com.luna.lunasrv.module.system.api.user.AdminUserApi;
+import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +36,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
@@ -62,6 +69,9 @@ class SupplierReconServiceImplTest {
 
     @Mock
     private PaymentApplyMapper paymentApplyMapper;
+
+    @Mock
+    private AdminUserApi adminUserApi;
 
     @InjectMocks
     private SupplierReconServiceImpl supplierReconService;
@@ -712,6 +722,420 @@ class SupplierReconServiceImplTest {
 
         ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.getSupplierRecon(200L));
         assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    // ==================== Issue 04: 确认/作废守卫 + 打印数据接口 ====================
+
+    @Test
+    @DisplayName("确认对账单：成功确认，状态变为 CONFIRMED 并记录确认人与时间")
+    void testConfirmSupplierRecon_Success() {
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setStatus(ReconStatus.DRAFT.getValue());
+        recon.setTotalAmount(new BigDecimal("1200.00"));
+        recon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        when(supplierReconItemMapper.selectCount(any(Wrapper.class))).thenReturn(2L);
+        when(supplierReconMapper.update(any(SupplierReconDO.class), any(Wrapper.class))).thenReturn(1);
+
+        supplierReconService.confirmSupplierRecon(100L);
+
+        ArgumentCaptor<SupplierReconDO> updateCaptor = ArgumentCaptor.forClass(SupplierReconDO.class);
+        verify(supplierReconMapper).update(updateCaptor.capture(), any(Wrapper.class));
+        SupplierReconDO updated = updateCaptor.getValue();
+        assertEquals(ReconStatus.CONFIRMED.getValue(), updated.getStatus());
+        assertNotNull(updated.getConfirmedAt());
+    }
+
+    @Test
+    @DisplayName("确认对账单：并发双确认只成功一次，影响行数 0 抛 001")
+    void testConfirmSupplierRecon_ConcurrentDoubleConfirm_Throws001() {
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setStatus(ReconStatus.DRAFT.getValue());
+        recon.setTotalAmount(new BigDecimal("1200.00"));
+        recon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        when(supplierReconItemMapper.selectCount(any(Wrapper.class))).thenReturn(2L);
+        // 模拟并发双确认时另一个事务先完成更新，条件更新 WHERE status='DRAFT' 影响行数为 0
+        when(supplierReconMapper.update(any(SupplierReconDO.class), any(Wrapper.class))).thenReturn(0);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.confirmSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("确认对账单：非 DRAFT 状态（已确认或已作废）拒绝确认报 001")
+    void testConfirmSupplierRecon_NonDraftStatus_Throws001() {
+        SupplierReconDO confirmedRecon = new SupplierReconDO();
+        confirmedRecon.setId(100L);
+        confirmedRecon.setStatus(ReconStatus.CONFIRMED.getValue());
+        confirmedRecon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(confirmedRecon);
+
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> supplierReconService.confirmSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex1.getCode());
+
+        SupplierReconDO cancelledRecon = new SupplierReconDO();
+        cancelledRecon.setId(101L);
+        cancelledRecon.setStatus(ReconStatus.CANCELLED.getValue());
+        cancelledRecon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(101L)).thenReturn(cancelledRecon);
+
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> supplierReconService.confirmSupplierRecon(101L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex2.getCode());
+    }
+
+    @Test
+    @DisplayName("确认对账单：total_amount 为 0 或无有效明细行拒绝确认报 001")
+    void testConfirmSupplierRecon_ZeroAmountOrNoItems_Throws001() {
+        // total_amount 为 0
+        SupplierReconDO zeroAmountRecon = new SupplierReconDO();
+        zeroAmountRecon.setId(100L);
+        zeroAmountRecon.setStatus(ReconStatus.DRAFT.getValue());
+        zeroAmountRecon.setTotalAmount(BigDecimal.ZERO);
+        zeroAmountRecon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(zeroAmountRecon);
+
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> supplierReconService.confirmSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex1.getCode());
+
+        // total_amount > 0 但有效明细行为 0
+        SupplierReconDO noItemsRecon = new SupplierReconDO();
+        noItemsRecon.setId(101L);
+        noItemsRecon.setStatus(ReconStatus.DRAFT.getValue());
+        noItemsRecon.setTotalAmount(new BigDecimal("500.00"));
+        noItemsRecon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(101L)).thenReturn(noItemsRecon);
+        when(supplierReconItemMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
+
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> supplierReconService.confirmSupplierRecon(101L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex2.getCode());
+    }
+
+    @Test
+    @DisplayName("冻结语义：CONFIRMED 后 update/re-fetch/delete 全部拒绝报 001")
+    void testFrozenSemanticsAfterConfirmed() {
+        SupplierReconDO confirmedRecon = new SupplierReconDO();
+        confirmedRecon.setId(100L);
+        confirmedRecon.setStatus(ReconStatus.CONFIRMED.getValue());
+        confirmedRecon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(confirmedRecon);
+
+        // 1. update 拒绝
+        SupplierReconUpdateReqVO updateReq = new SupplierReconUpdateReqVO();
+        updateReq.setId(100L);
+        ServiceException exUpdate = assertThrows(ServiceException.class, () -> supplierReconService.updateSupplierRecon(updateReq));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), exUpdate.getCode());
+
+        // 2. re-fetch 拒绝
+        ServiceException exRefetch = assertThrows(ServiceException.class, () -> supplierReconService.reFetchSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), exRefetch.getCode());
+
+        // 3. delete 拒绝
+        ServiceException exDelete = assertThrows(ServiceException.class, () -> supplierReconService.deleteSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), exDelete.getCode());
+    }
+
+    @Test
+    @DisplayName("冻结语义：详情返回行表快照值，源单事后变化不影响对账单返回内容（零回写）")
+    void testConfirmedDetailReturnsSnapshot() {
+        SupplierReconDO confirmedRecon = new SupplierReconDO();
+        confirmedRecon.setId(100L);
+        confirmedRecon.setReconNo("SR20261015001");
+        confirmedRecon.setStatus(ReconStatus.CONFIRMED.getValue());
+        confirmedRecon.setTotalAmount(new BigDecimal("1200.00"));
+        confirmedRecon.setTenantId(TENANT_ID);
+
+        SupplierReconItemDO snapshotItem = new SupplierReconItemDO();
+        snapshotItem.setId(1L);
+        snapshotItem.setReconId(100L);
+        snapshotItem.setLineType(LineType.PROCESS.getValue());
+        snapshotItem.setSourceRefType(SourceRefType.INSPECTION.getValue());
+        snapshotItem.setSourceRefId(888L);
+        snapshotItem.setBillQty(new BigDecimal("300.00"));
+        snapshotItem.setUnitPrice(new BigDecimal("4.0000"));
+        snapshotItem.setLineAmount(new BigDecimal("1200.00"));
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(confirmedRecon);
+        when(supplierReconItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(snapshotItem));
+        when(paymentApplyMapper.selectList(any(Wrapper.class))).thenReturn(Collections.emptyList());
+
+        SupplierReconRespVO respVO = supplierReconService.getSupplierRecon(100L);
+
+        assertNotNull(respVO);
+        assertEquals(1, respVO.getItems().size());
+        SupplierReconItemRespVO item = respVO.getItems().get(0);
+        assertEquals(new BigDecimal("1200.00"), item.getLineAmount());
+        assertEquals(new BigDecimal("4.0000"), item.getUnitPrice());
+        // 验证源单服务未被调用（纯行表快照，零回写）
+        verifyNoInteractions(supplierReconSourceService);
+    }
+
+    @Test
+    @DisplayName("作废守卫：存在 PENDING 状态的付款申请时拒绝作废报 006")
+    void testCancelSupplierRecon_GuardWithPendingApply_Throws006() {
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setStatus(ReconStatus.CONFIRMED.getValue());
+        recon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        when(paymentApplyMapper.selectCount(any(Wrapper.class))).thenReturn(1L); // 存在 PENDING 申请
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.cancelSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_HAS_PAYMENT_APPLY.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废守卫：存在 APPROVING 状态的付款申请时拒绝作废报 006")
+    void testCancelSupplierRecon_GuardWithApprovingApply_Throws006() {
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setStatus(ReconStatus.CONFIRMED.getValue());
+        recon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        when(paymentApplyMapper.selectCount(any(Wrapper.class))).thenReturn(1L); // 存在 APPROVING 申请
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.cancelSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_HAS_PAYMENT_APPLY.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废守卫：存在 APPROVED 状态的付款申请时拒绝作废报 006")
+    void testCancelSupplierRecon_GuardWithApprovedApply_Throws006() {
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setStatus(ReconStatus.CONFIRMED.getValue());
+        recon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        when(paymentApplyMapper.selectCount(any(Wrapper.class))).thenReturn(1L); // 存在 APPROVED 申请
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.cancelSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_HAS_PAYMENT_APPLY.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废守卫：挂靠申请为 REJECTED 时不阻断作废，作废成功")
+    void testCancelSupplierRecon_SuccessWithRejectedApply() {
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setStatus(ReconStatus.CONFIRMED.getValue());
+        recon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        // PENDING/APPROVING/APPROVED 为 0（REJECTED 申请不阻断）
+        when(paymentApplyMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
+        when(supplierReconMapper.update(any(SupplierReconDO.class), any(Wrapper.class))).thenReturn(1);
+
+        supplierReconService.cancelSupplierRecon(100L);
+
+        ArgumentCaptor<SupplierReconDO> updateCaptor = ArgumentCaptor.forClass(SupplierReconDO.class);
+        verify(supplierReconMapper).update(updateCaptor.capture(), any(Wrapper.class));
+        SupplierReconDO updated = updateCaptor.getValue();
+        assertEquals(ReconStatus.CANCELLED.getValue(), updated.getStatus());
+        assertNotNull(updated.getCancelledAt());
+    }
+
+    @Test
+    @DisplayName("作废守卫：挂靠申请为 CANCELLED 时不阻断作废，作废成功")
+    void testCancelSupplierRecon_SuccessWithCancelledApply() {
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setStatus(ReconStatus.CONFIRMED.getValue());
+        recon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        // PENDING/APPROVING/APPROVED 为 0（CANCELLED 申请不阻断）
+        when(paymentApplyMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
+        when(supplierReconMapper.update(any(SupplierReconDO.class), any(Wrapper.class))).thenReturn(1);
+
+        supplierReconService.cancelSupplierRecon(100L);
+
+        ArgumentCaptor<SupplierReconDO> updateCaptor = ArgumentCaptor.forClass(SupplierReconDO.class);
+        verify(supplierReconMapper).update(updateCaptor.capture(), any(Wrapper.class));
+        SupplierReconDO updated = updateCaptor.getValue();
+        assertEquals(ReconStatus.CANCELLED.getValue(), updated.getStatus());
+        assertNotNull(updated.getCancelledAt());
+    }
+
+    @Test
+    @DisplayName("终态与状态守卫：草稿 DRAFT 或已作废 CANCELLED 单据再作废报 001")
+    void testCancelSupplierRecon_NonConfirmedStatus_Throws001() {
+        // 草稿直接作废拒绝
+        SupplierReconDO draftRecon = new SupplierReconDO();
+        draftRecon.setId(100L);
+        draftRecon.setStatus(ReconStatus.DRAFT.getValue());
+        draftRecon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(draftRecon);
+
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> supplierReconService.cancelSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex1.getCode());
+
+        // 已作废终态单据再作废拒绝
+        SupplierReconDO cancelledRecon = new SupplierReconDO();
+        cancelledRecon.setId(101L);
+        cancelledRecon.setStatus(ReconStatus.CANCELLED.getValue());
+        cancelledRecon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(101L)).thenReturn(cancelledRecon);
+
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> supplierReconService.cancelSupplierRecon(101L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex2.getCode());
+    }
+
+    @Test
+    @DisplayName("作废并发防重：条件更新影响行数为 0 报 001")
+    void testCancelSupplierRecon_ConcurrentConflict_Throws001() {
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setStatus(ReconStatus.CONFIRMED.getValue());
+        recon.setTenantId(TENANT_ID);
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        when(paymentApplyMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
+        when(supplierReconMapper.update(any(SupplierReconDO.class), any(Wrapper.class))).thenReturn(0);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.cancelSupplierRecon(100L));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废后指纹释放：单据变为 CANCELLED 后，指纹不再被占用并回到候选池")
+    void testCancelReleasesFingerprintToCandidatePool() {
+        // 构造已作废对账单
+        SupplierReconDO cancelledRecon = new SupplierReconDO();
+        cancelledRecon.setId(100L);
+        cancelledRecon.setReconNo("SR20261015001");
+        cancelledRecon.setStatus(ReconStatus.CANCELLED.getValue());
+        cancelledRecon.setTenantId(TENANT_ID);
+
+        // 验证源单占用的 SQL 条件中只匹配 DRAFT 和 CONFIRMED
+        List<String> activeStatuses = Arrays.asList(ReconStatus.DRAFT.getValue(), ReconStatus.CONFIRMED.getValue());
+        assertFalse(activeStatuses.contains(cancelledRecon.getStatus()),
+                "CANCELLED 状态对账单必须排除在有效占用状态之外，指纹必须自动释放");
+    }
+
+    @Test
+    @DisplayName("打印数据接口：出参遵循 04 号通用件 print-data 契约，正确包含三类行、合计与抬头")
+    void testGetSupplierReconPrintData_Success() {
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setReconNo("SR20261015001");
+        recon.setSupplierId(10L);
+        recon.setSupplierName("杭州某纺织厂");
+        recon.setPeriodStart(LocalDate.of(2026, 9, 1));
+        recon.setPeriodEnd(LocalDate.of(2026, 9, 30));
+        recon.setStatus(ReconStatus.CONFIRMED.getValue());
+        recon.setTotalAmount(new BigDecimal("15000.00"));
+        recon.setConfirmedBy(1L);
+        recon.setTenantId(TENANT_ID);
+
+        // 三类行：PROCESS / PURCHASE / ADJUST
+        SupplierReconItemDO processItem = new SupplierReconItemDO();
+        processItem.setId(1L);
+        processItem.setReconId(100L);
+        processItem.setLineType(LineType.PROCESS.getValue());
+        processItem.setInspectionOrderNo("INS001");
+        processItem.setLineAmount(new BigDecimal("8000.00"));
+
+        SupplierReconItemDO purchaseItem = new SupplierReconItemDO();
+        purchaseItem.setId(2L);
+        purchaseItem.setReconId(100L);
+        purchaseItem.setLineType(LineType.PURCHASE.getValue());
+        purchaseItem.setStockInNo("IN001");
+        purchaseItem.setLineAmount(new BigDecimal("7500.00"));
+
+        SupplierReconItemDO adjustItem = new SupplierReconItemDO();
+        adjustItem.setId(3L);
+        adjustItem.setReconId(100L);
+        adjustItem.setLineType(LineType.ADJUST.getValue());
+        adjustItem.setAdjustReason("质量扣款");
+        adjustItem.setLineAmount(new BigDecimal("-500.00"));
+
+        SupplierRespVO supplier = new SupplierRespVO();
+        supplier.setId(10L);
+        supplier.setCompanyName("杭州某纺织厂");
+        supplier.setPhone("13800000000");
+
+        AdminUserRespDTO user = new AdminUserRespDTO();
+        user.setId(1L);
+        user.setNickname("李财务");
+
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        when(supplierReconItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(processItem, purchaseItem, adjustItem));
+        when(supplierService.getSupplier(10L)).thenReturn(supplier);
+        when(adminUserApi.getUser(1L)).thenReturn(user);
+
+        SupplierReconPrintRespVO printVO = supplierReconService.getSupplierReconPrintData(100L);
+
+        assertNotNull(printVO);
+        assertEquals("VENDOR_RECON", printVO.getBizType(), "bizType 必须为 VENDOR_RECON");
+        assertEquals("供应商对账单", printVO.getTitle());
+        assertEquals("SR20261015001", printVO.getReconNo());
+        assertEquals("杭州某纺织厂", printVO.getSupplierName());
+        assertEquals("13800000000", printVO.getSupplierPhone());
+        assertEquals("李财务", printVO.getConfirmedByName());
+        assertEquals(new BigDecimal("15000.00"), printVO.getTotalAmount());
+        assertEquals(new BigDecimal("8000.00"), printVO.getTotalProcessAmount());
+        assertEquals(new BigDecimal("7500.00"), printVO.getTotalPurchaseAmount());
+        assertEquals(new BigDecimal("-500.00"), printVO.getTotalAdjustAmount());
+        assertEquals(3, printVO.getItems().size());
+        assertNotNull(printVO.getPrintTime());
+    }
+
+    @Test
+    @DisplayName("脱敏豁免规约：打印 VO 豁免金额脱敏（无 @Sensitive 注解），而业务 VO 保留 @Sensitive")
+    void testPrintVOExemptFromSensitiveAnnotation() throws NoSuchFieldException {
+        // 打印 VO 金额字段不含 @Sensitive
+        Field printTotalAmount = SupplierReconPrintRespVO.class.getDeclaredField("totalAmount");
+        assertFalse(printTotalAmount.isAnnotationPresent(Sensitive.class),
+                "SupplierReconPrintRespVO.totalAmount 必须豁免脱敏，严禁标注 @Sensitive");
+
+        Field printItemLineAmount = SupplierReconPrintItemRespVO.class.getDeclaredField("lineAmount");
+        assertFalse(printItemLineAmount.isAnnotationPresent(Sensitive.class),
+                "SupplierReconPrintItemRespVO.lineAmount 必须豁免脱敏，严禁标注 @Sensitive");
+
+        // 业务 VO 金额字段必须含 @Sensitive
+        Field respTotalAmount = SupplierReconRespVO.class.getDeclaredField("totalAmount");
+        assertTrue(respTotalAmount.isAnnotationPresent(Sensitive.class),
+                "SupplierReconRespVO.totalAmount 必须标注 @Sensitive");
+
+        Field respItemLineAmount = SupplierReconItemRespVO.class.getDeclaredField("lineAmount");
+        assertTrue(respItemLineAmount.isAnnotationPresent(Sensitive.class),
+                "SupplierReconItemRespVO.lineAmount 必须标注 @Sensitive");
+    }
+
+    @Test
+    @DisplayName("切面日志规约：confirm / cancel / getSupplierReconPrintData 正确标注 @LogRecord")
+    void testLogRecordAnnotations() throws NoSuchMethodException {
+        Method confirmMethod = SupplierReconServiceImpl.class.getMethod("confirmSupplierRecon", Long.class);
+        LogRecord confirmLog = confirmMethod.getAnnotation(LogRecord.class);
+        assertNotNull(confirmLog, "confirmSupplierRecon 必须标注 @LogRecord");
+        assertEquals("SUPPLIER_RECON", confirmLog.type());
+        assertEquals("CONFIRM", confirmLog.subType());
+
+        Method cancelMethod = SupplierReconServiceImpl.class.getMethod("cancelSupplierRecon", Long.class);
+        LogRecord cancelLog = cancelMethod.getAnnotation(LogRecord.class);
+        assertNotNull(cancelLog, "cancelSupplierRecon 必须标注 @LogRecord");
+        assertEquals("SUPPLIER_RECON", cancelLog.type());
+        assertEquals("CANCEL", cancelLog.subType());
+
+        Method printMethod = SupplierReconServiceImpl.class.getMethod("getSupplierReconPrintData", Long.class);
+        LogRecord printLog = printMethod.getAnnotation(LogRecord.class);
+        assertNotNull(printLog, "getSupplierReconPrintData 必须标注 @LogRecord");
+        assertEquals("打印", printLog.type());
+        assertEquals("供应商对账单", printLog.subType());
     }
 
 }

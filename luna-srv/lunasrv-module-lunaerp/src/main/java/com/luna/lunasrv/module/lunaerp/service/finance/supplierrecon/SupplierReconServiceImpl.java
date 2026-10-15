@@ -2,9 +2,11 @@ package com.luna.lunasrv.module.lunaerp.service.finance.supplierrecon;
 
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo.SupplierRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.supplierrecon.vo.*;
@@ -18,6 +20,9 @@ import com.luna.lunasrv.module.lunaerp.enums.finance.LineType;
 import com.luna.lunasrv.module.lunaerp.enums.finance.PricingBasis;
 import com.luna.lunasrv.module.lunaerp.enums.finance.ReconStatus;
 import com.luna.lunasrv.module.lunaerp.service.baseinfo.supplier.SupplierService;
+import com.luna.lunasrv.module.system.api.user.AdminUserApi;
+import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
+import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +34,7 @@ import org.springframework.validation.annotation.Validated;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Function;
@@ -69,6 +75,9 @@ public class SupplierReconServiceImpl implements SupplierReconService {
 
     @Resource
     private PaymentApplyMapper paymentApplyMapper;
+
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @Override
     public List<SupplierReconSourceItemRespVO> preview(SupplierReconPreviewReqVO reqVO) {
@@ -419,6 +428,179 @@ public class SupplierReconServiceImpl implements SupplierReconService {
         }).collect(Collectors.toList());
 
         return new PageResult<>(voList, pageResult.getTotal());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "SUPPLIER_RECON", subType = "CONFIRM", bizNo = "{{#id}}",
+            success = "确认供应商对账单【{{#id}}】")
+    public void confirmSupplierRecon(Long id) {
+        if (id == null) {
+            throw exception(SUPPLIER_RECON_NOT_EXISTS);
+        }
+        SupplierReconDO recon = supplierReconMapper.selectById(id);
+        validateReconExistsAndTenant(recon);
+
+        // 1. 状态守卫：仅 DRAFT 允许确认
+        if (!ReconStatus.DRAFT.getValue().equals(recon.getStatus())) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+
+        // 2. 金额与行数守卫：total_amount 为 0 或无有效行拒绝确认
+        if (recon.getTotalAmount() == null || recon.getTotalAmount().compareTo(BigDecimal.ZERO) == 0) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+        Long itemCount = supplierReconItemMapper.selectCount(new LambdaQueryWrapperX<SupplierReconItemDO>()
+                .eq(SupplierReconItemDO::getReconId, id));
+        if (itemCount == null || itemCount == 0) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 条件更新：WHERE status='DRAFT' 防并发双确认（影响行数 0 报 001）
+        SupplierReconDO updateDO = new SupplierReconDO();
+        updateDO.setStatus(ReconStatus.CONFIRMED.getValue());
+        updateDO.setConfirmedBy(SecurityFrameworkUtils.getLoginUserId());
+        updateDO.setConfirmedAt(LocalDateTime.now());
+
+        int affected = supplierReconMapper.update(updateDO, new LambdaUpdateWrapper<SupplierReconDO>()
+                .eq(SupplierReconDO::getId, id)
+                .eq(SupplierReconDO::getStatus, ReconStatus.DRAFT.getValue()));
+        if (affected == 0) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "SUPPLIER_RECON", subType = "CANCEL", bizNo = "{{#id}}",
+            success = "作废供应商对账单【{{#id}}】")
+    public void cancelSupplierRecon(Long id) {
+        if (id == null) {
+            throw exception(SUPPLIER_RECON_NOT_EXISTS);
+        }
+        SupplierReconDO recon = supplierReconMapper.selectById(id);
+        validateReconExistsAndTenant(recon);
+
+        // 1. 状态守卫：仅 CONFIRMED 允许作废（终态 CANCELLED 或草稿 DRAFT 均不可作废）
+        if (!ReconStatus.CONFIRMED.getValue().equals(recon.getStatus())) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+
+        // 2. 挂靠申请守卫：存在挂靠且 approval_status ∈ {PENDING, APPROVING, APPROVED} 的付款申请时拒绝报 006（REJECTED/CANCELLED 申请不阻断）
+        Long blockingApplyCount = paymentApplyMapper.selectCount(new LambdaQueryWrapperX<PaymentApplyDO>()
+                .eq(PaymentApplyDO::getReconId, id)
+                .in(PaymentApplyDO::getApprovalStatus, Arrays.asList("PENDING", "APPROVING", "APPROVED")));
+        if (blockingApplyCount != null && blockingApplyCount > 0) {
+            throw exception(SUPPLIER_RECON_HAS_PAYMENT_APPLY);
+        }
+
+        // 3. 条件更新：WHERE status='CONFIRMED'，影响行数 0 报 001
+        SupplierReconDO updateDO = new SupplierReconDO();
+        updateDO.setStatus(ReconStatus.CANCELLED.getValue());
+        updateDO.setCancelledBy(SecurityFrameworkUtils.getLoginUserId());
+        updateDO.setCancelledAt(LocalDateTime.now());
+
+        int affected = supplierReconMapper.update(updateDO, new LambdaUpdateWrapper<SupplierReconDO>()
+                .eq(SupplierReconDO::getId, id)
+                .eq(SupplierReconDO::getStatus, ReconStatus.CONFIRMED.getValue()));
+        if (affected == 0) {
+            throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
+        }
+    }
+
+    @Override
+    @LogRecord(type = "打印", subType = "供应商对账单", bizNo = "{{#id}}", success = "打印了供应商对账单 {{#no}}")
+    public SupplierReconPrintRespVO getSupplierReconPrintData(Long id) {
+        if (id == null) {
+            throw exception(SUPPLIER_RECON_NOT_EXISTS);
+        }
+        SupplierReconDO recon = supplierReconMapper.selectById(id);
+        validateReconExistsAndTenant(recon);
+
+        // 留痕上下文
+        LogRecordContext.putVariable("no", recon.getReconNo());
+        LogRecordContext.putVariable("id", recon.getId());
+
+        // 查询明细行（按 id 升序）
+        List<SupplierReconItemDO> items = supplierReconItemMapper.selectList(
+                new LambdaQueryWrapperX<SupplierReconItemDO>()
+                        .eq(SupplierReconItemDO::getReconId, id)
+                        .orderByAsc(SupplierReconItemDO::getId));
+
+        List<SupplierReconPrintItemRespVO> printItems = new ArrayList<>();
+        BigDecimal totalProcess = BigDecimal.ZERO;
+        BigDecimal totalPurchase = BigDecimal.ZERO;
+        BigDecimal totalAdjust = BigDecimal.ZERO;
+
+        if (CollUtil.isNotEmpty(items)) {
+            for (SupplierReconItemDO item : items) {
+                SupplierReconPrintItemRespVO itemVO = BeanUtils.toBean(item, SupplierReconPrintItemRespVO.class);
+                printItems.add(itemVO);
+
+                if (LineType.PROCESS.getValue().equalsIgnoreCase(item.getLineType())) {
+                    if (item.getLineAmount() != null) {
+                        totalProcess = totalProcess.add(item.getLineAmount());
+                    }
+                } else if (LineType.PURCHASE.getValue().equalsIgnoreCase(item.getLineType())) {
+                    if (item.getLineAmount() != null) {
+                        totalPurchase = totalPurchase.add(item.getLineAmount());
+                    }
+                } else if (LineType.ADJUST.getValue().equalsIgnoreCase(item.getLineType())) {
+                    if (item.getLineAmount() != null) {
+                        totalAdjust = totalAdjust.add(item.getLineAmount());
+                    }
+                }
+            }
+        }
+
+        SupplierReconPrintRespVO resp = SupplierReconPrintRespVO.builder()
+                .bizType("VENDOR_RECON")
+                .title("供应商对账单")
+                .id(recon.getId())
+                .reconNo(recon.getReconNo())
+                .supplierId(recon.getSupplierId())
+                .supplierName(recon.getSupplierName())
+                .periodStart(recon.getPeriodStart())
+                .periodEnd(recon.getPeriodEnd())
+                .status(recon.getStatus())
+                .totalAmount(recon.getTotalAmount() != null ? recon.getTotalAmount() : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
+                .totalProcessAmount(totalProcess.setScale(2, RoundingMode.HALF_UP))
+                .totalPurchaseAmount(totalPurchase.setScale(2, RoundingMode.HALF_UP))
+                .totalAdjustAmount(totalAdjust.setScale(2, RoundingMode.HALF_UP))
+                .confirmedBy(recon.getConfirmedBy())
+                .confirmedAt(recon.getConfirmedAt())
+                .cancelledBy(recon.getCancelledBy())
+                .cancelledAt(recon.getCancelledAt())
+                .remark(recon.getRemark())
+                .creator(recon.getCreator())
+                .createTime(recon.getCreateTime())
+                .printTime(LocalDateTime.now())
+                .items(printItems)
+                .build();
+
+        // 补全供应商电话
+        if (recon.getSupplierId() != null && supplierService != null) {
+            SupplierRespVO supplier = supplierService.getSupplier(recon.getSupplierId());
+            if (supplier != null) {
+                resp.setSupplierPhone(supplier.getPhone());
+            }
+        }
+
+        // 补全确认人/作废人姓名（从 adminUserApi 查询）
+        if (recon.getConfirmedBy() != null && adminUserApi != null) {
+            AdminUserRespDTO user = adminUserApi.getUser(recon.getConfirmedBy());
+            if (user != null) {
+                resp.setConfirmedByName(StringUtils.hasText(user.getNickname()) ? user.getNickname() : String.valueOf(user.getId()));
+            }
+        }
+        if (recon.getCancelledBy() != null && adminUserApi != null) {
+            AdminUserRespDTO user = adminUserApi.getUser(recon.getCancelledBy());
+            if (user != null) {
+                resp.setCancelledByName(StringUtils.hasText(user.getNickname()) ? user.getNickname() : String.valueOf(user.getId()));
+            }
+        }
+
+        return resp;
     }
 
     private BigDecimal computeAppliedAmount(Long reconId) {

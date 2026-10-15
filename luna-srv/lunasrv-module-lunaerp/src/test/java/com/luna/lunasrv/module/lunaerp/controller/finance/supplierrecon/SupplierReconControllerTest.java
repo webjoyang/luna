@@ -119,19 +119,56 @@ public class SupplierReconControllerTest {
     }
 
     @Test
-    @DisplayName("权限注解校验：确认各端点声明了正确的权限码")
-    void testPermissions() throws NoSuchMethodException {
-        assertPermission("preview", SupplierReconPreviewReqVO.class, "@ss.hasPermission('lunaerp:finance:supplierrecon:create')");
-        assertPermission("createSupplierRecon", SupplierReconCreateReqVO.class, "@ss.hasPermission('lunaerp:finance:supplierrecon:create')");
-        assertPermission("updateSupplierRecon", SupplierReconUpdateReqVO.class, "@ss.hasPermission('lunaerp:finance:supplierrecon:update')");
-        assertPermission("reFetchSupplierRecon", Long.class, "@ss.hasPermission('lunaerp:finance:supplierrecon:update')");
-        assertPermission("deleteSupplierRecon", Long.class, "@ss.hasPermission('lunaerp:finance:supplierrecon:delete')");
-        assertPermission("getSupplierRecon", Long.class, "@ss.hasPermission('lunaerp:finance:supplierrecon:query')");
-        assertPermission("getSupplierReconPage", SupplierReconPageReqVO.class, "@ss.hasPermission('lunaerp:finance:supplierrecon:query')");
+    @DisplayName("confirmSupplierRecon 接口：委托 Service 并返回成功")
+    void testConfirmSupplierRecon() {
+        CommonResult<Boolean> result = controller.confirmSupplierRecon(100L);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(supplierReconService).confirmSupplierRecon(100L);
     }
 
-    private void assertPermission(String methodName, Class<?> paramType, String expectedExpression) throws NoSuchMethodException {
-        Method method = SupplierReconController.class.getMethod(methodName, paramType);
+    @Test
+    @DisplayName("cancelSupplierRecon 接口：委托 Service 并返回成功")
+    void testCancelSupplierRecon() {
+        CommonResult<Boolean> result = controller.cancelSupplierRecon(100L);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(supplierReconService).cancelSupplierRecon(100L);
+    }
+
+    @Test
+    @DisplayName("getSupplierReconPrintData 接口：委托 Service 并返回打印数据")
+    void testGetSupplierReconPrintData() {
+        SupplierReconPrintRespVO printVO = new SupplierReconPrintRespVO();
+        printVO.setId(100L);
+        when(supplierReconService.getSupplierReconPrintData(100L)).thenReturn(printVO);
+
+        CommonResult<SupplierReconPrintRespVO> result = controller.getSupplierReconPrintData(null, 100L);
+
+        assertTrue(result.isSuccess());
+        assertEquals(printVO, result.getData());
+        verify(supplierReconService).getSupplierReconPrintData(100L);
+    }
+
+    @Test
+    @DisplayName("权限注解校验：确认各端点声明了正确的权限码")
+    void testPermissions() throws NoSuchMethodException {
+        assertPermission("preview", new Class<?>[]{SupplierReconPreviewReqVO.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:create')");
+        assertPermission("createSupplierRecon", new Class<?>[]{SupplierReconCreateReqVO.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:create')");
+        assertPermission("updateSupplierRecon", new Class<?>[]{SupplierReconUpdateReqVO.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:update')");
+        assertPermission("reFetchSupplierRecon", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:update')");
+        assertPermission("deleteSupplierRecon", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:delete')");
+        assertPermission("getSupplierRecon", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:query')");
+        assertPermission("getSupplierReconPage", new Class<?>[]{SupplierReconPageReqVO.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:query')");
+        assertPermission("confirmSupplierRecon", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:confirm')");
+        assertPermission("cancelSupplierRecon", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:confirm')");
+        assertPermission("getSupplierReconPrintData", new Class<?>[]{Long.class, Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:print')");
+    }
+
+    private void assertPermission(String methodName, Class<?>[] paramTypes, String expectedExpression) throws NoSuchMethodException {
+        Method method = SupplierReconController.class.getMethod(methodName, paramTypes);
         PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
         assertNotNull(annotation, methodName + " 必须标注 @PreAuthorize");
         assertEquals(expectedExpression, annotation.value());
