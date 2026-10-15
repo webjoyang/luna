@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.supplierrecon;
 
 import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.finance.supplierrecon.vo.SupplierReconSourceItemRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.supplierrecon.SupplierReconDO;
@@ -63,7 +64,7 @@ public class SupplierReconSourceServiceImpl implements SupplierReconSourceServic
 
     @Override
     public List<SupplierReconSourceItemRespVO> getAvailableCandidateItems(Long supplierId, LocalDate periodStart, LocalDate periodEnd) {
-        List<SupplierReconSourceItemRespVO> allCandidates = getAllCandidateItems(supplierId, periodStart, periodEnd);
+        List<SupplierReconSourceItemRespVO> allCandidates = loadAllCandidates(supplierId, periodStart, periodEnd);
         if (CollUtil.isEmpty(allCandidates)) {
             return Collections.emptyList();
         }
@@ -83,7 +84,98 @@ public class SupplierReconSourceServiceImpl implements SupplierReconSourceServic
     }
 
     @Override
-    public List<SupplierReconSourceItemRespVO> getAllCandidateItems(Long supplierId, LocalDate periodStart, LocalDate periodEnd) {
+    public Map<String, String> findOccupiedFingerprints(Collection<String> fingerprints) {
+        if (CollUtil.isEmpty(fingerprints)) {
+            return Collections.emptyMap();
+        }
+
+        // 解析指纹中的 sourceRefId 集合，精准利用 (tenant_id, source_ref_type, source_ref_id) 索引，避免全表扫描
+        Set<Long> inspectionIds = new HashSet<>();
+        Set<Long> stockInIds = new HashSet<>();
+        for (String fp : fingerprints) {
+            if (fp == null) {
+                continue;
+            }
+            String[] parts = fp.split(":");
+            if (parts.length >= 2) {
+                try {
+                    long id = Long.parseLong(parts[1]);
+                    if (SourceRefType.INSPECTION.getValue().equalsIgnoreCase(parts[0])) {
+                        inspectionIds.add(id);
+                    } else if (SourceRefType.STOCK_IN_ITEM.getValue().equalsIgnoreCase(parts[0])) {
+                        stockInIds.add(id);
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+
+        if (inspectionIds.isEmpty() && stockInIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        LambdaQueryWrapper<SupplierReconItemDO> itemWrapper = new LambdaQueryWrapperX<SupplierReconItemDO>()
+                .and(w -> {
+                    boolean hasFirst = false;
+                    if (!inspectionIds.isEmpty()) {
+                        w.eq(SupplierReconItemDO::getSourceRefType, SourceRefType.INSPECTION.getValue())
+                                .in(SupplierReconItemDO::getSourceRefId, inspectionIds);
+                        hasFirst = true;
+                    }
+                    if (!stockInIds.isEmpty()) {
+                        if (hasFirst) {
+                            w.or(sub -> sub.eq(SupplierReconItemDO::getSourceRefType, SourceRefType.STOCK_IN_ITEM.getValue())
+                                    .in(SupplierReconItemDO::getSourceRefId, stockInIds));
+                        } else {
+                            w.eq(SupplierReconItemDO::getSourceRefType, SourceRefType.STOCK_IN_ITEM.getValue())
+                                    .in(SupplierReconItemDO::getSourceRefId, stockInIds);
+                        }
+                    }
+                });
+
+        List<SupplierReconItemDO> matchedItems = supplierReconItemMapper.selectList(itemWrapper);
+        if (CollUtil.isEmpty(matchedItems)) {
+            return Collections.emptyMap();
+        }
+
+        // 查找这些行所归属的有效对账单（DRAFT / CONFIRMED），CANCELLED 对账单指纹自动释放回池
+        Set<Long> reconIds = matchedItems.stream().map(SupplierReconItemDO::getReconId).collect(Collectors.toSet());
+        List<SupplierReconDO> activeRecons = supplierReconMapper.selectList(new LambdaQueryWrapperX<SupplierReconDO>()
+                .inOrEmpty(SupplierReconDO::getId, reconIds)
+                .in(SupplierReconDO::getStatus, Arrays.asList(ReconStatus.DRAFT.getValue(), ReconStatus.CONFIRMED.getValue())));
+        if (CollUtil.isEmpty(activeRecons)) {
+            return Collections.emptyMap();
+        }
+
+        Map<Long, String> activeReconNoMap = activeRecons.stream()
+                .collect(Collectors.toMap(SupplierReconDO::getId, SupplierReconDO::getReconNo, (existing, replacement) -> existing));
+
+        Map<String, String> occupiedMap = new HashMap<>();
+        for (SupplierReconItemDO item : matchedItems) {
+            String reconNo = activeReconNoMap.get(item.getReconId());
+            if (reconNo == null || item.getSourceRefType() == null || item.getSourceRefId() == null) {
+                continue;
+            }
+            String fp = buildFingerprint(item.getSourceRefType(), item.getSourceRefId(), item.getSourceRefItemId());
+            if (fingerprints.contains(fp)) {
+                occupiedMap.put(fp, reconNo);
+            }
+        }
+        return occupiedMap;
+    }
+
+    @Override
+    public String buildFingerprint(String sourceRefType, Long sourceRefId, Long sourceRefItemId) {
+        if (SourceRefType.INSPECTION.getValue().equalsIgnoreCase(sourceRefType) || sourceRefItemId == null) {
+            return sourceRefType + ":" + sourceRefId;
+        }
+        return sourceRefType + ":" + sourceRefId + ":" + sourceRefItemId;
+    }
+
+    /**
+     * 内部候选明细装配方法（聚合加工费候选与采购货款候选）
+     */
+    private List<SupplierReconSourceItemRespVO> loadAllCandidates(Long supplierId, LocalDate periodStart, LocalDate periodEnd) {
         if (supplierId == null || periodStart == null || periodEnd == null) {
             return Collections.emptyList();
         }
@@ -101,53 +193,11 @@ public class SupplierReconSourceServiceImpl implements SupplierReconSourceServic
         return result;
     }
 
-    @Override
-    public Map<String, String> findOccupiedFingerprints(Collection<String> fingerprints) {
-        if (CollUtil.isEmpty(fingerprints)) {
-            return Collections.emptyMap();
-        }
-
-        // 查找所有有效对账单（DRAFT / CONFIRMED），CANCELLED 对账单的指纹自动释放回池
-        List<SupplierReconDO> activeRecons = supplierReconMapper.selectList(new LambdaQueryWrapperX<SupplierReconDO>()
-                .in(SupplierReconDO::getStatus, Arrays.asList(ReconStatus.DRAFT.getValue(), ReconStatus.CONFIRMED.getValue())));
-        if (CollUtil.isEmpty(activeRecons)) {
-            return Collections.emptyMap();
-        }
-
-        Map<Long, String> reconNoMap = activeRecons.stream()
-                .collect(Collectors.toMap(SupplierReconDO::getId, SupplierReconDO::getReconNo, (existing, replacement) -> existing));
-
-        List<SupplierReconItemDO> reconItems = supplierReconItemMapper.selectListByReconIds(reconNoMap.keySet());
-        if (CollUtil.isEmpty(reconItems)) {
-            return Collections.emptyMap();
-        }
-
-        Map<String, String> occupiedMap = new HashMap<>();
-        for (SupplierReconItemDO item : reconItems) {
-            if (item.getSourceRefType() == null || item.getSourceRefId() == null) {
-                continue;
-            }
-            String fp = buildFingerprint(item.getSourceRefType(), item.getSourceRefId(), item.getSourceRefItemId());
-            if (fingerprints.contains(fp)) {
-                occupiedMap.put(fp, reconNoMap.get(item.getReconId()));
-            }
-        }
-        return occupiedMap;
-    }
-
-    @Override
-    public String buildFingerprint(String sourceRefType, Long sourceRefId, Long sourceRefItemId) {
-        if (SourceRefType.INSPECTION.getValue().equalsIgnoreCase(sourceRefType) || sourceRefItemId == null) {
-            return sourceRefType + ":" + sourceRefId;
-        }
-        return sourceRefType + ":" + sourceRefId + ":" + sourceRefItemId;
-    }
-
     /**
      * 加载加工费候选行（按检验单汇总一行）
      */
     private List<SupplierReconSourceItemRespVO> loadProcessCandidates(Long supplierId, LocalDate periodStart, LocalDate periodEnd) {
-        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<InspectionOrderDO> wrapper = new LambdaQueryWrapperX<InspectionOrderDO>()
+        LambdaQueryWrapper<InspectionOrderDO> wrapper = new LambdaQueryWrapperX<InspectionOrderDO>()
                 .eq(InspectionOrderDO::getStatus, "COMPLETED")
                 .eq(InspectionOrderDO::getInspectionFactoryId, supplierId)
                 .ge(InspectionOrderDO::getOrderDate, periodStart)
@@ -160,10 +210,7 @@ public class SupplierReconSourceServiceImpl implements SupplierReconSourceServic
         }
 
         List<Long> orderIds = inspectionOrders.stream().map(InspectionOrderDO::getId).toList();
-        List<InspectionOrderItemDO> allItems = inspectionOrderItemMapper.selectListByInspectionOrderIds(orderIds);
-        Map<Long, List<InspectionOrderItemDO>> itemMap = CollUtil.isNotEmpty(allItems)
-                ? allItems.stream().collect(Collectors.groupingBy(InspectionOrderItemDO::getInspectionOrderId))
-                : Collections.emptyMap();
+        Map<Long, List<InspectionOrderItemDO>> itemMap = batchLoadInspectionItems(orderIds);
 
         List<SupplierReconSourceItemRespVO> list = new ArrayList<>(inspectionOrders.size());
         for (InspectionOrderDO order : inspectionOrders) {
@@ -216,10 +263,24 @@ public class SupplierReconSourceServiceImpl implements SupplierReconSourceServic
     }
 
     /**
+     * 批量加载检验明细（防 N+1 批量快照模式，docs/agents/coding-standards.md §2）
+     */
+    private Map<Long, List<InspectionOrderItemDO>> batchLoadInspectionItems(Collection<Long> orderIds) {
+        if (CollUtil.isEmpty(orderIds)) {
+            return Collections.emptyMap();
+        }
+        List<InspectionOrderItemDO> allItems = inspectionOrderItemMapper.selectListByInspectionOrderIds(orderIds);
+        if (CollUtil.isEmpty(allItems)) {
+            return Collections.emptyMap();
+        }
+        return allItems.stream().collect(Collectors.groupingBy(InspectionOrderItemDO::getInspectionOrderId));
+    }
+
+    /**
      * 加载采购货款候选行（一条入库明细一行，RETURN 排除）
      */
     private List<SupplierReconSourceItemRespVO> loadPurchaseCandidates(Long supplierId, LocalDate periodStart, LocalDate periodEnd) {
-        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<StockInDO> wrapper = new LambdaQueryWrapperX<StockInDO>()
+        LambdaQueryWrapper<StockInDO> wrapper = new LambdaQueryWrapperX<StockInDO>()
                 .eq(StockInDO::getStatus, "COMPLETED")
                 .eq(StockInDO::getInType, "PURCHASE") // 退货入库 RETURN 不进候选
                 .eq(StockInDO::getSupplierId, supplierId)
@@ -233,58 +294,76 @@ public class SupplierReconSourceServiceImpl implements SupplierReconSourceServic
         }
 
         List<Long> stockInIds = stockIns.stream().map(StockInDO::getId).toList();
-        List<StockInItemDO> stockInItems = stockInItemMapper.selectList(new LambdaQueryWrapperX<StockInItemDO>()
-                .in(StockInItemDO::getStockInId, stockInIds)
-                .orderByAsc(StockInItemDO::getId));
-        if (CollUtil.isEmpty(stockInItems)) {
+        Map<Long, List<StockInItemDO>> itemMap = batchLoadStockInItems(stockInIds);
+        if (itemMap.isEmpty()) {
             return Collections.emptyList();
         }
 
-        Map<Long, StockInDO> stockInMap = stockIns.stream()
-                .collect(Collectors.toMap(StockInDO::getId, s -> s, (existing, replacement) -> existing));
+        List<SupplierReconSourceItemRespVO> list = new ArrayList<>();
+        for (StockInDO stockIn : stockIns) {
+            List<StockInItemDO> stockInItems = itemMap.getOrDefault(stockIn.getId(), Collections.emptyList());
+            for (StockInItemDO item : stockInItems) {
+                BigDecimal qty = item.getQuantity() != null ? item.getQuantity().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                String unit = item.getUnit();
+                boolean isKg = "KG".equalsIgnoreCase(unit);
+                boolean isMeter = "M".equalsIgnoreCase(unit) || "METER".equalsIgnoreCase(unit);
 
-        List<SupplierReconSourceItemRespVO> list = new ArrayList<>(stockInItems.size());
-        for (StockInItemDO item : stockInItems) {
-            StockInDO stockIn = stockInMap.get(item.getStockInId());
-            if (stockIn == null) {
-                continue;
+                BigDecimal qtyKg = isKg ? qty : null;
+                BigDecimal qtyM = isMeter ? qty : null;
+                String pricingBasis = isKg ? PricingBasis.KG.getValue() : (isMeter ? PricingBasis.METER.getValue() : unit);
+                BigDecimal billQty = qty;
+                BigDecimal unitPrice = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
+                BigDecimal lineAmount = billQty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+
+                // 产品快照保全：若为纱线采购（itemType=YARN_SPEC 或 productId为空），保全 yarnSpec 快照
+                Long prodId = item.getProductId() != null ? item.getProductId() : item.getYarnSpecId();
+                String prodCode = item.getProductCode() != null ? item.getProductCode() : item.getYarnSpecName();
+                String prodName = item.getProductName() != null ? item.getProductName() : item.getYarnSpecName();
+
+                SupplierReconSourceItemRespVO vo = new SupplierReconSourceItemRespVO();
+                vo.setLineType(LineType.PURCHASE.getValue());
+                vo.setSourceRefType(SourceRefType.STOCK_IN_ITEM.getValue());
+                vo.setSourceRefId(stockIn.getId());
+                vo.setSourceRefItemId(item.getId());
+                vo.setStockInId(stockIn.getId());
+                vo.setStockInNo(stockIn.getInNo());
+                vo.setStockInItemId(item.getId());
+                vo.setYarnOrderId(stockIn.getYarnOrderId());
+                vo.setYarnOrderNo(stockIn.getYarnOrderNo());
+                vo.setProductId(prodId);
+                vo.setProductCode(prodCode);
+                vo.setProductName(prodName);
+                vo.setBatchNo(item.getBatchNo());
+                vo.setQtyKg(qtyKg);
+                vo.setQtyM(qtyM);
+                vo.setRollCount(item.getPieceCount());
+                vo.setQtyUnit(unit);
+                vo.setPricingBasis(pricingBasis);
+                vo.setBillQty(billQty);
+                vo.setUnitPrice(unitPrice);
+                vo.setLineAmount(lineAmount);
+                vo.setFingerprint(buildFingerprint(SourceRefType.STOCK_IN_ITEM.getValue(), stockIn.getId(), item.getId()));
+
+                list.add(vo);
             }
-
-            BigDecimal qty = item.getQuantity() != null ? item.getQuantity().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
-            String unit = item.getUnit();
-            boolean isKg = "KG".equalsIgnoreCase(unit);
-            BigDecimal qtyKg = isKg ? qty : null;
-            BigDecimal qtyM = !isKg ? qty : null;
-            String pricingBasis = isKg ? PricingBasis.KG.getValue() : PricingBasis.METER.getValue();
-            BigDecimal billQty = qty;
-            BigDecimal unitPrice = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
-            BigDecimal lineAmount = billQty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
-
-            SupplierReconSourceItemRespVO vo = new SupplierReconSourceItemRespVO();
-            vo.setLineType(LineType.PURCHASE.getValue());
-            vo.setSourceRefType(SourceRefType.STOCK_IN_ITEM.getValue());
-            vo.setSourceRefId(stockIn.getId());
-            vo.setSourceRefItemId(item.getId());
-            vo.setStockInId(stockIn.getId());
-            vo.setStockInNo(stockIn.getInNo());
-            vo.setStockInItemId(item.getId());
-            vo.setProductId(item.getProductId());
-            vo.setProductCode(item.getProductCode());
-            vo.setProductName(item.getProductName());
-            vo.setBatchNo(item.getBatchNo());
-            vo.setQtyKg(qtyKg);
-            vo.setQtyM(qtyM);
-            vo.setRollCount(item.getPieceCount());
-            vo.setQtyUnit(unit);
-            vo.setPricingBasis(pricingBasis);
-            vo.setBillQty(billQty);
-            vo.setUnitPrice(unitPrice);
-            vo.setLineAmount(lineAmount);
-            vo.setFingerprint(buildFingerprint(SourceRefType.STOCK_IN_ITEM.getValue(), stockIn.getId(), item.getId()));
-
-            list.add(vo);
         }
         return list;
+    }
+
+    /**
+     * 批量加载入库明细（防 N+1 批量快照模式，docs/agents/coding-standards.md §2）
+     */
+    private Map<Long, List<StockInItemDO>> batchLoadStockInItems(Collection<Long> stockInIds) {
+        if (CollUtil.isEmpty(stockInIds)) {
+            return Collections.emptyMap();
+        }
+        List<StockInItemDO> items = stockInItemMapper.selectList(new LambdaQueryWrapperX<StockInItemDO>()
+                .inOrEmpty(StockInItemDO::getStockInId, stockInIds)
+                .orderByAsc(StockInItemDO::getId));
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyMap();
+        }
+        return items.stream().collect(Collectors.groupingBy(StockInItemDO::getStockInId));
     }
 
 }

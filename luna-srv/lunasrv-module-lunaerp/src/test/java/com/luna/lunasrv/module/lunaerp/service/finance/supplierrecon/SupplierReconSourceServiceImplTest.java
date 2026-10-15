@@ -1,8 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.supplierrecon;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.finance.supplierrecon.vo.SupplierReconSourceItemRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.supplierrecon.SupplierReconDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.supplierrecon.SupplierReconItemDO;
@@ -41,14 +41,14 @@ import static org.mockito.Mockito.*;
 /**
  * {@link SupplierReconSourceServiceImpl} 纯 Mockito 单元测试
  *
- * 严格覆盖 Issue 02 验收清单：
+ * 严格覆盖 Issue 02 验收清单与 Review 审查规约：
  * 1. 承检方过滤与单据状态/删除状态过滤
  * 2. 录检明细 ΣKG/ΣM/卷数聚合及全等级（A/B/C/DEFECTIVE）计入不过滤
  * 3. 缺省计价基准：GREIGE→METER（bill_qty=qty_m）、FINISHED→KG（bill_qty=qty_kg）
- * 4. 采购货款候选：仅主表 COMPLETED 且 in_type=PURCHASE，RETURN 排除
- * 5. 防重指纹：DRAFT/CONFIRMED 排除、CANCELLED 释放回候选池
+ * 4. 采购货款候选：仅主表 COMPLETED 且 in_type=PURCHASE，RETURN 排除；支持纱线采购快照
+ * 5. 防重指纹：DRAFT/CONFIRMED 排除、CANCELLED 释放回候选池，走索引过滤
  * 6. 区间起止端点包含边界校验
- * 7. 空候选集合
+ * 7. 空候选集合与入参 null 防御
  *
  * @author luna
  */
@@ -165,7 +165,7 @@ class SupplierReconSourceServiceImplTest {
 
         when(inspectionOrderItemMapper.selectListByInspectionOrderIds(List.of(10L)))
                 .thenReturn(List.of(item1, item2, item3, item4));
-        when(supplierReconMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(supplierReconItemMapper.selectList(any())).thenReturn(Collections.emptyList());
 
         List<SupplierReconSourceItemRespVO> list = supplierReconSourceService.getAvailableCandidateItems(supplierId, start, end);
         assertEquals(1, list.size());
@@ -223,7 +223,7 @@ class SupplierReconSourceServiceImplTest {
         item.setLengthM(new BigDecimal("120.00"));
 
         when(inspectionOrderItemMapper.selectListByInspectionOrderIds(List.of(20L))).thenReturn(List.of(item));
-        when(supplierReconMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(supplierReconItemMapper.selectList(any())).thenReturn(Collections.emptyList());
 
         List<SupplierReconSourceItemRespVO> list = supplierReconSourceService.getAvailableCandidateItems(supplierId, start, end);
         assertEquals(1, list.size());
@@ -238,8 +238,8 @@ class SupplierReconSourceServiceImplTest {
     }
 
     @Test
-    @DisplayName("测试采购货款候选：PURCHASE 入库明细入选、带入库单号/批次/单价/金额")
-    void testPurchaseCandidates_Success() {
+    @DisplayName("测试采购货款候选：PURCHASE 入库明细入选、带入库单号/纱线采购单引用/批次/单价/金额与品名保全")
+    void testPurchaseCandidates_Success_WithYarnSpec() {
         Long supplierId = 300L;
         LocalDate start = LocalDate.of(2026, 9, 1);
         LocalDate end = LocalDate.of(2026, 9, 30);
@@ -253,15 +253,18 @@ class SupplierReconSourceServiceImplTest {
         stockIn.setStatus("COMPLETED");
         stockIn.setSupplierId(supplierId);
         stockIn.setInDate(LocalDate.of(2026, 9, 10));
+        stockIn.setYarnOrderId(5001L);
+        stockIn.setYarnOrderNo("YO-20260901-001");
 
         when(stockInMapper.selectList(any())).thenReturn(List.of(stockIn));
 
+        // 纱线采购明细：itemType=YARN_SPEC, yarnSpecId=88L, yarnSpecName="32S 纯棉精梳纱"
         StockInItemDO item1 = new StockInItemDO();
         item1.setId(501L);
         item1.setStockInId(50L);
-        item1.setProductId(10L);
-        item1.setProductCode("YARN-32S");
-        item1.setProductName("32S 纯棉精梳纱");
+        item1.setItemType("YARN_SPEC");
+        item1.setYarnSpecId(88L);
+        item1.setYarnSpecName("32S 纯棉精梳纱");
         item1.setBatchNo("BATCH-20260910A");
         item1.setQuantity(new BigDecimal("500.00"));
         item1.setUnit("KG");
@@ -269,7 +272,7 @@ class SupplierReconSourceServiceImplTest {
         item1.setPieceCount(10);
 
         when(stockInItemMapper.selectList(any())).thenReturn(List.of(item1));
-        when(supplierReconMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(supplierReconItemMapper.selectList(any())).thenReturn(Collections.emptyList());
 
         List<SupplierReconSourceItemRespVO> list = supplierReconSourceService.getAvailableCandidateItems(supplierId, start, end);
         assertEquals(1, list.size());
@@ -282,9 +285,14 @@ class SupplierReconSourceServiceImplTest {
         assertEquals(50L, vo.getStockInId());
         assertEquals("IN-20260910-001", vo.getStockInNo());
         assertEquals(501L, vo.getStockInItemId());
-        assertEquals(10L, vo.getProductId());
-        assertEquals("YARN-32S", vo.getProductCode());
+        assertEquals(5001L, vo.getYarnOrderId());
+        assertEquals("YO-20260901-001", vo.getYarnOrderNo());
+
+        // 纱线品名保全校验
+        assertEquals(88L, vo.getProductId());
+        assertEquals("32S 纯棉精梳纱", vo.getProductCode());
         assertEquals("32S 纯棉精梳纱", vo.getProductName());
+
         assertEquals("BATCH-20260910A", vo.getBatchNo());
         assertEquals(new BigDecimal("500.00"), vo.getQtyKg());
         assertNull(vo.getQtyM());
@@ -311,9 +319,9 @@ class SupplierReconSourceServiceImplTest {
         supplierReconSourceService.getAvailableCandidateItems(supplierId, start, end);
 
         // 验证查询条件使用了 in_type = 'PURCHASE'，杜绝 RETURN 入库混入候选
-        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<StockInDO>> captor = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        ArgumentCaptor<LambdaQueryWrapper<StockInDO>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(stockInMapper).selectList(captor.capture());
-        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<StockInDO> wrapper = captor.getValue();
+        LambdaQueryWrapper<StockInDO> wrapper = captor.getValue();
         String sqlSegment = wrapper.getCustomSqlSegment();
         assertNotNull(sqlSegment);
         assertTrue(sqlSegment.contains("in_type"));
@@ -336,7 +344,7 @@ class SupplierReconSourceServiceImplTest {
         insp2.setCode("INS-02");
         insp2.setType("GREIGE");
         when(inspectionOrderMapper.selectList(any())).thenReturn(List.of(insp1, insp2));
-        when(inspectionOrderItemMapper.selectListByInspectionOrderIds(any())).thenReturn(Collections.emptyList());
+        when(inspectionOrderItemMapper.selectListByInspectionOrderIds(anyList())).thenReturn(Collections.emptyList());
 
         StockInDO si1 = new StockInDO();
         si1.setId(50L);
@@ -356,22 +364,10 @@ class SupplierReconSourceServiceImplTest {
         sii2.setUnit("KG");
         when(stockInItemMapper.selectList(any())).thenReturn(List.of(sii1, sii2));
 
-        // 存量对账单：
-        // 1. DRAFT 单 SR-DRAFT 占用 insp1 (INSPECTION:10)
-        // 2. CONFIRMED 单 SR-CONFIRMED 占用 sii1 (STOCK_IN_ITEM:50:501)
-        // 3. CANCELLED 单不出现在 activeRecons 查询中（指纹自动释放）
-        SupplierReconDO reconDraft = new SupplierReconDO();
-        reconDraft.setId(1001L);
-        reconDraft.setReconNo("SR-DRAFT-001");
-        reconDraft.setStatus(ReconStatus.DRAFT.getValue());
-
-        SupplierReconDO reconConfirmed = new SupplierReconDO();
-        reconConfirmed.setId(1002L);
-        reconConfirmed.setReconNo("SR-CONFIRMED-001");
-        reconConfirmed.setStatus(ReconStatus.CONFIRMED.getValue());
-
-        when(supplierReconMapper.selectList(any())).thenReturn(List.of(reconDraft, reconConfirmed));
-
+        // 存量对账单明细命中：
+        // occupiedItem1 属于 1001L (DRAFT, 占用 insp1)
+        // occupiedItem2 属于 1002L (CONFIRMED, 占用 sii1)
+        // occupiedItem3 属于 1003L (CANCELLED, 作废释放)
         SupplierReconItemDO occupiedItem1 = new SupplierReconItemDO();
         occupiedItem1.setId(1L);
         occupiedItem1.setReconId(1001L);
@@ -385,11 +381,30 @@ class SupplierReconSourceServiceImplTest {
         occupiedItem2.setSourceRefId(50L);
         occupiedItem2.setSourceRefItemId(501L);
 
-        when(supplierReconItemMapper.selectListByReconIds(any())).thenReturn(List.of(occupiedItem1, occupiedItem2));
+        SupplierReconItemDO occupiedItem3 = new SupplierReconItemDO();
+        occupiedItem3.setId(3L);
+        occupiedItem3.setReconId(1003L);
+        occupiedItem3.setSourceRefType(SourceRefType.INSPECTION.getValue());
+        occupiedItem3.setSourceRefId(20L); // 属于已作废对账单，应释放回池
+
+        when(supplierReconItemMapper.selectList(any())).thenReturn(List.of(occupiedItem1, occupiedItem2, occupiedItem3));
+
+        SupplierReconDO reconDraft = new SupplierReconDO();
+        reconDraft.setId(1001L);
+        reconDraft.setReconNo("SR-DRAFT-001");
+        reconDraft.setStatus(ReconStatus.DRAFT.getValue());
+
+        SupplierReconDO reconConfirmed = new SupplierReconDO();
+        reconConfirmed.setId(1002L);
+        reconConfirmed.setReconNo("SR-CONFIRMED-001");
+        reconConfirmed.setStatus(ReconStatus.CONFIRMED.getValue());
+
+        // 仅 DRAFT 和 CONFIRMED 查出返回（CANCELLED 状态的 1003L 被过滤掉）
+        when(supplierReconMapper.selectList(any())).thenReturn(List.of(reconDraft, reconConfirmed));
 
         List<SupplierReconSourceItemRespVO> availableList = supplierReconSourceService.getAvailableCandidateItems(supplierId, start, end);
 
-        // 原始共 4 个候选，被 DRAFT(insp1) 和 CONFIRMED(sii1) 占用后，仅剩 insp2 和 sii2
+        // 原始共 4 个候选，被 DRAFT(insp1) 和 CONFIRMED(sii1) 占用后，insp2（作废释放）和 sii2 依然可用
         assertEquals(2, availableList.size());
         List<String> remainingFps = availableList.stream().map(SupplierReconSourceItemRespVO::getFingerprint).toList();
         assertTrue(remainingFps.contains("INSPECTION:20"));
@@ -415,17 +430,17 @@ class SupplierReconSourceServiceImplTest {
         when(inspectionOrderMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(stockInMapper.selectList(any())).thenReturn(Collections.emptyList());
 
-        supplierReconSourceService.getAllCandidateItems(supplierId, start, end);
+        supplierReconSourceService.getAvailableCandidateItems(supplierId, start, end);
 
         // 验证检验单区间比较
-        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<InspectionOrderDO>> inspCaptor = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        ArgumentCaptor<LambdaQueryWrapper<InspectionOrderDO>> inspCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(inspectionOrderMapper).selectList(inspCaptor.capture());
         String inspSql = inspCaptor.getValue().getCustomSqlSegment();
         assertTrue(inspSql.contains("order_date >="));
         assertTrue(inspSql.contains("order_date <="));
 
         // 验证入库单区间比较
-        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<StockInDO>> stockCaptor = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        ArgumentCaptor<LambdaQueryWrapper<StockInDO>> stockCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(stockInMapper).selectList(stockCaptor.capture());
         String stockSql = stockCaptor.getValue().getCustomSqlSegment();
         assertTrue(stockSql.contains("in_date >="));

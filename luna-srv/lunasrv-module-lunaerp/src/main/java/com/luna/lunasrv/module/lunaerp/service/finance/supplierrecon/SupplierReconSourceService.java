@@ -31,16 +31,6 @@ public interface SupplierReconSourceService {
     List<SupplierReconSourceItemRespVO> getAvailableCandidateItems(Long supplierId, LocalDate periodStart, LocalDate periodEnd);
 
     /**
-     * 获取指定供应商在指定对账区间内的全部候选明细行（未过滤防重指纹）
-     *
-     * @param supplierId 供应商ID
-     * @param periodStart 对账区间起始日期（含端点）
-     * @param periodEnd 对账区间截止日期（含端点）
-     * @return 全部候选明细行列表
-     */
-    List<SupplierReconSourceItemRespVO> getAllCandidateItems(Long supplierId, LocalDate periodStart, LocalDate periodEnd);
-
-    /**
      * 检查给定的指纹集合中，哪些已被有效对账单（DRAFT/CONFIRMED）引用
      *
      * @param fingerprints 防重指纹集合
