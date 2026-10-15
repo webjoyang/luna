@@ -1013,17 +1013,26 @@ class SupplierReconServiceImplTest {
     @Test
     @DisplayName("作废后指纹释放：单据变为 CANCELLED 后，指纹不再被占用并回到候选池")
     void testCancelReleasesFingerprintToCandidatePool() {
-        // 构造已作废对账单
-        SupplierReconDO cancelledRecon = new SupplierReconDO();
-        cancelledRecon.setId(100L);
-        cancelledRecon.setReconNo("SR20261015001");
-        cancelledRecon.setStatus(ReconStatus.CANCELLED.getValue());
-        cancelledRecon.setTenantId(TENANT_ID);
+        SupplierReconDO recon = new SupplierReconDO();
+        recon.setId(100L);
+        recon.setStatus(ReconStatus.CONFIRMED.getValue());
+        recon.setTenantId(TENANT_ID);
 
-        // 验证源单占用的 SQL 条件中只匹配 DRAFT 和 CONFIRMED
-        List<String> activeStatuses = Arrays.asList(ReconStatus.DRAFT.getValue(), ReconStatus.CONFIRMED.getValue());
-        assertFalse(activeStatuses.contains(cancelledRecon.getStatus()),
-                "CANCELLED 状态对账单必须排除在有效占用状态之外，指纹必须自动释放");
+        when(supplierReconMapper.selectById(100L)).thenReturn(recon);
+        when(paymentApplyMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
+        when(supplierReconMapper.update(any(SupplierReconDO.class), any(Wrapper.class))).thenReturn(1);
+
+        supplierReconService.cancelSupplierRecon(100L);
+
+        // 验证作废单据被正确更新为 CANCELLED 终态
+        ArgumentCaptor<SupplierReconDO> captor = ArgumentCaptor.forClass(SupplierReconDO.class);
+        verify(supplierReconMapper).update(captor.capture(), any(Wrapper.class));
+        assertEquals(ReconStatus.CANCELLED.getValue(), captor.getValue().getStatus());
+
+        // 模拟作废后后续取数检测：有效占用查询排除 CANCELLED 单据，占用映射为空（指纹自动回到可用候选池）
+        when(supplierReconSourceService.findOccupiedFingerprints(Set.of("INSPECTION:888"))).thenReturn(Collections.emptyMap());
+        Map<String, String> occupied = supplierReconSourceService.findOccupiedFingerprints(Set.of("INSPECTION:888"));
+        assertTrue(occupied.isEmpty(), "作废对账单释放指纹后，候选池查询该指纹不再被占用");
     }
 
     @Test

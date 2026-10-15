@@ -145,7 +145,7 @@ public class SupplierReconControllerTest {
         printVO.setId(100L);
         when(supplierReconService.getSupplierReconPrintData(100L)).thenReturn(printVO);
 
-        CommonResult<SupplierReconPrintRespVO> result = controller.getSupplierReconPrintData(null, 100L);
+        CommonResult<SupplierReconPrintRespVO> result = controller.getSupplierReconPrintData(100L);
 
         assertTrue(result.isSuccess());
         assertEquals(printVO, result.getData());
@@ -164,7 +164,7 @@ public class SupplierReconControllerTest {
         assertPermission("getSupplierReconPage", new Class<?>[]{SupplierReconPageReqVO.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:query')");
         assertPermission("confirmSupplierRecon", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:confirm')");
         assertPermission("cancelSupplierRecon", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:confirm')");
-        assertPermission("getSupplierReconPrintData", new Class<?>[]{Long.class, Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:print')");
+        assertPermission("getSupplierReconPrintData", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:supplierrecon:print')");
     }
 
     private void assertPermission(String methodName, Class<?>[] paramTypes, String expectedExpression) throws NoSuchMethodException {

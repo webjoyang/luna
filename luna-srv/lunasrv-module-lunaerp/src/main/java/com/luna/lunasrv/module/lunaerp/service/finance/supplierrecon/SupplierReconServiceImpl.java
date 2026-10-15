@@ -60,6 +60,7 @@ public class SupplierReconServiceImpl implements SupplierReconService {
     private static final int NO_MIN_DIGITS = 3;
     private static final int MAX_GENERATE_RETRY = 10;
     private static final Pattern NO_SUFFIX_NUMBER_PATTERN = Pattern.compile("\\d+");
+    private static final Set<String> BLOCKING_APPROVAL_STATUSES = Set.of("PENDING", "APPROVING", "APPROVED");
 
     @Resource
     private SupplierReconMapper supplierReconMapper;
@@ -489,7 +490,7 @@ public class SupplierReconServiceImpl implements SupplierReconService {
         // 2. 挂靠申请守卫：存在挂靠且 approval_status ∈ {PENDING, APPROVING, APPROVED} 的付款申请时拒绝报 006（REJECTED/CANCELLED 申请不阻断）
         Long blockingApplyCount = paymentApplyMapper.selectCount(new LambdaQueryWrapperX<PaymentApplyDO>()
                 .eq(PaymentApplyDO::getReconId, id)
-                .in(PaymentApplyDO::getApprovalStatus, Arrays.asList("PENDING", "APPROVING", "APPROVED")));
+                .in(PaymentApplyDO::getApprovalStatus, BLOCKING_APPROVAL_STATUSES));
         if (blockingApplyCount != null && blockingApplyCount > 0) {
             throw exception(SUPPLIER_RECON_HAS_PAYMENT_APPLY);
         }

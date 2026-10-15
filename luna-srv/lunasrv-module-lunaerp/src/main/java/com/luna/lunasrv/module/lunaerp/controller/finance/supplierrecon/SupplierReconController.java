@@ -104,14 +104,11 @@ public class SupplierReconController {
         return success(true);
     }
 
-    @GetMapping({"/print-data", "/{id}/print-data"})
+    @GetMapping("/print-data")
     @Operation(summary = "获得供应商对账单打印数据（豁免金额脱敏）")
     @Parameter(name = "id", description = "对账单编号", required = true)
     @PreAuthorize("@ss.hasPermission('lunaerp:finance:supplierrecon:print')")
-    public CommonResult<SupplierReconPrintRespVO> getSupplierReconPrintData(
-            @PathVariable(value = "id", required = false) Long pathId,
-            @RequestParam(value = "id", required = false) Long queryId) {
-        Long id = pathId != null ? pathId : queryId;
+    public CommonResult<SupplierReconPrintRespVO> getSupplierReconPrintData(@RequestParam("id") Long id) {
         return success(supplierReconService.getSupplierReconPrintData(id));
     }
 
