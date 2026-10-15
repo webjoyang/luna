@@ -182,6 +182,27 @@ INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10234, '打色指示单确认', 'lunaerp:production:color-instruction:confirm', 3, 4, 10230, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-10-13 00:00:00', '1', '2026-10-13 00:00:00', '0');
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10235, '打色指示单打印', 'lunaerp:production:color-instruction:print', 3, 5, 10230, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-10-13 00:00:00', '1', '2026-10-13 00:00:00', '0');
 
+-- =============================================================================
+-- 4.1 角色授权（system_role_menu，super_admin / admin；可重复执行）
+--     PostgreSQL 无自增：id 显式取号，序列对齐现有最大 id 防主键冲突
+-- =============================================================================
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
+DELETE FROM system_role_menu WHERE menu_id IN (10230, 10231, 10232, 10233, 10234, 10235);
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+FROM (
+    SELECT DISTINCT id FROM system_role
+    WHERE code IN ('super_admin', 'admin') OR id IN (1, 2)
+) r
+CROSS JOIN (
+    SELECT id FROM system_menu WHERE id IN (10230, 10231, 10232, 10233, 10234, 10235)
+) m;
+
 COMMIT;
 -- @formatter:on
 

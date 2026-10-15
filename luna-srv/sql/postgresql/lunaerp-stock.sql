@@ -223,6 +223,13 @@ BEGIN
     END IF;
 END $$;
 
+-- 存量库补列（ADR-0026 物品类型）：早期版本已建表时 CREATE TABLE IF NOT EXISTS 不会补新列，
+-- 须先 ADD COLUMN 再建索引/COMMENT（否则后续引用报列不存在）
+ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS item_type varchar(16) NOT NULL DEFAULT 'PRODUCT';
+ALTER TABLE lunaerp_stock_in_item ALTER COLUMN product_id DROP NOT NULL;
+ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS yarn_spec_id int8 NULL;
+ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS yarn_spec_name varchar(128) NULL;
+
 CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_stock_in_id
     ON lunaerp_stock_in_item (stock_in_id);
 CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_product_id
@@ -352,6 +359,12 @@ BEGIN
         ALTER TABLE lunaerp_stock_ledger ADD CONSTRAINT pk_lb_stock_ledger PRIMARY KEY (id);
     END IF;
 END $$;
+
+-- 存量库补列（ADR-0026 物品类型）：同 stock_in_item，先补列再建索引/COMMENT
+ALTER TABLE lunaerp_stock_ledger ADD COLUMN IF NOT EXISTS item_type varchar(16) NOT NULL DEFAULT 'PRODUCT';
+ALTER TABLE lunaerp_stock_ledger ALTER COLUMN product_id DROP NOT NULL;
+ALTER TABLE lunaerp_stock_ledger ADD COLUMN IF NOT EXISTS yarn_spec_id int8 NULL;
+ALTER TABLE lunaerp_stock_ledger ADD COLUMN IF NOT EXISTS yarn_spec_name varchar(128) NULL;
 
 -- 余额聚合主路径、红冲反查原流水、仓库维度与时间排序普通索引
 CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_product_wh_unit
@@ -493,28 +506,9 @@ COMMIT;
 -- 10. 增量脚本：支持物品类型（产品 PRODUCT / 纱线规格 YARN_SPEC，ADR-0026）
 --     入库明细表与库存流水表扩展 item_type, yarn_spec_id, yarn_spec_name；
 --     product_id 变为可空（与 yarn_spec_id 互斥）。
+--     注：补列 ALTER 已上移至各表主段落（第 2/3 节），避免存量库缺列时
+--     先于 ALTER 执行的 CREATE INDEX / COMMENT ON COLUMN 报列不存在。
 -- =============================================================================
-ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS item_type varchar(16) NOT NULL DEFAULT 'PRODUCT';
-ALTER TABLE lunaerp_stock_in_item ALTER COLUMN product_id DROP NOT NULL;
-ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS yarn_spec_id int8 NULL;
-ALTER TABLE lunaerp_stock_in_item ADD COLUMN IF NOT EXISTS yarn_spec_name varchar(128) NULL;
-CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_yarn_spec_id ON lunaerp_stock_in_item (yarn_spec_id);
-CREATE INDEX IF NOT EXISTS idx_lb_stock_in_item_item_type ON lunaerp_stock_in_item (item_type);
-
-ALTER TABLE lunaerp_stock_ledger ADD COLUMN IF NOT EXISTS item_type varchar(16) NOT NULL DEFAULT 'PRODUCT';
-ALTER TABLE lunaerp_stock_ledger ALTER COLUMN product_id DROP NOT NULL;
-ALTER TABLE lunaerp_stock_ledger ADD COLUMN IF NOT EXISTS yarn_spec_id int8 NULL;
-ALTER TABLE lunaerp_stock_ledger ADD COLUMN IF NOT EXISTS yarn_spec_name varchar(128) NULL;
-CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_yarn_spec_wh_unit ON lunaerp_stock_ledger (yarn_spec_id, warehouse_id, unit);
-CREATE INDEX IF NOT EXISTS idx_lb_stock_ledger_item_type ON lunaerp_stock_ledger (item_type);
-
-COMMENT ON COLUMN lunaerp_stock_in_item.item_type IS '物品类型（PRODUCT 产品 / YARN_SPEC 纱线规格），缺省 PRODUCT';
-COMMENT ON COLUMN lunaerp_stock_in_item.yarn_spec_id IS '关联纱线规格ID（lunaerp_production_yarn_spec.id，物品为 YARN_SPEC 时必填，与 product_id 互斥）';
-COMMENT ON COLUMN lunaerp_stock_in_item.yarn_spec_name IS '纱线规格名称快照';
-
-COMMENT ON COLUMN lunaerp_stock_ledger.item_type IS '物品类型（PRODUCT 产品 / YARN_SPEC 纱线规格），缺省 PRODUCT';
-COMMENT ON COLUMN lunaerp_stock_ledger.yarn_spec_id IS '关联纱线规格ID（lunaerp_production_yarn_spec.id，物品为 YARN_SPEC 时必填，与 product_id 互斥）';
-COMMENT ON COLUMN lunaerp_stock_ledger.yarn_spec_name IS '纱线规格名称快照';
 
 -- =============================================================================
 -- 11. 增量脚本：支持检验单生成胚布入库单与布票血缘（ADR-0024, ADR-0025）

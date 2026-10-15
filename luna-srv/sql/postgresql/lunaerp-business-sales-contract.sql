@@ -56,6 +56,10 @@ CREATE INDEX IF NOT EXISTS idx_lb_sales_contract_status
 CREATE INDEX IF NOT EXISTS idx_lb_sales_contract_sign_date
     ON lunaerp_business_sales_contract (sign_date);
 
+-- 存量库补列：早期版本已建表时，CREATE TABLE IF NOT EXISTS 不会补新列，
+-- 须先 ADD COLUMN 再 COMMENT（否则 COMMENT ON COLUMN 报列不存在）
+ALTER TABLE lunaerp_business_sales_contract ADD COLUMN IF NOT EXISTS approval_status varchar(16) NOT NULL DEFAULT 'DRAFT';
+
 COMMENT ON TABLE lunaerp_business_sales_contract IS '业务管理-销售合同主表';
 COMMENT ON COLUMN lunaerp_business_sales_contract.id IS '合同ID';
 COMMENT ON COLUMN lunaerp_business_sales_contract.contract_no IS '合同编号（CH+年份+4位顺序号，可手填，租户内全量唯一含已删除行）';
@@ -78,7 +82,6 @@ COMMENT ON COLUMN lunaerp_business_sales_contract.status IS '合同状态（字�
 COMMENT ON COLUMN lunaerp_business_sales_contract.approval_status IS '审批状态（DRAFT 草稿 / APPROVING 审批中 / APPROVED 已通过 / REJECTED 已驳回 / CANCELLED 已撤回）';
 COMMENT ON COLUMN lunaerp_business_sales_contract.creator IS '创建者';
 
-ALTER TABLE lunaerp_business_sales_contract ADD COLUMN IF NOT EXISTS approval_status varchar(16) NOT NULL DEFAULT 'DRAFT';
 COMMENT ON COLUMN lunaerp_business_sales_contract.create_time IS '创建时间';
 COMMENT ON COLUMN lunaerp_business_sales_contract.updater IS '更新者';
 COMMENT ON COLUMN lunaerp_business_sales_contract.update_time IS '更新时间';

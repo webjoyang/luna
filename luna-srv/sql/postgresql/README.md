@@ -20,11 +20,12 @@
 - **必须幂等**：`CREATE TABLE IF NOT EXISTS`、`ADD COLUMN IF NOT EXISTS`、种子 `INSERT ... ON CONFLICT DO NOTHING`，保证重复执行不出错
 - **PostgreSQL 无自增**：插入 `system_menu` / `system_role_menu` 等系统表时必须显式提供 `id`（菜单用固定 id；`system_role_menu` 用 `nextval('system_role_menu_seq')`，插入前用 `setval(seq, GREATEST(max(id),1))` 对齐序列防主键冲突。MySQL 自增写法在 PG 会报 `null value in column "id"`）
 - **跨文件依赖**：若新文件依赖其他文件的表，在文件头部注释 `-- DEPENDS ON: lunaerp-xxx.sql`
+- **菜单 DELETE 覆盖 INSERT**：`system_menu` / `system_role_menu` 先 DELETE 再 INSERT 时，DELETE 的 id 清单必须覆盖该段全部 INSERT 的 id（共享父目录除外——用 `ON CONFLICT (id) DO NOTHING` 或 `WHERE NOT EXISTS` 保证幂等），否则重复执行报主键冲突
 - 新文件创建后，**执行完毕立即更新本文档状态表**
 
 ---
 
-## 二、执行状态表（2026-10-15 核对）
+## 二、执行状态表（2026-10-15 全量执行一轮后复扫）
 
 图例：✅ 已执行 ｜ ⚠️ 部分执行（早期版本已跑，后续增量未应用）｜ ❌ 未执行
 
@@ -33,46 +34,47 @@
 | 1 | ruoyi-vue-pro.sql | 2026-09-13 | ✅ | 仅 demo 示例表未建（`lunasrv_demo01/02/03_*`），正常 |
 | 2 | quartz.sql | 2026-09-13 | ❌ | 11 张 `qrtz_*` 表全部不存在；local 已禁用 Quartz，按需执行 |
 | 3 | lunaerp-baseinfo-product.sql | 2026-09-13 | ✅ | |
-| 4 | lunaerp-baseinfo-customer.sql | 2026-09-18 | ⚠️ | 缺列：`customer.address_en / name_en / dept_id / salesperson_user_id` |
-| 5 | lunaerp-business-sales-contract.sql | 2026-09-18 | ⚠️ | 缺列：`sales_contract.approval_status` |
+| 4 | lunaerp-baseinfo-customer.sql | 2026-09-18 | ✅ | |
+| 5 | lunaerp-business-sales-contract.sql | 2026-09-18 | ✅ | |
 | 6 | lunaerp-baseinfo-supplier.sql | 2026-09-19 | ✅ | |
-| 7 | lunaerp-production-greige-order.sql | 2026-09-19 | ⚠️ | 缺列：`greige_order.color_instruction_id / color_instruction_no / production_mode` |
-| 8 | lunaerp-production-dyeing-order.sql | 2026-09-19 | ⚠️ | 缺列：`dyeing_order.color_instruction_id / color_instruction_no` |
+| 7 | lunaerp-production-greige-order.sql | 2026-09-19 | ✅ | |
+| 8 | lunaerp-production-dyeing-order.sql | 2026-09-19 | ✅ | |
 | 9 | lunaerp-production-yarn-master.sql | 2026-09-20 | ✅ | |
 | 10 | lunaerp-production-yarn-order.sql | 2026-09-20 | ✅ | |
 | 11 | lunaerp-production-yarn-recipe-bom.sql | 2026-09-20 | ✅ | |
 | 12 | lunaerp-production-inspection-order.sql | 2026-09-21 | ✅ | |
-| 13 | lunaerp-stock.sql | 2026-09-24 | ⚠️ | 缺列：`stock_in.inspection_order_id/no`、`stock_in_item.inspection_order_item_id / item_type / piece_no / weaving_ticket_id / yarn_spec_id / yarn_spec_name`、`stock_ledger.item_type / yarn_spec_id / yarn_spec_name` |
-| 14 | lunaerp-production-weaving.sql | 2026-09-26 | ❌ | 缺表：`weaving_order / weaving_ticket / loom / machine_task / yarn_requisition(_item)`；2026-10-15 修复角色授权缺 id 的报错（已按 §一 幂等约定改用序列取号），**待重新执行** |
-| 15 | lunaerp-production-iot.sql | 2026-09-26 | ❌ | 缺表：`machine_realtime / device_binding / vendor_credential` |
+| 13 | lunaerp-stock.sql | 2026-09-24 | ✅ | |
+| 14 | lunaerp-production-weaving.sql | 2026-09-26 | ✅ | 2026-10-15 重跑成功（本轮曾修复授权缺 id 与菜单 DELETE 漏 10299 两处报错） |
+| 15 | lunaerp-production-iot.sql | 2026-09-26 | ✅ | |
 | 16 | lunaerp-production-inspection-confirmation.sql | 2026-09-27 | ✅ | |
 | 17 | lunaerp-business-shipment.sql | 2026-09-27 | ✅ | |
 | 18 | lunaerp-production-progress-feedback.sql | 2026-09-28 | ✅ | |
 | 19 | lunaerp-production-greige-dispatch-record.sql | 2026-09-29 | ✅ | |
 | 20 | lunaerp-production-progress.sql | 2026-09-29 | ✅ | |
-| 21 | lunaerp-sample-analysis.sql | 2026-10-04 | ❌ | 缺表：`sample_analysis(_yarn_spec / _yarn_arrange / _supplier_quote)` |
-| 22 | lunaerp-data-permission-wiring.sql | 2026-10-09 | ❌ | 4 个 `dept_id` / 业务员列全部未加（customer / sales_contract / shipment） |
-| 23 | lunaerp-common-foundation.sql | 2026-10-09 | ✅ | 备注：`system_notify_template` 行数为 0（如需要站内信模板需补种子）；首次执行时角色授权 INSERT 曾因缺 id 报错被跳过，**2026-10-15 已修复，重跑本文件可补齐**布票打印（10300）与回收站（10900-10903）授权 |
+| 21 | lunaerp-sample-analysis.sql | 2026-10-04 | ✅ | |
+| 22 | lunaerp-data-permission-wiring.sql | 2026-10-09 | ✅ | |
+| 23 | lunaerp-common-foundation.sql | 2026-10-09 | ✅ | `system_notify_template` 行数为 0（如需要站内信模板需补种子）；布票打印（10300）与回收站（10900-10903）授权复扫确认已落库 |
 | 24 | lunaerp-default-package-seed.sql | 2026-10-09 | ✅ | |
-| 25 | lunaerp-approval.sql | 2026-10-09 | ❌ | 缺表：`approval_config(_node) / approval_instance / approval_task / approval_record` |
+| 25 | lunaerp-approval.sql | 2026-10-09 | ✅ | |
 | 26 | lunaerp-menu-ia-rename.sql | 2026-10-09 | ✅ | |
 | 27 | lunaerp-data-permission-fixture.sql | 2026-10-10 | ✅ | 备注：fixture 已跑（customer×2 / contract×1）；`customer_contact`、`shipment` 当前 0 行 |
-| 28 | lunaerp-business-export-doc.sql | 2026-10-10 | ❌ | 缺表：`export_doc(_item) / export_seller_config`；缺列：`customer.address_en / name_en`、`sales_contract.incoterm / payment_term / port_of_loading / port_of_discharge` |
-| 29 | lunaerp-business-cost-card-quotation.sql | 2026-10-10 | ❌ | 缺表：`cost_card(_fee / _yarn) / quotation(_item) / production_yarn_price`；缺列：`customer.default_margin_rate`、`sales_contract.source_quotation_id/no`、`recipe_bom_item` 5 个工艺列 |
-| 30 | lunaerp-production-color-instruction.sql | 2026-10-13 | ❌ | 缺表：`color_instruction(_color)` |
-| 31 | lunaerp-production-release-production.sql | 2026-10-14 | ⚠️ | 缺列：`sales_contract_item.released_qty`、`dyeing_color.contract_line_id/no`、`greige_order_color.contract_line_id/no` |
-| 32 | lunaerp-production-scheduling-material-check.sql | 2026-10-14 | ✅ | |
-| 33 | lunaerp-stock-in-yarn-order-ref.sql | 2026-10-15 | ❌ | 缺列：`stock_in.yarn_order_id / yarn_order_no` |
-| 34 | lunaerp-finance-vendor-recon.sql | 2026-10-15 | ❌ | 缺表：`finance_supplier_recon(_item)` |
-| 35 | lunaerp-finance-payment.sql | 2026-10-15 | ❌ | 缺表：`finance_payment(_apply / _ref)` |
+| 28 | lunaerp-business-export-doc.sql | 2026-10-10 | ✅ | |
+| 29 | lunaerp-business-cost-card-quotation.sql | 2026-10-10 | ✅ | |
+| 30 | lunaerp-production-color-instruction.sql | 2026-10-13 | ⚠️ | 表/菜单/字典已落库；复扫发现**文件缺角色授权段**（菜单 10230-10235 授权 0 行），2026-10-15 已补 4.1 节授权段，**重跑本文件可补齐**（幂等） |
+| 31 | lunaerp-production-release-production.sql | 2026-10-14 | ✅ | |
+| 32 | lunaerp-production-scheduling-material-check.sql | 2026-10-14 | ✅ | 复扫确认菜单 10510/10520 与授权均已落库（各 2 行） |
+| 33 | lunaerp-stock-in-yarn-order-ref.sql | 2026-10-15 | ✅ | |
+| 34 | lunaerp-finance-vendor-recon.sql | 2026-10-15 | ✅ | |
+| 35 | lunaerp-finance-payment.sql | 2026-10-15 | ✅ | |
 
-### 状态汇总
+### 状态汇总（2026-10-15 复扫）
 
-- ✅ 已执行：**18 个**
-- ⚠️ 部分执行：**6 个**（#4 #5 #7 #8 #13 #31 —— 均为文件后期追加的 `ALTER ADD COLUMN` 未应用）
-- ❌ 未执行：**11 个**（#2 #14 #15 #21 #22 #25 #28 #29 #30 #33 #34 #35）
+- ✅ 已执行：**33 个**
+- ⚠️ 部分执行：**1 个**（#30 color-instruction —— 授权段已补入文件，**重跑一次即全绿**）
+- ❌ 未执行：**1 个**（#2 quartz —— local 已禁用，按需）
+- 授权抽查：`system_role_menu` 898 → 1050 行，抽样 9 个关键菜单（织造/库存/付款/审批/出口/回收站等）授权均各 2 行（super_admin + admin）
 
-> 注意：⚠️ 与 ❌ 的缺失增量若对应功能已上线，说明运行中的应用可能正在用「缺列/缺表」的库——优先核对 #4 #5 #13（客户/合同/库存）与 #22（数据权限 dept_id 接线）。
+> 注意：⚠️ 与 ❌ 的缺失增量若对应功能已上线，说明运行中的应用可能正在读写缺对象的数据表——当前仅剩 #30 重跑一次授权段。
 
 ---
 

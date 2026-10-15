@@ -485,7 +485,7 @@ INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_t
 -- =============================================================================
 -- 12. 领纱单与明细权限注册（不开独立菜单，挂在 10280 织造单下）
 -- =============================================================================
-DELETE FROM system_menu WHERE id IN (10289, 10290, 10291, 10292, 10293, 10294, 10295, 10296, 10297, 10298);
+DELETE FROM system_menu WHERE id IN (10289, 10290, 10291, 10292, 10293, 10294, 10295, 10296, 10297, 10298, 10299);
 
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
 VALUES (10289, '领纱单查询', 'lunaerp:production:weaving-order-requisition:query', 3, 5, 10280, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
