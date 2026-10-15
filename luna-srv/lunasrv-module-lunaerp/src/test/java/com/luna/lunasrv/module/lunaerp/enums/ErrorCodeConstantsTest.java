@@ -288,6 +288,33 @@ public class ErrorCodeConstantsTest {
         assertEquals(1_030_036_000, ErrorCodeConstants.MACHINE_TASK_TIME_CONFLICT.getCode());
         assertTrue(ErrorCodeConstants.MACHINE_TASK_TIME_CONFLICT.getMsg().contains("计划时段冲突"));
     }
+
+    @Test
+    void testFinanceErrorCodes() {
+        // 供应商对账 1-030-022-000 ~ 007
+        assertEquals(1_030_022_000, ErrorCodeConstants.SUPPLIER_RECON_NOT_EXISTS.getCode());
+        assertEquals("对账单不存在", ErrorCodeConstants.SUPPLIER_RECON_NOT_EXISTS.getMsg());
+        assertEquals(1_030_022_001, ErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode());
+        assertEquals(1_030_022_002, ErrorCodeConstants.SUPPLIER_RECON_SUPPLIER_NOT_EXISTS.getCode());
+        assertEquals(1_030_022_003, ErrorCodeConstants.SUPPLIER_RECON_NO_SOURCE_ITEMS.getCode());
+        assertEquals(1_030_022_004, ErrorCodeConstants.SUPPLIER_RECON_SOURCE_REFERENCED.getCode());
+        assertEquals("源明细已被对账单【{}】引用", ErrorCodeConstants.SUPPLIER_RECON_SOURCE_REFERENCED.getMsg());
+        assertEquals(1_030_022_005, ErrorCodeConstants.SUPPLIER_RECON_ADJUST_LINE_INVALID.getCode());
+        assertEquals(1_030_022_006, ErrorCodeConstants.SUPPLIER_RECON_HAS_PAYMENT_APPLY.getCode());
+        assertEquals(1_030_022_007, ErrorCodeConstants.SUPPLIER_RECON_APPLY_AMOUNT_EXCEED.getCode());
+        assertEquals("累计申请金额【{}】超出对账确认金额", ErrorCodeConstants.SUPPLIER_RECON_APPLY_AMOUNT_EXCEED.getMsg());
+
+        // 收付款与核销 1-030-023-000 ~ 007
+        assertEquals(1_030_023_000, ErrorCodeConstants.PAYMENT_APPLY_NOT_EXISTS.getCode());
+        assertEquals("付款申请不存在", ErrorCodeConstants.PAYMENT_APPLY_NOT_EXISTS.getMsg());
+        assertEquals(1_030_023_001, ErrorCodeConstants.PAYMENT_APPLY_STATUS_NOT_ALLOWED.getCode());
+        assertEquals(1_030_023_002, ErrorCodeConstants.PAYMENT_APPLY_RECON_NOT_CONFIRMED.getCode());
+        assertEquals(1_030_023_003, ErrorCodeConstants.PAYMENT_ALLOCATE_EXCEED.getCode());
+        assertEquals(1_030_023_004, ErrorCodeConstants.PAYMENT_ACCOUNT_BALANCE_NOT_ENOUGH.getCode());
+        assertEquals(1_030_023_005, ErrorCodeConstants.PAYMENT_PREPAY_BALANCE_NOT_ENOUGH.getCode());
+        assertEquals(1_030_023_006, ErrorCodeConstants.PAYMENT_ACCOUNT_NOT_AVAILABLE.getCode());
+        assertEquals(1_030_023_007, ErrorCodeConstants.PAYMENT_AMOUNT_INVALID.getCode());
+    }
 }
 
 

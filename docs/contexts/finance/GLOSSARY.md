@@ -133,8 +133,8 @@ _避免_：台账重建、recalculate、第二本流水表。
 
 错误码段位总表与取段规则见 `docs/contexts/shared/GLOSSARY.md`。本域预留 **`1-030-020` ~ `1-030-029`**，逐段分配见上方"模块清单"表与 ADR-0037 决策 5。各段具体错误码（000/001/…）随 spec 落地后回填本节。
 
-- `1-030-022`（supplierrecon，11 号已回填）：000 单据不存在 / 001 状态不允许 / 002 供应商不存在 / 003 区间无可对账明细 / 004 源明细已被对账单引用 / 005 调整项行不合法 / 006 存在付款申请禁止作废 / 007 累计申请额超确认金额
-- `1-030-023`（payment 共享段，11 号先占 000–007，10 号避让后续段）：000 申请不存在 / 001 申请状态不允许 / 002 对账单未确认 / 003 核销分配超剩余额 / 004 账户余额不足 / 005 预付余额不足 / 006 账户不可用 / 007 金额不合法
+- `1-030-022`（supplierrecon，11 号已回填）：000 `SUPPLIER_RECON_NOT_EXISTS` 对账单不存在 / 001 `SUPPLIER_RECON_STATUS_NOT_ALLOWED` 当前状态不允许该操作 / 002 `SUPPLIER_RECON_SUPPLIER_NOT_EXISTS` 供应商不存在 / 003 `SUPPLIER_RECON_NO_SOURCE_ITEMS` 对账区间内无可对账明细 / 004 `SUPPLIER_RECON_SOURCE_REFERENCED` 源明细已被对账单【{}】引用 / 005 `SUPPLIER_RECON_ADJUST_LINE_INVALID` 调整项行不合法：金额为 0 或缺备注 / 006 `SUPPLIER_RECON_HAS_PAYMENT_APPLY` 对账单存在付款申请，禁止作废 / 007 `SUPPLIER_RECON_APPLY_AMOUNT_EXCEED` 累计申请金额【{}】超出对账确认金额
+- `1-030-023`（payment 共享段，11 号先占 000–007，10 号避让后续段）：000 `PAYMENT_APPLY_NOT_EXISTS` 付款申请不存在 / 001 `PAYMENT_APPLY_STATUS_NOT_ALLOWED` 付款申请当前状态不允许该操作 / 002 `PAYMENT_APPLY_RECON_NOT_CONFIRMED` 对账单未确认，不可生成对账付款申请 / 003 `PAYMENT_ALLOCATE_EXCEED` 核销分配金额超过付款申请剩余额 / 004 `PAYMENT_ACCOUNT_BALANCE_NOT_ENOUGH` 资金账户余额不足 / 005 `PAYMENT_PREPAY_BALANCE_NOT_ENOUGH` 供应商预付余额不足 / 006 `PAYMENT_ACCOUNT_NOT_AVAILABLE` 资金账户不存在或已停用 / 007 `PAYMENT_AMOUNT_INVALID` 付款金额不合法
 - `1-030-020`（域公共，10 号回填；段内 000 分录账/100 资金账户/200 汇率）：000 分录账禁止修改删除 / 100 账户不存在 / 101 账户停用 / 102 账户名重复 / 103 有分录禁止删除 / 104 期初余额不可改 / 200 无生效汇率 / 201 同币种同生效日重复 / 202 本位币免配
 - `1-030-020` 续（12 号回填 105–110）：105 该类型账户账号必填 / 106 账户币种不一致（跨币种操作不支持） / 107 转出转入账户相同 / 108 转账单不存在 / 109 其他收支单不存在 / 110 收支类别与方向不一致；资金流出余额不足统一复用 `1-030-023-004`
 - `1-030-024`（expense，12 号回填）：000 报销单不存在 / 001 状态不允许 / 002 至少一行费用 / 003 付款账户不存在或停用 / 004 金额不合法 / 005 附件超过 10 个 / 006 报销人不存在 / 007 费用发生日期不合法
