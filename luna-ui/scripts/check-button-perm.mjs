@@ -4,7 +4,7 @@ import path from 'node:path'
 /**
  * 扫描 Vue SFC 模板中带有写操作动作的 el-button 是否具备 v-hasPermi 权限守卫
  */
-const WRITE_ACTION_REGEX = /@click="(?:\(\)\s*=>\s*)?(?:handle(?:Confirm|Save|Update|Delete|Create|Advance|Rollback)[a-zA-Z0-9_]*)/
+const WRITE_ACTION_REGEX = /@click="(?:\(\)\s*=>\s*)?(?:handle(?:Confirm|Save|Update|Delete|Create|Advance|Rollback|Submit)[a-zA-Z0-9_]*)/
 
 function scanFile(filePath) {
   const content = fs.readFileSync(filePath, 'utf-8')

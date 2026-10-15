@@ -32,7 +32,14 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit"> 提交反馈 </el-button>
+        <el-button
+          v-hasPermi="['lunaerp:production:progress-feedback:note']"
+          type="primary"
+          :loading="submitting"
+          @click="handleConfirmNote"
+        >
+          提交反馈
+        </el-button>
       </div>
     </template>
   </el-dialog>
@@ -89,7 +96,7 @@ const open = (targetFeedbackId: number, targetVatNo?: string) => {
   visible.value = true
 }
 
-const handleSubmit = async () => {
+const handleConfirmNote = async () => {
   if (!formRef.value) return
   await formRef.value.validate()
 

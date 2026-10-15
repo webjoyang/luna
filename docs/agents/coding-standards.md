@@ -45,22 +45,23 @@
 
 ## 5. 工作区快速代码与文件检索 (Fast Code & File Search)
 
-- 混合仓库根目录下包含 `luna-ui/node_modules/`、`target/`、`.claude/` 等深度依赖和构建产物目录。
+- 混合仓库根目录下包含 `luna-ui/node_modules/`、`target/`、`.claude/` 等深度依赖和构建产物目录；**仓库根目录下无 `src/` 源码目录**。
 - **检索规约**：
   - 禁止在根目录使用无深度限制且未排除依赖目录的 `Get-ChildItem -Recurse`。
   - 文件路径定标优先使用 `git ls-files "*<keyword>*"`。
-  - 文件内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`（或 `git grep -i "<pattern>"`），严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道。
+  - 文件内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`（或 `git grep -i "<pattern>"`），严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；必须显式指定子工程目录路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`），严禁使用不存在的根路径 `src/`。
 
 ## 6. 前端组件与交互规范 (Frontend Standards)
 
 - **按钮级权限指令守卫 (`v-hasPermi`)**：
   - 所有触发状态流转或数据写操作的按钮（新增、编辑/修改、删除、转机、调度/派工、审批等），必须显式绑定 `v-hasPermi="['<permission-code>']"`，禁止裸露可操作按钮。
-  - **二级弹窗/抽屉确认按钮守卫**：子组件弹窗（`el-dialog`）或抽屉（`el-drawer`）内部的确认提交按钮（如 `handleConfirm*`、`handleSave*`），严禁因外层入口已有控制而遗漏，必须严格且同等绑定对应写权限码；可通过 `pnpm lint:perms` 进行机械化扫描校验。
+  - **二级弹窗/抽屉确认按钮守卫**：子组件弹窗（`el-dialog`）或抽屉（`el-drawer`）内部的确认提交按钮（如 `handleConfirm*`、`handleSave*`、`handleSubmit*`），严禁因外层入口已有控制而遗漏，必须严格且同等绑定对应写权限码；开发过程中应针对当前模块目录运行 `pnpm lint:perms <path>` 进行机械化静态扫描校验。
 - **月历与时序看板“今天回位”联动规约 (Calendar Navigation & Today Reset Parity)**：
   - 在以月度或视口周期为聚合粒度监听（如 `watch(() => formatYearMonth(date))`）的日历/甘特组件中，当提供“今天/当前周期回位”快捷按钮时，若当前视图已经处于目标周期，单纯重置 `Date` 对象并不会改变格式化后的周期字符串，导致 `watch` 监听静默失效。
   - **强制规约**：在“今天回位”事件回调中必须显式检测是否已在当前周期；若处于当前周期，必须显式调用数据加载函数（如 `loadCalendarData()`），保证操作反馈的一致性与即时性。
-- **业务错误码常量化与异常拦截 (Error Code Constants)**：
+- **业务错误码常量化、异常拦截与文档即时回填 (Error Code Constants & Glossary Sync)**：
   - 接口业务异常与拦截（如排产时段冲突 `1030036000`）必须优先以常量形式定义并复用（如 `SCHEDULE_CONFLICT_CODE`），通过 `err.code === CONSTANT` 进行精确匹配；严禁仅依赖 `errorMsg.includes('...')` 模糊中文文本匹配作为核心业务逻辑分支。
+  - **错误码文档即时回填规约**：新业务错误码段位落库时，在首个引入错误码常量的工单（如后端冲突拦截开发），必须同步在 `docs/contexts/shared/GLOSSARY.md` 段位总表及明细表格中登记（含错误码、常量名、模板文案与所属域），严禁拖延至最终收口工单才集中补录，避免中间工单代码审查信息断层。
 - **只读投影回写参数对齐 (Round-trip Form Payload)**：
   - 在前端弹窗、抽屉或拖拽改期中回传实体保存接口时，必须完整回显/携带原有关键外键与快照（如操作员 ID、织机 ID、计划版本等），避免只提交修改项导致未改项被覆写清空。
 - **看板图形视口与明细列表数据口径解耦 (View Disconnection)**：

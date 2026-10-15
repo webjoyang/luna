@@ -147,7 +147,15 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">
+        <el-button
+          v-hasPermi="[
+            'lunaerp:production:weaving-order-task:create',
+            'lunaerp:production:weaving-order-task:update'
+          ]"
+          type="primary"
+          :loading="submitting"
+          @click="handleConfirmDispatch"
+        >
           {{ form.id ? '保存修改' : '确认派工' }}
         </el-button>
       </div>
@@ -291,7 +299,7 @@ function handleDialogClosed() {
 /**
  * 提交派工
  */
-async function handleSubmit() {
+async function handleConfirmDispatch() {
   const validation = validateDispatchForm(form.value)
   if (!validation.valid) {
     ElMessage.warning(validation.errorMsg || '请完善表单信息')
