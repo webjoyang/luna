@@ -128,5 +128,26 @@
   - 编写参数校验拦截、前置状态守卫或并发抢占拦截等异常单测时，仅打桩至触发异常的最短调用路径。
   - 严禁从正常链路无差别拷贝全量 Mock 打桩，避免业务路径优化或前置校验前移时触发 Mockito 5 严格模式下的 `UnnecessaryStubbingException`。
 
+## 11. 跨服务涌现语义单测归位规约 (Cross-service Emergent Behavior & Anti-Tautological Mocking)
+
+- **自测桩反模式守卫 (Anti-Tautological Mocking)**：
+  - 严禁在被测类的单测方法中直接调用并断言第三方依赖的 Mock 对象（例如 `when(serviceB.query()).thenReturn(empty); assert(serviceB.query().isEmpty());`）。这种调用脱离了被测对象（SUT）的方法执行，属于虚假的自测桩，无法验证真实的业务逻辑。
+- **跨服务涌现行为的职责切分 (Testing Boundary for Emergent Behavior)**：
+  - 当业务语义表现为“Service A 状态流转 -> Service B 的查询行为自动产生联动响应（如排除该状态、释放资源指纹）”时：
+    1. **状态流转方单测 (Service A)**：职责限于验证 Service A 自身的动作。通过 `ArgumentCaptor` 严格验证写库实体状态是否正确变更为终态（如 `CANCELLED`），并验证前置业务守卫。
+    2. **联动消费方单测 (Service B)**：职责验证数据过滤与释放口径。必须在 Service B 自身的单测文件（如 `SupplierReconSourceServiceImplTest`）中覆盖，验证候选池查询确实已将终态记录排除在有效占用之外，杜绝在 Service A 中虚假打桩。
+
+## 12. 通用套打契约规范与脱敏豁免 (Print Contract Standards & Masking Exemption)
+
+- **套打出参金额脱敏豁免 (Unmasked Print Contract)**：
+  - 遵循 `docs/contexts/shared/GLOSSARY.md`：A4 物理套打单据面向线下签署、实物结算或核验，金额与关键业务字段必须原样明文打印。
+  - 财务域架构守护（`ArchitectureStandardsTest`）中，套打出参（`*PrintRespVO` 或名称包含 `Print` 的 VO）显式豁免 `@Sensitive` 脱敏注解，严禁对套打单据金额追加星号脱敏。
+- **套打接口路由与入参规范 (Single Query Endpoint)**：
+  - 打印数据接口统一使用 `@GetMapping("/print-data")` 配合 `@RequestParam("id") Long id`，与 04 号通用套打前端契约单一对齐，严禁随意声明多重 restful 路径映射（如 `@GetMapping({"/print-data", "/{id}/print-data"})`）。
+- **套打出参最小化与真实性守卫 (Minimal Print Scope Guard)**：
+  - 打印 VO 字段定义必须严格依循工单 Spec 声明的必要范围，禁止投机性扩展非必要或终态生命周期元数据（如在正常对账打印 VO 中冗余引入 `cancelledBy` 等字段）。
+  - 严禁声明无底层数据源支撑的“占位字段”（例如在 VO 中声明 `supplierContact` 但底层仅有 `phone` 导致字段永久为空）。
+
+
 
 
