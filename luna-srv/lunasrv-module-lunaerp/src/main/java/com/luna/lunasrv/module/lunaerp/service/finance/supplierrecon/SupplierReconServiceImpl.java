@@ -96,7 +96,27 @@ public class SupplierReconServiceImpl implements SupplierReconService {
             throw exception(SUPPLIER_RECON_SUPPLIER_NOT_EXISTS);
         }
 
-        // 1. 服务端以同一取数服务重取，区间内无可对账明细时报 003（预览给空态，生成拒绝生成空单）
+        if (CollUtil.isEmpty(createReqVO.getItems())) {
+            throw exception(SUPPLIER_RECON_NO_SOURCE_ITEMS);
+        }
+
+        // 1. 优先对所请求的源单行逐指纹比对占用：防止可用候选池变空时 004 被 003 提前截断
+        Set<String> requestedFingerprints = createReqVO.getItems().stream()
+                .filter(it -> !LineType.ADJUST.getValue().equalsIgnoreCase(it.getLineType()))
+                .map(it -> supplierReconSourceService.buildFingerprint(
+                        it.getSourceRefType(), it.getSourceRefId(), it.getSourceRefItemId()))
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+
+        if (!requestedFingerprints.isEmpty()) {
+            Map<String, String> occupied = supplierReconSourceService.findOccupiedFingerprints(requestedFingerprints);
+            if (!occupied.isEmpty()) {
+                String occupiedReconNo = occupied.values().iterator().next();
+                throw exception(SUPPLIER_RECON_SOURCE_REFERENCED, occupiedReconNo);
+            }
+        }
+
+        // 2. 服务端以同一取数服务重取，区间内无可对账明细时报 003（预览给空态，生成拒绝生成空单）
         List<SupplierReconSourceItemRespVO> availableCandidates = supplierReconSourceService.getAvailableCandidateItems(
                 createReqVO.getSupplierId(), createReqVO.getPeriodStart(), createReqVO.getPeriodEnd());
         if (CollUtil.isEmpty(availableCandidates)) {
@@ -107,48 +127,36 @@ public class SupplierReconServiceImpl implements SupplierReconService {
                 .filter(c -> c.getFingerprint() != null)
                 .collect(Collectors.toMap(SupplierReconSourceItemRespVO::getFingerprint, Function.identity(), (a, b) -> a));
 
-        if (CollUtil.isEmpty(createReqVO.getItems())) {
-            throw exception(SUPPLIER_RECON_NO_SOURCE_ITEMS);
-        }
-
-        // 2. 逐行比对：非调整项行必须来自有效候选池，若被其他单据抢占引用报 004（带对方单号）
+        // 3. 逐行比对与权威金额计算
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<SupplierReconItemDO> itemDOs = new ArrayList<>();
 
         for (SupplierReconItemSaveVO itemVO : createReqVO.getItems()) {
             SupplierReconItemDO itemDO = new SupplierReconItemDO();
-            itemDO.setLineType(itemVO.getLineType());
 
             if (LineType.ADJUST.getValue().equalsIgnoreCase(itemVO.getLineType())) {
-                validateAdjustLine(itemVO.getLineAmount(), itemVO.getAdjustReason());
-                BigDecimal adjustAmount = itemVO.getLineAmount().setScale(2, RoundingMode.HALF_UP);
-                itemDO.setLineAmount(adjustAmount);
-                itemDO.setBillQty(BigDecimal.ZERO);
-                itemDO.setUnitPrice(BigDecimal.ZERO);
-                itemDO.setAdjustReason(itemVO.getAdjustReason().trim());
-                itemDO.setRemark(itemVO.getRemark());
-                totalAmount = totalAmount.add(adjustAmount);
+                applyAdjustLine(itemDO, itemVO.getLineAmount(), itemVO.getAdjustReason(), itemVO.getRemark());
+                totalAmount = totalAmount.add(itemDO.getLineAmount());
             } else {
-                String fp = supplierReconSourceService.buildFingerprint(
+                itemDO.setLineType(itemVO.getLineType());
+                String fingerprint = supplierReconSourceService.buildFingerprint(
                         itemVO.getSourceRefType(), itemVO.getSourceRefId(), itemVO.getSourceRefItemId());
-                SupplierReconSourceItemRespVO cand = candidateMap.get(fp);
-                if (cand == null) {
-                    Map<String, String> occupied = supplierReconSourceService.findOccupiedFingerprints(Set.of(fp));
-                    String occupiedReconNo = !occupied.isEmpty() ? occupied.get(fp) : "其他单据";
+                SupplierReconSourceItemRespVO candidateItem = candidateMap.get(fingerprint);
+                if (candidateItem == null) {
+                    Map<String, String> occupied = supplierReconSourceService.findOccupiedFingerprints(Set.of(fingerprint));
+                    String occupiedReconNo = !occupied.isEmpty() ? occupied.get(fingerprint) : "其他单据";
                     throw exception(SUPPLIER_RECON_SOURCE_REFERENCED, occupiedReconNo);
                 }
 
                 // 权威复制源快照
-                populateSnapshotFromCandidate(cand, itemDO);
+                populateSnapshotFromCandidate(candidateItem, itemDO);
 
                 // 计价基准与权威数量
-                String basis = itemVO.getPricingBasis();
-                if (!StringUtils.hasText(basis)) {
-                    basis = cand.getPricingBasis();
-                }
-                BigDecimal billQty = deriveBillQty(cand, basis);
+                String basis = StringUtils.hasText(itemVO.getPricingBasis())
+                        ? itemVO.getPricingBasis() : candidateItem.getPricingBasis();
+                BigDecimal billQty = deriveBillQty(candidateItem, basis);
                 BigDecimal unitPrice = itemVO.getUnitPrice() != null ? itemVO.getUnitPrice() : BigDecimal.ZERO;
-                BigDecimal lineAmount = billQty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal lineAmount = calculateLineAmount(billQty, unitPrice);
 
                 itemDO.setPricingBasis(basis);
                 itemDO.setBillQty(billQty);
@@ -228,44 +236,35 @@ public class SupplierReconServiceImpl implements SupplierReconService {
                     }
                     if (LineType.ADJUST.getValue().equalsIgnoreCase(existingItem.getLineType())
                             || LineType.ADJUST.getValue().equalsIgnoreCase(itemVO.getLineType())) {
-                        validateAdjustLine(itemVO.getLineAmount(), itemVO.getAdjustReason());
-                        existingItem.setLineAmount(itemVO.getLineAmount().setScale(2, RoundingMode.HALF_UP));
-                        existingItem.setAdjustReason(itemVO.getAdjustReason().trim());
-                        existingItem.setRemark(itemVO.getRemark());
+                        applyAdjustLine(existingItem, itemVO.getLineAmount(), itemVO.getAdjustReason(), itemVO.getRemark());
                     } else {
                         // 取数行单价与基准变更，bill_qty 随基准切换重算
                         String basis = itemVO.getPricingBasis();
                         if (StringUtils.hasText(basis)) {
                             existingItem.setPricingBasis(basis);
                         }
-                        if (LineType.PROCESS.getValue().equalsIgnoreCase(existingItem.getLineType())) {
-                            BigDecimal billQty = PricingBasis.KG.getValue().equalsIgnoreCase(existingItem.getPricingBasis())
-                                    ? (existingItem.getQtyKg() != null ? existingItem.getQtyKg() : itemVO.getQtyKg())
-                                    : (existingItem.getQtyM() != null ? existingItem.getQtyM() : itemVO.getQtyM());
-                            existingItem.setBillQty(billQty != null ? billQty.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
-                        }
                         if (itemVO.getUnitPrice() != null) {
                             existingItem.setUnitPrice(itemVO.getUnitPrice());
                         }
-                        BigDecimal billQty = existingItem.getBillQty() != null ? existingItem.getBillQty() : BigDecimal.ZERO;
-                        BigDecimal unitPrice = existingItem.getUnitPrice() != null ? existingItem.getUnitPrice() : BigDecimal.ZERO;
-                        existingItem.setLineAmount(billQty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP));
+                        BigDecimal billQty = deriveBillQty(existingItem.getLineType(), existingItem.getPricingBasis(),
+                                existingItem.getQtyKg() != null ? existingItem.getQtyKg() : itemVO.getQtyKg(),
+                                existingItem.getQtyM() != null ? existingItem.getQtyM() : itemVO.getQtyM(),
+                                existingItem.getBillQty());
+                        existingItem.setBillQty(billQty);
+                        existingItem.setLineAmount(calculateLineAmount(existingItem.getBillQty(), existingItem.getUnitPrice()));
                         if (itemVO.getRemark() != null) {
                             existingItem.setRemark(itemVO.getRemark());
                         }
                     }
                     supplierReconItemMapper.updateById(existingItem);
                 } else {
-                    // 新增行（通常为新增调整项）
-                    SupplierReconItemDO newItem = BeanUtils.toBean(itemVO, SupplierReconItemDO.class);
-                    newItem.setId(null);
-                    newItem.setReconId(recon.getId());
-                    if (LineType.ADJUST.getValue().equalsIgnoreCase(newItem.getLineType())) {
-                        validateAdjustLine(newItem.getLineAmount(), newItem.getAdjustReason());
-                        newItem.setLineAmount(newItem.getLineAmount().setScale(2, RoundingMode.HALF_UP));
-                        newItem.setBillQty(BigDecimal.ZERO);
-                        newItem.setUnitPrice(BigDecimal.ZERO);
+                    // 新增行守卫：仅允许新增 ADJUST 调整项行，严禁随意凭空新增源单明细
+                    if (!LineType.ADJUST.getValue().equalsIgnoreCase(itemVO.getLineType())) {
+                        throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
                     }
+                    SupplierReconItemDO newItem = new SupplierReconItemDO();
+                    newItem.setReconId(recon.getId());
+                    applyAdjustLine(newItem, itemVO.getLineAmount(), itemVO.getAdjustReason(), itemVO.getRemark());
                     supplierReconItemMapper.insert(newItem);
                 }
             }
@@ -432,7 +431,7 @@ public class SupplierReconServiceImpl implements SupplierReconService {
             return Collections.emptyMap();
         }
         List<PaymentApplyDO> applies = paymentApplyMapper.selectList(new LambdaQueryWrapperX<PaymentApplyDO>()
-                .in(PaymentApplyDO::getReconId, reconIds)
+                .inOrEmpty(PaymentApplyDO::getReconId, reconIds)
                 .notIn(PaymentApplyDO::getApprovalStatus, Arrays.asList("REJECTED", "CANCELLED")));
         if (CollUtil.isEmpty(applies)) {
             return Collections.emptyMap();
@@ -452,6 +451,24 @@ public class SupplierReconServiceImpl implements SupplierReconService {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) == 0 || !StringUtils.hasText(reason)) {
             throw exception(SUPPLIER_RECON_ADJUST_LINE_INVALID);
         }
+    }
+
+    private void applyAdjustLine(SupplierReconItemDO itemDO, BigDecimal amount, String adjustReason, String remark) {
+        validateAdjustLine(amount, adjustReason);
+        itemDO.setLineType(LineType.ADJUST.getValue());
+        itemDO.setLineAmount(amount.setScale(2, RoundingMode.HALF_UP));
+        itemDO.setBillQty(BigDecimal.ZERO);
+        itemDO.setUnitPrice(BigDecimal.ZERO);
+        itemDO.setAdjustReason(adjustReason.trim());
+        if (remark != null) {
+            itemDO.setRemark(remark);
+        }
+    }
+
+    private BigDecimal calculateLineAmount(BigDecimal billQty, BigDecimal unitPrice) {
+        BigDecimal qty = billQty != null ? billQty : BigDecimal.ZERO;
+        BigDecimal price = unitPrice != null ? unitPrice : BigDecimal.ZERO;
+        return qty.multiply(price).setScale(2, RoundingMode.HALF_UP);
     }
 
     private void populateSnapshotFromCandidate(SupplierReconSourceItemRespVO cand, SupplierReconItemDO target) {
@@ -475,16 +492,19 @@ public class SupplierReconServiceImpl implements SupplierReconService {
         target.setQtyUnit(cand.getQtyUnit());
     }
 
-    private BigDecimal deriveBillQty(SupplierReconSourceItemRespVO cand, String pricingBasis) {
-        if (LineType.PROCESS.getValue().equalsIgnoreCase(cand.getLineType())) {
+    private BigDecimal deriveBillQty(String lineType, String pricingBasis, BigDecimal qtyKg, BigDecimal qtyM, BigDecimal fallbackQty) {
+        if (LineType.PROCESS.getValue().equalsIgnoreCase(lineType)) {
             if (PricingBasis.KG.getValue().equalsIgnoreCase(pricingBasis)) {
-                return cand.getQtyKg() != null ? cand.getQtyKg().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                return qtyKg != null ? qtyKg.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
             } else {
-                return cand.getQtyM() != null ? cand.getQtyM().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                return qtyM != null ? qtyM.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
             }
         }
-        // PURCHASE 行：严格以入库明细权威数量为准，禁止前端篡改
-        return cand.getBillQty() != null ? cand.getBillQty().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        return fallbackQty != null ? fallbackQty.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+    }
+
+    private BigDecimal deriveBillQty(SupplierReconSourceItemRespVO cand, String pricingBasis) {
+        return deriveBillQty(cand.getLineType(), pricingBasis, cand.getQtyKg(), cand.getQtyM(), cand.getBillQty());
     }
 
     private SupplierReconItemDO convertCandidateToItemDO(SupplierReconSourceItemRespVO cand, Long reconId) {
@@ -510,47 +530,46 @@ public class SupplierReconServiceImpl implements SupplierReconService {
     }
 
     private String generateReconNo(LocalDate date) {
+        return generateReconNoWithRetry(date);
+    }
+
+    private String generateReconNoWithRetry(LocalDate date) {
         LocalDate targetDate = date != null ? date : LocalDate.now();
         String prefix = RECON_NO_PREFIX + DATE_FORMATTER.format(targetDate);
         List<SupplierReconDO> candidates = supplierReconMapper.selectListByReconNoPrefixIncludingDeleted(prefix);
         long maxNum = 0L;
         int maxDigits = NO_MIN_DIGITS;
-        for (SupplierReconDO candidate : candidates) {
-            String no = candidate.getReconNo();
-            if (no == null || no.length() <= prefix.length()) {
-                continue;
-            }
-            String suffix = no.substring(prefix.length());
-            Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
-            if (!matcher.find()) {
-                continue;
-            }
-            String digits = matcher.group();
-            long num;
-            try {
-                num = Long.parseLong(digits);
-            } catch (NumberFormatException ignore) {
-                continue;
-            }
-            if (num > maxNum) {
-                maxNum = num;
-                maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
+        if (CollUtil.isNotEmpty(candidates)) {
+            for (SupplierReconDO candidate : candidates) {
+                String no = candidate.getReconNo();
+                if (no == null || no.length() <= prefix.length()) {
+                    continue;
+                }
+                String suffix = no.substring(prefix.length());
+                Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
+                if (!matcher.find()) {
+                    continue;
+                }
+                String digits = matcher.group();
+                try {
+                    long num = Long.parseLong(digits);
+                    if (num > maxNum) {
+                        maxNum = num;
+                        maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
+                    }
+                } catch (NumberFormatException ignore) {
+                    continue;
+                }
             }
         }
-        if (maxNum == 0L) {
-            return prefix + String.format("%0" + NO_MIN_DIGITS + "d", 1);
-        }
-        return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
-    }
-
-    private String generateReconNoWithRetry(LocalDate date) {
-        for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
-            String candidate = generateReconNo(date);
+        for (int i = 1; i <= MAX_GENERATE_RETRY; i++) {
+            long seq = maxNum + i;
+            String candidate = prefix + String.format("%0" + maxDigits + "d", seq);
             if (supplierReconMapper.selectByReconNoIncludingDeleted(candidate) == null) {
                 return candidate;
             }
         }
-        return generateReconNo(date);
+        throw exception(SUPPLIER_RECON_STATUS_NOT_ALLOWED);
     }
 
 }

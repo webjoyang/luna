@@ -19,8 +19,7 @@ public class SupplierReconUpdateReqVO {
     @Schema(description = "备注", example = "9月份对账单（补充运费调整）")
     private String remark;
 
-    @Schema(description = "对账明细行列表", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "对账明细行列表不能为空")
+    @Schema(description = "对账明细行列表")
     @Valid
     private List<SupplierReconItemSaveVO> items;
 

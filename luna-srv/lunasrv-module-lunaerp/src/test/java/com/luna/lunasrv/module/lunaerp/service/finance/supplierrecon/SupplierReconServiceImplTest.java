@@ -113,6 +113,8 @@ class SupplierReconServiceImplTest {
         req.setSupplierId(10L);
         req.setPeriodStart(LocalDate.of(2026, 9, 1));
         req.setPeriodEnd(LocalDate.of(2026, 9, 30));
+
+        // 1. 请求明细列表为空直接报 003
         req.setItems(Collections.emptyList());
 
         SupplierRespVO mockSupplier = new SupplierRespVO();
@@ -120,11 +122,21 @@ class SupplierReconServiceImplTest {
         mockSupplier.setCompanyName("测试供应商");
         when(supplierService.getSupplier(10L)).thenReturn(mockSupplier);
 
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> supplierReconService.createSupplierRecon(req));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_NO_SOURCE_ITEMS.getCode(), ex1.getCode());
+
+        // 2. 请求明细含有调整项，但取数服务返回无可对账明细，报 003
+        SupplierReconItemSaveVO adjustItem = new SupplierReconItemSaveVO();
+        adjustItem.setLineType(LineType.ADJUST.getValue());
+        adjustItem.setLineAmount(new BigDecimal("100.00"));
+        adjustItem.setAdjustReason("运费调整");
+        req.setItems(List.of(adjustItem));
+
         when(supplierReconSourceService.getAvailableCandidateItems(10L, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30)))
                 .thenReturn(Collections.emptyList());
 
-        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.createSupplierRecon(req));
-        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_NO_SOURCE_ITEMS.getCode(), ex.getCode());
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> supplierReconService.createSupplierRecon(req));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_NO_SOURCE_ITEMS.getCode(), ex2.getCode());
     }
 
     @Test
@@ -151,12 +163,6 @@ class SupplierReconServiceImplTest {
         mockSupplier.setCompanyName("测试供应商");
         when(supplierService.getSupplier(10L)).thenReturn(mockSupplier);
 
-        // 模拟重取出的候选池中有其它行，但没有 100L（说明已被抢占）
-        SupplierReconSourceItemRespVO otherCandidate = new SupplierReconSourceItemRespVO();
-        otherCandidate.setFingerprint(SourceRefType.INSPECTION.getValue() + ":999");
-        when(supplierReconSourceService.getAvailableCandidateItems(10L, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30)))
-                .thenReturn(List.of(otherCandidate));
-
         // 模拟取数防重检查发现该指纹被对账单 SR20261014001 占用
         String fp = SourceRefType.INSPECTION.getValue() + ":100";
         when(supplierReconSourceService.findOccupiedFingerprints(Set.of(fp)))
@@ -165,6 +171,36 @@ class SupplierReconServiceImplTest {
         ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.createSupplierRecon(req));
         assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_SOURCE_REFERENCED.getCode(), ex.getCode());
         assertTrue(ex.getMessage().contains("SR20261014001"));
+    }
+
+    @Test
+    @DisplayName("004 守卫强化：优先进行被抢占用比对，即使可用候选池变空也绝不被 003 提前截断")
+    void testCreateSourceItemReferencedWhenAvailableCandidatesEmpty() {
+        SupplierReconCreateReqVO req = new SupplierReconCreateReqVO();
+        req.setSupplierId(10L);
+        req.setPeriodStart(LocalDate.of(2026, 9, 1));
+        req.setPeriodEnd(LocalDate.of(2026, 9, 30));
+
+        SupplierReconItemSaveVO processItem = new SupplierReconItemSaveVO();
+        processItem.setLineType(LineType.PROCESS.getValue());
+        processItem.setSourceRefType(SourceRefType.INSPECTION.getValue());
+        processItem.setSourceRefId(200L);
+        processItem.setInspectionOrderId(200L);
+        req.setItems(List.of(processItem));
+
+        SupplierRespVO mockSupplier = new SupplierRespVO();
+        mockSupplier.setId(10L);
+        mockSupplier.setCompanyName("测试供应商");
+        when(supplierService.getSupplier(10L)).thenReturn(mockSupplier);
+
+        // 占用检查发现被单据 SR20261015888 引用
+        String fp = SourceRefType.INSPECTION.getValue() + ":200";
+        when(supplierReconSourceService.findOccupiedFingerprints(Set.of(fp)))
+                .thenReturn(Map.of(fp, "SR20261015888"));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.createSupplierRecon(req));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_SOURCE_REFERENCED.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("SR20261015888"));
     }
 
     @Test
@@ -444,6 +480,97 @@ class SupplierReconServiceImplTest {
         ArgumentCaptor<SupplierReconDO> reconCaptor = ArgumentCaptor.forClass(SupplierReconDO.class);
         verify(supplierReconMapper).updateById(reconCaptor.capture());
         assertEquals(new BigDecimal("400.00"), reconCaptor.getValue().getTotalAmount());
+    }
+
+    @Test
+    @DisplayName("update 纯删行：items 允许为空，支持仅传 deletedItemIds 执行删行并重算 total")
+    void testUpdateDraftReconPureDeletion() {
+        SupplierReconDO draftRecon = new SupplierReconDO();
+        draftRecon.setId(100L);
+        draftRecon.setStatus(ReconStatus.DRAFT.getValue());
+        draftRecon.setTenantId(TENANT_ID);
+        when(supplierReconMapper.selectById(100L)).thenReturn(draftRecon);
+
+        SupplierReconItemDO dbLine1 = new SupplierReconItemDO();
+        dbLine1.setId(1L);
+        dbLine1.setReconId(100L);
+
+        when(supplierReconItemMapper.selectList(any(Wrapper.class)))
+                .thenReturn(List.of(dbLine1)) // db 现有行
+                .thenReturn(Collections.emptyList()); // 删完后为空
+
+        SupplierReconUpdateReqVO updateReq = new SupplierReconUpdateReqVO();
+        updateReq.setId(100L);
+        updateReq.setDeletedItemIds(List.of(1L));
+        updateReq.setItems(null); // items 为空
+
+        supplierReconService.updateSupplierRecon(updateReq);
+
+        verify(supplierReconItemMapper).deleteBatchIds(List.of(1L));
+        ArgumentCaptor<SupplierReconDO> reconCaptor = ArgumentCaptor.forClass(SupplierReconDO.class);
+        verify(supplierReconMapper).updateById(reconCaptor.capture());
+        assertEquals(new BigDecimal("0.00"), reconCaptor.getValue().getTotalAmount());
+    }
+
+    @Test
+    @DisplayName("update 范围守卫：编辑草稿时禁止新增非 ADJUST 明细行（凭空新增取数行报 SUPPLIER_RECON_STATUS_NOT_ALLOWED）")
+    void testUpdateDraftReconRejectNonAdjustNewLine() {
+        SupplierReconDO draftRecon = new SupplierReconDO();
+        draftRecon.setId(100L);
+        draftRecon.setStatus(ReconStatus.DRAFT.getValue());
+        draftRecon.setTenantId(TENANT_ID);
+        when(supplierReconMapper.selectById(100L)).thenReturn(draftRecon);
+
+        when(supplierReconItemMapper.selectList(any(Wrapper.class)))
+                .thenReturn(Collections.emptyList());
+
+        SupplierReconUpdateReqVO updateReq = new SupplierReconUpdateReqVO();
+        updateReq.setId(100L);
+
+        SupplierReconItemSaveVO illegalProcessItem = new SupplierReconItemSaveVO();
+        illegalProcessItem.setId(null); // 新增行
+        illegalProcessItem.setLineType(LineType.PROCESS.getValue()); // 非 ADJUST
+        illegalProcessItem.setUnitPrice(new BigDecimal("10.00"));
+        updateReq.setItems(List.of(illegalProcessItem));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.updateSupplierRecon(updateReq));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("ADR-0006 取号并发：连续重试全部冲突时抛出 SUPPLIER_RECON_STATUS_NOT_ALLOWED 而非底层数据库异常")
+    void testAdr0006ReconNoExhaustedRetryThrowsException() {
+        SupplierReconCreateReqVO req = new SupplierReconCreateReqVO();
+        req.setSupplierId(10L);
+        req.setPeriodStart(LocalDate.of(2026, 9, 1));
+        req.setPeriodEnd(LocalDate.of(2026, 9, 30));
+
+        SupplierReconItemSaveVO adjustItem = new SupplierReconItemSaveVO();
+        adjustItem.setLineType(LineType.ADJUST.getValue());
+        adjustItem.setLineAmount(new BigDecimal("50.00"));
+        adjustItem.setAdjustReason("运费调整");
+        req.setItems(List.of(adjustItem));
+
+        SupplierRespVO mockSupplier = new SupplierRespVO();
+        mockSupplier.setId(10L);
+        mockSupplier.setCompanyName("测试供应商");
+        when(supplierService.getSupplier(10L)).thenReturn(mockSupplier);
+
+        SupplierReconSourceItemRespVO candidate = new SupplierReconSourceItemRespVO();
+        candidate.setFingerprint("INS:1");
+        when(supplierReconSourceService.getAvailableCandidateItems(10L, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30)))
+                .thenReturn(List.of(candidate));
+
+        // 模拟已存在 001
+        SupplierReconDO existing = new SupplierReconDO();
+        existing.setReconNo("SR" + LocalDate.now().toString().replace("-", "") + "001");
+        when(supplierReconMapper.selectListByReconNoPrefixIncludingDeleted(anyString())).thenReturn(List.of(existing));
+
+        // 模拟随后的所有重试 candidate 全部冲突占用
+        when(supplierReconMapper.selectByReconNoIncludingDeleted(anyString())).thenReturn(new SupplierReconDO());
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> supplierReconService.createSupplierRecon(req));
+        assertEquals(FinanceErrorCodeConstants.SUPPLIER_RECON_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
     }
 
     @Test

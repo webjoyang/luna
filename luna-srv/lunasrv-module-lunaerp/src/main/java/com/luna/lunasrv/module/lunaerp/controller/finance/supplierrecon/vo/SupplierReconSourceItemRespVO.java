@@ -1,5 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.controller.finance.supplierrecon.vo;
 
+import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveConstants;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -81,9 +84,11 @@ public class SupplierReconSourceItemRespVO {
     private BigDecimal billQty;
 
     @Schema(description = "结算单价（元）", example = "3.5000")
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
     private BigDecimal unitPrice;
 
     @Schema(description = "行金额（元，bill_qty × unit_price）", example = "875.00")
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
     private BigDecimal lineAmount;
 
     @Schema(description = "防重指纹（source_ref_type:source_ref_id[:source_ref_item_id]）", example = "INSPECTION:100")
