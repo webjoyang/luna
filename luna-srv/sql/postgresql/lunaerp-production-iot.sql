@@ -214,10 +214,16 @@ VALUES (10359, '实时快照录入', 'lunaerp:production:iot:machine-realtime:re
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
 VALUES (10360, '实时快照模拟采集', 'lunaerp:production:iot:machine-realtime:collect', 3, 20, 10285, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
 
--- 角色权限关联
+-- 角色权限关联（PostgreSQL 无自增：id 显式取号，序列对齐现有最大 id 防主键冲突）
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
 DELETE FROM system_role_menu WHERE menu_id IN (10350, 10351, 10352, 10353, 10354, 10355, 10356, 10357, 10358, 10359, 10360);
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
 FROM system_role r
 CROSS JOIN (SELECT id FROM system_menu WHERE id IN (10350, 10351, 10352, 10353, 10354, 10355, 10356, 10357, 10358, 10359, 10360)) m
 WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)

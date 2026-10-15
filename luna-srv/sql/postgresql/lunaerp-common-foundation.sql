@@ -40,8 +40,15 @@ INSERT INTO system_menu (
 );
 
 DELETE FROM system_role_menu WHERE menu_id = 10300;
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, 10300, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+-- PostgreSQL 无自增：id 显式取号，序列对齐现有最大 id 防主键冲突
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, 10300, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
 FROM system_role r
 WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)
 ON CONFLICT DO NOTHING;
@@ -106,8 +113,8 @@ INSERT INTO system_menu (
 );
 
 DELETE FROM system_role_menu WHERE menu_id IN (10900, 10901, 10902, 10903);
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
 FROM system_role r
 CROSS JOIN (SELECT 10900 AS id UNION ALL SELECT 10901 UNION ALL SELECT 10902 UNION ALL SELECT 10903) m
 WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)

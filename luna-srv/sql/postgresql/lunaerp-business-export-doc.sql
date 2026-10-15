@@ -270,10 +270,16 @@ VALUES (10130, '单证打印', 'lunaerp:business:export-doc:print', 3, 4, 10126,
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
 VALUES (10131, '卖方出口资料', 'lunaerp:business:export-doc:seller-config', 3, 5, 10126, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-10-10 00:00:00', '1', '2026-10-10 00:00:00', '0');
 
--- 授权管理员与超管角色
+-- 授权管理员与超管角色（PostgreSQL 无自增：id 显式取号，序列对齐现有最大 id 防主键冲突）
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
 DELETE FROM system_role_menu WHERE menu_id IN (10126, 10127, 10128, 10129, 10130, 10131);
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
 FROM system_role r
 CROSS JOIN (
     SELECT 10126 AS id UNION ALL SELECT 10127 UNION ALL SELECT 10128 UNION ALL

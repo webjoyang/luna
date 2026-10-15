@@ -87,4 +87,28 @@
   - `@/config/axios` 会级联导入系统路由并在根作用域执行 `createWebHistory`（依赖 `window`）。
   - **强制规约**：单测中若间接依赖 API 调用，必须在测试文件顶层显式声明 `vi.mock('@/config/axios', ...)`，避免在纯 Node 运行环境中报 `ReferenceError: window is not defined`。
 
+## 8. PostgreSQL 脚本与多端幂等规约 (PostgreSQL DDL/DML & Sequence Parity)
+
+- **底座关联表主键非自增防 NULL 陷阱**：
+  - 底座 ruoyi-vue-pro 的 PostgreSQL 定义中，`system_role_menu` 表的 `id` 列为主键 `int8 NOT NULL`，但**未绑定** `DEFAULT nextval('system_role_menu_seq')`（不同于 MySQL 的 `AUTO_INCREMENT`）。
+  - **强制规约**：为角色分配菜单权限时，必须显式插入 `id` 列并使用 `nextval('system_role_menu_seq')` 生成自增 ID；赋权前必须前置序列判存与序列对齐同步，杜绝主键碰撞：
+    ```sql
+    CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+    DO $$ BEGIN PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1)); END $$;
+    DELETE FROM system_role_menu WHERE menu_id IN (...);
+    INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+    SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+    FROM (SELECT DISTINCT id FROM system_role WHERE code IN ('super_admin', 'admin') OR id IN (1, 2)) r
+    CROSS JOIN (SELECT ... AS id) m;
+    ```
+- **字典类型平滑避让规约 (Dict Type Dynamic Fallback Pattern)**：
+  - 严禁在后续模块脚本中硬编码 `DELETE FROM system_dict_type WHERE id IN (...)`（极易击穿如审批引擎等先行脚本已占用的 `2270–2276` 元数据）。
+  - **强制规约**：字典清理必须严格基于字典类型 `type IN ('lunaerp_xxx', ...)`；插入时通过 `DO` 块检测预期 ID 是否被其他功能占用，未占用则使用预期 ID，已占用则动态向后顺延分配空闲 ID。
+- **跨端共享表最小列集守卫 (Shared Table Minimal Column Set Guard)**：
+  - 针对如收付款共享单据（`lunaerp_finance_payment` / `ref`）等跨模块、跨前后端共用的表结构，单侧特性开发时必须严格依照当前工单或 Spec 声明的最小列集创建表结构。
+  - **强制规约**：严禁未经声明提前引入单侧衍生快照列（如 `supplier_name`、`payment_date`）或未声明的单列索引，杜绝跨端范围蔓延（Scope Creep）。
+- **Druid SQL Parser 与 PostgreSQL 高级方言兼容边界**：
+  - 单元测试中的 Druid PostgreSQL 解析器对复杂子查询 JOIN 后的 `ON CONFLICT DO NOTHING` 解析受限。
+  - **强制规约**：在满足“先 DELETE 后 INSERT + 序列发号”的幂等操作下，无需且禁止在批量插入尾部追加冗余的 `ON CONFLICT DO NOTHING`，保持 SQL 纯正简洁并规避解析器异常。
+
 

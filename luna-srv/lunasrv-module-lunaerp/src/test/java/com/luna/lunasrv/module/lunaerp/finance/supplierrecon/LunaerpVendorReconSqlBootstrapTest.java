@@ -21,20 +21,26 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class LunaerpVendorReconSqlBootstrapTest {
 
-    private String loadSqlContent(String fileName) throws IOException {
-        Path sqlPath = Path.of("sql/postgresql/" + fileName);
-        if (!Files.exists(sqlPath)) {
-            sqlPath = Path.of("../sql/postgresql/" + fileName);
+    private Path getSqlDirectory() {
+        Path sqlDir = Path.of("sql/postgresql");
+        if (!Files.exists(sqlDir)) {
+            sqlDir = Path.of("../sql/postgresql");
         }
-        if (!Files.exists(sqlPath)) {
+        if (!Files.exists(sqlDir)) {
             File root = new File("").getAbsoluteFile();
-            while (root != null && !new File(root, "sql/postgresql/" + fileName).exists()) {
+            while (root != null && !new File(root, "sql/postgresql").exists()) {
                 root = root.getParentFile();
             }
             if (root != null) {
-                sqlPath = new File(root, "sql/postgresql/" + fileName).toPath();
+                sqlDir = new File(root, "sql/postgresql").toPath();
             }
         }
+        assertTrue(Files.exists(sqlDir) && Files.isDirectory(sqlDir), "SQL 目录必须存在: sql/postgresql");
+        return sqlDir;
+    }
+
+    private String loadSqlContent(String fileName) throws IOException {
+        Path sqlPath = getSqlDirectory().resolve(fileName);
         assertTrue(Files.exists(sqlPath), "SQL 文件必须存在: sql/postgresql/" + fileName);
         return Files.readString(sqlPath, StandardCharsets.UTF_8);
     }
@@ -345,6 +351,33 @@ public class LunaerpVendorReconSqlBootstrapTest {
             // 确保没有裸的 CREATE INDEX (非 IF NOT EXISTS)
             assertFalse(sql.matches("(?s).*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+(?!IF\\s+NOT\\s+EXISTS).*"),
                     file + " 中所有 CREATE INDEX 必须携带 IF NOT EXISTS");
+        }
+    }
+
+    @Test
+    @DisplayName("全仓扫描：验证所有 lunaerp-*.sql 脚本对 system_role_menu 的赋权均包含序列定义、setval 同步与 nextval 自增主键")
+    void testAllLunaerpSqlScriptsRoleMenuSequenceHygiene() throws IOException {
+        Path sqlDir = getSqlDirectory();
+        try (var stream = Files.list(sqlDir)) {
+            List<Path> lunaerpSqlFiles = stream
+                    .filter(p -> p.getFileName().toString().startsWith("lunaerp-") && p.getFileName().toString().endsWith(".sql"))
+                    .toList();
+            assertFalse(lunaerpSqlFiles.isEmpty(), "未在 sql/postgresql 目录下找到任何 lunaerp-*.sql 脚本");
+
+            int roleMenuScriptCount = 0;
+            for (Path sqlFile : lunaerpSqlFiles) {
+                String content = Files.readString(sqlFile, StandardCharsets.UTF_8);
+                if (content.contains("INSERT INTO system_role_menu") || content.contains("INSERT INTO  system_role_menu")) {
+                    roleMenuScriptCount++;
+                    assertTrue(content.contains("system_role_menu_seq"),
+                            sqlFile.getFileName() + " 插入 system_role_menu 时必须包含 system_role_menu_seq 序列定义");
+                    assertTrue(content.contains("setval('system_role_menu_seq'"),
+                            sqlFile.getFileName() + " 插入 system_role_menu 时必须前置执行 setval 同步序列");
+                    assertTrue(content.contains("nextval('system_role_menu_seq')"),
+                            sqlFile.getFileName() + " 插入 system_role_menu 时必须显式为 id 列取号并调用 nextval('system_role_menu_seq')");
+                }
+            }
+            assertTrue(roleMenuScriptCount >= 11, "应至少扫描到 11 个包含角色菜单权限插入的业务 SQL 脚本，实际扫描到: " + roleMenuScriptCount);
         }
     }
 }

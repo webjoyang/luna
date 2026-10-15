@@ -541,15 +541,21 @@ VALUES (10247, '纱价修改', 'lunaerp:production:yarn-price:update', 3, 7, 102
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
 VALUES (10248, '纱价删除', 'lunaerp:production:yarn-price:delete', 3, 8, 10240, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-10-10 00:00:00', '1', '2026-10-10 00:00:00', '0');
 
--- 授权管理员与超管角色
+-- 授权管理员与超管角色（PostgreSQL 无自增：id 显式取号，序列对齐现有最大 id 防主键冲突）
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
 DELETE FROM system_role_menu WHERE menu_id IN (
     10132, 10133, 10134, 10135,
     10136, 10137, 10138, 10139, 10140,
     10245, 10246, 10247, 10248
 );
 
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
 FROM system_role r
 CROSS JOIN (
     SELECT 10132 AS id UNION ALL SELECT 10133 UNION ALL SELECT 10134 UNION ALL SELECT 10135 UNION ALL

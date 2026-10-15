@@ -99,6 +99,12 @@ INSERT INTO system_menu (
 );
 
 -- 授权管理员与超管角色
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
 DELETE FROM system_role_menu WHERE menu_id = 10114;
 INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
 SELECT nextval('system_role_menu_seq'), r.id, 10114, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1

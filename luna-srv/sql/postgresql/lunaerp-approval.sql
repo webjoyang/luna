@@ -368,10 +368,16 @@ INSERT INTO system_menu (
     0, '1', '1', '1', 'admin', '2026-10-09 00:00:00', '1', '2026-10-09 00:00:00', '0'
 );
 
--- 授权管理员与超管角色
+-- 授权管理员与超管角色（PostgreSQL 无自增：id 显式取号，序列对齐现有最大 id 防主键冲突）
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
 DELETE FROM system_role_menu WHERE menu_id IN (10800, 10810, 10820, 10830, 10840, 10841, 10842, 10843);
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
 FROM system_role r
 CROSS JOIN (
     SELECT 10800 AS id UNION ALL SELECT 10810 UNION ALL SELECT 10820 UNION ALL SELECT 10830 UNION ALL

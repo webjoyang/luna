@@ -18,6 +18,7 @@
 
 - **一域一文件**：新表/新列追加到对应业务域文件**末尾**，并在语句上方注释 `-- [YYYY-MM-DD] 工单/说明`
 - **必须幂等**：`CREATE TABLE IF NOT EXISTS`、`ADD COLUMN IF NOT EXISTS`、种子 `INSERT ... ON CONFLICT DO NOTHING`，保证重复执行不出错
+- **PostgreSQL 无自增**：插入 `system_menu` / `system_role_menu` 等系统表时必须显式提供 `id`（菜单用固定 id；`system_role_menu` 用 `nextval('system_role_menu_seq')`，插入前用 `setval(seq, GREATEST(max(id),1))` 对齐序列防主键冲突。MySQL 自增写法在 PG 会报 `null value in column "id"`）
 - **跨文件依赖**：若新文件依赖其他文件的表，在文件头部注释 `-- DEPENDS ON: lunaerp-xxx.sql`
 - 新文件创建后，**执行完毕立即更新本文档状态表**
 
@@ -42,7 +43,7 @@
 | 11 | lunaerp-production-yarn-recipe-bom.sql | 2026-09-20 | ✅ | |
 | 12 | lunaerp-production-inspection-order.sql | 2026-09-21 | ✅ | |
 | 13 | lunaerp-stock.sql | 2026-09-24 | ⚠️ | 缺列：`stock_in.inspection_order_id/no`、`stock_in_item.inspection_order_item_id / item_type / piece_no / weaving_ticket_id / yarn_spec_id / yarn_spec_name`、`stock_ledger.item_type / yarn_spec_id / yarn_spec_name` |
-| 14 | lunaerp-production-weaving.sql | 2026-09-26 | ❌ | 缺表：`weaving_order / weaving_ticket / loom / machine_task / yarn_requisition(_item)` |
+| 14 | lunaerp-production-weaving.sql | 2026-09-26 | ❌ | 缺表：`weaving_order / weaving_ticket / loom / machine_task / yarn_requisition(_item)`；2026-10-15 修复角色授权缺 id 的报错（已按 §一 幂等约定改用序列取号），**待重新执行** |
 | 15 | lunaerp-production-iot.sql | 2026-09-26 | ❌ | 缺表：`machine_realtime / device_binding / vendor_credential` |
 | 16 | lunaerp-production-inspection-confirmation.sql | 2026-09-27 | ✅ | |
 | 17 | lunaerp-business-shipment.sql | 2026-09-27 | ✅ | |
@@ -51,7 +52,7 @@
 | 20 | lunaerp-production-progress.sql | 2026-09-29 | ✅ | |
 | 21 | lunaerp-sample-analysis.sql | 2026-10-04 | ❌ | 缺表：`sample_analysis(_yarn_spec / _yarn_arrange / _supplier_quote)` |
 | 22 | lunaerp-data-permission-wiring.sql | 2026-10-09 | ❌ | 4 个 `dept_id` / 业务员列全部未加（customer / sales_contract / shipment） |
-| 23 | lunaerp-common-foundation.sql | 2026-10-09 | ✅ | 备注：`system_notify_template` 行数为 0（如需要站内信模板需补种子） |
+| 23 | lunaerp-common-foundation.sql | 2026-10-09 | ✅ | 备注：`system_notify_template` 行数为 0（如需要站内信模板需补种子）；首次执行时角色授权 INSERT 曾因缺 id 报错被跳过，**2026-10-15 已修复，重跑本文件可补齐**布票打印（10300）与回收站（10900-10903）授权 |
 | 24 | lunaerp-default-package-seed.sql | 2026-10-09 | ✅ | |
 | 25 | lunaerp-approval.sql | 2026-10-09 | ❌ | 缺表：`approval_config(_node) / approval_instance / approval_task / approval_record` |
 | 26 | lunaerp-menu-ia-rename.sql | 2026-10-09 | ✅ | |

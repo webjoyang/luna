@@ -50,6 +50,12 @@ INSERT INTO system_menu (
 -- =============================================================================
 -- 2. 角色授权（system_role_menu，为 super_admin / admin 超管与管理员授权）
 -- =============================================================================
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
 DELETE FROM system_role_menu WHERE menu_id IN (10510, 10520);
 
 INSERT INTO system_role_menu (

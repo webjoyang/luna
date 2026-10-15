@@ -209,13 +209,18 @@ INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon
 (10275, '工资扣款汇总', 'lunaerp:production:inspection-confirmation:payroll', 3, 5, 10270, '', '#', '', NULL, 0, '1', '1', '1', 'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, '0');
 
 -- 超级管理员（角色 1/2）自动赋予菜单与按钮权限
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
 DELETE FROM system_role_menu WHERE menu_id IN (10270, 10271, 10272, 10273, 10274, 10275);
 INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
 SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
 FROM system_role r
 CROSS JOIN (SELECT id FROM system_menu WHERE id IN (10270, 10271, 10272, 10273, 10274, 10275)) m
-WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)
-ON CONFLICT DO NOTHING;
+WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2);
 
 COMMIT;
 -- @formatter:on
