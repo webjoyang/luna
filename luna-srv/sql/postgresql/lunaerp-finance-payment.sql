@@ -330,16 +330,24 @@ INSERT INTO system_menu (
     0, '1', '1', '1', 'admin', '2026-10-15 00:00:00', '1', '2026-10-15 00:00:00', '0'
 );
 
--- 5.2 赋权系统管理员角色
-DELETE FROM system_role_menu WHERE menu_id IN (10740, 10741, 10742, 10743);
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
-FROM system_role r
+-- 5.3 赋权系统管理员角色
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
+DELETE FROM system_role_menu WHERE menu_id IN (10700, 10740, 10741, 10742, 10743);
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+FROM (
+    SELECT DISTINCT id FROM system_role
+    WHERE code IN ('super_admin', 'admin') OR id IN (1, 2)
+) r
 CROSS JOIN (
-    SELECT 10740 AS id UNION ALL SELECT 10741 UNION ALL SELECT 10742 UNION ALL SELECT 10743
-) m
-WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)
-ON CONFLICT DO NOTHING;
+    SELECT 10700 AS id UNION ALL SELECT 10740 UNION ALL SELECT 10741 UNION ALL SELECT 10742 UNION ALL SELECT 10743
+) m;
 
 COMMIT;
 -- @formatter:on

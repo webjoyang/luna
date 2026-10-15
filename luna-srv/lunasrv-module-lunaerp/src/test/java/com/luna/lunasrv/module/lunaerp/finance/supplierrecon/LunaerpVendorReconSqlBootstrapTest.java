@@ -285,9 +285,11 @@ public class LunaerpVendorReconSqlBootstrapTest {
         assertTrue(paymentSql.contains("lunaerp:finance:payment:register"), "需包含 10743 付款登记权限");
         assertFalse(paymentSql.replaceAll("(?m)--.*$", "").contains("10744"), "不应包含 10744 删除付款单按钮（红冲二期）");
 
-        // 角色赋权
+        // 角色赋权与 PostgreSQL 自增序列主键防 null
         assertTrue(reconSql.contains("system_role_menu"), "vendor-recon.sql 必须赋权 system_role_menu");
         assertTrue(paymentSql.contains("system_role_menu"), "payment.sql 必须赋权 system_role_menu");
+        assertTrue(reconSql.contains("nextval('system_role_menu_seq')"), "vendor-recon.sql 赋权时必须显式生成 system_role_menu.id 防 null");
+        assertTrue(paymentSql.contains("nextval('system_role_menu_seq')"), "payment.sql 赋权时必须显式生成 system_role_menu.id 防 null");
     }
 
     @Test

@@ -277,16 +277,24 @@ INSERT INTO system_menu (
 );
 
 -- 4.3 赋权系统管理员角色
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
 DELETE FROM system_role_menu WHERE menu_id IN (10700, 10730, 10731, 10732, 10733, 10734, 10735, 10736);
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
-FROM system_role r
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+FROM (
+    SELECT DISTINCT id FROM system_role
+    WHERE code IN ('super_admin', 'admin') OR id IN (1, 2)
+) r
 CROSS JOIN (
     SELECT 10700 AS id UNION ALL SELECT 10730 UNION ALL SELECT 10731 UNION ALL SELECT 10732 UNION ALL
     SELECT 10733 UNION ALL SELECT 10734 UNION ALL SELECT 10735 UNION ALL SELECT 10736
-) m
-WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)
-ON CONFLICT DO NOTHING;
+) m;
 
 COMMIT;
 -- @formatter:on
