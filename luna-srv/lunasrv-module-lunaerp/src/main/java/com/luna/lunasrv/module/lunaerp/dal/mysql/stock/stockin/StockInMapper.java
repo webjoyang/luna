@@ -66,7 +66,7 @@ public interface StockInMapper extends BaseMapperX<StockInDO> {
      */
     @Select("SELECT id, in_no, in_type, status, warehouse_id, warehouse_name, supplier_id, supplier_name, "
             + "sales_contract_id, contract_no, greige_order_id, greige_order_no, dyeing_order_id, "
-            + "greige_type_id, greige_type_name, total_amount, in_date, remark, creator, create_time, "
+            + "greige_type_id, greige_type_name, yarn_order_id, yarn_order_no, total_amount, in_date, remark, creator, create_time, "
             + "updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_stock_in WHERE in_no = #{inNo} LIMIT 1")
     StockInDO selectByInNoIncludingDeleted(@Param("inNo") String inNo);
@@ -79,7 +79,7 @@ public interface StockInMapper extends BaseMapperX<StockInDO> {
      */
     @Select("SELECT id, in_no, in_type, status, warehouse_id, warehouse_name, supplier_id, supplier_name, "
             + "sales_contract_id, contract_no, greige_order_id, greige_order_no, dyeing_order_id, "
-            + "greige_type_id, greige_type_name, total_amount, in_date, remark, creator, create_time, "
+            + "greige_type_id, greige_type_name, yarn_order_id, yarn_order_no, total_amount, in_date, remark, creator, create_time, "
             + "updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_stock_in WHERE in_no LIKE CONCAT(#{prefix}, '%')")
     List<StockInDO> selectListByInNoPrefixIncludingDeleted(@Param("prefix") String prefix);

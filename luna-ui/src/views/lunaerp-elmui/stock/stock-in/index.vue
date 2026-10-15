@@ -1,7 +1,13 @@
 <template>
   <ContentWrap>
     <!-- 搜索区（多条件检索：关键词/类型/状态/仓库/供应商/日期区间） -->
-    <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
+    <el-form
+      class="-mb-15px"
+      :model="queryParams"
+      ref="queryFormRef"
+      :inline="true"
+      label-width="80px"
+    >
       <el-form-item label="关键词" prop="keyword">
         <el-input
           v-model="queryParams.keyword"
@@ -32,7 +38,12 @@
         </el-select>
       </el-form-item>
       <el-form-item label="仓库" prop="warehouseId">
-        <el-select v-model="queryParams.warehouseId" placeholder="全部仓库" clearable class="!w-180px">
+        <el-select
+          v-model="queryParams.warehouseId"
+          placeholder="全部仓库"
+          clearable
+          class="!w-180px"
+        >
           <el-option
             v-for="item in warehouseOptions"
             :key="item.id"
@@ -105,6 +116,11 @@
       </el-table-column>
       <el-table-column label="供应商" prop="supplierName" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">{{ row.supplierName || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="纱线采购单" prop="yarnOrderNo" min-width="150" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span class="cell-code">{{ row.yarnOrderNo || '—' }}</span>
+        </template>
       </el-table-column>
       <el-table-column label="金额合计" prop="totalAmount" width="120" align="right">
         <template #default="{ row }">

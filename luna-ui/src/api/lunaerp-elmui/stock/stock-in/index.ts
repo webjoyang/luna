@@ -61,6 +61,8 @@ export interface StockInVO {
   greigeTypeName?: string
   inspectionOrderId?: number
   inspectionOrderNo?: string
+  yarnOrderId?: number
+  yarnOrderNo?: string
   totalAmount?: number
   inDate: string
   remark?: string
@@ -127,4 +129,3 @@ export const auditStockIn = (id: number) => {
 export const cancelStockIn = (id: number) => {
   return request.put({ url: '/lunaerp/stock/stock-in/cancel?id=' + id })
 }
-
