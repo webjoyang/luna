@@ -111,4 +111,22 @@
   - 单元测试中的 Druid PostgreSQL 解析器对复杂子查询 JOIN 后的 `ON CONFLICT DO NOTHING` 解析受限。
   - **强制规约**：在满足“先 DELETE 后 INSERT + 序列发号”的幂等操作下，无需且禁止在批量插入尾部追加冗余的 `ON CONFLICT DO NOTHING`，保持 SQL 纯正简洁并规避解析器异常。
 
+## 9. 业务单号发号与顺延重试规约 (Sequential No Generation & Collision Retry)
+
+- 遵循 ADR-0004（合同号）、ADR-0005（供应商号）、ADR-0006（按日发号）。
+- **取号与顺延重试标准模式**：
+  - **单次前缀扫描基准**：按租户与日期前缀（含软删除记录）扫描最大单号仅执行 1 次，提取已占用最大序号 `maxNum` 与标准位宽 `maxDigits`。
+  - **严格递增探测顺延**：重试循环必须基于 `maxNum + i`（`for (int i = 1; i <= MAX_GENERATE_RETRY; i++)`）生成探测单号并查重；严禁在同事务快照下循环重复调用无偏移的生成方法（产生相同单号引发死循环或并发误伤）。
+  - **耗尽业务异常阻断**：所有重试候选均被占用时，必须抛出明确的业务错误码（如 `SUPPLIER_RECON_STATUS_NOT_ALLOWED` 或单号冲突业务异常），严禁直接返回冲突单号转嫁给数据库唯一索引抛出底层异常。
+
+## 10. 接口入参 DTO 校验与单测打桩边界 (DTO Validation & Mocking Hygiene)
+
+- **复合更新 DTO 集合非空守卫 (Batch Update DTO Collection Guard)**：
+  - 在支持“增删改复合动作”或“部分更新”的 Request VO 中（如既包含待更新 `items` 又包含显式删除 `deletedItemIds`），明细集合字段严禁无条件标记 `@NotEmpty`。
+  - 避免仅执行删行操作时被 Bean Validation 400 误拦截；若需防止空请求，应使用 Service 联合判断 `if (CollUtil.isEmpty(items) && CollUtil.isEmpty(deletedItemIds))`。
+- **短路分支最小打桩纪律 (Minimal Mocking on Guard Branches)**：
+  - 编写参数校验拦截、前置状态守卫或并发抢占拦截等异常单测时，仅打桩至触发异常的最短调用路径。
+  - 严禁从正常链路无差别拷贝全量 Mock 打桩，避免业务路径优化或前置校验前移时触发 Mockito 5 严格模式下的 `UnnecessaryStubbingException`。
+
+
 
