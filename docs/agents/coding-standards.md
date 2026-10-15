@@ -148,6 +148,14 @@
   - 打印 VO 字段定义必须严格依循工单 Spec 声明的必要范围，禁止投机性扩展非必要或终态生命周期元数据（如在正常对账打印 VO 中冗余引入 `cancelledBy` 等字段）。
   - 严禁声明无底层数据源支撑的“占位字段”（例如在 VO 中声明 `supplierContact` 但底层仅有 `phone` 导致字段永久为空）。
 
+## 13. 累计上限并发守卫与行级悲观锁规约 (Concurrency Limit Guards & Row-level Locking)
 
-
-
+- **场景**：业务中存在“累计已申请 / 已核销 / 已排产 / 已抵扣 + 本次操作额 ≤ 来源单据总额”的业务守卫（如付款申请挂靠对账单、排产派工挂靠订单）。
+- **并发超申与幻读陷阱**：
+  - 在可重复读（RR）或读已提交（RC）事务隔离级别下，若仅执行 `SELECT SUM(...)` 只读聚合计算并与上限比较后直接 `INSERT`，并发事务读取的是同一历史快照，均能通过校验，导致最终累计值严重击穿上限（超申/超额/超配）。
+- **强制规约**：
+  - **来源行悲观锁串行化**：在事务起始处，必须对被引用的来源根实体行施加行级排他锁（`FOR UPDATE`），将竞争同一来源单据的并发写事务串行化：
+    `SourceDO source = sourceMapper.selectOneForUpdate(SourceDO::getId, sourceId);`
+  - **锁后原子重查与上限校验**：持有行锁后，在同一事务上下文重新执行累计值聚合（排除终态或当前单据），若 `appliedSum + currentAmount > source.getTotalAmount()`，必须抛出明确业务错误码（如 `022_007`）。
+  - **纯 Mockito 单元测试打桩规约**：
+    `BaseMapperX.selectOneForUpdate(SFunction, Object)` 内部委托 `selectOneForUpdate(LambdaQueryWrapper)`。单测打桩应使用 `when(sourceMapper.selectOneForUpdate(any(LambdaQueryWrapper.class))).thenReturn(sourceDO);`，Service 内部可通过判空短路兜底支持 `selectById`，保证真实运行加锁生效与单元测试解耦兼顾。

@@ -102,4 +102,112 @@ public class ArchitectureStandardsTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    @DisplayName("规约审查：finance 域 Service 内部批量快照方法必须遵循 batch* 前缀规范 (coding-standards.md §2)")
+    public void testFinanceServiceBatchSnapshotMethodsConvention() {
+        Set<Class<?>> serviceClasses = ClassUtil.scanPackage("com.luna.lunasrv.module.lunaerp.service.finance");
+        assertTrue(!serviceClasses.isEmpty(), "未扫描到 finance 域的 Service 类");
+
+        List<String> violations = new ArrayList<>();
+        for (Class<?> clazz : serviceClasses) {
+            if (clazz.isInterface()) {
+                continue;
+            }
+            for (Method method : clazz.getDeclaredMethods()) {
+                // 仅约束 Service 内部非 public 批量快照辅助方法
+                if (java.lang.reflect.Modifier.isPrivate(method.getModifiers())
+                        && java.util.Map.class.isAssignableFrom(method.getReturnType())) {
+                    boolean hasCollectionParam = false;
+                    for (Class<?> pType : method.getParameterTypes()) {
+                        if (java.util.Collection.class.isAssignableFrom(pType)) {
+                            hasCollectionParam = true;
+                            break;
+                        }
+                    }
+                    if (hasCollectionParam && !method.getName().startsWith("batch")) {
+                        violations.add(clazz.getSimpleName() + "." + method.getName() + "() 返回 Map 且接收集合参数，必须遵循 coding-standards.md §2 命名为 batch* 前缀");
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到内部批量快照方法命名不符合规范（应使用 batch* 显式标识批量抽取）:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    @DisplayName("规约审查：finance 域 Service 严禁在 LambdaQueryWrapperX 主链路上对 ID 集合使用原生 .in(...) (应使用 inOrEmpty 防全表扫描，coding-standards.md §1)")
+    public void testFinanceServicesHaveNoRawInOnIdCollections() {
+        java.io.File dir = new java.io.File("src/main/java/com/luna/lunasrv/module/lunaerp/service/finance");
+        if (!dir.exists()) {
+            dir = new java.io.File("luna-srv/lunasrv-module-lunaerp/src/main/java/com/luna/lunasrv/module/lunaerp/service/finance");
+        }
+        if (!dir.exists()) {
+            dir = new java.io.File("lunasrv-module-lunaerp/src/main/java/com/luna/lunasrv/module/lunaerp/service/finance");
+        }
+        if (!dir.exists()) {
+            return; // 外部打包环境跳过源码级静态扫描
+        }
+
+        List<java.io.File> javaFiles = new ArrayList<>();
+        collectJavaFiles(dir, javaFiles);
+
+        List<String> violations = new ArrayList<>();
+        for (java.io.File file : javaFiles) {
+            List<String> lines;
+            try {
+                lines = java.nio.file.Files.readAllLines(file.toPath());
+            } catch (Exception e) {
+                continue;
+            }
+            int lambdaBraceLevel = -1;
+            int currentBraceLevel = 0;
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i).trim();
+                if (line.startsWith("//") || line.startsWith("*") || line.startsWith("/*")) {
+                    continue;
+                }
+                // 标记进入嵌套 Consumer 块（如 .and(w -> { 或 or(sub -> {）
+                if (line.contains("-> {")) {
+                    lambdaBraceLevel = currentBraceLevel + 1;
+                }
+                for (char c : line.toCharArray()) {
+                    if (c == '{') {
+                        currentBraceLevel++;
+                    } else if (c == '}') {
+                        currentBraceLevel--;
+                        if (lambdaBraceLevel > 0 && currentBraceLevel < lambdaBraceLevel) {
+                            lambdaBraceLevel = -1;
+                        }
+                    }
+                }
+                // 仅在主链（非嵌套 Consumer 块内部）检查 ID 集合是否使用了原生 .in(...)
+                if (lambdaBraceLevel == -1) {
+                    if (line.contains(".in(") && (line.contains("Id,") || line.contains("Ids,") || line.contains("Id)") || line.contains("Ids)") || line.contains("::getId") || line.contains("::getSourceRefId") || line.contains("::getRefId"))) {
+                        violations.add(file.getName() + ":" + (i + 1) + " [" + line + "]");
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到 finance 域 Service 主链路对 ID 集合使用了原生 .in(...)（违反 coding-standards.md §1，必须改用 .inOrEmpty(...) 保证空集 1=0 安全短路）:\n"
+                        + String.join("\n", violations));
+    }
+
+    private void collectJavaFiles(java.io.File dir, List<java.io.File> result) {
+        java.io.File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (java.io.File file : files) {
+            if (file.isDirectory()) {
+                collectJavaFiles(file, result);
+            } else if (file.getName().endsWith(".java")) {
+                result.add(file);
+            }
+        }
+    }
+
 }

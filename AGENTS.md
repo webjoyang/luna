@@ -4,6 +4,7 @@
 
 问题（issue）以 Markdown 文件形式跟踪在 `.scratch/<feature>/` 下。见 `docs/agents/issue-tracker.md`。
 - 工单范围守卫：纯前端或纯后端工单若因联调需要扩展对侧契约，必须在实现前显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延（Scope Creep）。跨模块/跨工单实体守卫同理：严禁在特性工单中静默修改归属于后续 Issue（如未到开发阶段的关联域实体或表结构）的主实体，必须通过安全空值兜底、视图快照或显式前置依赖扩展，杜绝无序跨域蔓延。
+- 特性开发前置工作区干净度检查：开启新工单实现前，必须先执行 `git status -s` 确认工作区无无关改动；若存在前序环境同步、数据库脚本重跑等遗留文件，必须先独立 commit 或 stash，严禁将历史脏工作区带入特性工单引发 Diff 审查与范围蔓延判定噪声。
 
 ### Triage labels
 
@@ -26,6 +27,7 @@
 - 混合工作区文件定标优先使用 `git ls-files "*<keyword>*"`，严禁未排除 `node_modules` / `target` 进行递归深搜。
 - 内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`，严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；混合工作区根目录无 `src/`，检索时必须显式指定子项目路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`）。
 - 严禁在 PowerShell 下将 `vue-tsc`、`mvn` 等长生命周期或海量输出的命令挂接管道传递给 `Select-String`（子进程标准流缓冲会导致进程假死 hang 住）。
+- Windows PowerShell 5.1 语法守卫：命令串联必须使用分号 `;` 分隔或分步独立执行，严禁使用 Bash/PowerShell 7 的 `&&` 连接符（会抛出 InvalidEndOfLine 语法解析错误）。
 
 ### 以上文档请尽量用中文编写
 
@@ -43,4 +45,4 @@
 - 控制器与类文件定位：业务控制器统一位于 `com.luna.lunasrv.module.lunaerp.controller.<domain>`（无 `admin/` 中间层，区别于底座 yudao 系统管理模块的 `controller/admin/`）；定位 Controller/Service/VO/DTO 一律使用 `git ls-files "*<Keyword>*"`，严禁凭经验拼接类路径。
 - 单测执行：`mvn test "-Dtest=TargetTest"` 或指定模块 `mvn test -pl lunasrv-module-lunaerp "-Dtest=TargetTest"`（多类测试在 PowerShell 下务必使用双引号包裹 `"-Dtest=TestA,TestB"`）
 - 框架依赖刷新：修改或依赖刚刚调整过的 `lunasrv-framework` 基础组件时，需先执行 `mvn -pl lunasrv-framework/<module-name> install -DskipTests`（如 `lunasrv-spring-boot-starter-mybatis`）将最新 jar 安装至本地仓库，避免子模块 `-pl` 测试时读取 `~/.m2` 旧快照。
-- 数据库脚本与发号校验规约：35 个增量脚本的执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号见 `docs/agents/coding-standards.md` 第 8 节；按日取号顺延重试见第 9 节；复合更新 DTO 校验与单测打桩边界见第 10 节；跨服务单测防自测桩见第 11 节；通用套打契约与脱敏豁免见第 12 节。
+- 数据库脚本与发号校验规约：35 个增量脚本的执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号见 `docs/agents/coding-standards.md` 第 8 节；按日取号顺延重试见第 9 节；复合更新 DTO 校验与单测打桩边界见第 10 节；跨服务单测防自测桩见第 11 节；通用套打契约与脱敏豁免见第 12 节；累计上限并发守卫与行级悲观锁见第 13 节。
