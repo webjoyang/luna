@@ -186,10 +186,5 @@ public class SupplierReconItemDO extends TenantBaseDO {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String remark;
 
-    /**
-     * 卷数（内存/展示辅助字段，不落库）
-     */
-    @TableField(exist = false)
-    private Integer rollCount;
-
 }
+

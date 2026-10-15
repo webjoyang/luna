@@ -3,7 +3,7 @@
 ### Issue tracker
 
 问题（issue）以 Markdown 文件形式跟踪在 `.scratch/<feature>/` 下。见 `docs/agents/issue-tracker.md`。
-- 工单范围守卫：纯前端或纯后端工单若因联调需要扩展对侧契约，必须在实现前显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延（Scope Creep）。
+- 工单范围守卫：纯前端或纯后端工单若因联调需要扩展对侧契约，必须在实现前显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延（Scope Creep）。跨模块/跨工单实体守卫同理：严禁在特性工单中静默修改归属于后续 Issue（如未到开发阶段的关联域实体或表结构）的主实体，必须通过安全空值兜底、视图快照或显式前置依赖扩展，杜绝无序跨域蔓延。
 
 ### Triage labels
 
@@ -19,7 +19,7 @@
 
 ### 异步任务与工具经济性 (Zero-Poll 纪律)
 
-系统具备反应式自动唤醒（Reactive Wakeup）。派发后台耗时任务（如 Maven 测试、构建命令）或通过 `invoke_subagent` 派发并行 Reviewer 子代理后，**严禁在会话中使用 `manage_task(status)` 或 `manage_subagents(list)` 进行高频自旋轮询**。派发后应立即停调工具并结束当前轮次，静待系统消息通知唤醒，消除无效 token 消耗与进程挂起。
+系统具备反应式自动唤醒（Reactive Wakeup）。派发后台耗时任务（如 Maven 测试、构建命令）或通过 `invoke_subagent` 派发并行 Reviewer 子代理后，**严禁在会话中使用 `manage_task(status)` 或 `manage_subagents(list)` 进行高频自旋轮询，亦严禁额外调用 `schedule` 挂载短时定时器**。派发后应立即停调工具并结束当前轮次，静待系统消息通知唤醒，消除无效 token 消耗与进程挂起。
 
 ### 代码检索与命令行管道安全
 
