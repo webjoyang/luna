@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -37,5 +38,16 @@ public interface PaymentMapper extends BaseMapperX<PaymentDO> {
             + "status, remark, creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_finance_payment WHERE payment_no LIKE CONCAT(#{prefix}, '%')")
     List<PaymentDO> selectListByPaymentNoPrefixIncludingDeleted(@Param("prefix") String prefix);
+
+    /**
+     * 按供应商统计已核销使用的预付总额（prepay_used_amount 累计）
+     *
+     * @param supplierId 供应商ID
+     * @param tenantId 租户编号
+     * @return 预付使用总额
+     */
+    @Select("SELECT COALESCE(SUM(prepay_used_amount), 0) FROM lunaerp_finance_payment "
+            + "WHERE supplier_id = #{supplierId} AND direction = 'OUT' AND deleted = 0 AND tenant_id = #{tenantId}")
+    BigDecimal selectSumPrepayUsedAmountBySupplier(@Param("supplierId") Long supplierId, @Param("tenantId") Long tenantId);
 
 }

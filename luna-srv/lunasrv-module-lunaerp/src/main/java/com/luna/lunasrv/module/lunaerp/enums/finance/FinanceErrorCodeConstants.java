@@ -32,5 +32,6 @@ public interface FinanceErrorCodeConstants {
     ErrorCode PAYMENT_PREPAY_BALANCE_NOT_ENOUGH = new ErrorCode(1_030_023_005, "供应商预付余额不足");
     ErrorCode PAYMENT_ACCOUNT_NOT_AVAILABLE = new ErrorCode(1_030_023_006, "资金账户不存在或已停用");
     ErrorCode PAYMENT_AMOUNT_INVALID = new ErrorCode(1_030_023_007, "付款金额不合法");
+    ErrorCode PAYMENT_APPLY_NO_EXHAUSTED = new ErrorCode(1_030_023_008, "付款申请单号生成重试耗尽");
 
 }

@@ -67,5 +67,8 @@ public class FinanceErrorCodeConstantsTest {
 
         assertEquals(1_030_023_007, FinanceErrorCodeConstants.PAYMENT_AMOUNT_INVALID.getCode());
         assertEquals("付款金额不合法", FinanceErrorCodeConstants.PAYMENT_AMOUNT_INVALID.getMsg());
+
+        assertEquals(1_030_023_008, FinanceErrorCodeConstants.PAYMENT_APPLY_NO_EXHAUSTED.getCode());
+        assertEquals("付款申请单号生成重试耗尽", FinanceErrorCodeConstants.PAYMENT_APPLY_NO_EXHAUSTED.getMsg());
     }
 }

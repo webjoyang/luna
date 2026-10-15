@@ -314,6 +314,7 @@ public class ErrorCodeConstantsTest {
         assertEquals(1_030_023_005, ErrorCodeConstants.PAYMENT_PREPAY_BALANCE_NOT_ENOUGH.getCode());
         assertEquals(1_030_023_006, ErrorCodeConstants.PAYMENT_ACCOUNT_NOT_AVAILABLE.getCode());
         assertEquals(1_030_023_007, ErrorCodeConstants.PAYMENT_AMOUNT_INVALID.getCode());
+        assertEquals(1_030_023_008, ErrorCodeConstants.PAYMENT_APPLY_NO_EXHAUSTED.getCode());
     }
 }
 
