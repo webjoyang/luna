@@ -4,13 +4,13 @@
 
 **Blocked by:** 05（付款申请与审批状态；预付余额聚合公共方法）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `POST /payment/register` 入参：supplier_id、核销明细 `[{apply_id, allocate_amount}]`、account_id、pay_amount、prepay_used_amount（缺省 0）
-- [ ] 守卫：各申请须 APPROVED 且属于同一供应商（否则 023_001/023_007）；每笔 allocate_amount ≤ 该申请剩余额（amount − 已核销聚合），超报 023_003；Σ allocate_amount ≤ pay_amount + prepay_used_amount，钱不够分报 023_007
-- [ ] 预付守卫：prepay_used_amount ≤ 供应商预付余额（023_005）；账户守卫：账户存在且未停用（023_006），经 finance.account 服务条件更新扣减 pay_amount，余额不足/更新失败报 023_004；12 号未落地前以 Service 内 mock seam 表达，测试 mock 之
-- [ ] 同事务四步原子：写 payment(direction=OUT, status=COMPLETED) + 每申请一条 payment_ref（apply_no 快照）→ 调账户服务写流出流水 pay_amount → append 一条 OUT_SUPPLIER 经营分录（金额 Σ(pay_amount+prepay_used)，refType=PAYMENT/refId=payment.id，备注含 prepay_used）；任一步失败整体回滚
-- [ ] 多申请按申请创建时间顺序分配；部分核销后申请剩余额、供应商预付余额经既有聚合方法实时反映；payment_no 取号与 10 号 IN 侧共享前缀，冲突点代码注释挂账共享件清单
-- [ ] `GET /payment/page`（direction=OUT 固定，筛选供应商/账户/时间）与 `GET /get`（内嵌 ref 核销行：申请号/本次分配额）；不提供 update/delete 端点
-- [ ] 权限码 payment:register；登记 @LogRecord；实付/抵扣金额 @Sensitive(amount)
-- [ ] Mockito 单测：多单顺序分配、单笔部分核销、分配超剩余 003、预付超额 005、账户停用 006、账户条件更新失败 004、金额非法 007、四步原子回滚、核销后剩余额与预付余额聚合、纵向越权（无 :register 权限 403）
+- [x] `POST /payment/register` 入参：supplier_id、核销明细 `[{apply_id, allocate_amount}]`、account_id、pay_amount、prepay_used_amount（缺省 0）
+- [x] 守卫：各申请须 APPROVED 且属于同一供应商（否则 023_001/023_007）；每笔 allocate_amount ≤ 该申请剩余额（amount − 已核销聚合），超报 023_003；Σ allocate_amount ≤ pay_amount + prepay_used_amount，钱不够分报 023_007
+- [x] 预付守卫：prepay_used_amount ≤ 供应商预付余额（023_005）；账户守卫：账户存在且未停用（023_006），经 finance.account 服务条件更新扣减 pay_amount，余额不足/更新失败报 023_004；12 号未落地前以 Service 内 mock seam 表达，测试 mock 之
+- [x] 同事务四步原子：写 payment(direction=OUT, status=COMPLETED) + 每申请一条 payment_ref（apply_no 快照）→ 调账户服务写流出流水 pay_amount → append 一条 OUT_SUPPLIER 经营分录（金额 Σ(pay_amount+prepay_used)，refType=PAYMENT/refId=payment.id，备注含 prepay_used）；任一步失败整体回滚
+- [x] 多申请按申请创建时间顺序分配；部分核销后申请剩余额、供应商预付余额经既有聚合方法实时反映；payment_no 取号与 10 号 IN 侧共享前缀，冲突点代码注释挂账共享件清单
+- [x] `GET /payment/page`（direction=OUT 固定，筛选供应商/账户/时间）与 `GET /get`（内嵌 ref 核销行：申请号/本次分配额）；不提供 update/delete 端点
+- [x] 权限码 payment:register；登记 @LogRecord；实付/抵扣金额 @Sensitive(amount)
+- [x] Mockito 单测：多单顺序分配、单笔部分核销、分配超剩余 003、预付超额 005、账户停用 006、账户条件更新失败 004、金额非法 007、四步原子回滚、核销后剩余额与预付余额聚合、纵向越权（无 :register 权限 403）

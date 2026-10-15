@@ -70,5 +70,11 @@ public class FinanceErrorCodeConstantsTest {
 
         assertEquals(1_030_023_008, FinanceErrorCodeConstants.PAYMENT_APPLY_NO_EXHAUSTED.getCode());
         assertEquals("付款申请单号生成重试耗尽", FinanceErrorCodeConstants.PAYMENT_APPLY_NO_EXHAUSTED.getMsg());
+
+        assertEquals(1_030_023_009, FinanceErrorCodeConstants.PAYMENT_NOT_EXISTS.getCode());
+        assertEquals("收付款单不存在", FinanceErrorCodeConstants.PAYMENT_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_023_010, FinanceErrorCodeConstants.PAYMENT_NO_EXHAUSTED.getCode());
+        assertEquals("收付款单号生成重试耗尽", FinanceErrorCodeConstants.PAYMENT_NO_EXHAUSTED.getMsg());
     }
 }

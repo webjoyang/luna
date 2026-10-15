@@ -33,5 +33,7 @@ public interface FinanceErrorCodeConstants {
     ErrorCode PAYMENT_ACCOUNT_NOT_AVAILABLE = new ErrorCode(1_030_023_006, "资金账户不存在或已停用");
     ErrorCode PAYMENT_AMOUNT_INVALID = new ErrorCode(1_030_023_007, "付款金额不合法");
     ErrorCode PAYMENT_APPLY_NO_EXHAUSTED = new ErrorCode(1_030_023_008, "付款申请单号生成重试耗尽");
+    ErrorCode PAYMENT_NOT_EXISTS = new ErrorCode(1_030_023_009, "收付款单不存在");
+    ErrorCode PAYMENT_NO_EXHAUSTED = new ErrorCode(1_030_023_010, "收付款单号生成重试耗尽");
 
 }
