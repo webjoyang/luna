@@ -55,6 +55,10 @@
 
 - **按钮级权限指令守卫 (`v-hasPermi`)**：
   - 所有触发状态流转或数据写操作的按钮（新增、编辑/修改、删除、转机、调度/派工、审批等），必须显式绑定 `v-hasPermi="['<permission-code>']"`，禁止裸露可操作按钮。
+  - **二级弹窗/抽屉确认按钮守卫**：子组件弹窗（`el-dialog`）或抽屉（`el-drawer`）内部的确认提交按钮（如 `handleConfirm*`、`handleSave*`），严禁因外层入口已有控制而遗漏，必须严格且同等绑定对应写权限码；可通过 `pnpm lint:perms` 进行机械化扫描校验。
+- **月历与时序看板“今天回位”联动规约 (Calendar Navigation & Today Reset Parity)**：
+  - 在以月度或视口周期为聚合粒度监听（如 `watch(() => formatYearMonth(date))`）的日历/甘特组件中，当提供“今天/当前周期回位”快捷按钮时，若当前视图已经处于目标周期，单纯重置 `Date` 对象并不会改变格式化后的周期字符串，导致 `watch` 监听静默失效。
+  - **强制规约**：在“今天回位”事件回调中必须显式检测是否已在当前周期；若处于当前周期，必须显式调用数据加载函数（如 `loadCalendarData()`），保证操作反馈的一致性与即时性。
 - **业务错误码常量化与异常拦截 (Error Code Constants)**：
   - 接口业务异常与拦截（如排产时段冲突 `1030036000`）必须优先以常量形式定义并复用（如 `SCHEDULE_CONFLICT_CODE`），通过 `err.code === CONSTANT` 进行精确匹配；严禁仅依赖 `errorMsg.includes('...')` 模糊中文文本匹配作为核心业务逻辑分支。
 - **只读投影回写参数对齐 (Round-trip Form Payload)**：

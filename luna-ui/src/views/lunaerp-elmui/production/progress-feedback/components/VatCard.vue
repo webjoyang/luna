@@ -76,6 +76,7 @@
       <!-- COMPLETED 无后继、推进入口消失 -->
       <el-button
         v-if="nextStep && canAdvance"
+        v-hasPermi="['lunaerp:production:progress-feedback:advance']"
         type="primary"
         size="small"
         plain
@@ -88,6 +89,7 @@
       </el-button>
       <el-button
         v-if="canNote"
+        v-hasPermi="['lunaerp:production:progress-feedback:note']"
         size="small"
         text
         :icon="ChatDotSquare"
@@ -101,6 +103,7 @@
       </el-button>
       <el-button
         v-if="canDelete"
+        v-hasPermi="['lunaerp:production:progress-feedback:delete']"
         size="small"
         text
         type="danger"
