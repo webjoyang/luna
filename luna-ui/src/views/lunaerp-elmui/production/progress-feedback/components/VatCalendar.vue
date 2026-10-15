@@ -23,9 +23,7 @@
             @change="loadCalendarData"
           />
 
-          <span class="current-month-display">
-            {{ formatYearMonth(calendarDate) }} 排缸概览
-          </span>
+          <span class="current-month-display"> {{ formatYearMonth(calendarDate) }} 排缸概览 </span>
         </div>
 
         <!-- 中间图例说明 -->
@@ -122,11 +120,7 @@
             >
               <div class="cell-header">
                 <span class="cell-day-num">{{ data.day.split('-')[2] }}</span>
-                <span
-                  v-if="groupedVats[data.day]?.length"
-                  class="cell-vat-count"
-                  title="当日缸数"
-                >
+                <span v-if="groupedVats[data.day]?.length" class="cell-vat-count" title="当日缸数">
                   {{ groupedVats[data.day].length }}缸
                 </span>
               </div>
@@ -233,13 +227,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import {
-  ArrowLeft,
-  ArrowRight,
-  Calendar,
-  Refresh,
-  InfoFilled
-} from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Calendar, Refresh, InfoFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'

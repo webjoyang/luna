@@ -196,9 +196,8 @@ describe('Seam 2: Status Styling & Reschedule Guard (Issue 10)', () => {
 describe('Seam 3: Calendar API Layer Integration (spec §5.1, §7)', () => {
   it('getProgressFeedbackCalendar 发起 GET 请求至 /lunaerp/production/progress-feedback/calendar', async () => {
     const request = (await import('@/config/axios')).default
-    const { getProgressFeedbackCalendar } = await import(
-      '@/api/lunaerp-elmui/production/progress-feedback'
-    )
+    const { getProgressFeedbackCalendar } =
+      await import('@/api/lunaerp-elmui/production/progress-feedback')
 
     const params = {
       month: '2026-10',
@@ -213,4 +212,3 @@ describe('Seam 3: Calendar API Layer Integration (spec §5.1, §7)', () => {
     })
   })
 })
-
