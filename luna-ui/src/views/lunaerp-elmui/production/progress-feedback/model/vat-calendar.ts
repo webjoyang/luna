@@ -1,5 +1,6 @@
 import type {
   ProgressFeedbackCalendarVatVO,
+  ProgressFeedbackDetailVO,
   ProgressFeedbackUpdateVO
 } from '@/api/lunaerp-elmui/production/progress-feedback'
 
@@ -137,19 +138,10 @@ export function getVatCalendarStatusStyle(status?: string): VatCalendarStatusSty
  * 严格保留既有工序日期、缸号、数量等字段，仅修改 scheduledDate
  */
 export function buildRescheduleUpdateVO(
-  existingDetail: {
-    id?: number
+  existingDetail: Partial<ProgressFeedbackDetailVO> & {
     feedbackId?: number
     vatNo: string
     quantity: number
-    pieces?: number
-    status?: string
-    dyeingStartedDate?: string
-    fixingStartedDate?: string
-    qualityCheckDate?: string
-    completedDate?: string
-    delayReason?: string
-    remark?: string
   },
   newDate: string
 ): ProgressFeedbackUpdateVO {

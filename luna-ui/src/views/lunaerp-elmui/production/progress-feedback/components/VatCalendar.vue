@@ -20,7 +20,7 @@
             placeholder="选择月份"
             :clearable="false"
             style="width: 140px; margin-left: 12px"
-            @change="handleDatePickerChange"
+            @change="loadCalendarData"
           />
 
           <span class="current-month-display">
@@ -144,8 +144,8 @@
                   <div
                     class="vat-point"
                     :class="{
-                      'is-completed': vat.status === 'COMPLETED',
-                      'is-editable': vat.status !== 'COMPLETED'
+                      'is-completed': !canRescheduleVat(vat.status),
+                      'is-editable': canRescheduleVat(vat.status)
                     }"
                     :style="getVatPointStyle(vat.status)"
                     @click.stop="handleVatClick(vat)"
@@ -207,6 +207,7 @@
               type="date"
               placeholder="选择新排缸日期"
               value-format="YYYY-MM-DD"
+              :disabled="!canRescheduleVat(targetVat?.status) || rescheduleSubmitting"
               style="width: 100%"
             />
           </el-form-item>
@@ -217,6 +218,7 @@
         <span class="dialog-footer">
           <el-button @click="rescheduleDialogVisible = false">取消</el-button>
           <el-button
+            v-hasPermi="['lunaerp:production:progress-feedback:update']"
             type="primary"
             :loading="rescheduleSubmitting"
             @click="handleConfirmReschedule"
@@ -334,12 +336,12 @@ const handleNextMonth = () => {
 }
 
 const handleToday = () => {
+  const currentMonth = formatYearMonth(calendarDate.value)
+  const targetMonth = formatYearMonth(new Date())
   calendarDate.value = new Date()
-}
-
-const handleDatePickerChange = (val: Date) => {
-  if (val) {
-    calendarDate.value = val
+  // 若已经在当月，watch 不会触发，需显式主动刷新以响应"今天回位"
+  if (currentMonth === targetMonth) {
+    loadCalendarData()
   }
 }
 
@@ -355,20 +357,13 @@ watch(
 const todayStr = formatDate(new Date())
 const isDateToday = (dayStr: string) => dayStr === todayStr
 
-// 缸点样式
+// 缸点样式：圆点与边框取状态字典色，文本保持中性深色
 const getVatPointStyle = (status: string) => {
   const style = getVatCalendarStatusStyle(status)
-  if (style.isCompleted) {
-    return {
-      backgroundColor: '#f4f4f5',
-      color: '#909399',
-      borderColor: '#e4e7ed'
-    }
-  }
   return {
     backgroundColor: style.bg,
-    color: style.color,
-    borderColor: style.border
+    borderColor: style.border,
+    '--vat-dot-color': style.color
   }
 }
 
@@ -379,7 +374,7 @@ const renderVatTooltipContent = (vat: ProgressFeedbackCalendarVatVO): string => 
       (d) => d.value === vat.status
     )?.label || vat.status
 
-  const isCompleted = vat.status === 'COMPLETED'
+  const isCompleted = !canRescheduleVat(vat.status)
   const actionTip = isCompleted
     ? '<span style="color: #909399;">(已完成缸不可改期)</span>'
     : '<span style="color: #409eff;">(点击改期)</span>'
@@ -627,12 +622,13 @@ onMounted(() => {
         line-height: 16px;
         transition: all 0.15s ease;
         user-select: none;
+        color: #303133;
 
         .vat-status-dot {
           width: 6px;
           height: 6px;
           border-radius: 50%;
-          background-color: currentColor;
+          background-color: var(--vat-dot-color, currentColor);
           flex-shrink: 0;
         }
 
@@ -647,6 +643,7 @@ onMounted(() => {
         .vat-qty-text {
           white-space: nowrap;
           font-size: 10px;
+          color: #606266;
           opacity: 0.85;
           margin-left: auto;
         }
@@ -664,7 +661,9 @@ onMounted(() => {
         &.is-completed {
           cursor: not-allowed;
           filter: grayscale(1);
-          opacity: 0.7;
+          opacity: 0.65;
+          background-color: #f4f4f5 !important;
+          border-color: #e4e7ed !important;
         }
       }
     }
