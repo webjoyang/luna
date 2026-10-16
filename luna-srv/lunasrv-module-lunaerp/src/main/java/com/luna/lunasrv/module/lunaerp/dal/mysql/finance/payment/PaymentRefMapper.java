@@ -28,4 +28,22 @@ public interface PaymentRefMapper extends BaseMapperX<PaymentRefDO> {
             + "WHERE ref_type = 'PAY_APPLY' AND ref_id = #{applyId} AND deleted = 0")
     BigDecimal selectSumAllocatedAmountByApplyId(@Param("applyId") Long applyId);
 
+    /**
+     * 批量查询应收分录在已过账收款单中的已核销总额
+     *
+     * @param entryIds 分录ID集合
+     * @return 分组统计结果列表（包含 entryId 和 totalAllocated）
+     */
+    @Select("<script>"
+            + "SELECT r.ref_id AS entryId, COALESCE(SUM(r.allocate_amount), 0) AS totalAllocated "
+            + "FROM lunaerp_finance_payment_ref r "
+            + "JOIN lunaerp_finance_payment p ON r.payment_id = p.id AND p.deleted = 0 "
+            + "WHERE r.ref_type = 'AR_ENTRY' AND r.deleted = 0 "
+            + "AND p.status = 'COMPLETED' "
+            + "AND r.ref_id IN "
+            + "<foreach collection='entryIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "GROUP BY r.ref_id"
+            + "</script>")
+    java.util.List<java.util.Map<String, Object>> selectSumAllocatedAmountByEntryIds(@Param("entryIds") java.util.Collection<Long> entryIds);
+
 }

@@ -24,7 +24,8 @@ public interface PaymentMapper extends BaseMapperX<PaymentDO> {
      * @return 收付款单（含已删除行）
      */
     @Select("SELECT id, payment_no, direction, supplier_id, customer_id, account_id, pay_amount, prepay_used_amount, "
-            + "status, remark, creator, create_time, updater, update_time, deleted, tenant_id "
+            + "status, remark, receipt_type, currency, exchange_rate, receipt_date, bank_ref_no, handler_name, approval_status, "
+            + "creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_finance_payment WHERE payment_no = #{paymentNo} LIMIT 1")
     PaymentDO selectByPaymentNoIncludingDeleted(@Param("paymentNo") String paymentNo);
 
@@ -35,7 +36,8 @@ public interface PaymentMapper extends BaseMapperX<PaymentDO> {
      * @return 收付款单列表（含已删除行）
      */
     @Select("SELECT id, payment_no, direction, supplier_id, customer_id, account_id, pay_amount, prepay_used_amount, "
-            + "status, remark, creator, create_time, updater, update_time, deleted, tenant_id "
+            + "status, remark, receipt_type, currency, exchange_rate, receipt_date, bank_ref_no, handler_name, approval_status, "
+            + "creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_finance_payment WHERE payment_no LIKE CONCAT(#{prefix}, '%')")
     List<PaymentDO> selectListByPaymentNoPrefixIncludingDeleted(@Param("prefix") String prefix);
 

@@ -38,7 +38,17 @@ export const FINANCE_PAYMENT_ERROR_CODES = {
   AMOUNT_INVALID: 1030023007,
   APPLY_NO_EXHAUSTED: 1030023008,
   PAYMENT_NOT_EXISTS: 1030023009,
-  PAYMENT_NO_EXHAUSTED: 1030023010
+  PAYMENT_NO_EXHAUSTED: 1030023010,
+
+  // 收款单错误码 (1-030-023-1xx)
+  RECEIPT_NOT_EXISTS: 1030023100,
+  RECEIPT_STATUS_NOT_ALLOW: 1030023101,
+  RECEIPT_CUSTOMER_MISMATCH: 1030023102,
+  RECEIPT_CURRENCY_MISMATCH: 1030023103,
+  RECEIPT_ALLOCATE_EXCEED: 1030023104,
+  RECEIPT_POST_CONFLICT: 1030023105,
+  RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH: 1030023106,
+  RECEIPT_REVERSAL_NOT_ALLOW: 1030023107
 } as const
 
 /**
@@ -265,5 +275,220 @@ export const getPaymentPage = (params: PaymentPageReqVO) => {
 export const getFinanceAccountSimpleList = () => {
   return request.get<FinanceAccountSimpleRespVO[]>({
     url: '/lunaerp/finance/account/simple-list'
+  })
+}
+
+// ========== 收款单（IN 侧）类型与 API 契约 ==========
+
+/**
+ * 收款类型枚举
+ */
+export type ReceiptType = 'RECEIPT' | 'ADVANCE'
+
+/**
+ * 拟核销明细项 Request VO
+ */
+export interface ReceiptItemReqVO {
+  entryId: number
+  allocateAmount: number
+}
+
+/**
+ * 收款单草稿保存 Request VO
+ */
+export interface ReceiptSaveReqVO {
+  paymentNo?: string
+  customerId: number
+  accountId: number
+  currency: string
+  receiptType: ReceiptType | string
+  payAmount: number
+  receiptDate?: string
+  bankRefNo?: string
+  handlerName?: string
+  remark?: string
+  items?: ReceiptItemReqVO[]
+}
+
+/**
+ * 收款单草稿更新 Request VO
+ */
+export interface ReceiptUpdateReqVO {
+  id: number
+  accountId?: number
+  receiptType?: ReceiptType | string
+  payAmount?: number
+  receiptDate?: string
+  bankRefNo?: string
+  handlerName?: string
+  remark?: string
+  items?: ReceiptItemReqVO[]
+}
+
+/**
+ * 收款单分页查询 Request VO
+ */
+export interface ReceiptPageReqVO extends PageParam {
+  customerId?: number
+  accountId?: number
+  receiptType?: string
+  approvalStatus?: string
+  receiptDate?: string[]
+  keyword?: string
+}
+
+/**
+ * 收款单核销明细项 Response VO
+ */
+export interface ReceiptItemRespVO {
+  id: number
+  entryId: number
+  entryNo?: string
+  bizDate?: string
+  refType?: string
+  refNo?: string
+  contractNo?: string
+  productName?: string
+  currency?: string
+  originalAmount?: number
+  allocateAmount: number
+  unallocatedAmount?: number
+}
+
+/**
+ * 收款单 Response VO
+ */
+export interface ReceiptRespVO {
+  id: number
+  paymentNo: string
+  direction: 'IN' | string
+  customerId: number
+  customerName?: string
+  accountId: number
+  accountName?: string
+  currency: string
+  exchangeRate?: number
+  receiptType: ReceiptType | string
+  payAmount: number
+  allocatedTotalAmount?: number
+  unallocatedAmount?: number
+  receiptDate: string
+  bankRefNo?: string
+  handlerName?: string
+  status: string
+  approvalStatus: string
+  remark?: string
+  creator?: string
+  createTime?: string
+  items?: ReceiptItemRespVO[]
+}
+
+/**
+ * FIFO 自动分配试算 Request VO
+ */
+export interface AllocatePreviewReqVO {
+  customerId: number
+  currency: string
+  payAmount: number
+}
+
+/**
+ * FIFO 自动分配试算 Response VO
+ */
+export interface AllocatePreviewRespVO {
+  entryId: number
+  bizDate: string
+  refType: string
+  refId: number
+  refItemId?: number
+  refNo?: string
+  contractNo?: string
+  productName?: string
+  currency: string
+  originalAmount: number
+  unallocatedAmount: number
+  allocateAmount: number
+}
+
+/**
+ * 未核销 AR 分录明细 Response VO
+ */
+export interface ArBalanceRespVO {
+  entryId: number
+  bizDate: string
+  refType: string
+  refId: number
+  refItemId?: number
+  refNo?: string
+  contractId?: number
+  contractNo?: string
+  statementId?: number
+  statementNo?: string
+  productName?: string
+  currency: string
+  originalAmount: number
+  allocatedAmount: number
+  unallocatedAmount: number
+}
+
+// ========== 收款单 API 接口契约 ==========
+
+/** 创建收款单草稿 */
+export const createReceipt = (data: ReceiptSaveReqVO) => {
+  return request.post<number>({
+    url: '/lunaerp/finance/payment/create',
+    data
+  })
+}
+
+/** 更新收款单草稿（仅 PENDING/REJECTED） */
+export const updateReceipt = (data: ReceiptUpdateReqVO) => {
+  return request.put<boolean>({
+    url: '/lunaerp/finance/payment/update',
+    data
+  })
+}
+
+/** 删除收款单草稿（仅 PENDING） */
+export const deleteReceipt = (id: number) => {
+  return request.delete<boolean>({
+    url: `/lunaerp/finance/payment/delete?id=${id}`
+  })
+}
+
+/** 提交收款单审批（02号审批引擎） */
+export const submitReceipt = (id: number) => {
+  return request.put<boolean>({
+    url: `/lunaerp/finance/payment/submit?id=${id}`
+  })
+}
+
+/** 按发货日 FIFO 自动分配试算（纯内存不落库） */
+export const allocatePreview = (data: AllocatePreviewReqVO) => {
+  return request.post<AllocatePreviewRespVO[]>({
+    url: '/lunaerp/finance/payment/allocate-preview',
+    data
+  })
+}
+
+/** 获得未核销 AR 分录明细列表（选单与核销数据源） */
+export const getArBalanceList = (customerId: number, currency: string) => {
+  return request.get<ArBalanceRespVO[]>({
+    url: `/lunaerp/finance/payment/ar-balance?customerId=${customerId}&currency=${currency}`
+  })
+}
+
+/** 获得收款单详情（内嵌拟核销明细行） */
+export const getReceipt = (id: number) => {
+  return request.get<ReceiptRespVO>({
+    url: `/lunaerp/finance/payment/receipt-get?id=${id}`
+  })
+}
+
+/** 获得收款单分页列表 */
+export const getReceiptPage = (params: ReceiptPageReqVO) => {
+  return request.get<PageResult<ReceiptRespVO>>({
+    url: '/lunaerp/finance/payment/receipt-page',
+    params
   })
 }

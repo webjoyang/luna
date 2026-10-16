@@ -17,7 +17,13 @@ import {
   getPaymentApplyActionFlags,
   parsePaymentErrorMessage,
   distributePaymentAllocation,
-  validatePaymentRegister
+  validatePaymentRegister,
+  getReceiptActionFlags,
+  calcArEntryUnallocated,
+  distributeReceiptFifo,
+  validateReceiptForm,
+  getApprovalStatusText,
+  getApprovalStatusTagType
 } from '../model/payment'
 
 import * as PaymentApi from '@/api/lunaerp-elmui/finance/payment'
@@ -371,6 +377,231 @@ describe('Payment Domain Model & Utilities (Pure Node)', () => {
       await PaymentApi.getFinanceAccountSimpleList()
       expect(request.get).toHaveBeenCalledWith({
         url: '/lunaerp/finance/account/simple-list'
+      })
+    })
+
+    // Receipt API Tests
+    it('createReceipt should send POST to /lunaerp/finance/payment/create', async () => {
+      const payload = {
+        customerId: 1,
+        accountId: 2,
+        currency: 'RMB',
+        receiptType: 'RECEIPT',
+        payAmount: 1000
+      }
+      await PaymentApi.createReceipt(payload)
+      expect(request.post).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/create',
+        data: payload
+      })
+    })
+
+    it('updateReceipt should send PUT to /lunaerp/finance/payment/update', async () => {
+      const payload = { id: 101, payAmount: 2000 }
+      await PaymentApi.updateReceipt(payload)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/update',
+        data: payload
+      })
+    })
+
+    it('deleteReceipt should send DELETE to /lunaerp/finance/payment/delete?id=101', async () => {
+      await PaymentApi.deleteReceipt(101)
+      expect(request.delete).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/delete?id=101'
+      })
+    })
+
+    it('submitReceipt should send PUT to /lunaerp/finance/payment/submit?id=101', async () => {
+      await PaymentApi.submitReceipt(101)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/submit?id=101'
+      })
+    })
+
+    it('allocatePreview should send POST to /lunaerp/finance/payment/allocate-preview', async () => {
+      const payload = { customerId: 1, currency: 'RMB', payAmount: 5000 }
+      await PaymentApi.allocatePreview(payload)
+      expect(request.post).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/allocate-preview',
+        data: payload
+      })
+    })
+
+    it('getArBalanceList should send GET to /lunaerp/finance/payment/ar-balance', async () => {
+      await PaymentApi.getArBalanceList(1, 'RMB')
+      expect(request.get).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/ar-balance?customerId=1&currency=RMB'
+      })
+    })
+
+    it('getReceipt should send GET to /lunaerp/finance/payment/receipt-get?id=101', async () => {
+      await PaymentApi.getReceipt(101)
+      expect(request.get).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/receipt-get?id=101'
+      })
+    })
+
+    it('getReceiptPage should send GET to /lunaerp/finance/payment/receipt-page', async () => {
+      await PaymentApi.getReceiptPage({ pageNo: 1, pageSize: 10 })
+      expect(request.get).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/receipt-page',
+        params: { pageNo: 1, pageSize: 10 }
+      })
+    })
+  })
+
+  describe('Receipt Domain Model & Utilities', () => {
+    describe('getReceiptActionFlags', () => {
+      it('should allow edit, submit, and delete for PENDING/DRAFT', () => {
+        const flags = getReceiptActionFlags('PENDING')
+        expect(flags.canEdit).toBe(true)
+        expect(flags.canSubmit).toBe(true)
+        expect(flags.canDelete).toBe(true)
+        expect(flags.isApproved).toBe(false)
+      })
+
+      it('should prevent edit and submit for REJECTED (PENDING only per spec)', () => {
+        const flags = getReceiptActionFlags('REJECTED')
+        expect(flags.canEdit).toBe(false)
+        expect(flags.canSubmit).toBe(false)
+        expect(flags.canDelete).toBe(false)
+        expect(flags.isRejected).toBe(true)
+      })
+
+      it('should prevent edit/delete for APPROVING', () => {
+        const flags = getReceiptActionFlags('APPROVING')
+        expect(flags.canEdit).toBe(false)
+        expect(flags.canSubmit).toBe(false)
+        expect(flags.canDelete).toBe(false)
+        expect(flags.isApproving).toBe(true)
+      })
+
+      it('should mark APPROVED or COMPLETED as immutable', () => {
+        const flags = getReceiptActionFlags('APPROVED', 'COMPLETED')
+        expect(flags.canEdit).toBe(false)
+        expect(flags.canSubmit).toBe(false)
+        expect(flags.canDelete).toBe(false)
+        expect(flags.isApproved).toBe(true)
+      })
+    })
+
+    describe('calcArEntryUnallocated', () => {
+      it('should return unallocatedAmount directly if present', () => {
+        expect(calcArEntryUnallocated({ unallocatedAmount: 1500 })).toBe(1500)
+      })
+
+      it('should calculate originalAmount - allocatedAmount when unallocatedAmount missing', () => {
+        expect(calcArEntryUnallocated({ originalAmount: 5000, allocatedAmount: 2000 })).toBe(3000)
+        expect(calcArEntryUnallocated({ originalAmount: 5000, allocatedAmount: 5000 })).toBe(0)
+      })
+
+      it('should handle null/undefined gracefully', () => {
+        expect(calcArEntryUnallocated(null)).toBe(0)
+      })
+    })
+
+    describe('distributeReceiptFifo', () => {
+      it('should distribute receipt funds by bizDate ascending (FIFO)', () => {
+        const entries = [
+          { entryId: 103, bizDate: '2026-10-10', unallocatedAmount: 3000 },
+          { entryId: 101, bizDate: '2026-10-01', unallocatedAmount: 1000 },
+          { entryId: 102, bizDate: '2026-10-05', unallocatedAmount: 2000 }
+        ]
+
+        const res = distributeReceiptFifo(entries, 2500)
+        expect(res).toEqual([
+          { entryId: 101, allocateAmount: 1000 },
+          { entryId: 102, allocateAmount: 1500 },
+          { entryId: 103, allocateAmount: 0 }
+        ])
+      })
+    })
+
+    describe('validateReceiptForm', () => {
+      it('should reject missing customer, account, currency or non-positive payAmount', () => {
+        expect(validateReceiptForm({ payAmount: 100 }).valid).toBe(false)
+        expect(validateReceiptForm({ customerId: 1, payAmount: 100 }).valid).toBe(false)
+        expect(validateReceiptForm({ customerId: 1, accountId: 1, payAmount: 100 }).valid).toBe(
+          false
+        )
+        expect(
+          validateReceiptForm({ customerId: 1, accountId: 1, currency: 'RMB', payAmount: 0 }).valid
+        ).toBe(false)
+      })
+
+      it('should reject if any item allocateAmount exceeds unallocatedAmount', () => {
+        const res = validateReceiptForm({
+          customerId: 1,
+          accountId: 1,
+          currency: 'RMB',
+          payAmount: 5000,
+          items: [{ entryId: 101, allocateAmount: 2500, unallocatedAmount: 2000 }]
+        })
+        expect(res.valid).toBe(false)
+        expect(res.error).toContain('超出未核销余额')
+      })
+
+      it('should reject if total allocated exceeds payAmount', () => {
+        const res = validateReceiptForm({
+          customerId: 1,
+          accountId: 1,
+          currency: 'RMB',
+          payAmount: 1000,
+          items: [
+            { entryId: 101, allocateAmount: 800, unallocatedAmount: 1000 },
+            { entryId: 102, allocateAmount: 500, unallocatedAmount: 1000 }
+          ]
+        })
+        expect(res.valid).toBe(false)
+        expect(res.error).toContain('不得超出收款金额')
+      })
+
+      it('should accept valid receipt with items', () => {
+        const res = validateReceiptForm({
+          customerId: 1,
+          accountId: 1,
+          currency: 'RMB',
+          payAmount: 3000,
+          items: [
+            { entryId: 101, allocateAmount: 1000, unallocatedAmount: 2000 },
+            { entryId: 102, allocateAmount: 2000, unallocatedAmount: 2000 }
+          ]
+        })
+        expect(res.valid).toBe(true)
+      })
+    })
+
+    describe('parsePaymentErrorMessage for Receipt', () => {
+      it('should parse receipt error codes correctly', () => {
+        expect(parsePaymentErrorMessage({ code: 1030023100 })).toContain('收款单不存在')
+        expect(parsePaymentErrorMessage({ code: 1030023101 })).toContain('收款单当前状态不允许')
+        expect(parsePaymentErrorMessage({ code: 1030023102 })).toContain(
+          '所选待核销分录与当前收款客户不匹配'
+        )
+        expect(parsePaymentErrorMessage({ code: 1030023103 })).toContain('币种不一致')
+        expect(parsePaymentErrorMessage({ code: 1030023104 })).toContain(
+          '核销分配金额超出该分录未核销余额'
+        )
+        expect(parsePaymentErrorMessage({ code: 1030023105 })).toContain('收款单过账冲突')
+        expect(parsePaymentErrorMessage({ code: 1030023106 })).toContain('客户预收余额不足')
+        expect(parsePaymentErrorMessage({ code: 1030023107 })).toContain('该收款单不允许红冲')
+      })
+    })
+
+    describe('getApprovalStatusText & getApprovalStatusTagType', () => {
+      it('should map status codes to labels and tag types correctly', () => {
+        expect(getApprovalStatusText('PENDING')).toBe('草稿待提交')
+        expect(getApprovalStatusTagType('PENDING')).toBe('info')
+
+        expect(getApprovalStatusText('APPROVING')).toBe('审批中')
+        expect(getApprovalStatusTagType('APPROVING')).toBe('warning')
+
+        expect(getApprovalStatusText('APPROVED')).toBe('审批通过')
+        expect(getApprovalStatusTagType('APPROVED')).toBe('success')
+
+        expect(getApprovalStatusText('REJECTED')).toBe('已驳回')
+        expect(getApprovalStatusTagType('REJECTED')).toBe('danger')
       })
     })
   })

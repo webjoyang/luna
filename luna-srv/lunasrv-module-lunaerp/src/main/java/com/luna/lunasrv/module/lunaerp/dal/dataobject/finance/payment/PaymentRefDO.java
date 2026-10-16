@@ -57,4 +57,26 @@ public class PaymentRefDO extends TenantBaseDO {
      */
     private BigDecimal allocateAmount;
 
+    /**
+     * 分录编号/业务单号快照
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String entryNo;
+
+    /**
+     * 业务日期快照
+     */
+    private java.time.LocalDate bizDate;
+
+    /**
+     * 本位币核销金额快照（元）
+     */
+    private BigDecimal baseAmount;
+
+    /**
+     * 核销分录回指ID（lunaerp_finance_ledger_entry.id，OUT 侧恒空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long ledgerEntryId;
+
 }

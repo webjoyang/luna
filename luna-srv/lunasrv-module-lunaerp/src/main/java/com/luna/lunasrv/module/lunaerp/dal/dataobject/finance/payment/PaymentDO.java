@@ -81,4 +81,42 @@ public class PaymentDO extends TenantBaseDO {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String remark;
 
+    /**
+     * 收款单类型（字典 lunaerp_finance_receipt_type：RECEIPT 货款 / ADVANCE 预收；OUT 侧恒空）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String receiptType;
+
+    /**
+     * 收款币种（复用销售合同币种/外币，OUT 一期为 RMB）
+     */
+    private String currency;
+
+    /**
+     * 过账日汇率（1外币 = 汇率本位币，RMB 为 1.00000000）
+     */
+    private BigDecimal exchangeRate;
+
+    /**
+     * 收款日期（进分录账 biz_date）
+     */
+    private java.time.LocalDate receiptDate;
+
+    /**
+     * 银行回单号/交易流水号
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String bankRefNo;
+
+    /**
+     * 经手人姓名
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String handlerName;
+
+    /**
+     * 审批状态（02号引擎跨切面五态：PENDING/APPROVING/APPROVED/REJECTED/CANCELLED；OUT 侧不走审批）
+     */
+    private String approvalStatus;
+
 }

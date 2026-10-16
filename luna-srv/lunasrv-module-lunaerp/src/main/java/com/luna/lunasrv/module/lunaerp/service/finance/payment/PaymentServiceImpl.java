@@ -12,7 +12,18 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.Supplier
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentApplyDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentRefDO;
+import com.luna.lunasrv.module.lunaerp.approval.handler.ApprovalHandler;
+import com.luna.lunasrv.module.lunaerp.approval.instance.ApprovalInstanceService;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceSubmitReqVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.account.AccountMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentApplyMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentRefMapper;
@@ -20,6 +31,7 @@ import com.luna.lunasrv.module.lunaerp.enums.finance.ApplyStatus;
 import com.luna.lunasrv.module.lunaerp.enums.finance.Direction;
 import com.luna.lunasrv.module.lunaerp.enums.finance.PaymentRefType;
 import com.luna.lunasrv.module.lunaerp.enums.finance.PaymentStatus;
+import com.luna.lunasrv.module.lunaerp.enums.finance.ReceiptType;
 import com.luna.lunasrv.module.lunaerp.service.finance.account.FinanceAccountService;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
@@ -61,6 +73,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeCons
 public class PaymentServiceImpl implements PaymentService {
 
     private static final String PAYMENT_NO_PREFIX = "PAY";
+    private static final String RECEIPT_NO_PREFIX = "RC-";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int NO_MIN_DIGITS = 3;
     private static final int MAX_RETRY_COUNT = 5;
@@ -79,10 +92,25 @@ public class PaymentServiceImpl implements PaymentService {
     private SupplierMapper supplierMapper;
 
     @Resource
+    private CustomerMapper customerMapper;
+
+    @Resource
+    private AccountMapper accountMapper;
+
+    @Resource
+    private LedgerEntryMapper ledgerEntryMapper;
+
+    @Resource
+    private ShipmentMapper shipmentMapper;
+
+    @Resource
     private PaymentApplyService paymentApplyService;
 
     @Resource
     private FinanceAccountService financeAccountService;
+
+    @Resource
+    private ApprovalInstanceService approvalInstanceService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -451,6 +479,696 @@ public class PaymentServiceImpl implements PaymentService {
     private static class AllocatedItem {
         private PaymentApplyDO apply;
         private BigDecimal allocateAmount;
+    }
+
+    // ==================== 收款单（IN 侧）业务实现 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "FINANCE_PAYMENT", subType = "CREATE_RECEIPT", bizNo = "{{#_ret}}", success = "创建收款单【{{#_ret}}】成功")
+    public Long createReceipt(ReceiptSaveReqVO createReqVO) {
+        if (createReqVO == null || createReqVO.getCustomerId() == null || createReqVO.getAccountId() == null
+                || createReqVO.getPayAmount() == null) {
+            throw exception(PAYMENT_AMOUNT_INVALID);
+        }
+
+        // 1. 校验客户存在
+        CustomerDO customer = customerMapper.selectById(createReqVO.getCustomerId());
+        if (customer == null) {
+            throw exception(RECEIPT_CUSTOMER_MISMATCH);
+        }
+        validateTenant(customer.getTenantId());
+
+        // 2. 校验资金账户存在且为 ENABLE
+        AccountDO account = accountMapper.selectById(createReqVO.getAccountId());
+        if (account == null || !"ENABLE".equalsIgnoreCase(account.getStatus())) {
+            throw exception(PAYMENT_ACCOUNT_NOT_AVAILABLE);
+        }
+        validateTenant(account.getTenantId());
+        if (StrUtil.isNotBlank(account.getCurrency()) && StrUtil.isNotBlank(createReqVO.getCurrency())
+                && !account.getCurrency().equalsIgnoreCase(createReqVO.getCurrency())) {
+            throw exception(RECEIPT_CURRENCY_MISMATCH);
+        }
+
+        // 3. 校验核销明细（如有）
+        validateReceiptItems(createReqVO.getCurrency(), createReqVO.getCustomerId(),
+                createReqVO.getPayAmount(), createReqVO.getItems());
+
+        // 4. ADR-0004 单号生成（RC-{yyyyMMdd}-{3位日流水}）
+        String paymentNo = StrUtil.isNotBlank(createReqVO.getPaymentNo())
+                ? createReqVO.getPaymentNo().trim()
+                : generateReceiptNo(createReqVO.getReceiptDate());
+        PaymentDO existing = paymentMapper.selectByPaymentNoIncludingDeleted(paymentNo);
+        if (existing != null) {
+            throw exception(PAYMENT_NO_EXHAUSTED);
+        }
+
+        // 5. 保存收款单主表（PENDING 草稿）
+        PaymentDO payment = new PaymentDO();
+        payment.setPaymentNo(paymentNo);
+        payment.setDirection("IN");
+        payment.setCustomerId(customer.getId());
+        payment.setAccountId(account.getId());
+        payment.setCurrency(createReqVO.getCurrency());
+        payment.setReceiptType(createReqVO.getReceiptType());
+        payment.setPayAmount(createReqVO.getPayAmount().setScale(2, RoundingMode.HALF_UP));
+        payment.setPrepayUsedAmount(BigDecimal.ZERO);
+        payment.setReceiptDate(createReqVO.getReceiptDate() != null ? createReqVO.getReceiptDate() : LocalDate.now());
+        payment.setBankRefNo(createReqVO.getBankRefNo());
+        payment.setHandlerName(createReqVO.getHandlerName());
+        payment.setApprovalStatus(ApplyStatus.PENDING.getValue());
+        payment.setStatus("PENDING");
+        payment.setRemark(createReqVO.getRemark());
+
+        paymentMapper.insert(payment);
+
+        // 6. 保存拟核销分配行
+        saveReceiptRefs(payment.getId(), createReqVO.getItems());
+
+        log.info("[createReceipt] 创建收款单草稿成功: id={}, paymentNo={}", payment.getId(), payment.getPaymentNo());
+        return payment.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateReceipt(ReceiptUpdateReqVO updateReqVO) {
+        if (updateReqVO == null || updateReqVO.getId() == null) {
+            throw exception(RECEIPT_NOT_EXISTS);
+        }
+
+        PaymentDO payment = paymentMapper.selectById(updateReqVO.getId());
+        validateReceiptExistsAndTenant(payment);
+
+        // 仅 PENDING 草稿可修改（对齐 Spec 最小契约原则）
+        if (!isDraft(payment.getApprovalStatus())) {
+            throw exception(RECEIPT_STATUS_NOT_ALLOW);
+        }
+
+        // 校验资金账户可用
+        if (updateReqVO.getAccountId() != null) {
+            AccountDO account = accountMapper.selectById(updateReqVO.getAccountId());
+            if (account == null || !"ENABLE".equalsIgnoreCase(account.getStatus())) {
+                throw exception(PAYMENT_ACCOUNT_NOT_AVAILABLE);
+            }
+            if (StrUtil.isNotBlank(account.getCurrency()) && StrUtil.isNotBlank(payment.getCurrency())
+                    && !account.getCurrency().equalsIgnoreCase(payment.getCurrency())) {
+                throw exception(RECEIPT_CURRENCY_MISMATCH);
+            }
+            payment.setAccountId(account.getId());
+        }
+
+        BigDecimal payAmount = updateReqVO.getPayAmount() != null
+                ? updateReqVO.getPayAmount().setScale(2, RoundingMode.HALF_UP)
+                : payment.getPayAmount();
+
+        // 校验核销分配
+        if (updateReqVO.getItems() != null) {
+            validateReceiptItems(payment.getCurrency(), payment.getCustomerId(), payAmount, updateReqVO.getItems());
+        }
+
+        if (updateReqVO.getReceiptType() != null) {
+            payment.setReceiptType(updateReqVO.getReceiptType());
+        }
+        if (updateReqVO.getPayAmount() != null) {
+            payment.setPayAmount(payAmount);
+        }
+        if (updateReqVO.getReceiptDate() != null) {
+            payment.setReceiptDate(updateReqVO.getReceiptDate());
+        }
+        if (updateReqVO.getBankRefNo() != null) {
+            payment.setBankRefNo(updateReqVO.getBankRefNo());
+        }
+        if (updateReqVO.getHandlerName() != null) {
+            payment.setHandlerName(updateReqVO.getHandlerName());
+        }
+        if (updateReqVO.getRemark() != null) {
+            payment.setRemark(updateReqVO.getRemark());
+        }
+
+        paymentMapper.updateById(payment);
+
+        if (updateReqVO.getItems() != null) {
+            // 重建核销行
+            paymentRefMapper.delete(new LambdaQueryWrapperX<PaymentRefDO>()
+                    .eq(PaymentRefDO::getPaymentId, payment.getId()));
+            saveReceiptRefs(payment.getId(), updateReqVO.getItems());
+        }
+
+        log.info("[updateReceipt] 修改收款单草稿成功: id={}", payment.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteReceipt(Long id) {
+        if (id == null) {
+            throw exception(RECEIPT_NOT_EXISTS);
+        }
+        PaymentDO payment = paymentMapper.selectById(id);
+        validateReceiptExistsAndTenant(payment);
+
+        // 仅 PENDING 草稿可删
+        if (!isDraft(payment.getApprovalStatus())) {
+            throw exception(RECEIPT_STATUS_NOT_ALLOW);
+        }
+
+        paymentRefMapper.delete(new LambdaQueryWrapperX<PaymentRefDO>()
+                .eq(PaymentRefDO::getPaymentId, id));
+        paymentMapper.deleteById(id);
+        log.info("[deleteReceipt] 软删除收款单草稿: id={}", id);
+    }
+
+    @Override
+    public ReceiptRespVO getReceipt(Long id) {
+        if (id == null) {
+            throw exception(RECEIPT_NOT_EXISTS);
+        }
+        PaymentDO payment = paymentMapper.selectById(id);
+        validateReceiptExistsAndTenant(payment);
+
+        ReceiptRespVO vo = BeanUtils.toBean(payment, ReceiptRespVO.class);
+
+        // 补充客户名与账户名
+        if (payment.getCustomerId() != null) {
+            CustomerDO customer = customerMapper.selectById(payment.getCustomerId());
+            if (customer != null) {
+                vo.setCustomerName(customer.getCompanyName());
+            }
+        }
+        if (payment.getAccountId() != null) {
+            AccountDO account = accountMapper.selectById(payment.getAccountId());
+            if (account != null) {
+                vo.setAccountName(account.getAccountName());
+            }
+        }
+
+        // 补充核销明细
+        List<PaymentRefDO> refs = paymentRefMapper.selectList(new LambdaQueryWrapperX<PaymentRefDO>()
+                .eq(PaymentRefDO::getPaymentId, id)
+                .eq(PaymentRefDO::getRefType, PaymentRefType.AR_ENTRY.getValue()));
+
+        if (CollUtil.isNotEmpty(refs)) {
+            List<Long> entryIds = CollectionUtils.convertList(refs, PaymentRefDO::getRefId);
+            List<LedgerEntryDO> entries = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                    .inOrEmpty(LedgerEntryDO::getId, entryIds));
+            Map<Long, LedgerEntryDO> entryMap = CollectionUtils.convertMap(entries, LedgerEntryDO::getId);
+
+            List<Long> shipmentIds = entries.stream().map(LedgerEntryDO::getRefId).filter(Objects::nonNull).distinct().toList();
+            Map<Long, ShipmentDO> shipmentMap = batchLoadShipmentMap(shipmentIds);
+
+            List<ReceiptItemRespVO> itemVOs = new ArrayList<>();
+            for (PaymentRefDO ref : refs) {
+                ReceiptItemRespVO itemVO = new ReceiptItemRespVO();
+                itemVO.setId(ref.getId());
+                itemVO.setPaymentId(ref.getPaymentId());
+                itemVO.setEntryId(ref.getRefId());
+                itemVO.setEntryNo(ref.getEntryNo());
+                itemVO.setBizDate(ref.getBizDate());
+                itemVO.setAllocateAmount(ref.getAllocateAmount());
+                itemVO.setBaseAmount(ref.getBaseAmount());
+                itemVO.setLedgerEntryId(ref.getLedgerEntryId());
+
+                LedgerEntryDO entry = entryMap.get(ref.getRefId());
+                if (entry != null) {
+                    itemVO.setSummary(entry.getRemark());
+                    ShipmentDO shipment = shipmentMap.get(entry.getRefId());
+                    if (shipment != null) {
+                        itemVO.setContractNo(shipment.getContractNo());
+                    }
+                }
+                itemVOs.add(itemVO);
+            }
+            vo.setItems(itemVOs);
+            BigDecimal allocatedSum = itemVOs.stream()
+                    .map(ReceiptItemRespVO::getAllocateAmount)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            vo.setAllocatedTotalAmount(allocatedSum);
+            BigDecimal pay = vo.getPayAmount() != null ? vo.getPayAmount() : BigDecimal.ZERO;
+            BigDecimal unalloc = pay.subtract(allocatedSum);
+            vo.setUnallocatedAmount(unalloc.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : unalloc);
+        } else {
+            vo.setItems(Collections.emptyList());
+            vo.setAllocatedTotalAmount(BigDecimal.ZERO);
+            vo.setUnallocatedAmount(vo.getPayAmount() != null ? vo.getPayAmount() : BigDecimal.ZERO);
+        }
+
+        return vo;
+    }
+
+    @Override
+    public PageResult<ReceiptRespVO> getReceiptPage(ReceiptPageReqVO pageReqVO) {
+        LambdaQueryWrapperX<PaymentDO> queryWrapper = new LambdaQueryWrapperX<PaymentDO>()
+                .eq(PaymentDO::getDirection, "IN")
+                .eqIfPresent(PaymentDO::getCustomerId, pageReqVO.getCustomerId())
+                .eqIfPresent(PaymentDO::getAccountId, pageReqVO.getAccountId())
+                .eqIfPresent(PaymentDO::getReceiptType, pageReqVO.getReceiptType())
+                .eqIfPresent(PaymentDO::getApprovalStatus, pageReqVO.getApprovalStatus())
+                .eqIfPresent(PaymentDO::getCurrency, pageReqVO.getCurrency())
+                .geIfPresent(PaymentDO::getReceiptDate, pageReqVO.getReceiptDateStart())
+                .leIfPresent(PaymentDO::getReceiptDate, pageReqVO.getReceiptDateEnd())
+                .and(StrUtil.isNotBlank(pageReqVO.getKeyword()), w -> w
+                        .like(PaymentDO::getPaymentNo, pageReqVO.getKeyword())
+                        .or().like(PaymentDO::getHandlerName, pageReqVO.getKeyword())
+                        .or().like(PaymentDO::getBankRefNo, pageReqVO.getKeyword())
+                        .or().like(PaymentDO::getRemark, pageReqVO.getKeyword()))
+                .orderByDesc(PaymentDO::getId);
+
+        PageResult<PaymentDO> pageResult = paymentMapper.selectPage(pageReqVO, queryWrapper);
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return new PageResult<>(Collections.emptyList(), pageResult.getTotal());
+        }
+
+        List<Long> customerIds = pageResult.getList().stream().map(PaymentDO::getCustomerId).filter(Objects::nonNull).distinct().toList();
+        List<Long> accountIds = pageResult.getList().stream().map(PaymentDO::getAccountId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> customerNameMap = batchLoadCustomerNames(customerIds);
+        Map<Long, String> accountNameMap = batchLoadAccountNames(accountIds);
+
+        // 防 N+1 批量快照模式：批量加载当前页收款单的核销分配合计
+        List<Long> paymentIds = pageResult.getList().stream().map(PaymentDO::getId).filter(Objects::nonNull).toList();
+        List<PaymentRefDO> allRefs = paymentRefMapper.selectList(new LambdaQueryWrapperX<PaymentRefDO>()
+                .inOrEmpty(PaymentRefDO::getPaymentId, paymentIds));
+        Map<Long, BigDecimal> sumAllocatedMap = new HashMap<>();
+        if (CollUtil.isNotEmpty(allRefs)) {
+            for (PaymentRefDO ref : allRefs) {
+                if (ref.getAllocateAmount() != null) {
+                    sumAllocatedMap.merge(ref.getPaymentId(), ref.getAllocateAmount(), BigDecimal::add);
+                }
+            }
+        }
+
+        List<ReceiptRespVO> respList = new ArrayList<>();
+        for (PaymentDO payment : pageResult.getList()) {
+            ReceiptRespVO vo = BeanUtils.toBean(payment, ReceiptRespVO.class);
+            vo.setCustomerName(customerNameMap.getOrDefault(payment.getCustomerId(), ""));
+            vo.setAccountName(accountNameMap.getOrDefault(payment.getAccountId(), ""));
+            BigDecimal allocated = sumAllocatedMap.getOrDefault(payment.getId(), BigDecimal.ZERO);
+            vo.setAllocatedTotalAmount(allocated);
+            BigDecimal pay = payment.getPayAmount() != null ? payment.getPayAmount() : BigDecimal.ZERO;
+            BigDecimal unalloc = pay.subtract(allocated);
+            vo.setUnallocatedAmount(unalloc.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : unalloc);
+            respList.add(vo);
+        }
+
+        return new PageResult<>(respList, pageResult.getTotal());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitReceipt(Long id) {
+        if (id == null) {
+            throw exception(RECEIPT_NOT_EXISTS);
+        }
+        PaymentDO payment = paymentMapper.selectById(id);
+        validateReceiptExistsAndTenant(payment);
+
+        // 状态守卫：仅 PENDING 草稿可提交（对齐 Spec 最小契约原则）
+        if (!isDraft(payment.getApprovalStatus())) {
+            throw exception(RECEIPT_STATUS_NOT_ALLOW);
+        }
+
+        // 校验核销明细
+        List<PaymentRefDO> refs = paymentRefMapper.selectList(new LambdaQueryWrapperX<PaymentRefDO>()
+                .eq(PaymentRefDO::getPaymentId, id)
+                .eq(PaymentRefDO::getRefType, PaymentRefType.AR_ENTRY.getValue()));
+
+        if (CollUtil.isNotEmpty(refs)) {
+            List<ReceiptItemReqVO> itemReqs = CollectionUtils.convertList(refs, r -> {
+                ReceiptItemReqVO item = new ReceiptItemReqVO();
+                item.setEntryId(r.getRefId());
+                item.setAllocateAmount(r.getAllocateAmount());
+                return item;
+            });
+            validateReceiptItems(payment.getCurrency(), payment.getCustomerId(), payment.getPayAmount(), itemReqs);
+        }
+
+        // 调用 02 号审批引擎发起审批
+        ApprovalInstanceSubmitReqVO submitReqVO = new ApprovalInstanceSubmitReqVO();
+        submitReqVO.setBizType(ApprovalHandler.BIZ_TYPE_CUSTOMER_RECEIPT);
+        submitReqVO.setBizId(id);
+        submitReqVO.setComment("提交客户收款单审批");
+
+        approvalInstanceService.submitInstance(submitReqVO);
+        log.info("[submitReceipt] 收款单提交审批成功: id={}", id);
+    }
+
+    @Override
+    public List<AllocatePreviewRespVO> allocatePreview(AllocatePreviewReqVO reqVO) {
+        if (reqVO == null || reqVO.getCustomerId() == null || StrUtil.isBlank(reqVO.getCurrency())) {
+            return Collections.emptyList();
+        }
+
+        // 1. 查询该客户该币种下所有 AR_INC 分录，按业务日期升序（FIFO）
+        List<LedgerEntryDO> entries = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eq(LedgerEntryDO::getPartyType, "CUSTOMER")
+                .eq(LedgerEntryDO::getPartyId, reqVO.getCustomerId())
+                .eq(LedgerEntryDO::getCurrency, reqVO.getCurrency())
+                .eq(LedgerEntryDO::getCategory, "AR_INC")
+                .orderByAsc(LedgerEntryDO::getBizDate)
+                .orderByAsc(LedgerEntryDO::getId));
+
+        if (CollUtil.isEmpty(entries)) {
+            return Collections.emptyList();
+        }
+
+        // 2. 批量聚合未核销余额
+        List<Long> entryIds = CollectionUtils.convertList(entries, LedgerEntryDO::getId);
+        Map<Long, LedgerEntryDO> entryMap = CollectionUtils.convertMap(entries, LedgerEntryDO::getId);
+        Map<Long, BigDecimal> unallocMap = batchLoadUnallocatedBalanceMap(entryIds, entryMap);
+
+        // 3. 批量查询发货单快照信息
+        List<Long> shipmentIds = entries.stream().map(LedgerEntryDO::getRefId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, ShipmentDO> shipmentMap = batchLoadShipmentMap(shipmentIds);
+
+        // 4. FIFO 顺序分配试算（严格按 bizDate 升序，同日按 id 升序）
+        List<LedgerEntryDO> sortedEntries = new ArrayList<>(entries);
+        sortedEntries.sort(Comparator.comparing(LedgerEntryDO::getBizDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(LedgerEntryDO::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+
+        BigDecimal remainingPay = reqVO.getPayAmount() != null ? reqVO.getPayAmount() : BigDecimal.ZERO;
+        List<AllocatePreviewRespVO> result = new ArrayList<>();
+
+        for (LedgerEntryDO entry : sortedEntries) {
+            BigDecimal unalloc = unallocMap.getOrDefault(entry.getId(), BigDecimal.ZERO);
+            if (unalloc.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            BigDecimal allocate = BigDecimal.ZERO;
+            if (remainingPay.compareTo(BigDecimal.ZERO) > 0) {
+                allocate = remainingPay.min(unalloc);
+                remainingPay = remainingPay.subtract(allocate);
+            }
+
+            ShipmentDO shipment = shipmentMap.get(entry.getRefId());
+            AllocatePreviewRespVO vo = new AllocatePreviewRespVO();
+            vo.setEntryId(entry.getId());
+            vo.setBizDate(entry.getBizDate());
+            vo.setRefType(entry.getRefType());
+            vo.setRefId(entry.getRefId());
+            vo.setRefItemId(entry.getRefItemId());
+            vo.setRefNo(shipment != null ? shipment.getShipmentNo() : "");
+            vo.setContractNo(shipment != null ? shipment.getContractNo() : "");
+            vo.setProductName(entry.getRemark());
+            vo.setCurrency(entry.getCurrency());
+            vo.setOriginalAmount(entry.getOriginalAmount());
+            vo.setUnallocatedAmount(unalloc);
+            vo.setAllocateAmount(allocate);
+
+            result.add(vo);
+        }
+
+        return result;
+    }
+
+    @Override
+    public List<ArBalanceRespVO> getArBalanceList(Long customerId, String currency) {
+        if (customerId == null || StrUtil.isBlank(currency)) {
+            return Collections.emptyList();
+        }
+
+        // 1. 查询该客户该币种的 AR_INC 分录
+        List<LedgerEntryDO> entries = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eq(LedgerEntryDO::getPartyType, "CUSTOMER")
+                .eq(LedgerEntryDO::getPartyId, customerId)
+                .eq(LedgerEntryDO::getCurrency, currency)
+                .eq(LedgerEntryDO::getCategory, "AR_INC")
+                .orderByAsc(LedgerEntryDO::getBizDate)
+                .orderByAsc(LedgerEntryDO::getId));
+
+        if (CollUtil.isEmpty(entries)) {
+            return Collections.emptyList();
+        }
+
+        // 2. 批量聚合未核销余额
+        List<Long> entryIds = CollectionUtils.convertList(entries, LedgerEntryDO::getId);
+        Map<Long, LedgerEntryDO> entryMap = CollectionUtils.convertMap(entries, LedgerEntryDO::getId);
+        Map<Long, BigDecimal> unallocMap = batchLoadUnallocatedBalanceMap(entryIds, entryMap);
+
+        List<Long> shipmentIds = entries.stream().map(LedgerEntryDO::getRefId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, ShipmentDO> shipmentMap = batchLoadShipmentMap(shipmentIds);
+
+        List<ArBalanceRespVO> result = new ArrayList<>();
+        for (LedgerEntryDO entry : entries) {
+            BigDecimal unalloc = unallocMap.getOrDefault(entry.getId(), BigDecimal.ZERO);
+            if (unalloc.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            BigDecimal allocated = entry.getOriginalAmount().subtract(unalloc);
+            if (allocated.compareTo(BigDecimal.ZERO) < 0) {
+                allocated = BigDecimal.ZERO;
+            }
+
+            ShipmentDO shipment = shipmentMap.get(entry.getRefId());
+            ArBalanceRespVO vo = new ArBalanceRespVO();
+            vo.setEntryId(entry.getId());
+            vo.setBizDate(entry.getBizDate());
+            vo.setRefType(entry.getRefType());
+            vo.setRefId(entry.getRefId());
+            vo.setRefItemId(entry.getRefItemId());
+            vo.setRefNo(shipment != null ? shipment.getShipmentNo() : "");
+            vo.setContractId(shipment != null ? shipment.getSalesContractId() : null);
+            vo.setContractNo(shipment != null ? shipment.getContractNo() : "");
+            vo.setProductName(entry.getRemark());
+            vo.setCurrency(entry.getCurrency());
+            vo.setOriginalAmount(entry.getOriginalAmount());
+            vo.setAllocatedAmount(allocated);
+            vo.setUnallocatedAmount(unalloc);
+
+            result.add(vo);
+        }
+
+        return result;
+    }
+
+    // ==================== 私有辅助方法 ====================
+
+    private void validateReceiptExistsAndTenant(PaymentDO payment) {
+        if (payment == null || !"IN".equalsIgnoreCase(payment.getDirection())) {
+            throw exception(RECEIPT_NOT_EXISTS);
+        }
+        validateTenant(payment.getTenantId());
+    }
+
+    private void validateReceiptItems(String currency, Long customerId, BigDecimal payAmount, List<ReceiptItemReqVO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+
+        List<Long> entryIds = CollectionUtils.convertList(items, ReceiptItemReqVO::getEntryId);
+        List<LedgerEntryDO> entries = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .inOrEmpty(LedgerEntryDO::getId, entryIds));
+        Map<Long, LedgerEntryDO> entryMap = CollectionUtils.convertMap(entries, LedgerEntryDO::getId);
+        Map<Long, BigDecimal> unallocMap = batchLoadUnallocatedBalanceMap(entryIds, entryMap);
+
+        BigDecimal totalAllocated = BigDecimal.ZERO;
+        for (ReceiptItemReqVO item : items) {
+            LedgerEntryDO entry = entryMap.get(item.getEntryId());
+            if (entry == null || !entry.getPartyId().equals(customerId)) {
+                throw exception(RECEIPT_CUSTOMER_MISMATCH);
+            }
+            if (!entry.getCurrency().equalsIgnoreCase(currency)) {
+                throw exception(RECEIPT_CURRENCY_MISMATCH);
+            }
+            BigDecimal maxAllowed = unallocMap.getOrDefault(item.getEntryId(), BigDecimal.ZERO);
+            if (item.getAllocateAmount() != null && item.getAllocateAmount().compareTo(maxAllowed) > 0) {
+                throw exception(RECEIPT_ALLOCATE_EXCEED);
+            }
+            if (item.getAllocateAmount() != null) {
+                totalAllocated = totalAllocated.add(item.getAllocateAmount());
+            }
+        }
+
+        if (payAmount != null && totalAllocated.compareTo(payAmount) > 0) {
+            throw exception(RECEIPT_ALLOCATE_EXCEED);
+        }
+    }
+
+    private void saveReceiptRefs(Long paymentId, List<ReceiptItemReqVO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        List<Long> entryIds = CollectionUtils.convertList(items, ReceiptItemReqVO::getEntryId);
+        List<LedgerEntryDO> entries = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .inOrEmpty(LedgerEntryDO::getId, entryIds));
+        Map<Long, LedgerEntryDO> entryMap = CollectionUtils.convertMap(entries, LedgerEntryDO::getId);
+
+        List<Long> shipmentIds = entries.stream().map(LedgerEntryDO::getRefId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, ShipmentDO> shipmentMap = batchLoadShipmentMap(shipmentIds);
+
+        for (ReceiptItemReqVO item : items) {
+            LedgerEntryDO entry = entryMap.get(item.getEntryId());
+            ShipmentDO shipment = entry != null ? shipmentMap.get(entry.getRefId()) : null;
+
+            PaymentRefDO ref = new PaymentRefDO();
+            ref.setPaymentId(paymentId);
+            ref.setRefType(PaymentRefType.AR_ENTRY.getValue());
+            ref.setRefId(item.getEntryId());
+            ref.setAllocateAmount(item.getAllocateAmount());
+            ref.setEntryNo(shipment != null ? shipment.getShipmentNo() : (entry != null ? String.valueOf(entry.getRefId()) : ""));
+            ref.setBizDate(entry != null ? entry.getBizDate() : LocalDate.now());
+            ref.setBaseAmount(BigDecimal.ZERO);
+
+            paymentRefMapper.insert(ref);
+        }
+    }
+
+    private String generateReceiptNo(LocalDate date) {
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        String prefix = RECEIPT_NO_PREFIX + DATE_FORMATTER.format(targetDate) + "-";
+        List<PaymentDO> candidates = paymentMapper.selectListByPaymentNoPrefixIncludingDeleted(prefix);
+
+        long maxNum = 0;
+        int maxDigits = NO_MIN_DIGITS;
+        if (CollUtil.isNotEmpty(candidates)) {
+            for (PaymentDO candidate : candidates) {
+                String no = candidate.getPaymentNo();
+                if (no == null || no.length() <= prefix.length()) {
+                    continue;
+                }
+                String suffix = no.substring(prefix.length());
+                Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
+                if (!matcher.find()) {
+                    continue;
+                }
+                String digits = matcher.group();
+                try {
+                    long num = Long.parseLong(digits);
+                    if (num > maxNum) {
+                        maxNum = num;
+                        maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+
+        for (int i = 0; i < MAX_RETRY_COUNT; i++) {
+            long nextNum = maxNum + 1 + i;
+            String paymentNo = String.format("%s%0" + maxDigits + "d", prefix, nextNum);
+            PaymentDO existing = paymentMapper.selectByPaymentNoIncludingDeleted(paymentNo);
+            if (existing == null) {
+                return paymentNo;
+            }
+        }
+        log.error("[generateReceiptNo] 收款单号生成重试耗尽: prefix={}, maxNum={}", prefix, maxNum);
+        throw exception(PAYMENT_NO_EXHAUSTED);
+    }
+
+    private Map<Long, BigDecimal> batchLoadAllocatedAmountMap(Collection<Long> entryIds) {
+        if (CollUtil.isEmpty(entryIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> list = paymentRefMapper.selectSumAllocatedAmountByEntryIds(entryIds);
+        Map<Long, BigDecimal> map = new HashMap<>();
+        if (CollUtil.isNotEmpty(list)) {
+            for (Map<String, Object> item : list) {
+                if (item.get("entryid") != null || item.get("entryId") != null) {
+                    Object idObj = item.get("entryid") != null ? item.get("entryid") : item.get("entryId");
+                    Object totalObj = item.get("totalallocated") != null ? item.get("totalallocated") : item.get("totalAllocated");
+                    Long entryId = ((Number) idObj).longValue();
+                    BigDecimal total = new BigDecimal(totalObj != null ? totalObj.toString() : "0");
+                    map.put(entryId, total);
+                }
+            }
+        }
+        return map;
+    }
+
+    private Map<Long, BigDecimal> batchLoadUnallocatedBalanceMap(Collection<Long> entryIds, Map<Long, LedgerEntryDO> entryMap) {
+        if (CollUtil.isEmpty(entryIds)) {
+            return Collections.emptyMap();
+        }
+
+        // 1. 发货红冲冲减 (AR_INC_REVERSAL)
+        List<LedgerEntryDO> reversals = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .inOrEmpty(LedgerEntryDO::getReversalOfId, entryIds));
+        Map<Long, BigDecimal> reversalMap = new HashMap<>();
+        if (CollUtil.isNotEmpty(reversals)) {
+            for (LedgerEntryDO rev : reversals) {
+                if (rev.getReversalOfId() != null && rev.getOriginalAmount() != null) {
+                    reversalMap.merge(rev.getReversalOfId(), rev.getOriginalAmount(), BigDecimal::add);
+                }
+            }
+        }
+
+        // 2. 收款单已核销额 (COMPLETED payment_ref)
+        Map<Long, BigDecimal> allocatedMap = batchLoadAllocatedAmountMap(entryIds);
+
+        // 3. 退货应收冲减 (AR_RETURN_REVERSAL)
+        List<LedgerEntryDO> returnReversals = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eq(LedgerEntryDO::getCategory, "AR_RETURN_REVERSAL")
+                .inOrEmpty(LedgerEntryDO::getRefItemId, entryIds));
+        Map<Long, BigDecimal> returnReversalMap = new HashMap<>();
+        if (CollUtil.isNotEmpty(returnReversals)) {
+            for (LedgerEntryDO ret : returnReversals) {
+                if (ret.getRefItemId() != null && ret.getOriginalAmount() != null) {
+                    returnReversalMap.merge(ret.getRefItemId(), ret.getOriginalAmount(), BigDecimal::add);
+                }
+            }
+        }
+
+        Map<Long, BigDecimal> resultMap = new HashMap<>();
+        for (Long entryId : entryIds) {
+            LedgerEntryDO entry = entryMap.get(entryId);
+            if (entry == null) {
+                continue;
+            }
+            BigDecimal orig = entry.getOriginalAmount() != null ? entry.getOriginalAmount() : BigDecimal.ZERO;
+            BigDecimal rev = reversalMap.getOrDefault(entryId, BigDecimal.ZERO);
+            BigDecimal alloc = allocatedMap.getOrDefault(entryId, BigDecimal.ZERO);
+            BigDecimal ret = returnReversalMap.getOrDefault(entryId, BigDecimal.ZERO);
+
+            BigDecimal unalloc = orig.subtract(rev).subtract(alloc).subtract(ret);
+            if (unalloc.compareTo(BigDecimal.ZERO) < 0) {
+                unalloc = BigDecimal.ZERO;
+            }
+            resultMap.put(entryId, unalloc);
+        }
+        return resultMap;
+    }
+
+    private Map<Long, String> batchLoadCustomerNames(Collection<Long> customerIds) {
+        if (CollUtil.isEmpty(customerIds)) {
+            return Collections.emptyMap();
+        }
+        List<CustomerDO> list = customerMapper.selectList(new LambdaQueryWrapperX<CustomerDO>()
+                .inOrEmpty(CustomerDO::getId, customerIds));
+        Map<Long, String> map = new HashMap<>();
+        if (CollUtil.isNotEmpty(list)) {
+            for (CustomerDO c : list) {
+                map.put(c.getId(), c.getCompanyName());
+            }
+        }
+        return map;
+    }
+
+    private boolean isDraft(String status) {
+        return ApplyStatus.isDraft(status);
+    }
+
+    private Map<Long, String> batchLoadAccountNames(Collection<Long> accountIds) {
+        if (CollUtil.isEmpty(accountIds)) {
+            return Collections.emptyMap();
+        }
+        List<AccountDO> list = accountMapper.selectList(new LambdaQueryWrapperX<AccountDO>()
+                .inOrEmpty(AccountDO::getId, accountIds));
+        Map<Long, String> map = new HashMap<>();
+        if (CollUtil.isNotEmpty(list)) {
+            for (AccountDO a : list) {
+                map.put(a.getId(), a.getAccountName());
+            }
+        }
+        return map;
+    }
+
+    private Map<Long, ShipmentDO> batchLoadShipmentMap(Collection<Long> shipmentIds) {
+        if (CollUtil.isEmpty(shipmentIds)) {
+            return Collections.emptyMap();
+        }
+        List<ShipmentDO> list = shipmentMapper.selectList(new LambdaQueryWrapperX<ShipmentDO>()
+                .inOrEmpty(ShipmentDO::getId, shipmentIds));
+        return CollectionUtils.convertMap(list, ShipmentDO::getId);
     }
 
 }

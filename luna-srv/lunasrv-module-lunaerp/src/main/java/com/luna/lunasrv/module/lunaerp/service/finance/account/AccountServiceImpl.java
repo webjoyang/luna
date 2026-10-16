@@ -168,6 +168,24 @@ public class AccountServiceImpl implements AccountService {
         return respVO;
     }
 
+    @Override
+    public java.util.List<com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.FinanceAccountSimpleRespVO> getSimpleAccountList() {
+        java.util.List<AccountDO> list = accountMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AccountDO>()
+                .eq(AccountDO::getStatus, STATUS_ENABLE)
+                .orderByAsc(AccountDO::getId));
+        return com.luna.lunasrv.framework.common.util.collection.CollectionUtils.convertList(list, a -> {
+            com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.FinanceAccountSimpleRespVO vo =
+                    new com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.FinanceAccountSimpleRespVO();
+            vo.setId(a.getId());
+            vo.setAccountName(a.getAccountName());
+            vo.setAccountType(a.getAccountType());
+            vo.setCurrency(a.getCurrency());
+            vo.setStatus(a.getStatus());
+            vo.setCurrentBalance(a.getCurrentBalance());
+            return vo;
+        });
+    }
+
     private void validateAccountNameUnique(Long id, String accountName) {
         if (StrUtil.isBlank(accountName)) {
             return;

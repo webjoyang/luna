@@ -69,4 +69,11 @@ public interface AccountService {
      */
     AccountRespVO getAccount(Long id);
 
+    /**
+     * 获得资金账户精简下拉列表（仅 ENABLE 状态）
+     *
+     * @return 资金账户精简列表
+     */
+    java.util.List<com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.FinanceAccountSimpleRespVO> getSimpleAccountList();
+
 }

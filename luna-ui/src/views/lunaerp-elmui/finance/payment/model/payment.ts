@@ -46,11 +46,13 @@ export const calcReconRemainingLimit = (
 /**
  * 计算付款申请单剩余待核销金额
  */
-export const calcApplyRemain = (row?: {
-  amount?: number | string | null
-  allocatedAmount?: number | string | null
-  remainAmount?: number | string | null
-} | null): number => {
+export const calcApplyRemain = (
+  row?: {
+    amount?: number | string | null
+    allocatedAmount?: number | string | null
+    remainAmount?: number | string | null
+  } | null
+): number => {
   if (!row) return 0
   if (row.remainAmount !== undefined && row.remainAmount !== null && row.remainAmount !== '') {
     return Number(Number(row.remainAmount).toFixed(2))
@@ -120,6 +122,64 @@ export const parsePaymentErrorMessage = (err: any): string => {
   }
   if (code === FINANCE_PAYMENT_ERROR_CODES.AMOUNT_INVALID || msg.includes('023_007')) {
     return '付款金额不合法：实付加预付抵扣须等于分配合计，且金额必须大于0'
+  }
+
+  // IN 侧客户收款单错误守卫 (1030023100 ~ 1030023107)
+  if (
+    code === FINANCE_PAYMENT_ERROR_CODES.RECEIPT_NOT_EXISTS ||
+    msg.includes('RECEIPT_NOT_EXISTS') ||
+    msg.includes('023_100')
+  ) {
+    return '收款单不存在或已被删除'
+  }
+  if (
+    code === FINANCE_PAYMENT_ERROR_CODES.RECEIPT_STATUS_NOT_ALLOW ||
+    msg.includes('RECEIPT_STATUS_NOT_ALLOW') ||
+    msg.includes('023_101')
+  ) {
+    return '收款单当前状态不允许修改或删除（仅待审批或已驳回草稿可操作）'
+  }
+  if (
+    code === FINANCE_PAYMENT_ERROR_CODES.RECEIPT_CUSTOMER_MISMATCH ||
+    msg.includes('RECEIPT_CUSTOMER_MISMATCH') ||
+    msg.includes('023_102')
+  ) {
+    return '所选待核销分录与当前收款客户不匹配'
+  }
+  if (
+    code === FINANCE_PAYMENT_ERROR_CODES.RECEIPT_CURRENCY_MISMATCH ||
+    msg.includes('RECEIPT_CURRENCY_MISMATCH') ||
+    msg.includes('023_103')
+  ) {
+    return '币种不一致：收款账户、收款币种与分录币种必须严格一致'
+  }
+  if (
+    code === FINANCE_PAYMENT_ERROR_CODES.RECEIPT_ALLOCATE_EXCEED ||
+    msg.includes('RECEIPT_ALLOCATE_EXCEED') ||
+    msg.includes('023_104')
+  ) {
+    return '核销分配金额超出该分录未核销余额，或分配合计超出收款金额'
+  }
+  if (
+    code === FINANCE_PAYMENT_ERROR_CODES.RECEIPT_POST_CONFLICT ||
+    msg.includes('RECEIPT_POST_CONFLICT') ||
+    msg.includes('023_105')
+  ) {
+    return '收款单过账冲突：部分分录已被并发核销，请刷新重试'
+  }
+  if (
+    code === FINANCE_PAYMENT_ERROR_CODES.RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH ||
+    msg.includes('RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH') ||
+    msg.includes('023_106')
+  ) {
+    return '客户预收余额不足'
+  }
+  if (
+    code === FINANCE_PAYMENT_ERROR_CODES.RECEIPT_REVERSAL_NOT_ALLOW ||
+    msg.includes('RECEIPT_REVERSAL_NOT_ALLOW') ||
+    msg.includes('023_107')
+  ) {
+    return '该收款单不允许红冲'
   }
 
   return msg || '操作失败，请稍后重试'
@@ -225,6 +285,182 @@ export const validatePaymentRegister = (
     return {
       valid: false,
       error: `分配合计 (¥${formatMoney(totalAllocated)}) 必须精确等于本次实付 + 预付抵扣合计 (¥${formatMoney(totalFunds)})`
+    }
+  }
+
+  return { valid: true }
+}
+
+/**
+ * 计算收款单操作权限标识
+ * - PENDING/草稿：可编辑、可提交、可删除
+ * - REJECTED：可编辑、可重新提交，不可删除
+ * - APPROVING：审批中，不可改删
+ * - APPROVED/COMPLETED：已审批/已过账，不可改删
+ */
+export const getReceiptActionFlags = (approvalStatus?: string, status?: string) => {
+  const appStatus = (approvalStatus || 'PENDING').toUpperCase()
+  const isDraftOrPending = appStatus === 'PENDING' || appStatus === 'DRAFT'
+  const isApproving = appStatus === 'APPROVING'
+  const isApproved = appStatus === 'APPROVED'
+  const isRejected = appStatus === 'REJECTED'
+  const isCompleted = (status || '').toUpperCase() === 'COMPLETED'
+
+  return {
+    canEdit: isDraftOrPending,
+    canSubmit: isDraftOrPending,
+    canDelete: isDraftOrPending,
+    isApproved: isApproved || isCompleted,
+    isApproving,
+    isRejected
+  }
+}
+
+/**
+ * 获得审批状态对应文案
+ */
+export const getApprovalStatusText = (status?: string): string => {
+  const map: Record<string, string> = {
+    PENDING: '草稿待提交',
+    APPROVING: '审批中',
+    APPROVED: '审批通过',
+    REJECTED: '已驳回',
+    CANCELLED: '已撤回'
+  }
+  return (status && map[status]) || status || '待处理'
+}
+
+/**
+ * 获得审批状态对应 Element Plus Tag 颜色类型
+ */
+export const getApprovalStatusTagType = (
+  status?: string
+): 'info' | 'warning' | 'success' | 'danger' => {
+  const map: Record<string, 'info' | 'warning' | 'success' | 'danger'> = {
+    PENDING: 'info',
+    APPROVING: 'warning',
+    APPROVED: 'success',
+    REJECTED: 'danger',
+    CANCELLED: 'info'
+  }
+  return (status && map[status]) || 'info'
+}
+
+/**
+ * 计算未核销 AR 分录余额
+ */
+export const calcArEntryUnallocated = (
+  entry?: {
+    originalAmount?: number | string | null
+    allocatedAmount?: number | string | null
+    unallocatedAmount?: number | string | null
+  } | null
+): number => {
+  if (!entry) return 0
+  if (
+    entry.unallocatedAmount !== undefined &&
+    entry.unallocatedAmount !== null &&
+    entry.unallocatedAmount !== ''
+  ) {
+    return Number(Number(entry.unallocatedAmount).toFixed(2))
+  }
+  const total = Number(entry.originalAmount || 0)
+  const allocated = Number(entry.allocatedAmount || 0)
+  return Math.max(0, Number((total - allocated).toFixed(2)))
+}
+
+/**
+ * 按发货日升序（FIFO）纯前端自动分配收款金额
+ */
+export const distributeReceiptFifo = (
+  entries: Array<{ entryId: number; unallocatedAmount: number; bizDate?: string }>,
+  payAmount: number
+): Array<{ entryId: number; allocateAmount: number }> => {
+  let remainingPool = Number(Math.max(0, payAmount).toFixed(2))
+
+  // 严格按业务日期升序（早的先满足）
+  const sorted = [...entries].sort((a, b) => {
+    if (!a.bizDate && !b.bizDate) return 0
+    if (!a.bizDate) return 1
+    if (!b.bizDate) return -1
+    return a.bizDate.localeCompare(b.bizDate)
+  })
+
+  return sorted.map((entry) => {
+    const unalloc = Number(Math.max(0, entry.unallocatedAmount || 0).toFixed(2))
+    const allocate = Math.min(unalloc, remainingPool)
+    const roundedAllocate = Number(allocate.toFixed(2))
+    remainingPool = Number(Math.max(0, remainingPool - roundedAllocate).toFixed(2))
+
+    return {
+      entryId: entry.entryId,
+      allocateAmount: roundedAllocate
+    }
+  })
+}
+
+/**
+ * 收款单草稿提交/保存校验参数
+ */
+export interface ReceiptValidationParams {
+  customerId?: number
+  accountId?: number
+  currency?: string
+  receiptType?: string
+  payAmount: number
+  items?: Array<{
+    entryId: number
+    entryNo?: string
+    allocateAmount: number
+    unallocatedAmount: number
+  }>
+}
+
+/**
+ * 收款单保存前表单校验
+ */
+export const validateReceiptForm = (
+  params: ReceiptValidationParams
+): { valid: boolean; error?: string } => {
+  if (!params.customerId) {
+    return { valid: false, error: '请选择收款客户' }
+  }
+  if (!params.accountId) {
+    return { valid: false, error: '请选择收款资金账户' }
+  }
+  if (!params.currency) {
+    return { valid: false, error: '请选择收款币种' }
+  }
+  const pay = Number(params.payAmount || 0)
+  if (pay <= 0) {
+    return { valid: false, error: '收款金额必须大于 0' }
+  }
+
+  if (params.items && params.items.length > 0) {
+    let totalAllocated = 0
+    for (const item of params.items) {
+      const allocate = Number(item.allocateAmount || 0)
+      const unalloc = Number(item.unallocatedAmount || 0)
+      if (allocate <= 0) {
+        return {
+          valid: false,
+          error: `分录【${item.entryNo || item.entryId}】核销分配金额必须大于 0`
+        }
+      }
+      if (allocate > unalloc + 0.00001) {
+        return {
+          valid: false,
+          error: `分录【${item.entryNo || item.entryId}】核销分配金额 (¥${formatMoney(allocate)}) 超出未核销余额 (¥${formatMoney(unalloc)})`
+        }
+      }
+      totalAllocated = Number((totalAllocated + allocate).toFixed(2))
+    }
+
+    if (totalAllocated > pay + 0.00001) {
+      return {
+        valid: false,
+        error: `分配合计 (¥${formatMoney(totalAllocated)}) 不得超出收款金额 (¥${formatMoney(pay)})`
+      }
     }
   }
 

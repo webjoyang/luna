@@ -20,6 +20,7 @@ public interface ApprovalHandler {
     String BIZ_TYPE_EXPENSE = "expense";
     String BIZ_TYPE_PAYROLL = "payroll";
     String BIZ_TYPE_SALES_RETURN = "sales_return";
+    String BIZ_TYPE_CUSTOMER_RECEIPT = "CUSTOMER_RECEIPT";
 
     /**
      * 是否支持该业务类型

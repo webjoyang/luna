@@ -1,6 +1,14 @@
 <template>
   <ContentWrap>
     <el-tabs v-model="activeTab" class="payment-tabs" type="card">
+      <!-- Tab 0: 收款 -->
+      <el-tab-pane label="收款" name="receipt">
+        <template #label>
+          <span class="flex items-center"> <Icon icon="ep:money" class="mr-4px" /> 收款 </span>
+        </template>
+        <ReceiptTab />
+      </el-tab-pane>
+
       <!-- Tab 1: 付款申请 -->
       <el-tab-pane label="付款申请" name="apply">
         <template #label>
@@ -25,12 +33,13 @@
 <script lang="ts" setup>
 import { ref } from 'vue'
 import type { PaymentApplyRespVO } from '@/api/lunaerp-elmui/finance/payment'
+import ReceiptTab from './components/ReceiptTab.vue'
 import PaymentApplyTab from './components/PaymentApplyTab.vue'
 import PaymentRegisterTab from './components/PaymentRegisterTab.vue'
 
 defineOptions({ name: 'LunaerpFinancePayment' })
 
-const activeTab = ref<'apply' | 'register'>('apply')
+const activeTab = ref<'receipt' | 'apply' | 'register'>('receipt')
 const registerTabRef = ref<InstanceType<typeof PaymentRegisterTab>>()
 
 const handleSwitchToRegister = (row: PaymentApplyRespVO) => {
