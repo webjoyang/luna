@@ -23,10 +23,10 @@ public interface AccountMapper extends BaseMapperX<AccountDO> {
      * @param accountName 账户名称
      * @return 账户DO
      */
-    default AccountDO selectByAccountName(String accountName) {
-        return selectOne(new LambdaQueryWrapper<AccountDO>()
-                .eq(AccountDO::getAccountName, accountName));
-    }
+    @org.apache.ibatis.annotations.Select("SELECT id, account_name, account_type, currency, opening_balance, current_balance, status, remark, "
+            + "creator, create_time, updater, update_time, deleted, tenant_id "
+            + "FROM lunaerp_finance_account WHERE account_name = #{accountName} AND deleted = 0 LIMIT 1")
+    AccountDO selectByAccountName(@Param("accountName") String accountName);
 
     /**
      * 条件增加账户余额（流入：收款、转入、红冲回滚等）

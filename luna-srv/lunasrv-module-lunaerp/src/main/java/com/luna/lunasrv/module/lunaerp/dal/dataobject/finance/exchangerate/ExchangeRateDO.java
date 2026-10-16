@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.exchangerate;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
@@ -50,6 +52,7 @@ public class ExchangeRateDO extends TenantBaseDO {
     /**
      * 备注说明
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String remark;
 
 }

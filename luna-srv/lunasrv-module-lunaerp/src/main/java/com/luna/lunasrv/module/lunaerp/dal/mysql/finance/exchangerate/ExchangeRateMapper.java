@@ -22,14 +22,12 @@ public interface ExchangeRateMapper extends BaseMapperX<ExchangeRateDO> {
      * @param bizDate 业务日期
      * @return 汇率记录
      */
-    default ExchangeRateDO selectLatestEffectiveRate(String currency, LocalDate bizDate) {
-        return selectOne(new LambdaQueryWrapper<ExchangeRateDO>()
-                .eq(ExchangeRateDO::getCurrency, currency)
-                .eq(ExchangeRateDO::getStatus, "ENABLE")
-                .le(ExchangeRateDO::getEffectiveDate, bizDate)
-                .orderByDesc(ExchangeRateDO::getEffectiveDate)
-                .orderByDesc(ExchangeRateDO::getId)
-                .last("LIMIT 1"));
-    }
+    @org.apache.ibatis.annotations.Select("SELECT id, currency, rate, effective_date, status, remark, "
+            + "creator, create_time, updater, update_time, deleted, tenant_id "
+            + "FROM lunaerp_finance_exchange_rate "
+            + "WHERE currency = #{currency} AND status = 'ENABLE' AND effective_date <= #{bizDate} AND deleted = 0 "
+            + "ORDER BY effective_date DESC, id DESC LIMIT 1")
+    ExchangeRateDO selectLatestEffectiveRate(@org.apache.ibatis.annotations.Param("currency") String currency,
+                                             @org.apache.ibatis.annotations.Param("bizDate") LocalDate bizDate);
 
 }

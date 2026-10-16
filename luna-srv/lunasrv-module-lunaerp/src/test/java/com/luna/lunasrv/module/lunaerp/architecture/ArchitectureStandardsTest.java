@@ -1,9 +1,11 @@
 package com.luna.lunasrv.module.lunaerp.architecture;
 
 import cn.hutool.core.util.ClassUtil;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
+import com.luna.lunasrv.module.lunaerp.service.finance.ledger.LedgerService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -193,6 +196,52 @@ public class ArchitectureStandardsTest {
 
         assertTrue(violations.isEmpty(),
                 "检测到 finance 域 Service 主链路对 ID 集合使用了原生 .in(...)（违反 coding-standards.md §1，必须改用 .inOrEmpty(...) 保证空集 1=0 安全短路）:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    @DisplayName("规约审查：LedgerService 接口严禁声明 update* 或 delete* 方法 (ADR-0043 不可变唯一追加通道)")
+    public void testLedgerServiceHasNoMutatingMethods() {
+        Method[] methods = LedgerService.class.getDeclaredMethods();
+        List<String> mutatingMethods = new ArrayList<>();
+        for (Method m : methods) {
+            String name = m.getName();
+            if (name.startsWith("update") || name.startsWith("delete") || name.startsWith("modify") || name.startsWith("remove")) {
+                mutatingMethods.add(m.toString());
+            }
+        }
+        assertTrue(mutatingMethods.isEmpty(),
+                "检测到 LedgerService 声明了修改/删除端点（违反 ADR-0043 不可变分录规约，分录唯一写入通道必须为 append）:\n"
+                        + String.join("\n", mutatingMethods));
+    }
+
+    @Test
+    @DisplayName("规约审查：finance 域可变 DO 实体中 remark 等可空字段必须声明 FieldStrategy.ALWAYS (coding-standards.md §15)")
+    public void testFinanceDataObjectsRemarkFieldsHaveAlwaysUpdateStrategy() {
+        Set<Class<?>> doClasses = ClassUtil.scanPackage("com.luna.lunasrv.module.lunaerp.dal.dataobject.finance");
+        assertTrue(!doClasses.isEmpty(), "未扫描到 finance 域的 DO 类");
+
+        List<String> violations = new ArrayList<>();
+        for (Class<?> clazz : doClasses) {
+            if (clazz.isInterface() || clazz.isEnum()) {
+                continue;
+            }
+            // 排除不可变分录（ADR-0043 声明只写不改）
+            if (clazz.getSimpleName().equals("LedgerEntryDO")) {
+                continue;
+            }
+            for (Field field : clazz.getDeclaredFields()) {
+                if ("remark".equalsIgnoreCase(field.getName())) {
+                    TableField tableField = field.getAnnotation(TableField.class);
+                    if (tableField == null || tableField.updateStrategy() != FieldStrategy.ALWAYS) {
+                        violations.add(clazz.getSimpleName() + "." + field.getName() + " 缺失 @TableField(updateStrategy = FieldStrategy.ALWAYS)");
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到 finance 域 DO 可空 remark 字段缺失 updateStrategy = FieldStrategy.ALWAYS 注解（会导致更新置空失效，违反 coding-standards.md §15）:\n"
                         + String.join("\n", violations));
     }
 

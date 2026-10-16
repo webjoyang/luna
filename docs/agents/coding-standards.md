@@ -34,6 +34,9 @@
   - 跨域只读聚合查询优先复用所属域的既有领域模型（如库存域的 `InventoryBalanceRespVO`、采购域的 `YarnOrderItemDO`），严禁在基础仓储层引入调用方只读子包的专属 VO/DTO。
 - **回写场景的投影 ID 保全规约 (Round-trip Projection Parity)**：
   - 若前端交互支持基于只读投影直接触发关联实体的更新/转机/改派（调用既有实体 Update API），只读 VO **必须**投影并透传被引用实体的关联外键 ID（如 `workerUserId`、`customerId`），严禁仅投影纯文本展示字段，防止反向回写时底层实体外键被静默置空（数据丢失）。
+- **跨域领域事件与快照 DTO 命名归属规约 (Domain Event Decoupling Pattern)**：
+  - 当上游业务动作（如发货审核/红冲、采购入库）需要通过 Spring 事件机制驱动下游领域（如财务记账、库存过账）同事务或异步联动时：
+  - **强制规约**：事件类与明细行快照 DTO 必须统一定义在**事件发布方**的域包内（如 `service.business.shipment.event.ShipmentAuditedEvent`）；事件载荷必须使用发布方自有快照 DTO（或基础标量），严禁发布方反向 import 订阅方（finance/stock）的任何类；下游订阅方单向依赖并监听上游事件，实现领域单向解耦。
 
 ## 4. Mapper 纯粹性与 Mockito 集合匹配 (Mapper Mocking)
 
@@ -245,8 +248,11 @@
   - **严禁跨工单字段顺带修补**：在修改底层手写 SQL（如 Mapper `@Select`）时，严禁顺带“修复”未包含在本工单范围内的其他未完成/未声明字段（如跨工单的检验单列），避免引发非预期回流审查与越界判定噪声。
   - **跨端扩展先声明后实现**：若联调确实需要扩展对侧字段或契约，必须在实现前在工单中显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延。
 - **既有业务表单局部扩列与 Git Diff 噪声守卫 (Form Item Extension Hygiene)**：
-  - 在向既有 Vue SFC 表单（如 `BasicProfileTab.vue`）或 API 接口（如 `CustomerVO`）扩展字段时，严禁让自动化格式化工具对邻近无关代码行（如原有折叠单行的输入框、方法签名等）进行无差别换行展开。
+  - 在向既有 Vue SFC 表单（如 `BasicProfileTab.vue`）或 API接口（如 `CustomerVO`）扩展字段时，严禁让自动化格式化工具对邻近无关代码行（如原有折叠单行的输入框、方法签名等）进行无差别换行展开。
   - **强制规约**：仅在目标插入点写入声明的新增表单项/类型属性；提交前执行 `git diff <file>` 自查，将非本工单引入的邻近格式化行恢复原样，杜绝 Diff 审查噪声与伪范围蔓延判定。
+- **Update VO 属性极小集原则 (Update VO Minimal Field Set Guard)**：
+  - 更新接口 Request VO 严禁默认全盘拷贝 Create VO 字段；必须严格依照 Spec 声明的可编辑列集合（如仅允许修改状态/备注的账户、仅允许变更特定配置的单据）。
+  - **强制规约**：严禁投机性放开未在 Spec 声明的关键标识、名称、金额等敏感维度的更新入口；只读不可变字段（如银行账户名、期初余额、分录编号等）在 Update VO 中坚决不暴露，从契约根源杜绝越权或非法覆写。
 - **全局共享存量配置文件格式化防污染守卫 (Shared Config Formatting Hygiene)**：
   - 对 `luna-ui/src/utils/dict.ts`、`luna-ui/src/router/modules/remaining.ts` 等全局共享存量大文件，禁止执行整文件 `npx prettier --write`。
   - **强制规约**：必须采用局部单块代码替换或精细编辑，提交前通过 `git diff` 严格审查，严禁带入跨业务模块的排版与空白字符 Diff 噪音。

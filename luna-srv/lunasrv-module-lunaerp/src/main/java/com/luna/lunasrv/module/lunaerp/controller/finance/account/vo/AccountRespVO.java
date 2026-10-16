@@ -1,5 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.controller.finance.account.vo;
 
+import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveConstants;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveType;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -36,11 +39,13 @@ public class AccountRespVO {
     /**
      * 期初余额
      */
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
     private BigDecimal openingBalance;
 
     /**
      * 当前余额
      */
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
     private BigDecimal currentBalance;
 
     /**

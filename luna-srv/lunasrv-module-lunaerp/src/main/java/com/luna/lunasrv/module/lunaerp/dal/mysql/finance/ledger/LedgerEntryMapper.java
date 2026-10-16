@@ -15,6 +15,10 @@ import java.util.List;
 @Mapper
 public interface LedgerEntryMapper extends BaseMapperX<LedgerEntryDO> {
 
+    String COLUMNS = "id, entry_no, biz_date, category, direction, party_type, party_id, account_id, "
+            + "currency, amount, exchange_rate, standard_amount, ref_type, ref_id, ref_item_id, reversal_of_id, remark, "
+            + "creator, create_time, updater, update_time, deleted, tenant_id";
+
     /**
      * 按业务回指主单查询分录列表
      *
@@ -22,12 +26,10 @@ public interface LedgerEntryMapper extends BaseMapperX<LedgerEntryDO> {
      * @param refId 业务回指主单ID
      * @return 分录列表
      */
-    default List<LedgerEntryDO> selectListByRef(String refType, Long refId) {
-        return selectList(new LambdaQueryWrapper<LedgerEntryDO>()
-                .eq(LedgerEntryDO::getRefType, refType)
-                .eq(LedgerEntryDO::getRefId, refId)
-                .orderByAsc(LedgerEntryDO::getId));
-    }
+    @org.apache.ibatis.annotations.Select("SELECT " + COLUMNS + " FROM lunaerp_finance_ledger_entry "
+            + "WHERE ref_type = #{refType} AND ref_id = #{refId} AND deleted = 0 ORDER BY id ASC")
+    List<LedgerEntryDO> selectListByRef(@org.apache.ibatis.annotations.Param("refType") String refType,
+                                        @org.apache.ibatis.annotations.Param("refId") Long refId);
 
     /**
      * 按业务回指主单与明细行查询分录列表
@@ -37,13 +39,11 @@ public interface LedgerEntryMapper extends BaseMapperX<LedgerEntryDO> {
      * @param refItemId 业务回指明细ID
      * @return 分录列表
      */
-    default List<LedgerEntryDO> selectListByRefAndItemId(String refType, Long refId, Long refItemId) {
-        return selectList(new LambdaQueryWrapper<LedgerEntryDO>()
-                .eq(LedgerEntryDO::getRefType, refType)
-                .eq(LedgerEntryDO::getRefId, refId)
-                .eq(LedgerEntryDO::getRefItemId, refItemId)
-                .orderByAsc(LedgerEntryDO::getId));
-    }
+    @org.apache.ibatis.annotations.Select("SELECT " + COLUMNS + " FROM lunaerp_finance_ledger_entry "
+            + "WHERE ref_type = #{refType} AND ref_id = #{refId} AND ref_item_id = #{refItemId} AND deleted = 0 ORDER BY id ASC")
+    List<LedgerEntryDO> selectListByRefAndItemId(@org.apache.ibatis.annotations.Param("refType") String refType,
+                                                @org.apache.ibatis.annotations.Param("refId") Long refId,
+                                                @org.apache.ibatis.annotations.Param("refItemId") Long refItemId);
 
     /**
      * 查询指定原分录的红冲分录列表
@@ -51,11 +51,9 @@ public interface LedgerEntryMapper extends BaseMapperX<LedgerEntryDO> {
      * @param reversalOfId 原分录ID
      * @return 红冲分录列表
      */
-    default List<LedgerEntryDO> selectListByReversalOfId(Long reversalOfId) {
-        return selectList(new LambdaQueryWrapper<LedgerEntryDO>()
-                .eq(LedgerEntryDO::getReversalOfId, reversalOfId)
-                .orderByAsc(LedgerEntryDO::getId));
-    }
+    @org.apache.ibatis.annotations.Select("SELECT " + COLUMNS + " FROM lunaerp_finance_ledger_entry "
+            + "WHERE reversal_of_id = #{reversalOfId} AND deleted = 0 ORDER BY id ASC")
+    List<LedgerEntryDO> selectListByReversalOfId(@org.apache.ibatis.annotations.Param("reversalOfId") Long reversalOfId);
 
     /**
      * 批量查询指定原分录的红冲分录列表（防 N+1）
@@ -63,14 +61,13 @@ public interface LedgerEntryMapper extends BaseMapperX<LedgerEntryDO> {
      * @param reversalOfIds 原分录ID集合
      * @return 红冲分录列表
      */
-    default List<LedgerEntryDO> selectListByReversalOfIds(java.util.Collection<Long> reversalOfIds) {
-        if (cn.hutool.core.collection.CollUtil.isEmpty(reversalOfIds)) {
-            return java.util.Collections.emptyList();
-        }
-        return selectList(new LambdaQueryWrapper<LedgerEntryDO>()
-                .in(LedgerEntryDO::getReversalOfId, reversalOfIds)
-                .orderByAsc(LedgerEntryDO::getId));
-    }
+    @org.apache.ibatis.annotations.Select("<script>"
+            + "SELECT " + COLUMNS + " FROM lunaerp_finance_ledger_entry "
+            + "WHERE reversal_of_id IN "
+            + "<foreach collection='reversalOfIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "AND deleted = 0 ORDER BY id ASC"
+            + "</script>")
+    List<LedgerEntryDO> selectListByReversalOfIds(@org.apache.ibatis.annotations.Param("reversalOfIds") java.util.Collection<Long> reversalOfIds);
 
     /**
      * 统计指定资金账户的分录数量（用于账户删除保护）
@@ -78,9 +75,7 @@ public interface LedgerEntryMapper extends BaseMapperX<LedgerEntryDO> {
      * @param accountId 资金账户ID
      * @return 引用数量
      */
-    default Long selectCountByAccountId(Long accountId) {
-        return selectCount(new LambdaQueryWrapper<LedgerEntryDO>()
-                .eq(LedgerEntryDO::getAccountId, accountId));
-    }
+    @org.apache.ibatis.annotations.Select("SELECT COUNT(1) FROM lunaerp_finance_ledger_entry WHERE account_id = #{accountId} AND deleted = 0")
+    Long selectCountByAccountId(@org.apache.ibatis.annotations.Param("accountId") Long accountId);
 
 }
