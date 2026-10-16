@@ -35,7 +35,7 @@
 - 在luna-ui项目中
 - 技术实现：Vue3 + TypeScript + ElementPlus
 - 目录导航：业务视图集中在 `src/views/lunaerp-elmui/`（Element Plus 版），接口集中在 `src/api/lunaerp-elmui/`
-- 类型与语法检查：当前项目全量 `pnpm ts:check` 存在历史存量错误，严禁在单个特性工单开发中无差别调用全量 `vue-tsc` 进行阻塞检查；优先通过针对当前修改文件的 `eslint`、`npx prettier --write <files>`、`pnpm lint:perms <files>`（支持传多个修改的 `.vue` 文件，避免目录存量假阳性）以及 `vitest` 实现单模块质量闭环。
+- 类型与语法检查：当前项目全量 `pnpm ts:check` 存在历史存量错误，严禁在单个特性工单开发中无差别调用全量 `vue-tsc` 进行阻塞检查；优先通过针对当前修改文件的 `eslint`、`npx prettier --write <files>`（全局共享大文件如 `dict.ts`、`remaining.ts` 严禁整文件格式化，仅局部精细修改）、`pnpm lint:perms <files>`（支持传多个修改的 `.vue` 文件，避免目录存量假阳性）以及 `vitest` 实现单模块质量闭环。
 - 单测执行：`Cwd` 必须切换至 `luna-ui` 目录，直接执行 `pnpm test <path>`（如 `pnpm test src/views/lunaerp-elmui/production/material-check/__tests__/material-check.spec.ts`）；仓库根目录非 monorepo workspace，勿使用 `--filter`。
 - Vitest 纯 Node 环境守卫：`vitest.config.ts` 采用纯 Node 环境且未加载 Vue 编译插件与 JSDOM，单测仅覆盖纯 TS 领域模型（`model/*.ts`）与工具函数，严禁在单测中直接 import `.vue` 组件；若单测被测模块引用了 `@/config/axios`，必须在测试文件顶层显式声明 `vi.mock('@/config/axios', ...)`，防止级联执行路由 `createWebHistory` 触发 `window is not defined` 报错。
 
@@ -45,4 +45,4 @@
 - 控制器与类文件定位：业务控制器统一位于 `com.luna.lunasrv.module.lunaerp.controller.<domain>`（无 `admin/` 中间层，区别于底座 yudao 系统管理模块的 `controller/admin/`）；定位 Controller/Service/VO/DTO 一律使用 `git ls-files "*<Keyword>*"`，严禁凭经验拼接类路径。
 - 单测执行：`mvn test "-Dtest=TargetTest"` 或指定模块 `mvn test -pl lunasrv-module-lunaerp "-Dtest=TargetTest"`（多类测试在 PowerShell 下务必使用双引号包裹 `"-Dtest=TestA,TestB"`）
 - 框架依赖刷新：修改或依赖刚刚调整过的 `lunasrv-framework` 基础组件时，需先执行 `mvn -pl lunasrv-framework/<module-name> install -DskipTests`（如 `lunasrv-spring-boot-starter-mybatis`）将最新 jar 安装至本地仓库，避免子模块 `-pl` 测试时读取 `~/.m2` 旧快照。
-- 数据库脚本与发号校验规约：35 个增量脚本的执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号见 `docs/agents/coding-standards.md` 第 8 节；按日取号顺延重试见第 9 节；复合更新 DTO 校验、单测打桩边界与 Lambda 缓存预热见第 10 节；跨服务单测防自测桩见第 11 节；通用套打契约与脱敏豁免见第 12 节；累计上限并发守卫与行级悲观锁见第 13 节；特性工单范围守卫与投机性机能防范见第 14 节。
+- 数据库脚本与领域规约：35 个增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁与范围守卫见 `docs/agents/coding-standards.md` 第 8~14 节。

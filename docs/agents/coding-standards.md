@@ -77,6 +77,8 @@
   - 跨模块跳转携带过滤条件时（如齐套检查跳转配比 BOM 或采购单列表），若目标查询接口支持实体领域主键（如 `productId`、`customerId`），路由参数**必须**优先透传主键 ID，并在目标列表页的 `queryParams` 中优先绑定，同时可附带可读编码/名称快照，严禁单向降级为纯文本而丢弃主键 ID。
 - **看板汇总口径派生与交互解耦 (Metric Switch Decoupling)**：
   - 看板中的纯口径切换（如“含在途/不含在途”切换）：若仅影响顶部统计徽标或卡片，结果表格两口径列常驻展示，必须通过客户端响应式（`computed` / Model 纯函数）即时派生，严禁在无必要时触发全局表格重新请求与阻塞加载动画。
+- **工作台终态流转前置保存规约 (Pre-flight Save on State Transition)**：
+  - 在支持就地编辑明细的单据工作台（如改单价、改数量、增删行）中，执行“确认/提交/审核”等终态冻结操作时，必须在用户弹窗确认后、调用冻结接口前，**自动前置执行静默保存草稿**（`await handleSave(true)`）；保存成功并取得最新单据状态后方可触发终态流转，严禁直接提交内存旧版本引发数据丢失。
 
 ## 7. 前端单测与 Vitest 纯 Node 环境守卫 (Frontend Vitest Hygiene)
 
@@ -86,6 +88,9 @@
 - **Axios 顶层打桩规约**：
   - `@/config/axios` 会级联导入系统路由并在根作用域执行 `createWebHistory`（依赖 `window`）。
   - **强制规约**：单测中若间接依赖 API 调用，必须在测试文件顶层显式声明 `vi.mock('@/config/axios', ...)`，避免在纯 Node 运行环境中报 `ReferenceError: window is not defined`。
+- **全局打印注册表异步按需加载规约 (Async Print Registry Pattern)**：
+  - 打印模板注册表（`luna-ui/src/components/Print/registry.ts`）新增业务模板时，必须统一使用 `defineAsyncComponent(() => import(...))` 与动态 `fetchApi: (id) => import('@/api/...').then(...)` 进行解耦注册。
+  - **强制规约**：严禁在注册表顶层静态 import Vue SFC 组件与带路由级联副作用的 API 文件，防止破坏 Vitest 纯 Node 测试环境或在非打印单测中级联引发 `ReferenceError: window is not defined`。
 
 ## 8. PostgreSQL 脚本与多端幂等规约 (PostgreSQL DDL/DML & Sequence Parity)
 
@@ -178,4 +183,7 @@
   - **坚持 Spec 最小契约原则**：严禁在未获工单显式声明的情况下顺带扩展全局检索维度（例如在只要求关联选择器远程搜索的工单中，顺手向主单综合搜索 `keyword` 拼接非索引字段或更改搜索框 placeholder）。
   - **严禁跨工单字段顺带修补**：在修改底层手写 SQL（如 Mapper `@Select`）时，严禁顺带“修复”未包含在本工单范围内的其他未完成/未声明字段（如跨工单的检验单列），避免引发非预期回流审查与越界判定噪声。
   - **跨端扩展先声明后实现**：若联调确实需要扩展对侧字段或契约，必须在实现前在工单中显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延。
+- **全局共享存量配置文件格式化防污染守卫 (Shared Config Formatting Hygiene)**：
+  - 对 `luna-ui/src/utils/dict.ts`、`luna-ui/src/router/modules/remaining.ts` 等全局共享存量大文件，禁止执行整文件 `npx prettier --write`。
+  - **强制规约**：必须采用局部单块代码替换或精细编辑，提交前通过 `git diff` 严格审查，严禁带入跨业务模块的排版与空白字符 Diff 噪音。
 

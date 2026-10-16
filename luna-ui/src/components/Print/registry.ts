@@ -44,6 +44,10 @@ export interface PrintTemplateReg {
 
 /**
  * 静态模板注册表（不做自动发现、不做模板设计器）
+ *
+ * 【Vitest 纯 Node 测试守卫规约】：
+ * 新增业务模板必须统一使用 `defineAsyncComponent(() => import(...))` 与动态 `fetchApi: (id) => import('@/api/...').then(...)`。
+ * 严禁在文件顶层静态 import Vue SFC 组件或带路由副作用的 API，避免破坏 Vitest 纯 Node 测试环境。
  */
 export const printTemplateRegistry: PrintTemplateReg[] = [
   {
