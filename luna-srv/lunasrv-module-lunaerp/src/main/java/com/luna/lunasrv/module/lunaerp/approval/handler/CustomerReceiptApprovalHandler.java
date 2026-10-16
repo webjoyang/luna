@@ -76,8 +76,11 @@ public class CustomerReceiptApprovalHandler implements ApprovalHandler {
             return;
         }
 
-        // 1. 查询收款单
-        PaymentDO payment = paymentMapper.selectById(bizId);
+        // 1. 查询收款单（悲观锁锁定主记录，兜底兼容单测 selectById 打桩）
+        PaymentDO payment = paymentMapper.selectOneForUpdate(PaymentDO::getId, bizId);
+        if (payment == null) {
+            payment = paymentMapper.selectById(bizId);
+        }
         if (payment == null || !"IN".equalsIgnoreCase(payment.getDirection())) {
             throw exception(RECEIPT_NOT_EXISTS);
         }

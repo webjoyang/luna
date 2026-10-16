@@ -263,7 +263,7 @@ public class CustomerReceiptConcurrencyWriteoffTest {
         payment.setReceiptType(ReceiptType.RECEIPT.getValue());
         payment.setStatus(PaymentStatus.COMPLETED.getValue());
         payment.setPaymentNo("RC-20261016-005");
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
 
         LedgerEntryDO origEntry = new LedgerEntryDO();
         origEntry.setId(7005L);

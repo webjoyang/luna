@@ -410,7 +410,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setReceiptType(ReceiptType.RECEIPT.getValue());
         payment.setStatus(PaymentStatus.COMPLETED.getValue());
         payment.setPaymentNo("RC-20261016-001");
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
 
         LedgerEntryDO origEntry = new LedgerEntryDO();
         origEntry.setId(7001L);
@@ -449,7 +449,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setTenantId(TENANT_ID);
         payment.setDirection("IN");
         payment.setStatus(PaymentStatus.REVERSED.getValue());
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
 
         ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.reverseReceipt(paymentId));
         assertEquals(FinanceErrorCodeConstants.RECEIPT_REVERSAL_NOT_ALLOW.getCode(), ex.getCode());
@@ -464,7 +464,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setTenantId(TENANT_ID);
         payment.setDirection("IN");
         payment.setStatus("PENDING");
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
 
         ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.reverseReceipt(paymentId));
         assertEquals(FinanceErrorCodeConstants.RECEIPT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
@@ -480,7 +480,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setDirection("IN");
         payment.setStatus(PaymentStatus.COMPLETED.getValue());
         payment.setReceiptType(ReceiptType.ADVANCE.getValue());
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
         when(ledgerEntryMapper.selectCount(any())).thenReturn(1L); // 已有后续预收转核销
 
         ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.reverseReceipt(paymentId));
@@ -502,7 +502,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setPayAmount(new BigDecimal("8000.00"));
         payment.setReceiptType(ReceiptType.ADVANCE.getValue());
         payment.setStatus(PaymentStatus.COMPLETED.getValue());
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
 
         // 模拟已核销历史 2000 元（预收剩余 6000）
         LedgerEntryDO prevWriteoff = new LedgerEntryDO();
@@ -562,7 +562,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setPayAmount(new BigDecimal("2000.00")); // 预收 2000
         payment.setReceiptType(ReceiptType.ADVANCE.getValue());
         payment.setStatus(PaymentStatus.COMPLETED.getValue());
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
 
         // 已核销 1500，剩余 500
         LedgerEntryDO prevWriteoff = new LedgerEntryDO();
@@ -594,7 +594,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setPayAmount(new BigDecimal("5000.00"));
         payment.setReceiptType(ReceiptType.ADVANCE.getValue());
         payment.setStatus(PaymentStatus.COMPLETED.getValue());
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
         when(ledgerEntryMapper.selectList(any())).thenReturn(
                 List.of(), // calculateAdvanceWrittenOff
                 List.of(createArEntry(101L, LocalDate.now(), new BigDecimal("1000.00"), 801L)) // AR 分录为 RMB
@@ -625,7 +625,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setPayAmount(new BigDecimal("5000.00"));
         payment.setReceiptType(ReceiptType.ADVANCE.getValue());
         payment.setStatus(PaymentStatus.COMPLETED.getValue());
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
 
         LedgerEntryDO otherCustomerEntry = createArEntry(101L, LocalDate.now(), new BigDecimal("1000.00"), 801L);
         otherCustomerEntry.setPartyId(2002L); // 属于客户 2002
@@ -659,7 +659,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setPayAmount(new BigDecimal("5000.00"));
         payment.setReceiptType(ReceiptType.ADVANCE.getValue());
         payment.setStatus(PaymentStatus.COMPLETED.getValue());
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
 
         LedgerEntryDO entry = createArEntry(101L, LocalDate.now(), new BigDecimal("1000.00"), 801L);
         when(ledgerEntryMapper.selectList(any())).thenReturn(
@@ -691,7 +691,7 @@ public class PaymentReceiptServiceImplTest {
         payment.setDirection("IN");
         payment.setReceiptType(ReceiptType.RECEIPT.getValue()); // 普通收款单
         payment.setStatus(PaymentStatus.COMPLETED.getValue());
-        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
 
         com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO req =
                 new com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO();

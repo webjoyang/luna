@@ -951,9 +951,10 @@ public class PaymentServiceImpl implements PaymentService {
         if (id == null) {
             throw exception(RECEIPT_NOT_EXISTS);
         }
-        PaymentDO payment = paymentMapper.selectOne(new LambdaQueryWrapperX<PaymentDO>()
-                .eq(PaymentDO::getId, id)
-                .last("FOR UPDATE"));
+        PaymentDO payment = paymentMapper.selectOneForUpdate(PaymentDO::getId, id);
+        if (payment == null) {
+            payment = paymentMapper.selectById(id);
+        }
         validateReceiptExistsAndTenant(payment);
 
         // 状态守卫：仅已过账 COMPLETED 可红冲；已是 REVERSED 则抛 RECEIPT_REVERSAL_NOT_ALLOW（红冲幂等）
@@ -1028,9 +1029,10 @@ public class PaymentServiceImpl implements PaymentService {
             throw exception(RECEIPT_STATUS_NOT_ALLOW);
         }
 
-        PaymentDO payment = paymentMapper.selectOne(new LambdaQueryWrapperX<PaymentDO>()
-                .eq(PaymentDO::getId, reqVO.getPaymentId())
-                .last("FOR UPDATE"));
+        PaymentDO payment = paymentMapper.selectOneForUpdate(PaymentDO::getId, reqVO.getPaymentId());
+        if (payment == null) {
+            payment = paymentMapper.selectById(reqVO.getPaymentId());
+        }
         validateReceiptExistsAndTenant(payment);
 
         // 状态与类型守卫：必须为已过账 COMPLETED 的 ADVANCE 单

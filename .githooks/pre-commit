@@ -1,0 +1,20 @@
+#!/bin/sh
+# Git pre-commit hook: button permissions guard on staged Vue files
+node -e "
+const { execSync } = require('child_process');
+const output = execSync('git diff --cached --name-only --diff-filter=d', { encoding: 'utf-8' });
+const files = output
+  .split(/[\r\n]+/)
+  .map(f => f.trim())
+  .filter(f => f.startsWith('luna-ui/') && f.endsWith('.vue'));
+
+if (files.length > 0) {
+  console.log('[pre-commit] Checking v-hasPermi for staged Vue files: ' + files.join(', '));
+  try {
+    execSync('node luna-ui/scripts/check-button-perm.mjs ' + files.join(' '), { stdio: 'inherit' });
+  } catch (err) {
+    console.error('[pre-commit] Error: button permission check failed. Please ensure write buttons have v-hasPermi before committing.');
+    process.exit(1);
+  }
+}
+"

@@ -35,8 +35,11 @@
 - 在luna-ui项目中
 - 技术实现：Vue3 + TypeScript + ElementPlus
 - 目录导航：业务视图集中在 `src/views/lunaerp-elmui/`（Element Plus 版），接口集中在 `src/api/lunaerp-elmui/`
-- 类型与语法检查：当前项目全量 `pnpm ts:check` 存在历史存量错误，严禁在单个特性工单开发中无差别调用全量 `vue-tsc` 进行阻塞检查；优先通过针对当前修改文件的 `eslint`、`npx prettier --write <files>`（全局共享大文件如 `dict.ts`、`remaining.ts` 严禁整文件格式化，仅局部精细修改）、`pnpm lint:perms <files>`（支持传多个修改的 `.vue` 文件，避免目录存量假阳性）以及 `vitest` 实现单模块质量闭环。
-- 单测执行：`Cwd` 必须切换至 `luna-ui` 目录，直接执行 `pnpm test <path>`（如 `pnpm test src/views/lunaerp-elmui/production/material-check/__tests__/material-check.spec.ts`）；仓库根目录非 monorepo workspace，勿使用 `--filter`。
+- 前端单文件闭环指令：修改文件后直接执行增量检查：
+  1. 权限守卫：`pnpm lint:perms <files>`（修改 `.vue` 文件后必跑，根目录 Git pre-commit hook 亦会自动执行拦截）
+  2. 格式与风格：针对修改文件精准执行 `eslint` 与 `npx prettier --write <files>`（大文件如 `dict.ts`、`remaining.ts` 严禁整文件格式化，仅局部精细修改）
+  3. 单测执行：`Cwd` 切换至 `luna-ui` 目录，直接执行 `pnpm test <spec-path>`（如 `pnpm test src/views/lunaerp-elmui/finance/payment/__tests__/payment.spec.ts`；非 monorepo workspace，勿使用 `--filter`）
+  4. 免跑全量：存量历史类型报错存在，特性工单免跑阻塞式的全量 `vue-tsc` / `pnpm ts:check`
 - Vitest 纯 Node 环境守卫：`vitest.config.ts` 采用纯 Node 环境且未加载 Vue 编译插件与 JSDOM，单测仅覆盖纯 TS 领域模型（`model/*.ts`）与工具函数，严禁在单测中直接 import `.vue` 组件；若单测被测模块引用了 `@/config/axios`，必须在测试文件顶层显式声明 `vi.mock('@/config/axios', ...)`，防止级联执行路由 `createWebHistory` 触发 `window is not defined` 报错。
 
 ## 后端项目
