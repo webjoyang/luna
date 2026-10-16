@@ -245,6 +245,38 @@ public class ArchitectureStandardsTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    @DisplayName("规约审查：finance 域 Update VO 严禁暴露不可变只读业务主键与账本标识字段 (coding-standards.md §14)")
+    public void testFinanceUpdateVOsFollowMinimalFieldSetConvention() {
+        Set<Class<?>> voClasses = ClassUtil.scanPackage("com.luna.lunasrv.module.lunaerp.controller.finance");
+        assertTrue(!voClasses.isEmpty(), "未扫描到 finance 域的 Controller/VO 类");
+
+        // 不可变关键字段黑名单（主键/唯一索引/单号/往来方/开户币种/期初金额）
+        Set<String> immutableFieldBlacklist = Set.of(
+                "effectivedate", "accountname", "currency", "tenantid",
+                "openingbalance", "applyno", "reconno", "statementno",
+                "supplierid", "customerid", "applytype", "partytype", "partyid"
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Class<?> clazz : voClasses) {
+            if (!clazz.getSimpleName().endsWith("UpdateReqVO")) {
+                continue;
+            }
+            for (Field field : clazz.getDeclaredFields()) {
+                String fieldName = field.getName().toLowerCase();
+                if (immutableFieldBlacklist.contains(fieldName)) {
+                    violations.add(clazz.getSimpleName() + "." + field.getName()
+                            + " 暴露了不可变业务属性，违反 coding-standards.md §14 Update VO 属性极小集原则");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到 finance 域 Update VO 暴露了不可变/唯一索引业务字段:\n"
+                        + String.join("\n", violations));
+    }
+
     private void collectJavaFiles(java.io.File dir, List<java.io.File> result) {
         java.io.File[] files = dir.listFiles();
         if (files == null) {

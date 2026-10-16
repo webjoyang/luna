@@ -156,5 +156,10 @@
   "engines": {
     "node": ">= 20.19.0",
     "pnpm": ">=8.6.0"
+  },
+  "lint-staged": {
+    "*.vue": [
+      "node scripts/check-button-perm.mjs"
+    ]
   }
 }

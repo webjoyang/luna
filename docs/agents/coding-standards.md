@@ -112,6 +112,10 @@
   - **强制规约**：
     1. 领域模型文件必须保持为纯 TypeScript 逻辑与类型，**严禁反向 import 视图层 API 文件（`@/api/**`）或 Vue SFC 组件**。
     2. 领域模型所需的错误码常量、枚举与 VO/DTO 类型定义，应收敛于 `model/` 或独立的 `types/` 声明文件中并向外暴露；由 API 层和 View 视图向内依赖 Model，严禁逆向倒置。
+- **前端表单日期默认值初始化时区偏差防御 (Date Initialization Timezone Parity)**：
+  - **场景**：表单生效日、操作日、筛选开始结束日等默认值初始化。
+  - **UTC 跨日截断陷阱**：使用 `new Date().toISOString().slice(0, 10)` 会取标准 UTC 时间。在东八区（UTC+8）早晨（00:00–07:59）调用时，会错误回退至昨天的日期字符串，造成默认日期失真。
+  - **强制规约**：前端组件中初始化当前日期统一采用本地时区格式化：使用 `new Date().toLocaleDateString('en-CA')`（原生输出标准 `YYYY-MM-DD`）或 `dayjs().format('YYYY-MM-DD')`，严禁使用 `toISOString().slice(0, 10)`。
 
 ## 8. PostgreSQL 脚本与多端幂等规约 (PostgreSQL DDL/DML & Sequence Parity)
 
@@ -253,6 +257,7 @@
 - **Update VO 属性极小集原则 (Update VO Minimal Field Set Guard)**：
   - 更新接口 Request VO 严禁默认全盘拷贝 Create VO 字段；必须严格依照 Spec 声明的可编辑列集合（如仅允许修改状态/备注的账户、仅允许变更特定配置的单据）。
   - **强制规约**：严禁投机性放开未在 Spec 声明的关键标识、名称、金额等敏感维度的更新入口；只读不可变字段（如银行账户名、期初余额、分录编号等）在 Update VO 中坚决不暴露，从契约根源杜绝越权或非法覆写。
+  - **自动化守护保障**：财务域由 `ArchitectureStandardsTest.testFinanceUpdateVOsFollowMinimalFieldSetConvention()` 自动反射检验所有 `*UpdateReqVO`，对黑名单不可变字段（`effectiveDate`, `accountName`, `currency`, `tenantId`, `openingBalance`, `applyNo`, `reconNo`, `statementNo`, `partyType`, `partyId` 等）进行前置物理拦截。
 - **全局共享存量配置文件格式化防污染守卫 (Shared Config Formatting Hygiene)**：
   - 对 `luna-ui/src/utils/dict.ts`、`luna-ui/src/router/modules/remaining.ts` 等全局共享存量大文件，禁止执行整文件 `npx prettier --write`。
   - **强制规约**：必须采用局部单块代码替换或精细编辑，提交前通过 `git diff` 严格审查，严禁带入跨业务模块的排版与空白字符 Diff 噪音。
@@ -269,6 +274,7 @@
      private Integer creditDays;
      ```
   2. **置空单测标准覆盖**：涉及该字段的 Service 单元测试必须标准化包含置空场景（如 `updateCustomer_clearCreditDays_success()`），通过 Mockito `ArgumentCaptor<EntityDO>` 捕获并断言更新对象的对应属性值为 `null`，确保更新策略在持久层生效。
+  3. **快捷状态流转防静默清空**：当 Update VO 承载快捷操作（如停用/启用切换、审批流转、撤回）且未显式传递可空业务字段时，Service 层在组装更新实体前必须保留原值（`updateDO.setRemark(reqVO.getRemark() != null ? reqVO.getRemark() : existing.getRemark())`），杜绝因 `FieldStrategy.ALWAYS` 将历史业务备注或关键说明在单据流转时静默置空为 NULL。
 
 ## 16. 符号重命名与代码重构全引用检索纪律 (Symbol Rename & Refactoring Hygiene)
 

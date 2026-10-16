@@ -41,6 +41,24 @@ export default tseslint.config(
     }
   },
 
+  // API 层架构边界守护：严禁从视图层逆向引入或重导出
+  {
+    files: ['src/api/**/*.{ts,js,mts,cts}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/views/**', '**/views/**'],
+              message: 'API 层严禁逆向引入或重导出 View 层模块（应保持 View 单向依赖 API/Model）'
+            }
+          ]
+        }
+      ]
+    }
+  },
+
   // Main rules config
   {
     languageOptions: {
