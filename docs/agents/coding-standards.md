@@ -136,6 +136,8 @@
        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TargetDO.class);
        ```
     2. 若被测方法级联涉及多个实体（如主表实体、明细实体及关联来源单实体），所有在 LambdaWrapper 泛型或方法引用中出现的实体类必须在 `setUp()` 中一并预热，杜绝运行时缓存缺失与误导性测试失败。
+- **单测基础实体 Mock 辅助工厂方法规约 (Test Fixture & Mock Factory Pattern)**：
+  - 在大型领域 Service 单测中（如涉及仓库、供应商、产品、客户、采购单等多实体引用），测试类应集中定义私有基础实体构建工厂方法（如 `mockWarehouse(id, name, status)`、`mockProduct(id, name, code)`、`mockYarnOrder(id, orderNo)`），避免在单测用例内分散重复手写零碎的 `new EntityDO()` 样板代码，杜绝 TDD 红灯编译期因推测缺失 helper 方法导致的编译中断与往返构建损耗。
 
 ## 11. 跨服务涌现语义单测归位规约 (Cross-service Emergent Behavior & Anti-Tautological Mocking)
 
@@ -168,3 +170,12 @@
   - **锁后原子重查与上限校验**：持有行锁后，在同一事务上下文重新执行累计值聚合（排除终态或当前单据），若 `appliedSum + currentAmount > source.getTotalAmount()`，必须抛出明确业务错误码（如 `022_007`）。
   - **纯 Mockito 单元测试打桩规约**：
     `BaseMapperX.selectOneForUpdate(SFunction, Object)` 内部委托 `selectOneForUpdate(LambdaQueryWrapper)`。单测打桩应使用 `when(sourceMapper.selectOneForUpdate(any(LambdaQueryWrapper.class))).thenReturn(sourceDO);`，Service 内部可通过判空短路兜底支持 `selectById`，保证真实运行加锁生效与单元测试解耦兼顾。
+
+## 14. 特性工单范围守卫与投机性机能防范 (Spec Scope Hygiene & Opportunistic Feature Guard)
+
+- **场景**：特性工单开发过程中，编写 CRUD、查询筛选或关联引用时。
+- **强制规约**：
+  - **坚持 Spec 最小契约原则**：严禁在未获工单显式声明的情况下顺带扩展全局检索维度（例如在只要求关联选择器远程搜索的工单中，顺手向主单综合搜索 `keyword` 拼接非索引字段或更改搜索框 placeholder）。
+  - **严禁跨工单字段顺带修补**：在修改底层手写 SQL（如 Mapper `@Select`）时，严禁顺带“修复”未包含在本工单范围内的其他未完成/未声明字段（如跨工单的检验单列），避免引发非预期回流审查与越界判定噪声。
+  - **跨端扩展先声明后实现**：若联调确实需要扩展对侧字段或契约，必须在实现前在工单中显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延。
+

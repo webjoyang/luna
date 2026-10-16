@@ -63,13 +63,31 @@ function walkDir(dir, fileList = []) {
   return fileList
 }
 
-// 支持传参检测单个目录/文件，或默认检测 src/views/lunaerp-elmui
-const targetArg = process.argv[2] || 'src/views/lunaerp-elmui'
-const targetPath = path.resolve(process.cwd(), targetArg)
+// 支持传入一个或多个目录/文件参数，默认检测 src/views/lunaerp-elmui
+const targetArgs = process.argv.slice(2)
+const targets = targetArgs.length > 0 ? targetArgs : ['src/views/lunaerp-elmui']
 
-const filesToScan = fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()
-  ? [targetPath]
-  : walkDir(targetPath)
+const filesToScan = []
+const scannedSet = new Set()
+
+for (const arg of targets) {
+  const targetPath = path.resolve(process.cwd(), arg)
+  if (!fs.existsSync(targetPath)) continue
+  const stat = fs.statSync(targetPath)
+  if (stat.isFile()) {
+    if (targetPath.endsWith('.vue') && !scannedSet.has(targetPath)) {
+      filesToScan.push(targetPath)
+      scannedSet.add(targetPath)
+    }
+  } else if (stat.isDirectory()) {
+    for (const file of walkDir(targetPath)) {
+      if (!scannedSet.has(file)) {
+        filesToScan.push(file)
+        scannedSet.add(file)
+      }
+    }
+  }
+}
 
 let totalIssues = 0
 
@@ -89,6 +107,6 @@ if (totalIssues > 0) {
   console.error(`\nFound ${totalIssues} button(s) with write actions lacking v-hasPermi directive.`)
   process.exit(1)
 } else {
-  console.log(`\nChecked ${filesToScan.length} vue file(s) in ${targetArg}. All write buttons have v-hasPermi.`)
+  console.log(`\nChecked ${filesToScan.length} vue file(s). All write buttons have v-hasPermi.`)
   process.exit(0)
 }
