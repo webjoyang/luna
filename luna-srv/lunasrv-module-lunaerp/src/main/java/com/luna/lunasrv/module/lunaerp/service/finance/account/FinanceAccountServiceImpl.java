@@ -1,12 +1,16 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.account;
 
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.module.lunaerp.service.finance.ledger.LedgerService;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /**
- * 资金账户服务 Seam 默认占位实现（12 号未落地前的 Mock Seam）
+ * 资金账户服务 Seam 实现类（已接入真实 AccountService 与 LedgerService）
  *
  * @author luna
  */
@@ -14,19 +18,27 @@ import java.math.BigDecimal;
 @Slf4j
 public class FinanceAccountServiceImpl implements FinanceAccountService {
 
+    @Resource
+    private AccountService accountService;
+
+    @Resource
+    private LedgerService ledgerService;
+
     @Override
     public void validateAccountAvailable(Long accountId) {
-        log.info("[FinanceAccountService] validateAccountAvailable seam called: accountId={}", accountId);
+        accountService.validateAccountAvailable(accountId);
     }
 
     @Override
     public void debitAccount(Long accountId, BigDecimal amount) {
-        log.info("[FinanceAccountService] debitAccount seam called: accountId={}, amount={}", accountId, amount);
+        if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+            accountService.updateBalance(accountId, amount.negate());
+        }
     }
 
     @Override
     public void recordAccountOutflow(Long accountId, BigDecimal amount, Long paymentId, String paymentNo) {
-        log.info("[FinanceAccountService] recordAccountOutflow seam called: accountId={}, amount={}, paymentId={}, paymentNo={}",
+        log.info("[FinanceAccountService] recordAccountOutflow: accountId={}, amount={}, paymentId={}, paymentNo={}",
                 accountId, amount, paymentId, paymentNo);
     }
 
@@ -34,8 +46,21 @@ public class FinanceAccountServiceImpl implements FinanceAccountService {
     public void appendOutSupplierLedgerEntry(Long paymentId, String paymentNo, Long supplierId,
                                              BigDecimal totalAmount, BigDecimal prepayUsedAmount,
                                              Long accountId, String remark) {
-        log.info("[FinanceAccountService] appendOutSupplierLedgerEntry seam called: paymentId={}, paymentNo={}, supplierId={}, totalAmount={}, prepayUsedAmount={}, accountId={}, remark={}",
-                paymentId, paymentNo, supplierId, totalAmount, prepayUsedAmount, accountId, remark);
+        LedgerEntryDO entry = new LedgerEntryDO();
+        entry.setBizDate(LocalDate.now());
+        entry.setPartyType("SUPPLIER");
+        entry.setPartyId(supplierId);
+        entry.setAccountId(accountId);
+        entry.setCategory("OUT_SUPPLIER");
+        entry.setDirection("CREDIT");
+        entry.setCurrency("RMB");
+        entry.setExchangeRate(BigDecimal.ONE);
+        entry.setOriginalAmount(totalAmount);
+        entry.setBaseAmount(totalAmount);
+        entry.setRefType("PAYMENT");
+        entry.setRefId(paymentId);
+        entry.setRemark(remark);
+        ledgerService.append(entry);
     }
 
 }

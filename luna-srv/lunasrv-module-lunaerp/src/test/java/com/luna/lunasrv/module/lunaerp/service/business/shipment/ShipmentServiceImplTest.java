@@ -40,7 +40,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
+
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentAuditedEvent;
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentCancelledEvent;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -102,6 +106,9 @@ class ShipmentServiceImplTest {
 
     @Mock
     private ConfigApi configApi;
+
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @InjectMocks
     private ShipmentServiceImpl shipmentService;
@@ -1660,6 +1667,8 @@ class ShipmentServiceImplTest {
         shipment.setWarehouseName("成品一仓");
         shipment.setContractNo("CH20260001");
         shipment.setCarrier("顺丰速运");
+        shipment.setCustomerId(1L);
+        shipment.setCustomerName("客户A");
         shipment.setFreightFee(new BigDecimal("150.00"));
         when(shipmentMapper.selectById(10L)).thenReturn(shipment);
 
@@ -1714,6 +1723,19 @@ class ShipmentServiceImplTest {
         assertEquals(10L, ledger.getRelatedDocId());
         assertEquals("SH-20260928-001", ledger.getRelatedDocNo());
         assertEquals("首批出库", ledger.getRemark());
+
+        // Assert 发布发货单审核完成事件
+        ArgumentCaptor<ShipmentAuditedEvent> eventCaptor = ArgumentCaptor.forClass(ShipmentAuditedEvent.class);
+        verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
+        ShipmentAuditedEvent auditedEvent = eventCaptor.getValue();
+        assertEquals(10L, auditedEvent.getShipmentId());
+        assertEquals("SH-20260928-001", auditedEvent.getShipmentNo());
+        assertEquals(1L, auditedEvent.getCustomerId());
+        assertEquals("客户A", auditedEvent.getCustomerName());
+        assertEquals(new BigDecimal("150.00"), auditedEvent.getFreightFee());
+        assertEquals(1, auditedEvent.getItems().size());
+        assertEquals(1001L, auditedEvent.getItems().get(0).getProductId());
+        assertEquals(new BigDecimal("50.00"), auditedEvent.getItems().get(0).getQuantity());
     }
 
     @Test
@@ -1750,6 +1772,8 @@ class ShipmentServiceImplTest {
         shipment.setStatus("COMPLETED");
         shipment.setContractNo("CH20260001");
         shipment.setCarrier("顺丰速运");
+        shipment.setCustomerId(1L);
+        shipment.setCustomerName("客户A");
         shipment.setFreightFee(new BigDecimal("150.00"));
         when(shipmentMapper.selectById(10L)).thenReturn(shipment);
 
@@ -1799,6 +1823,14 @@ class ShipmentServiceImplTest {
         assertEquals("VAT-001", reversal.getBatchNo());
         assertEquals(10L, reversal.getRelatedDocId());
         assertEquals("SH-20260928-001", reversal.getRelatedDocNo());
+
+        // Assert 发布发货单红冲完成事件
+        ArgumentCaptor<ShipmentCancelledEvent> cancelCaptor = ArgumentCaptor.forClass(ShipmentCancelledEvent.class);
+        verify(applicationEventPublisher).publishEvent(cancelCaptor.capture());
+        ShipmentCancelledEvent cancelledEvent = cancelCaptor.getValue();
+        assertEquals(10L, cancelledEvent.getShipmentId());
+        assertEquals("SH-20260928-001", cancelledEvent.getShipmentNo());
+        assertEquals(1L, cancelledEvent.getCustomerId());
     }
 
     @Test

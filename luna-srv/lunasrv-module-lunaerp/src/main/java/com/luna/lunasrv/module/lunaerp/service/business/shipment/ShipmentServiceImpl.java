@@ -39,10 +39,15 @@ import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentP
 import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentAuditedEvent;
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentCancelledEvent;
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentItemSnapshotDTO;
 
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
 import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
@@ -180,6 +185,9 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Resource
     private ConfigApi configApi;
+
+    @Resource
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -508,6 +516,35 @@ public class ShipmentServiceImpl implements ShipmentService {
             ledger.setRemark(item.getRemark());
             stockLedgerMapper.insert(ledger);
         }
+
+        // 7. 发布发货单审核出库完成事件（同事务 BEFORE_COMMIT 记账，Q1）
+        if (applicationEventPublisher != null) {
+            List<ShipmentItemSnapshotDTO> snapshots = new ArrayList<>(items.size());
+            for (ShipmentItemDO item : items) {
+                snapshots.add(ShipmentItemSnapshotDTO.builder()
+                        .shipmentItemId(item.getId())
+                        .productId(item.getProductId())
+                        .productCode(item.getProductCode())
+                        .productName(item.getProductName())
+                        .quantity(item.getQuantity())
+                        .unit(item.getUnit())
+                        .unitPrice(item.getUnitPrice())
+                        .amount(item.getAmount())
+                        .remark(item.getRemark())
+                        .build());
+            }
+            ShipmentAuditedEvent event = ShipmentAuditedEvent.builder()
+                    .shipmentId(existing.getId())
+                    .shipmentNo(existing.getShipmentNo())
+                    .customerId(existing.getCustomerId())
+                    .customerName(existing.getCustomerName())
+                    .currency(existing.getCurrency() != null ? existing.getCurrency() : DEFAULT_CURRENCY)
+                    .shipmentDate(existing.getShippingDate())
+                    .freightFee(existing.getFreightFee())
+                    .items(snapshots)
+                    .build();
+            applicationEventPublisher.publishEvent(event);
+        }
     }
 
     @Override
@@ -561,6 +598,37 @@ public class ShipmentServiceImpl implements ShipmentService {
                     reversal.setRemark(orig.getRemark());
                     stockLedgerMapper.insert(reversal);
                 }
+            }
+
+            // 2.2.3 发布发货单红冲完成事件（同事务 BEFORE_COMMIT 记账，Q1）
+            if (applicationEventPublisher != null) {
+                List<ShipmentItemDO> items = shipmentItemMapper.selectListByShipmentId(id);
+                List<ShipmentItemSnapshotDTO> snapshots = new ArrayList<>();
+                if (CollUtil.isNotEmpty(items)) {
+                    for (ShipmentItemDO item : items) {
+                        snapshots.add(ShipmentItemSnapshotDTO.builder()
+                                .shipmentItemId(item.getId())
+                                .productId(item.getProductId())
+                                .productCode(item.getProductCode())
+                                .productName(item.getProductName())
+                                .quantity(item.getQuantity())
+                                .unit(item.getUnit())
+                                .unitPrice(item.getUnitPrice())
+                                .amount(item.getAmount())
+                                .remark(item.getRemark())
+                                .build());
+                    }
+                }
+                ShipmentCancelledEvent event = ShipmentCancelledEvent.builder()
+                        .shipmentId(existing.getId())
+                        .shipmentNo(existing.getShipmentNo())
+                        .customerId(existing.getCustomerId())
+                        .currency(existing.getCurrency() != null ? existing.getCurrency() : DEFAULT_CURRENCY)
+                        .cancelDate(LocalDate.now())
+                        .freightFee(existing.getFreightFee())
+                        .items(snapshots)
+                        .build();
+                applicationEventPublisher.publishEvent(event);
             }
         } else {
             // 2.3 CANCELLED 终态或非法状态：报 1_030_016_002
