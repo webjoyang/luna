@@ -135,13 +135,60 @@ _避免_：台账重建、recalculate、第二本流水表。
 
 - `1-030-022`（supplierrecon，11 号已回填）：000 `SUPPLIER_RECON_NOT_EXISTS` 对账单不存在 / 001 `SUPPLIER_RECON_STATUS_NOT_ALLOWED` 当前状态不允许该操作 / 002 `SUPPLIER_RECON_SUPPLIER_NOT_EXISTS` 供应商不存在 / 003 `SUPPLIER_RECON_NO_SOURCE_ITEMS` 对账区间内无可对账明细 / 004 `SUPPLIER_RECON_SOURCE_REFERENCED` 源明细已被对账单【{}】引用 / 005 `SUPPLIER_RECON_ADJUST_LINE_INVALID` 调整项行不合法：金额为 0 或缺备注 / 006 `SUPPLIER_RECON_HAS_PAYMENT_APPLY` 对账单存在付款申请，禁止作废 / 007 `SUPPLIER_RECON_APPLY_AMOUNT_EXCEED` 累计申请金额【{}】超出对账确认金额
 - `1-030-023`（payment 共享段，11 号先占 000–010，10 号避让后续段）：000 `PAYMENT_APPLY_NOT_EXISTS` 付款申请不存在 / 001 `PAYMENT_APPLY_STATUS_NOT_ALLOWED` 付款申请当前状态不允许该操作 / 002 `PAYMENT_APPLY_RECON_NOT_CONFIRMED` 对账单未确认，不可生成对账付款申请 / 003 `PAYMENT_ALLOCATE_EXCEED` 核销分配金额超过付款申请剩余额 / 004 `PAYMENT_ACCOUNT_BALANCE_NOT_ENOUGH` 资金账户余额不足 / 005 `PAYMENT_PREPAY_BALANCE_NOT_ENOUGH` 供应商预付余额不足 / 006 `PAYMENT_ACCOUNT_NOT_AVAILABLE` 资金账户不存在或已停用 / 007 `PAYMENT_AMOUNT_INVALID` 付款金额不合法 / 008 `PAYMENT_APPLY_NO_EXHAUSTED` 付款申请单号生成重试耗尽 / 009 `PAYMENT_NOT_EXISTS` 收付款单不存在 / 010 `PAYMENT_NO_EXHAUSTED` 收付款单号生成重试耗尽
-- `1-030-020`（域公共，10 号回填；段内 000 分录账/100 资金账户/200 汇率）：000 分录账禁止修改删除 / 100 账户不存在 / 101 账户停用 / 102 账户名重复 / 103 有分录禁止删除 / 104 期初余额不可改 / 200 无生效汇率 / 201 同币种同生效日重复 / 202 本位币免配
+- `1-030-022`（supplierrecon，11 号已回填）：000 `SUPPLIER_RECON_NOT_EXISTS` 对账单不存在 / 001 `SUPPLIER_RECON_STATUS_NOT_ALLOWED` 当前状态不允许该操作 / 002 `SUPPLIER_RECON_SUPPLIER_NOT_EXISTS` 供应商不存在 / 003 `SUPPLIER_RECON_NO_SOURCE_ITEMS` 对账区间内无可对账明细 / 004 `SUPPLIER_RECON_SOURCE_REFERENCED` 源明细已被对账单【{}】引用 / 005 `SUPPLIER_RECON_ADJUST_LINE_INVALID` 调整项行不合法：金额为 0 或缺备注 / 006 `SUPPLIER_RECON_HAS_PAYMENT_APPLY` 对账单存在付款申请，禁止作废 / 007 `SUPPLIER_RECON_APPLY_AMOUNT_EXCEED` 累计申请金额【{}】超出对账确认金额
+- `1-030-023`（payment 共享段，11 号先占 000–010，10 号避让后续段）：000 `PAYMENT_APPLY_NOT_EXISTS` 付款申请不存在 / 001 `PAYMENT_APPLY_STATUS_NOT_ALLOWED` 付款申请当前状态不允许该操作 / 002 `PAYMENT_APPLY_RECON_NOT_CONFIRMED` 对账单未确认，不可生成对账付款申请 / 003 `PAYMENT_ALLOCATE_EXCEED` 核销分配金额超过付款申请剩余额 / 004 `PAYMENT_ACCOUNT_BALANCE_NOT_ENOUGH` 资金账户余额不足 / 005 `PAYMENT_PREPAY_BALANCE_NOT_ENOUGH` 供应商预付余额不足 / 006 `PAYMENT_ACCOUNT_NOT_AVAILABLE` 资金账户不存在或已停用 / 007 `PAYMENT_AMOUNT_INVALID` 付款金额不合法 / 008 `PAYMENT_APPLY_NO_EXHAUSTED` 付款申请单号生成重试耗尽 / 009 `PAYMENT_NOT_EXISTS` 收付款单不存在 / 010 `PAYMENT_NO_EXHAUSTED` 收付款单号生成重试耗尽
 - `1-030-020` 续（12 号回填 105–110）：105 该类型账户账号必填 / 106 账户币种不一致（跨币种操作不支持） / 107 转出转入账户相同 / 108 转账单不存在 / 109 其他收支单不存在 / 110 收支类别与方向不一致；资金流出余额不足统一复用 `1-030-023-004`
 - `1-030-024`（expense，12 号回填）：000 报销单不存在 / 001 状态不允许 / 002 至少一行费用 / 003 付款账户不存在或停用 / 004 金额不合法 / 005 附件超过 10 个 / 006 报销人不存在 / 007 费用发生日期不合法
 - `1-030-025`（payroll，12 号回填）：000 工资单不存在 / 001 状态不允许 / 002 期间工资单重复 / 003 员工重复 / 004 款项金额不合法 / 005 次品记录已被引用或已失效 / 006 已有发放记录禁止作废 / 007 累计发放超实发 / 008 发放批次不存在 / 009 无员工行不可提交 / 010 次品扣款单价必填 / 011 实发为负 / 012 员工不存在
-- `1-030-021`（customerrecon，10 号回填）：000 单据不存在 / 001 状态不允许 / 002 期间无可对账分录 / 003 明细已被其他对账单占用 / 004 已确认不可作废 / 005 多币种需分单 / 006 客户不一致 / 007 区间非法
-- `1-030-023`（payment 段 IN 侧，10 号回填 100–199）：100 收款单不存在 / 101 状态不允许 / 102 客户不一致 / 103 核销跨币种 / 104 分配合计超收款额 / 105 过账并发冲突 / 106 预收余额不足 / 107 红冲不允许
-- `1-030-026`（invoice，10 号回填）：000 不存在 / 001 状态不允许 / 002 累计开票超发货可开票额 / 003 跨币种混选 / 004 客户不一致 / 005 登记必填发票号 / 006 发票号重复 / 007 税率非法
+
+### 域公共错误码明细（1-030-020）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_020_000` | `LEDGER_IMMUTABLE` | 经营分录账为 append-only 账本，禁止直接修改或物理删除 | 分录账 (000–099) |
+| `1_030_020_100` | `ACCOUNT_NOT_EXISTS` | 资金账户不存在 | 资金账户 (100–199) |
+| `1_030_020_101` | `ACCOUNT_DISABLED` | 资金账户已停用，禁止操作 | 资金账户 (100–199) |
+| `1_030_020_102` | `ACCOUNT_NAME_DUPLICATE` | 资金账户名称【{}】已存在 | 资金账户 (100–199) |
+| `1_030_020_103` | `ACCOUNT_HAS_ENTRIES` | 资金账户已存在业务分录，禁止删除 | 资金账户 (100–199) |
+| `1_030_020_104` | `ACCOUNT_OPENING_BALANCE_IMMUTABLE` | 资金账户已有分录，期初余额不可修改 | 资金账户 (100–199) |
+| `1_030_020_200` | `EXCHANGE_RATE_NOT_FOUND` | 未找到币种【{}】在日期【{}】的有效汇率 | 汇率主档 (200–299) |
+| `1_030_020_201` | `EXCHANGE_RATE_DUPLICATE` | 币种【{}】在日期【{}】的汇率已存在 | 汇率主档 (200–299) |
+| `1_030_020_202` | `EXCHANGE_RATE_BASE_CURRENCY_NOT_ALLOWED` | 本位币无需配置汇率 | 汇率主档 (200–299) |
+
+### 客户对账错误码明细（1-030-021）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_021_000` | `STATEMENT_NOT_EXISTS` | 客户对账单不存在 | 对账主表 (000–099) |
+| `1_030_021_001` | `STATEMENT_STATUS_NOT_ALLOWED` | 客户对账单当前状态不允许该操作 | 对账主表 (000–099) |
+| `1_030_021_002` | `STATEMENT_NO_ENTRIES` | 对账区间内无可对账分录 | 对账明细 (000–099) |
+| `1_030_021_003` | `STATEMENT_ENTRY_ALREADY_OCCUPIED` | 分录【{}】已被其他确认的对账单占用 | 防重占用 (000–099) |
+| `1_030_021_004` | `STATEMENT_CANNOT_VOID_CONFIRMED` | 已确认对账单不可作废 | 状态机守卫 (000–099) |
+| `1_030_021_005` | `STATEMENT_MULTI_CURRENCY_NOT_ALLOWED` | 同一对账单不允许跨币种，请按币种分单 | 币种校验 (000–099) |
+| `1_030_021_006` | `STATEMENT_CUSTOMER_MISMATCH` | 所选分录的客户与对账单客户不一致 | 往来校验 (000–099) |
+| `1_030_021_007` | `STATEMENT_PERIOD_INVALID` | 对账区间起止日期不合法 | 期间校验 (000–099) |
+
+### 收款核销 IN 侧错误码明细（1-030-023-100~199）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_023_100` | `RECEIPT_NOT_EXISTS` | 收款单不存在 | 收款单 (100–199) |
+| `1_030_023_101` | `RECEIPT_STATUS_NOT_ALLOWED` | 收款单当前状态不允许该操作 | 收款单 (100–199) |
+| `1_030_023_102` | `RECEIPT_CUSTOMER_MISMATCH` | 核销明细客户与收款单客户不一致 | 核销守卫 (100–199) |
+| `1_030_023_103` | `RECEIPT_CURRENCY_MISMATCH` | 收款币种与核销分录币种不一致 | 核销守卫 (100–199) |
+| `1_030_023_104` | `RECEIPT_ALLOCATE_EXCEED` | 本次核销分配总额【{}】超过收款单有效金额【{}】 | 核销守卫 (100–199) |
+| `1_030_023_105` | `RECEIPT_POSTING_CONFLICT` | 收款单过账并发冲突，请重试 | 并发过账 (100–199) |
+| `1_030_023_106` | `RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH` | 客户预收余额不足，无法执行预收转核销 | 预收池守卫 (100–199) |
+| `1_030_023_107` | `RECEIPT_REVERSAL_NOT_ALLOWED` | 该收款单已被后续核销或对账单引用，不可红冲 | 红冲守卫 (100–199) |
+
+### 发票申请错误码明细（1-030-026）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_026_000` | `INVOICE_NOT_EXISTS` | 发票申请不存在 | 发票主表 (000–099) |
+| `1_030_026_001` | `INVOICE_STATUS_NOT_ALLOWED` | 发票申请当前状态不允许该操作 | 发票主表 (000–099) |
+| `1_030_026_002` | `INVOICE_AMOUNT_EXCEEDED` | 发票申请金额【{}】超出关联发货单可开票额【{}】 | 开票额守卫 (000–099) |
+| `1_030_026_003` | `INVOICE_CURRENCY_MISMATCH` | 开票申请币种与发货单币种不一致 | 币种校验 (000–099) |
+| `1_030_026_004` | `INVOICE_CUSTOMER_MISMATCH` | 所选发货单与开票申请客户不一致 | 往来校验 (000–099) |
+| `1_030_026_005` | `INVOICE_OFFICIAL_NO_REQUIRED` | 登记开票时官方发票号码必填 | 登记开票 (000–099) |
+| `1_030_026_006` | `INVOICE_OFFICIAL_NO_DUPLICATE` | 官方发票号码【{}】已存在，不可重复登记 | 登记开票 (000–099) |
+| `1_030_026_007` | `INVOICE_TAX_RATE_INVALID` | 开票税率不合法 | 税率校验 (000–099) |
 
 ## 非目标（一期）
 

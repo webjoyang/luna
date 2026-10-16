@@ -66,10 +66,11 @@
 | 33 | lunaerp-stock-in-yarn-order-ref.sql | 2026-10-15 | ✅ | |
 | 34 | lunaerp-finance-vendor-recon.sql | 2026-10-15 | ✅ | |
 | 35 | lunaerp-finance-payment.sql | 2026-10-15 | ✅ | |
+| 36 | lunaerp-finance-customer-recon.sql | 2026-10-16 | ✅ | 客户对账、经营分录台账、资金账户、发票申请、汇率主档；共享表 IN 扩列、客户扩列、字典 2272-2278、菜单 10720/10770/10780 与审批流 CUSTOMER_RECEIPT |
 
-### 状态汇总（2026-10-15 复扫）
+### 状态汇总（2026-10-16 复扫）
 
-- ✅ 已执行：**33 个**
+- ✅ 已执行：**34 个**
 - ⚠️ 部分执行：**1 个**（#30 color-instruction —— 授权段已补入文件，**重跑一次即全绿**）
 - ❌ 未执行：**1 个**（#2 quartz —— local 已禁用，按需）
 - 授权抽查：`system_role_menu` 898 → 1050 行，抽样 9 个关键菜单（织造/库存/付款/审批/出口/回收站等）授权均各 2 行（super_admin + admin）

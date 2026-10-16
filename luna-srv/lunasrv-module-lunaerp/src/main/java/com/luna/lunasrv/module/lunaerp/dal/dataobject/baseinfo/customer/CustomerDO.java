@@ -101,4 +101,25 @@ public class CustomerDO extends TenantBaseDO {
      * 默认毛利率（小数，如 0.150000 表示 15%，可空；空回退全局 15%）
      */
     private BigDecimal defaultMarginRate;
+    /**
+     * 开票抬头（缺省取公司名）
+     */
+    private String invoiceTitle;
+    /**
+     * 开票地址
+     */
+    private String invoiceAddress;
+    /**
+     * 开户银行
+     */
+    private String bankName;
+    /**
+     * 开户行账号
+     */
+    private String bankAccountNo;
+    /**
+     * 信用账期天数（空=不设账期）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Integer creditDays;
 }

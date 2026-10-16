@@ -57,8 +57,8 @@ public class CustomerServiceImpl implements CustomerService {
     public Long createCustomer(CustomerSaveReqVO createReqVO) {
         validateCustomerNotMasked(createReqVO);
         CustomerDO customer = BeanUtils.toBean(createReqVO, CustomerDO.class);
-        // shortName 为空时用 companyName 回填
-        backfillShortName(customer);
+        // shortName 与 invoiceTitle 为空时用 companyName 回填默认值
+        backfillDefaults(customer);
         // status 缺省 ACTIVE
         if (!StringUtils.hasText(customer.getStatus())) {
             customer.setStatus(DEFAULT_STATUS);
@@ -105,9 +105,9 @@ public class CustomerServiceImpl implements CustomerService {
         // 校验存在
         CustomerDO existing = validateCustomerExists(updateReqVO.getId());
         validateCustomerNotMasked(updateReqVO);
-        // 更新（shortName 为空时用 companyName 回填，与创建一致）
+        // 更新（shortName 与 invoiceTitle 为空时用 companyName 回填默认值，与创建一致）
         CustomerDO updateObj = BeanUtils.toBean(updateReqVO, CustomerDO.class);
-        backfillShortName(updateObj);
+        backfillDefaults(updateObj);
 
         // 归属人推导逻辑（Issue 03 / ADR-0046）：
         // 归属人变更 → 同事务重算 dept_id（含清空归属人则两列清空）；归属人未变 → 不动 dept_id
@@ -162,11 +162,14 @@ public class CustomerServiceImpl implements CustomerService {
     // ==================== 私有方法 ====================
 
     /**
-     * shortName 为空时用 companyName 回填（create/update 共用）
+     * shortName 与 invoiceTitle 为空时用 companyName 回填默认值（create/update 共用）
      */
-    private void backfillShortName(CustomerDO customer) {
+    private void backfillDefaults(CustomerDO customer) {
         if (!StringUtils.hasText(customer.getShortName())) {
             customer.setShortName(customer.getCompanyName());
+        }
+        if (!StringUtils.hasText(customer.getInvoiceTitle())) {
+            customer.setInvoiceTitle(customer.getCompanyName());
         }
     }
 
@@ -207,6 +210,10 @@ public class CustomerServiceImpl implements CustomerService {
                         .unifiedSocialCreditCode("91330100MA12345678")
                         .nameEn("Sample Customer A Co., Ltd.")
                         .addressEn("Yuhang District, Hangzhou, Zhejiang")
+                        .invoiceTitle("示例客户A有限公司")
+                        .invoiceAddress("浙江省杭州市余杭区临平大道1号")
+                        .bankName("中国工商银行杭州临平支行")
+                        .bankAccountNo("1202021109900012345")
                         .remark("标准客户档案示例")
                         .build()
         );
@@ -233,8 +240,8 @@ public class CustomerServiceImpl implements CustomerService {
                     List<CustomerDO> doList = new ArrayList<>(validList.size());
                     for (CustomerImportVO vo : validList) {
                         CustomerDO customer = BeanUtils.toBean(vo, CustomerDO.class);
-                        // 简称空则用企业名称回填
-                        backfillShortName(customer);
+                        // shortName 与 invoiceTitle 为空则用企业名称回填默认值
+                        backfillDefaults(customer);
                         // 导入行 status 默认 ACTIVE
                         customer.setStatus(DEFAULT_STATUS);
                         // 归属人=登录用户、归属部门=其当前部门（服务端推导）

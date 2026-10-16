@@ -110,6 +110,7 @@ class CustomerServiceImplTest {
         assertEquals(1024L, id);
         assertEquals(COMPANY_NAME, saved.getCompanyName());
         assertEquals(COMPANY_NAME, saved.getShortName(), "shortName 为空时应用 companyName 回填");
+        assertEquals(COMPANY_NAME, saved.getInvoiceTitle(), "invoiceTitle 为空时应用 companyName 回填");
         assertEquals("ACTIVE", saved.getStatus(), "status 缺省应为 ACTIVE");
         assertEquals(CLIENT_TYPE, saved.getClientType());
         assertEquals(99L, saved.getSalespersonUserId(), "缺省业务员应为当前登录用户");
@@ -176,6 +177,53 @@ class CustomerServiceImplTest {
         CustomerDO updated = updateCaptor.getValue();
         assertEquals("Hangzhou Textile Ltd.", updated.getNameEn());
         assertEquals("456 Cotton Road, Hangzhou, China", updated.getAddressEn());
+    }
+
+    @Test
+    void createAndUpdateCustomer_withBillingAndCreditFields() {
+        CustomerSaveReqVO req = new CustomerSaveReqVO();
+        req.setCompanyName(COMPANY_NAME);
+        req.setClientType(CLIENT_TYPE);
+        req.setInvoiceTitle("杭州织造开票专用抬头");
+        req.setInvoiceAddress("杭州市西湖区文三路100号");
+        req.setBankName("招商银行杭州分行");
+        req.setBankAccountNo("571900123456789");
+        req.setCreditDays(45);
+
+        customerService.createCustomer(req);
+
+        ArgumentCaptor<CustomerDO> captor = ArgumentCaptor.forClass(CustomerDO.class);
+        verify(customerMapper).insert(captor.capture());
+        CustomerDO saved = captor.getValue();
+        assertEquals("杭州织造开票专用抬头", saved.getInvoiceTitle());
+        assertEquals("杭州市西湖区文三路100号", saved.getInvoiceAddress());
+        assertEquals("招商银行杭州分行", saved.getBankName());
+        assertEquals("571900123456789", saved.getBankAccountNo());
+        assertEquals(45, saved.getCreditDays());
+
+        // Update
+        CustomerDO existing = new CustomerDO();
+        existing.setId(1024L);
+        existing.setCompanyName(COMPANY_NAME);
+        existing.setSalespersonUserId(99L);
+        existing.setDeptId(200L);
+        when(customerMapper.selectById(1024L)).thenReturn(existing);
+
+        CustomerSaveReqVO updateReq = new CustomerSaveReqVO();
+        updateReq.setId(1024L);
+        updateReq.setCompanyName(COMPANY_NAME);
+        updateReq.setClientType(CLIENT_TYPE);
+        updateReq.setInvoiceTitle("杭州织造开票专用抬头-新");
+        updateReq.setCreditDays(60);
+        updateReq.setSalespersonUserId(99L);
+
+        customerService.updateCustomer(updateReq);
+
+        ArgumentCaptor<CustomerDO> updateCaptor = ArgumentCaptor.forClass(CustomerDO.class);
+        verify(customerMapper).updateById(updateCaptor.capture());
+        CustomerDO updated = updateCaptor.getValue();
+        assertEquals("杭州织造开票专用抬头-新", updated.getInvoiceTitle());
+        assertEquals(60, updated.getCreditDays());
     }
 
     @Test
@@ -308,7 +356,7 @@ class CustomerServiceImplTest {
 
     private static final List<String> CUSTOMER_HEADERS = Arrays.asList(
             "企业名称", "简称", "客户类型", "行业", "规模", "来源", "合作状态",
-            "统一社会信用代码", "英文名称", "英文地址", "备注"
+            "统一社会信用代码", "英文名称", "英文地址", "开票抬头", "开票地址", "开户银行", "开户行账号", "备注"
     );
 
     private byte[] createRawExcelBytes(List<String> headers, List<List<Object>> dataList) {
@@ -329,13 +377,17 @@ class CustomerServiceImplTest {
         assertNotNull(template);
         assertEquals(1, template.size());
         assertEquals("示例客户A有限公司", template.get(0).getCompanyName());
+        assertEquals("示例客户A有限公司", template.get(0).getInvoiceTitle());
+        assertEquals("浙江省杭州市余杭区临平大道1号", template.get(0).getInvoiceAddress());
+        assertEquals("中国工商银行杭州临平支行", template.get(0).getBankName());
+        assertEquals("1202021109900012345", template.get(0).getBankAccountNo());
     }
 
     @Test
     void importCustomer_success_batchInsertsWithActiveStatusAndOwnerDept() throws IOException {
         List<List<Object>> rows = new ArrayList<>();
-        rows.add(Arrays.asList("杭州丝绸集团", "杭州丝绸", "", "", "", "", "", "91330100MA27XXXX01", "Silk Co", "Addr 1", "备注1"));
-        rows.add(Arrays.asList("桐乡印染纺织", "", "", "", "", "", "", "91330100MA27XXXX02", "", "", ""));
+        rows.add(Arrays.asList("杭州丝绸集团", "杭州丝绸", "", "", "", "", "", "91330100MA27XXXX01", "Silk Co", "Addr 1", "杭州丝绸集团专用抬头", "开票地址1", "中国工商银行", "12345678", "备注1"));
+        rows.add(Arrays.asList("桐乡印染纺织", "", "", "", "", "", "", "91330100MA27XXXX02", "", "", "", "", "", "", ""));
 
         byte[] bytes = createRawExcelBytes(CUSTOMER_HEADERS, rows);
         MockMultipartFile file = new MockMultipartFile("file", "customers.xlsx",
@@ -362,10 +414,15 @@ class CustomerServiceImplTest {
         assertEquals(200L, c1.getDeptId());
         assertEquals("Silk Co", c1.getNameEn());
         assertEquals("Addr 1", c1.getAddressEn());
+        assertEquals("杭州丝绸集团专用抬头", c1.getInvoiceTitle());
+        assertEquals("开票地址1", c1.getInvoiceAddress());
+        assertEquals("中国工商银行", c1.getBankName());
+        assertEquals("12345678", c1.getBankAccountNo());
 
         CustomerDO c2 = inserted.get(1);
         assertEquals("桐乡印染纺织", c2.getCompanyName());
         assertEquals("桐乡印染纺织", c2.getShortName(), "简称为空时应由企业名称自动回填");
+        assertEquals("桐乡印染纺织", c2.getInvoiceTitle(), "开票抬头为空时应由企业名称自动回填");
         assertEquals("ACTIVE", c2.getStatus());
         assertEquals(99L, c2.getSalespersonUserId());
         assertEquals(200L, c2.getDeptId());
@@ -374,8 +431,8 @@ class CustomerServiceImplTest {
     @Test
     void importCustomer_fileDuplicate_generatesErrorExcelWithoutDbWrite() throws IOException {
         List<List<Object>> rows = new ArrayList<>();
-        rows.add(Arrays.asList("重复企业A", "简称A", "", "", "", "", "", "91330100MA27XXXX01", "", "", ""));
-        rows.add(Arrays.asList("重复企业A", "简称B", "", "", "", "", "", "91330100MA27XXXX02", "", "", ""));
+        rows.add(Arrays.asList("重复企业A", "简称A", "", "", "", "", "", "91330100MA27XXXX01", "", "", "", "", "", "", ""));
+        rows.add(Arrays.asList("重复企业A", "简称B", "", "", "", "", "", "91330100MA27XXXX02", "", "", "", "", "", "", ""));
 
         byte[] bytes = createRawExcelBytes(CUSTOMER_HEADERS, rows);
         MockMultipartFile file = new MockMultipartFile("file", "duplicate.xlsx",
@@ -394,7 +451,7 @@ class CustomerServiceImplTest {
     @Test
     void importCustomer_dbDuplicate_generatesErrorExcelWithoutDbWrite() throws IOException {
         List<List<Object>> rows = new ArrayList<>();
-        rows.add(Arrays.asList("已有企业", "", "", "", "", "", "", "91330100MA27XXXX01", "", "", ""));
+        rows.add(Arrays.asList("已有企业", "", "", "", "", "", "", "91330100MA27XXXX01", "", "", "", "", "", "", ""));
 
         byte[] bytes = createRawExcelBytes(CUSTOMER_HEADERS, rows);
         MockMultipartFile file = new MockMultipartFile("file", "db_duplicate.xlsx",
@@ -416,7 +473,7 @@ class CustomerServiceImplTest {
     void importCustomer_creditCodeInvalid_generatesErrorExcelWithoutDbWrite() throws IOException {
         List<List<Object>> rows = new ArrayList<>();
         // 统一社会信用代码为 10 位，不满足 18 位格式
-        rows.add(Arrays.asList("某企业", "", "", "", "", "", "", "1234567890", "", "", ""));
+        rows.add(Arrays.asList("某企业", "", "", "", "", "", "", "1234567890", "", "", "", "", "", "", ""));
 
         byte[] bytes = createRawExcelBytes(CUSTOMER_HEADERS, rows);
         MockMultipartFile file = new MockMultipartFile("file", "invalid_code.xlsx",
@@ -457,6 +514,53 @@ class CustomerServiceImplTest {
         assertEquals(new BigDecimal("0.185000"), saved1.getDefaultMarginRate());
         CustomerDO saved2 = captor.getAllValues().get(1);
         assertNull(saved2.getDefaultMarginRate());
+    }
+
+    @Test
+    void createCustomer_invoiceFields_and_defaultBackfill() {
+        CustomerSaveReqVO req = new CustomerSaveReqVO();
+        req.setCompanyName("杭州纺织有限公司");
+        req.setClientType("FORMAL");
+        // invoiceTitle 为空，期望由 backfillDefaults 自动回填 companyName
+        req.setInvoiceTitle(null);
+        req.setInvoiceAddress("杭州市西湖区文三路 100 号");
+        req.setBankName("工商银行武林支行");
+        req.setBankAccountNo("6222021234567890");
+        req.setCreditDays(45);
+
+        customerService.createCustomer(req);
+
+        org.mockito.ArgumentCaptor<CustomerDO> captor = org.mockito.ArgumentCaptor.forClass(CustomerDO.class);
+        verify(customerMapper).insert(captor.capture());
+        CustomerDO created = captor.getValue();
+        assertEquals("杭州纺织有限公司", created.getInvoiceTitle(), "invoiceTitle 为空时应默认回填 companyName");
+        assertEquals("杭州市西湖区文三路 100 号", created.getInvoiceAddress());
+        assertEquals("工商银行武林支行", created.getBankName());
+        assertEquals("6222021234567890", created.getBankAccountNo());
+        assertEquals(45, created.getCreditDays());
+    }
+
+    @Test
+    void updateCustomer_clearCreditDays_success() {
+        CustomerDO existing = new CustomerDO();
+        existing.setId(888L);
+        existing.setCompanyName("原有客户");
+        existing.setCreditDays(30);
+        when(customerMapper.selectById(888L)).thenReturn(existing);
+
+        CustomerSaveReqVO req = new CustomerSaveReqVO();
+        req.setId(888L);
+        req.setCompanyName("原有客户");
+        req.setClientType("FORMAL");
+        // 用户清空账期，传 null
+        req.setCreditDays(null);
+
+        customerService.updateCustomer(req);
+
+        org.mockito.ArgumentCaptor<CustomerDO> captor = org.mockito.ArgumentCaptor.forClass(CustomerDO.class);
+        verify(customerMapper).updateById(captor.capture());
+        CustomerDO updated = captor.getValue();
+        assertNull(updated.getCreditDays(), "更新时显式置空 creditDays 应保留 null 以触发 ALWAYS 更新策略清空数据库");
     }
 
 }
