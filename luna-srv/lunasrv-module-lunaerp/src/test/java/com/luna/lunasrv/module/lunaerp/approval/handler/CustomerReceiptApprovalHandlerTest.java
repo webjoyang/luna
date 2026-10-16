@@ -7,6 +7,7 @@ import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.EntryAllocatedSumDTO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentRefDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
@@ -79,6 +80,7 @@ public class CustomerReceiptApprovalHandlerTest {
 
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), PaymentDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), PaymentRefDO.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), LedgerEntryDO.class);
     }
 
     @AfterEach
@@ -134,7 +136,7 @@ public class CustomerReceiptApprovalHandlerTest {
         origEntry.setId(101L);
         origEntry.setCurrency("RMB");
         origEntry.setOriginalAmount(new BigDecimal("10000.00"));
-        when(ledgerEntryMapper.selectBatchIds(any())).thenReturn(List.of(origEntry));
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(origEntry));
 
         // 分录 append 模拟
         when(ledgerService.append(any(LedgerEntryDO.class))).thenReturn(7001L, 7002L);
@@ -244,10 +246,59 @@ public class CustomerReceiptApprovalHandlerTest {
         origEntry.setId(102L);
         origEntry.setCurrency("RMB");
         origEntry.setOriginalAmount(new BigDecimal("6000.00"));
-        when(ledgerEntryMapper.selectBatchIds(any())).thenReturn(List.of(origEntry));
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(origEntry));
         when(paymentRefMapper.selectSumAllocatedAmountByEntryIds(any())).thenReturn(List.of(
-                java.util.Map.of("entryid", 102L, "totalallocated", new BigDecimal("4000.00")) // 已核销 4000，余 2000 < 5000
+                EntryAllocatedSumDTO.builder().entryId(102L).totalAllocated(new BigDecimal("4000.00")).build()
         ));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> handler.onApproved(paymentId));
+        assertEquals(FinanceErrorCodeConstants.RECEIPT_POST_CONFLICT.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("审批过账并发守卫：审批中途发货单被红冲（AR_INC_REVERSAL）导致未核销余额不足，抛出 RECEIPT_POST_CONFLICT")
+    void testOnApproved_PostConflictDueToRedReversal_Throws() {
+        Long paymentId = 904L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setCustomerId(2001L);
+        payment.setAccountId(3001L);
+        payment.setCurrency("RMB");
+        payment.setPayAmount(new BigDecimal("5000.00"));
+        payment.setReceiptDate(LocalDate.of(2026, 10, 16));
+        payment.setReceiptType(ReceiptType.RECEIPT.getValue());
+        when(paymentMapper.selectById(paymentId)).thenReturn(payment);
+
+        AccountDO account = new AccountDO();
+        account.setId(3001L);
+        account.setStatus("ENABLE");
+        account.setCurrency("RMB");
+        when(accountService.validateAccountAvailable(3001L)).thenReturn(account);
+
+        PaymentRefDO ref = new PaymentRefDO();
+        ref.setId(503L);
+        ref.setPaymentId(paymentId);
+        ref.setRefType("AR_ENTRY");
+        ref.setRefId(103L);
+        ref.setAllocateAmount(new BigDecimal("5000.00"));
+        when(paymentRefMapper.selectList(any())).thenReturn(List.of(ref));
+
+        // 原单 6000，中途被红冲 2000，剩余 4000 < 待核销 5000
+        LedgerEntryDO origEntry = new LedgerEntryDO();
+        origEntry.setId(103L);
+        origEntry.setCurrency("RMB");
+        origEntry.setOriginalAmount(new BigDecimal("6000.00"));
+
+        LedgerEntryDO revEntry = new LedgerEntryDO();
+        revEntry.setId(104L);
+        revEntry.setCategory("AR_INC_REVERSAL");
+        revEntry.setReversalOfId(103L);
+        revEntry.setOriginalAmount(new BigDecimal("2000.00"));
+
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(origEntry), List.of(revEntry), List.of());
+        when(paymentRefMapper.selectSumAllocatedAmountByEntryIds(any())).thenReturn(List.of());
 
         ServiceException ex = assertThrows(ServiceException.class, () -> handler.onApproved(paymentId));
         assertEquals(FinanceErrorCodeConstants.RECEIPT_POST_CONFLICT.getCode(), ex.getCode());

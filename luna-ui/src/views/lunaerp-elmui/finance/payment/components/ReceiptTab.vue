@@ -84,10 +84,10 @@
           />
         </el-form-item>
 
-        <el-form-item label="关键词">
+        <el-form-item label="收款单号">
           <el-input
-            v-model="queryParams.keyword"
-            placeholder="收款单号 / 备注"
+            v-model="queryParams.paymentNo"
+            placeholder="收款单号"
             clearable
             class="!w-180px"
             @keyup.enter="handleQuery"
@@ -294,7 +294,7 @@ const queryParams = reactive<ReceiptPageReqVO>({
   receiptType: undefined,
   approvalStatus: undefined,
   receiptDate: undefined,
-  keyword: ''
+  paymentNo: ''
 })
 
 const searchCustomers = async (query?: string) => {
@@ -348,7 +348,7 @@ const resetQuery = () => {
   queryParams.receiptType = undefined
   queryParams.approvalStatus = undefined
   queryParams.receiptDate = undefined
-  queryParams.keyword = ''
+  queryParams.paymentNo = ''
   loadReceiptPage()
 }
 

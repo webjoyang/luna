@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.framework.common.util.collection.CollectionUtils;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.EntryAllocatedSumDTO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentRefDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
@@ -193,17 +195,39 @@ public class CustomerReceiptApprovalHandler implements ApprovalHandler {
             return;
         }
 
-        // 防 N+1 批量快照模式：批量加载待核销的 AR 分录
-        List<LedgerEntryDO> origEntries = ledgerEntryMapper.selectBatchIds(entryIds);
-        Map<Long, LedgerEntryDO> entryMap = new HashMap<>();
-        if (CollUtil.isNotEmpty(origEntries)) {
-            for (LedgerEntryDO entry : origEntries) {
-                entryMap.put(entry.getId(), entry);
+        // 防 N+1 批量快照模式：带行级悲观锁（FOR UPDATE）批量锁定待核销的 AR 分录，防止幻读超核
+        List<LedgerEntryDO> origEntries = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .inOrEmpty(LedgerEntryDO::getId, entryIds)
+                .last("FOR UPDATE"));
+        Map<Long, LedgerEntryDO> entryMap = CollectionUtils.convertMap(origEntries, LedgerEntryDO::getId);
+
+        // 1. 发货红冲冲减 (AR_INC_REVERSAL)
+        List<LedgerEntryDO> reversals = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .inOrEmpty(LedgerEntryDO::getReversalOfId, entryIds));
+        Map<Long, BigDecimal> reversalMap = new HashMap<>();
+        if (CollUtil.isNotEmpty(reversals)) {
+            for (LedgerEntryDO rev : reversals) {
+                if (rev.getReversalOfId() != null && rev.getOriginalAmount() != null) {
+                    reversalMap.merge(rev.getReversalOfId(), rev.getOriginalAmount(), BigDecimal::add);
+                }
             }
         }
 
-        // 批量查询已核销金额
-        Map<Long, BigDecimal> allocatedMap = batchLoadAllocatedMap(entryIds);
+        // 2. 批量查询已核销金额 (COMPLETED payment_ref)
+        Map<Long, BigDecimal> allocatedMap = EntryAllocatedSumDTO.toMap(paymentRefMapper.selectSumAllocatedAmountByEntryIds(entryIds));
+
+        // 3. 退货应收冲减 (AR_RETURN_REVERSAL)
+        List<LedgerEntryDO> returnReversals = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eq(LedgerEntryDO::getCategory, "AR_RETURN_REVERSAL")
+                .inOrEmpty(LedgerEntryDO::getRefItemId, entryIds));
+        Map<Long, BigDecimal> returnReversalMap = new HashMap<>();
+        if (CollUtil.isNotEmpty(returnReversals)) {
+            for (LedgerEntryDO ret : returnReversals) {
+                if (ret.getRefItemId() != null && ret.getOriginalAmount() != null) {
+                    returnReversalMap.merge(ret.getRefItemId(), ret.getOriginalAmount(), BigDecimal::add);
+                }
+            }
+        }
 
         for (PaymentRefDO ref : refs) {
             if (ref == null || ref.getRefId() == null || ref.getAllocateAmount() == null) {
@@ -218,8 +242,12 @@ public class CustomerReceiptApprovalHandler implements ApprovalHandler {
                 throw exception(RECEIPT_CURRENCY_MISMATCH);
             }
 
-            BigDecimal allocated = allocatedMap.getOrDefault(ref.getRefId(), BigDecimal.ZERO);
-            BigDecimal currentRemain = origEntry.getOriginalAmount().subtract(allocated);
+            BigDecimal orig = origEntry.getOriginalAmount() != null ? origEntry.getOriginalAmount() : BigDecimal.ZERO;
+            BigDecimal rev = reversalMap.getOrDefault(ref.getRefId(), BigDecimal.ZERO);
+            BigDecimal alloc = allocatedMap.getOrDefault(ref.getRefId(), BigDecimal.ZERO);
+            BigDecimal ret = returnReversalMap.getOrDefault(ref.getRefId(), BigDecimal.ZERO);
+
+            BigDecimal currentRemain = orig.subtract(rev).subtract(alloc).subtract(ret);
             if (currentRemain.compareTo(BigDecimal.ZERO) < 0) {
                 currentRemain = BigDecimal.ZERO;
             }
@@ -231,26 +259,6 @@ public class CustomerReceiptApprovalHandler implements ApprovalHandler {
                 throw exception(RECEIPT_POST_CONFLICT);
             }
         }
-    }
-
-    private Map<Long, BigDecimal> batchLoadAllocatedMap(Collection<Long> entryIds) {
-        if (CollUtil.isEmpty(entryIds)) {
-            return Collections.emptyMap();
-        }
-        List<Map<String, Object>> list = paymentRefMapper.selectSumAllocatedAmountByEntryIds(entryIds);
-        Map<Long, BigDecimal> map = new HashMap<>();
-        if (CollUtil.isNotEmpty(list)) {
-            for (Map<String, Object> item : list) {
-                Object idObj = item.get("entryid") != null ? item.get("entryid") : item.get("entryId");
-                Object totalObj = item.get("totalallocated") != null ? item.get("totalallocated") : item.get("totalAllocated");
-                if (idObj != null) {
-                    Long entryId = ((Number) idObj).longValue();
-                    BigDecimal total = new BigDecimal(totalObj != null ? totalObj.toString() : "0");
-                    map.put(entryId, total);
-                }
-            }
-        }
-        return map;
     }
 
 }

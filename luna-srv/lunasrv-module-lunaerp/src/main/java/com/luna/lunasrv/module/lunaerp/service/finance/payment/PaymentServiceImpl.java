@@ -19,6 +19,7 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.Customer
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.EntryAllocatedSumDTO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
@@ -595,15 +596,9 @@ public class PaymentServiceImpl implements PaymentService {
         if (updateReqVO.getReceiptDate() != null) {
             payment.setReceiptDate(updateReqVO.getReceiptDate());
         }
-        if (updateReqVO.getBankRefNo() != null) {
-            payment.setBankRefNo(updateReqVO.getBankRefNo());
-        }
-        if (updateReqVO.getHandlerName() != null) {
-            payment.setHandlerName(updateReqVO.getHandlerName());
-        }
-        if (updateReqVO.getRemark() != null) {
-            payment.setRemark(updateReqVO.getRemark());
-        }
+        payment.setBankRefNo(updateReqVO.getBankRefNo());
+        payment.setHandlerName(updateReqVO.getHandlerName());
+        payment.setRemark(updateReqVO.getRemark());
 
         paymentMapper.updateById(payment);
 
@@ -726,11 +721,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .eqIfPresent(PaymentDO::getCurrency, pageReqVO.getCurrency())
                 .geIfPresent(PaymentDO::getReceiptDate, pageReqVO.getReceiptDateStart())
                 .leIfPresent(PaymentDO::getReceiptDate, pageReqVO.getReceiptDateEnd())
-                .and(StrUtil.isNotBlank(pageReqVO.getKeyword()), w -> w
-                        .like(PaymentDO::getPaymentNo, pageReqVO.getKeyword())
-                        .or().like(PaymentDO::getHandlerName, pageReqVO.getKeyword())
-                        .or().like(PaymentDO::getBankRefNo, pageReqVO.getKeyword())
-                        .or().like(PaymentDO::getRemark, pageReqVO.getKeyword()))
+                .likeIfPresent(PaymentDO::getPaymentNo, pageReqVO.getPaymentNo())
                 .orderByDesc(PaymentDO::getId);
 
         PageResult<PaymentDO> pageResult = paymentMapper.selectPage(pageReqVO, queryWrapper);
@@ -1059,20 +1050,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (CollUtil.isEmpty(entryIds)) {
             return Collections.emptyMap();
         }
-        List<Map<String, Object>> list = paymentRefMapper.selectSumAllocatedAmountByEntryIds(entryIds);
-        Map<Long, BigDecimal> map = new HashMap<>();
-        if (CollUtil.isNotEmpty(list)) {
-            for (Map<String, Object> item : list) {
-                if (item.get("entryid") != null || item.get("entryId") != null) {
-                    Object idObj = item.get("entryid") != null ? item.get("entryid") : item.get("entryId");
-                    Object totalObj = item.get("totalallocated") != null ? item.get("totalallocated") : item.get("totalAllocated");
-                    Long entryId = ((Number) idObj).longValue();
-                    BigDecimal total = new BigDecimal(totalObj != null ? totalObj.toString() : "0");
-                    map.put(entryId, total);
-                }
-            }
-        }
-        return map;
+        return EntryAllocatedSumDTO.toMap(paymentRefMapper.selectSumAllocatedAmountByEntryIds(entryIds));
     }
 
     private Map<Long, BigDecimal> batchLoadUnallocatedBalanceMap(Collection<Long> entryIds, Map<Long, LedgerEntryDO> entryMap) {

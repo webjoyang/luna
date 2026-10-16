@@ -44,6 +44,6 @@ public interface PaymentRefMapper extends BaseMapperX<PaymentRefDO> {
             + "<foreach collection='entryIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> "
             + "GROUP BY r.ref_id"
             + "</script>")
-    java.util.List<java.util.Map<String, Object>> selectSumAllocatedAmountByEntryIds(@Param("entryIds") java.util.Collection<Long> entryIds);
+    java.util.List<com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.EntryAllocatedSumDTO> selectSumAllocatedAmountByEntryIds(@Param("entryIds") java.util.Collection<Long> entryIds);
 
 }

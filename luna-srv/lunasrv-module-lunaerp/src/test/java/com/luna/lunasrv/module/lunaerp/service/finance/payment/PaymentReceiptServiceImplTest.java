@@ -273,6 +273,35 @@ public class PaymentReceiptServiceImplTest {
         assertEquals(FinanceErrorCodeConstants.RECEIPT_STATUS_NOT_ALLOW.getCode(), ex2.getCode());
     }
 
+    @Test
+    @DisplayName("草稿修改可空字段置空守卫：bankRefNo/handlerName/remark 允许置空为 null (coding-standards §15)")
+    void testUpdateReceipt_clearNullableFields_success() {
+        PaymentDO payment = new PaymentDO();
+        payment.setId(888L);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setApprovalStatus(ApplyStatus.PENDING.getValue());
+        payment.setBankRefNo("OLD_REF");
+        payment.setHandlerName("OLD_HANDLER");
+        payment.setRemark("OLD_REMARK");
+        when(paymentMapper.selectById(888L)).thenReturn(payment);
+
+        ReceiptUpdateReqVO updateReq = new ReceiptUpdateReqVO();
+        updateReq.setId(888L);
+        updateReq.setBankRefNo(null);
+        updateReq.setHandlerName(null);
+        updateReq.setRemark(null);
+
+        paymentService.updateReceipt(updateReq);
+
+        ArgumentCaptor<PaymentDO> captor = ArgumentCaptor.forClass(PaymentDO.class);
+        verify(paymentMapper).updateById(captor.capture());
+        PaymentDO updated = captor.getValue();
+        assertNull(updated.getBankRefNo(), "bankRefNo 必须允许置空为 null");
+        assertNull(updated.getHandlerName(), "handlerName 必须允许置空为 null");
+        assertNull(updated.getRemark(), "remark 必须允许置空为 null");
+    }
+
     // ==================== 3. 提交审批校验 (submitReceipt) ====================
 
     @Test

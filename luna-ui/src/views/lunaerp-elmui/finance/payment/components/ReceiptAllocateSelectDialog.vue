@@ -105,6 +105,15 @@
             </span>
           </template>
         </el-table-column>
+        <template #empty>
+          <el-empty
+            :description="
+              perspectiveFilter === 'STATEMENT' && !hasStatementEntries
+                ? '暂无关联对账单的明细分录（可在“全部明细”或“发货单视角”选单）'
+                : '暂无待核销分录'
+            "
+          />
+        </template>
       </el-table>
     </div>
 

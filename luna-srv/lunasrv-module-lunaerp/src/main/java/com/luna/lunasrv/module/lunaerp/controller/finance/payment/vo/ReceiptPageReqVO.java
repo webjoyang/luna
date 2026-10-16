@@ -36,7 +36,7 @@ public class ReceiptPageReqVO extends PageParam {
     @DateTimeFormat(pattern = "yyyy-MM-dd")
     private LocalDate receiptDateEnd;
 
-    @Schema(description = "搜索关键字（单号/客户名/经手人/回单号/备注）", example = "RC-2026")
-    private String keyword;
+    @Schema(description = "收款单号（精确/模糊）", example = "RC-20261016-001")
+    private String paymentNo;
 
 }

@@ -44,7 +44,7 @@ public class PaymentController {
     }
 
     @PutMapping("/update")
-    @Operation(summary = "更新收款单草稿（仅 PENDING/REJECTED 可改）")
+    @Operation(summary = "更新收款单草稿（仅 PENDING 可改）")
     @PreAuthorize("@ss.hasPermission('lunaerp:finance:payment:update')")
     public CommonResult<Boolean> updateReceipt(@Valid @RequestBody ReceiptUpdateReqVO reqVO) {
         paymentService.updateReceipt(reqVO);
