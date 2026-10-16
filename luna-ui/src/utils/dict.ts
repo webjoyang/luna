@@ -158,6 +158,21 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_supplier_recon_status', label: '草稿', value: 'DRAFT', colorType: 'warning', cssClass: '' },
     { dictType: 'lunaerp_supplier_recon_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
     { dictType: 'lunaerp_supplier_recon_status', label: '已作废', value: 'CANCELLED', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_payment_apply_type: [
+    { dictType: 'lunaerp_payment_apply_type', label: '对账付款', value: 'RECON', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_payment_apply_type', label: '预付付款', value: 'PREPAY', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_finance_payment_direction: [
+    { dictType: 'lunaerp_finance_payment_direction', label: '收款', value: 'IN', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_payment_direction', label: '付款', value: 'OUT', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_approval_status: [
+    { dictType: 'lunaerp_approval_status', label: '待提交', value: 'PENDING', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_approval_status', label: '审批中', value: 'APPROVING', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_status', label: '已通过', value: 'APPROVED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_status', label: '已驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_approval_status', label: '已撤回', value: 'CANCELLED', colorType: 'info', cssClass: '' }
   ]
 }
 
@@ -677,5 +692,10 @@ export enum DICT_TYPE {
   LUNAERP_COLOR_INSTRUCTION_STATUS = 'lunaerp_color_instruction_status', // 打色指示单状态
 
   // ========== LunaERP - 财务管理-供应商对账模块 ==========
-  LUNAERP_SUPPLIER_RECON_STATUS = 'lunaerp_supplier_recon_status' // 供应商对账单状态
+  LUNAERP_SUPPLIER_RECON_STATUS = 'lunaerp_supplier_recon_status', // 供应商对账单状态
+
+  // ========== LunaERP - 财务管理-收付款与付款申请模块 ==========
+  LUNAERP_PAYMENT_APPLY_TYPE = 'lunaerp_payment_apply_type', // 付款申请类型
+  LUNAERP_FINANCE_PAYMENT_DIRECTION = 'lunaerp_finance_payment_direction', // 收付款方向
+  LUNAERP_APPROVAL_STATUS = 'lunaerp_approval_status' // 业务单据审批状态
 }
