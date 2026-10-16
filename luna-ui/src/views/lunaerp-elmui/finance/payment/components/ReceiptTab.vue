@@ -182,11 +182,14 @@
             <el-tag v-if="row.status === 'COMPLETED'" size="small" type="success" effect="plain">
               已过账
             </el-tag>
+            <el-tag v-else-if="row.status === 'REVERSED'" size="small" type="danger" effect="plain">
+              已红冲
+            </el-tag>
             <el-tag v-else size="small" type="info" effect="plain"> 草稿待账 </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="备注说明" prop="remark" min-width="120" show-overflow-tooltip />
-        <el-table-column label="操作" width="200" fixed="right" align="center">
+        <el-table-column label="操作" width="270" fixed="right" align="center">
           <template #default="{ row }">
             <div class="space-x-4px">
               <el-button
@@ -200,7 +203,9 @@
               </el-button>
 
               <el-button
-                v-if="getReceiptActionFlags(row.approvalStatus, row.status).canEdit"
+                v-if="
+                  getReceiptActionFlags(row.approvalStatus, row.status, row.receiptType).canEdit
+                "
                 type="primary"
                 link
                 size="small"
@@ -211,7 +216,9 @@
               </el-button>
 
               <el-button
-                v-if="getReceiptActionFlags(row.approvalStatus, row.status).canSubmit"
+                v-if="
+                  getReceiptActionFlags(row.approvalStatus, row.status, row.receiptType).canSubmit
+                "
                 type="success"
                 link
                 size="small"
@@ -222,7 +229,35 @@
               </el-button>
 
               <el-button
-                v-if="getReceiptActionFlags(row.approvalStatus, row.status).canDelete"
+                v-if="
+                  getReceiptActionFlags(row.approvalStatus, row.status, row.receiptType).canWriteoff
+                "
+                type="warning"
+                link
+                size="small"
+                v-hasPermi="['lunaerp:finance:payment:writeoff']"
+                @click="handleAdvanceWriteoff(row)"
+              >
+                预收转核销
+              </el-button>
+
+              <el-button
+                v-if="
+                  getReceiptActionFlags(row.approvalStatus, row.status, row.receiptType).canReverse
+                "
+                type="danger"
+                link
+                size="small"
+                v-hasPermi="['lunaerp:finance:payment:reverse']"
+                @click="handleReverse(row)"
+              >
+                红冲
+              </el-button>
+
+              <el-button
+                v-if="
+                  getReceiptActionFlags(row.approvalStatus, row.status, row.receiptType).canDelete
+                "
                 type="danger"
                 link
                 size="small"
@@ -248,6 +283,11 @@
     <!-- 弹窗与抽屉 -->
     <ReceiptFormDialog ref="formDialogRef" @success="loadReceiptPage" />
     <ReceiptDetailDrawer ref="detailDrawerRef" />
+    <ReceiptAdvanceWriteoffDialog
+      v-model="advanceWriteoffVisible"
+      :receipt-row="selectedReceiptRow"
+      @success="loadReceiptPage"
+    />
   </div>
 </template>
 
@@ -258,6 +298,7 @@ import {
   getReceiptPage,
   deleteReceipt,
   submitReceipt,
+  reverseReceipt,
   getFinanceAccountSimpleList,
   type ReceiptRespVO,
   type ReceiptPageReqVO,
@@ -272,6 +313,7 @@ import {
 } from '../model/payment'
 import ReceiptFormDialog from './ReceiptFormDialog.vue'
 import ReceiptDetailDrawer from './ReceiptDetailDrawer.vue'
+import ReceiptAdvanceWriteoffDialog from './ReceiptAdvanceWriteoffDialog.vue'
 
 defineOptions({ name: 'ReceiptTab' })
 
@@ -285,6 +327,8 @@ const accountOptions = ref<FinanceAccountSimpleRespVO[]>([])
 
 const formDialogRef = ref<InstanceType<typeof ReceiptFormDialog>>()
 const detailDrawerRef = ref<InstanceType<typeof ReceiptDetailDrawer>>()
+const advanceWriteoffVisible = ref(false)
+const selectedReceiptRow = ref<ReceiptRespVO | null>(null)
 
 const queryParams = reactive<ReceiptPageReqVO>({
   pageNo: 1,
@@ -398,6 +442,32 @@ const handleDelete = async (row: ReceiptRespVO) => {
     )
     await deleteReceipt(row.id)
     ElMessage.success('收款单删除成功')
+    loadReceiptPage()
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(parsePaymentErrorMessage(err))
+    }
+  }
+}
+
+const handleAdvanceWriteoff = (row: ReceiptRespVO) => {
+  selectedReceiptRow.value = row
+  advanceWriteoffVisible.value = true
+}
+
+const handleReverse = async (row: ReceiptRespVO) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定红冲已过账收款单【${row.paymentNo}】吗？红冲后将生成反向冲销分录、扣减资金账户余额、自动重开全部核销分录，且不可撤回。`,
+      '红冲确认',
+      {
+        confirmButtonText: '确定红冲',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    await reverseReceipt(row.id)
+    ElMessage.success('收款单红冲成功')
     loadReceiptPage()
   } catch (err: any) {
     if (err !== 'cancel') {

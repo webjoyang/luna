@@ -22,6 +22,7 @@ import {
   calcArEntryUnallocated,
   distributeReceiptFifo,
   validateReceiptForm,
+  validateAdvanceWriteoff,
   getApprovalStatusText,
   getApprovalStatusTagType
 } from '../model/payment'
@@ -449,6 +450,22 @@ describe('Payment Domain Model & Utilities (Pure Node)', () => {
         params: { pageNo: 1, pageSize: 10 }
       })
     })
+
+    it('reverseReceipt should send PUT to /lunaerp/finance/payment/reverse?id=101', async () => {
+      await PaymentApi.reverseReceipt(101)
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/reverse?id=101'
+      })
+    })
+
+    it('advanceWriteoff should send POST to /lunaerp/finance/payment/advance-writeoff', async () => {
+      const payload = { paymentId: 101, items: [{ entryId: 201, allocateAmount: 500 }] }
+      await PaymentApi.advanceWriteoff(payload)
+      expect(request.post).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/payment/advance-writeoff',
+        data: payload
+      })
+    })
   })
 
   describe('Receipt Domain Model & Utilities', () => {
@@ -458,7 +475,27 @@ describe('Payment Domain Model & Utilities (Pure Node)', () => {
         expect(flags.canEdit).toBe(true)
         expect(flags.canSubmit).toBe(true)
         expect(flags.canDelete).toBe(true)
+        expect(flags.canReverse).toBe(false)
+        expect(flags.canWriteoff).toBe(false)
         expect(flags.isApproved).toBe(false)
+      })
+
+      it('should allow reverse for COMPLETED status and writeoff for COMPLETED ADVANCE', () => {
+        const flagsReceipt = getReceiptActionFlags('APPROVED', 'COMPLETED', 'RECEIPT')
+        expect(flagsReceipt.canEdit).toBe(false)
+        expect(flagsReceipt.canReverse).toBe(true)
+        expect(flagsReceipt.canWriteoff).toBe(false)
+
+        const flagsAdvance = getReceiptActionFlags('APPROVED', 'COMPLETED', 'ADVANCE')
+        expect(flagsAdvance.canReverse).toBe(true)
+        expect(flagsAdvance.canWriteoff).toBe(true)
+      })
+
+      it('should not allow reverse or writeoff for REVERSED status', () => {
+        const flags = getReceiptActionFlags('APPROVED', 'REVERSED', 'RECEIPT')
+        expect(flags.canReverse).toBe(false)
+        expect(flags.canWriteoff).toBe(false)
+        expect(flags.isReversed).toBe(true)
       })
 
       it('should prevent edit and submit for REJECTED (PENDING only per spec)', () => {
@@ -586,6 +623,67 @@ describe('Payment Domain Model & Utilities (Pure Node)', () => {
         expect(parsePaymentErrorMessage({ code: 1030023105 })).toContain('收款单过账冲突')
         expect(parsePaymentErrorMessage({ code: 1030023106 })).toContain('客户预收余额不足')
         expect(parsePaymentErrorMessage({ code: 1030023107 })).toContain('该收款单不允许红冲')
+      })
+    })
+
+    describe('validateAdvanceWriteoff', () => {
+      it('should fail if advance balance is 0 or negative', () => {
+        const res = validateAdvanceWriteoff({
+          advanceBalance: 0,
+          items: [{ entryId: 101, allocateAmount: 100, unallocatedAmount: 500 }]
+        })
+        expect(res.valid).toBe(false)
+        expect(res.error).toContain('预收可用余额不足')
+      })
+
+      it('should fail if items list is empty', () => {
+        const res = validateAdvanceWriteoff({
+          advanceBalance: 5000,
+          items: []
+        })
+        expect(res.valid).toBe(false)
+        expect(res.error).toContain('请至少选择一条')
+      })
+
+      it('should fail if item allocate amount is <= 0', () => {
+        const res = validateAdvanceWriteoff({
+          advanceBalance: 5000,
+          items: [{ entryId: 101, entryNo: 'SH001', allocateAmount: 0, unallocatedAmount: 1000 }]
+        })
+        expect(res.valid).toBe(false)
+        expect(res.error).toContain('必须大于 0')
+      })
+
+      it('should fail if item allocate amount exceeds unallocated balance', () => {
+        const res = validateAdvanceWriteoff({
+          advanceBalance: 5000,
+          items: [{ entryId: 101, entryNo: 'SH001', allocateAmount: 1500, unallocatedAmount: 1000 }]
+        })
+        expect(res.valid).toBe(false)
+        expect(res.error).toContain('超出未核销余额')
+      })
+
+      it('should fail if total allocated exceeds advance balance', () => {
+        const res = validateAdvanceWriteoff({
+          advanceBalance: 2000,
+          items: [
+            { entryId: 101, allocateAmount: 1500, unallocatedAmount: 2000 },
+            { entryId: 102, allocateAmount: 1000, unallocatedAmount: 2000 }
+          ]
+        })
+        expect(res.valid).toBe(false)
+        expect(res.error).toContain('超出预收可用余额')
+      })
+
+      it('should accept valid advance writeoff request', () => {
+        const res = validateAdvanceWriteoff({
+          advanceBalance: 5000,
+          items: [
+            { entryId: 101, allocateAmount: 1500, unallocatedAmount: 2000 },
+            { entryId: 102, allocateAmount: 2000, unallocatedAmount: 3000 }
+          ]
+        })
+        expect(res.valid).toBe(true)
       })
     })
 

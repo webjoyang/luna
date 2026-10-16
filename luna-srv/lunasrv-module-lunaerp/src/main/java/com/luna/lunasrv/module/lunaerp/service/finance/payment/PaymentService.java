@@ -102,4 +102,18 @@ public interface PaymentService {
     java.util.List<com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.ArBalanceRespVO> getArBalanceList(
             Long customerId, String currency);
 
+    /**
+     * 收款单红冲（仅 status=COMPLETED 可冲，同事务生成 RECEIPT_REVERSAL 分录 + 资金账户扣减 + 核销行重开 + 置 REVERSED）
+     *
+     * @param id 收款单ID
+     */
+    void reverseReceipt(Long id);
+
+    /**
+     * 预收转核销（在原已过账 ADVANCE 单上追加核销行，不建新单，不走审批）
+     *
+     * @param reqVO 预收转核销入参
+     */
+    void advanceWriteoff(@Valid com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO reqVO);
+
 }

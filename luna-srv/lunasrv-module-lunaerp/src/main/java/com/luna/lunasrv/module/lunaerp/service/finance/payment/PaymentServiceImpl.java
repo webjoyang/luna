@@ -30,10 +30,14 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentRefMapper;
 import com.luna.lunasrv.module.lunaerp.enums.finance.ApplyStatus;
 import com.luna.lunasrv.module.lunaerp.enums.finance.Direction;
+import com.luna.lunasrv.module.lunaerp.enums.finance.LedgerCategory;
 import com.luna.lunasrv.module.lunaerp.enums.finance.PaymentRefType;
 import com.luna.lunasrv.module.lunaerp.enums.finance.PaymentStatus;
 import com.luna.lunasrv.module.lunaerp.enums.finance.ReceiptType;
+import com.luna.lunasrv.module.lunaerp.service.finance.account.AccountService;
 import com.luna.lunasrv.module.lunaerp.service.finance.account.FinanceAccountService;
+import com.luna.lunasrv.module.lunaerp.service.finance.exchangerate.ExchangeRateService;
+import com.luna.lunasrv.module.lunaerp.service.finance.ledger.LedgerService;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.AllArgsConstructor;
@@ -112,6 +116,15 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Resource
     private ApprovalInstanceService approvalInstanceService;
+
+    @Resource
+    private AccountService accountService;
+
+    @Resource
+    private LedgerService ledgerService;
+
+    @Resource
+    private ExchangeRateService exchangeRateService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -930,6 +943,242 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reverseReceipt(Long id) {
+        if (id == null) {
+            throw exception(RECEIPT_NOT_EXISTS);
+        }
+        PaymentDO payment = paymentMapper.selectOne(new LambdaQueryWrapperX<PaymentDO>()
+                .eq(PaymentDO::getId, id)
+                .last("FOR UPDATE"));
+        validateReceiptExistsAndTenant(payment);
+
+        // 状态守卫：仅已过账 COMPLETED 可红冲；已是 REVERSED 则抛 RECEIPT_REVERSAL_NOT_ALLOW（红冲幂等）
+        if (PaymentStatus.REVERSED.getValue().equalsIgnoreCase(payment.getStatus())) {
+            throw exception(RECEIPT_REVERSAL_NOT_ALLOW);
+        }
+        if (!PaymentStatus.COMPLETED.getValue().equalsIgnoreCase(payment.getStatus())) {
+            throw exception(RECEIPT_STATUS_NOT_ALLOW);
+        }
+
+        // 若是 ADVANCE 预收款单，检查是否已被后续预收转核销引用；若已有核销引用则不允许红冲
+        if (ReceiptType.ADVANCE.getValue().equalsIgnoreCase(payment.getReceiptType())) {
+            Long advanceWriteoffCount = ledgerEntryMapper.selectCount(new LambdaQueryWrapperX<LedgerEntryDO>()
+                    .eq(LedgerEntryDO::getRefType, "RECEIPT")
+                    .eq(LedgerEntryDO::getRefId, payment.getId())
+                    .eq(LedgerEntryDO::getCategory, LedgerCategory.ADVANCE_WRITE_OFF.getValue()));
+            if (advanceWriteoffCount != null && advanceWriteoffCount > 0) {
+                log.warn("[reverseReceipt] 预收款单已被后续预收转核销引用，禁止红冲: paymentId={}", id);
+                throw exception(RECEIPT_REVERSAL_NOT_ALLOW);
+            }
+        }
+
+        // 1. 查询原入账分录（RECEIPT 或 ADVANCE）
+        LedgerEntryDO origEntry = ledgerEntryMapper.selectOne(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eq(LedgerEntryDO::getRefType, "RECEIPT")
+                .eq(LedgerEntryDO::getRefId, payment.getId())
+                .in(LedgerEntryDO::getCategory, List.of(LedgerCategory.RECEIPT.getValue(), LedgerCategory.ADVANCE.getValue())));
+
+        // 2. 写 1：追加反向 RECEIPT_REVERSAL 分录（reversal_of_id 回指原分录）
+        BigDecimal payAmount = payment.getPayAmount() != null ? payment.getPayAmount() : BigDecimal.ZERO;
+        BigDecimal rate = origEntry != null && origEntry.getExchangeRate() != null
+                ? origEntry.getExchangeRate()
+                : (payment.getExchangeRate() != null ? payment.getExchangeRate() : BigDecimal.ONE);
+        BigDecimal baseAmount = origEntry != null && origEntry.getBaseAmount() != null
+                ? origEntry.getBaseAmount()
+                : payAmount.multiply(rate).setScale(2, RoundingMode.HALF_UP);
+
+        LedgerEntryDO reversal = new LedgerEntryDO();
+        reversal.setBizDate(LocalDate.now());
+        reversal.setPartyType("CUSTOMER");
+        reversal.setPartyId(payment.getCustomerId());
+        reversal.setAccountId(payment.getAccountId());
+        reversal.setCategory(LedgerCategory.RECEIPT_REVERSAL.getValue());
+        reversal.setDirection("DEBIT");
+        reversal.setCurrency(payment.getCurrency());
+        reversal.setExchangeRate(rate);
+        reversal.setOriginalAmount(payAmount);
+        reversal.setBaseAmount(baseAmount);
+        reversal.setRefType("RECEIPT");
+        reversal.setRefId(payment.getId());
+        reversal.setReversalOfId(origEntry != null ? origEntry.getId() : null);
+        reversal.setRemark("红冲收款：" + (payment.getPaymentNo() != null ? payment.getPaymentNo() : ""));
+        ledgerService.append(reversal);
+
+        // 3. 写 2：资金账户 current_balance -= amt 条件更新
+        accountService.updateBalance(payment.getAccountId(), payAmount.negate());
+
+        // 4. 写 3：主表状态置为 REVERSED（此操作天然使得 payment_ref 不再满足 status='COMPLETED'，核销行自动重开，未核销余额恢复）
+        payment.setStatus(PaymentStatus.REVERSED.getValue());
+        paymentMapper.updateById(payment);
+
+        log.info("[reverseReceipt] 收款单红冲成功: id={}, paymentNo={}", payment.getId(), payment.getPaymentNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void advanceWriteoff(AdvanceWriteoffReqVO reqVO) {
+        if (reqVO == null || reqVO.getPaymentId() == null) {
+            throw exception(RECEIPT_NOT_EXISTS);
+        }
+        if (CollUtil.isEmpty(reqVO.getItems())) {
+            throw exception(RECEIPT_STATUS_NOT_ALLOW);
+        }
+
+        PaymentDO payment = paymentMapper.selectOne(new LambdaQueryWrapperX<PaymentDO>()
+                .eq(PaymentDO::getId, reqVO.getPaymentId())
+                .last("FOR UPDATE"));
+        validateReceiptExistsAndTenant(payment);
+
+        // 状态与类型守卫：必须为已过账 COMPLETED 的 ADVANCE 单
+        if (!PaymentStatus.COMPLETED.getValue().equalsIgnoreCase(payment.getStatus())) {
+            throw exception(RECEIPT_STATUS_NOT_ALLOW);
+        }
+        if (!ReceiptType.ADVANCE.getValue().equalsIgnoreCase(payment.getReceiptType())) {
+            throw exception(RECEIPT_STATUS_NOT_ALLOW);
+        }
+
+        // 1. 预收余额计算（ADVANCE 入账 − ADVANCE_WRITE_OFF）
+        BigDecimal advanceWrittenOff = calculateAdvanceWrittenOff(payment.getId());
+        BigDecimal totalAdvance = payment.getPayAmount() != null ? payment.getPayAmount() : BigDecimal.ZERO;
+        BigDecimal advanceBalance = totalAdvance.subtract(advanceWrittenOff);
+        if (advanceBalance.compareTo(BigDecimal.ZERO) < 0) {
+            advanceBalance = BigDecimal.ZERO;
+        }
+
+        BigDecimal totalAllocating = BigDecimal.ZERO;
+        for (ReceiptItemReqVO item : reqVO.getItems()) {
+            if (item.getAllocateAmount() != null && item.getAllocateAmount().compareTo(BigDecimal.ZERO) > 0) {
+                totalAllocating = totalAllocating.add(item.getAllocateAmount());
+            }
+        }
+
+        if (totalAllocating.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        // 守卫：≤预收余额
+        if (totalAllocating.compareTo(advanceBalance) > 0) {
+            log.warn("[advanceWriteoff] 预收核销金额超出预收余额: paymentId={}, totalAllocating={}, advanceBalance={}",
+                    payment.getId(), totalAllocating, advanceBalance);
+            throw exception(RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH);
+        }
+
+        // 2. 校验待核销 AR 分录（同币种、同客户、≤未核销余额并加悲观锁）
+        List<Long> entryIds = reqVO.getItems().stream()
+                .map(ReceiptItemReqVO::getEntryId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (CollUtil.isEmpty(entryIds)) {
+            return;
+        }
+
+        // 带行级悲观锁批量查询，防止并发幻读超核
+        List<LedgerEntryDO> origEntries = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .inOrEmpty(LedgerEntryDO::getId, entryIds)
+                .last("FOR UPDATE"));
+        Map<Long, LedgerEntryDO> entryMap = CollectionUtils.convertMap(origEntries, LedgerEntryDO::getId);
+        Map<Long, BigDecimal> unallocMap = batchLoadUnallocatedBalanceMap(entryIds, entryMap);
+
+        // 聚合单次请求中同 entryId 的分配额，防止单次请求多次引用同一 entry 突破未核销余额
+        Map<Long, BigDecimal> requestedByEntry = new HashMap<>();
+        for (ReceiptItemReqVO item : reqVO.getItems()) {
+            if (item.getAllocateAmount() != null && item.getAllocateAmount().compareTo(BigDecimal.ZERO) > 0) {
+                requestedByEntry.merge(item.getEntryId(), item.getAllocateAmount(), BigDecimal::add);
+            }
+        }
+
+        for (Map.Entry<Long, BigDecimal> entryReq : requestedByEntry.entrySet()) {
+            LedgerEntryDO origEntry = entryMap.get(entryReq.getKey());
+            if (origEntry == null) {
+                throw exception(RECEIPT_POST_CONFLICT);
+            }
+            if (!payment.getCustomerId().equals(origEntry.getPartyId())) {
+                throw exception(RECEIPT_CUSTOMER_MISMATCH);
+            }
+            if (!payment.getCurrency().equalsIgnoreCase(origEntry.getCurrency())) {
+                throw exception(RECEIPT_CURRENCY_MISMATCH);
+            }
+            BigDecimal currentRemain = unallocMap.getOrDefault(entryReq.getKey(), BigDecimal.ZERO);
+            if (entryReq.getValue().compareTo(currentRemain) > 0) {
+                log.warn("[advanceWriteoff] 预收核销金额超出分录未核销余额冲突: entryId={}, requested={}, currentRemain={}",
+                        entryReq.getKey(), entryReq.getValue(), currentRemain);
+                throw exception(RECEIPT_POST_CONFLICT);
+            }
+        }
+
+        List<Long> shipmentIds = origEntries.stream().map(LedgerEntryDO::getRefId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, ShipmentDO> shipmentMap = batchLoadShipmentMap(shipmentIds);
+        BigDecimal rate = payment.getExchangeRate() != null ? payment.getExchangeRate() : BigDecimal.ONE;
+        LocalDate now = LocalDate.now();
+
+        // 3. 在原单追加核销行（ref_type=AR_ENTRY），写 ADVANCE_WRITE_OFF 分录
+        for (ReceiptItemReqVO item : reqVO.getItems()) {
+            if (item.getAllocateAmount() == null || item.getAllocateAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            LedgerEntryDO origEntry = entryMap.get(item.getEntryId());
+            ShipmentDO shipment = origEntry != null ? shipmentMap.get(origEntry.getRefId()) : null;
+            BigDecimal refBaseAmount = item.getAllocateAmount().multiply(rate).setScale(2, RoundingMode.HALF_UP);
+
+            // 写 ADVANCE_WRITE_OFF 分录
+            LedgerEntryDO writeOffEntry = new LedgerEntryDO();
+            writeOffEntry.setBizDate(now);
+            writeOffEntry.setPartyType("CUSTOMER");
+            writeOffEntry.setPartyId(payment.getCustomerId());
+            writeOffEntry.setAccountId(null); // 往来核销不影响资金账户流水
+            writeOffEntry.setCategory(LedgerCategory.ADVANCE_WRITE_OFF.getValue());
+            writeOffEntry.setDirection("CREDIT");
+            writeOffEntry.setCurrency(payment.getCurrency());
+            writeOffEntry.setExchangeRate(rate);
+            writeOffEntry.setOriginalAmount(item.getAllocateAmount());
+            writeOffEntry.setBaseAmount(refBaseAmount);
+            writeOffEntry.setRefType("RECEIPT");
+            writeOffEntry.setRefId(payment.getId());
+            writeOffEntry.setRefItemId(item.getEntryId());
+            writeOffEntry.setRemark("预收核销：" + (shipment != null ? shipment.getShipmentNo() : (origEntry != null ? origEntry.getRemark() : "")));
+            Long writeOffEntryId = ledgerService.append(writeOffEntry);
+
+            // 追加 payment_ref 核销行
+            PaymentRefDO ref = new PaymentRefDO();
+            ref.setPaymentId(payment.getId());
+            ref.setRefType(PaymentRefType.AR_ENTRY.getValue());
+            ref.setRefId(item.getEntryId());
+            ref.setAllocateAmount(item.getAllocateAmount());
+            ref.setEntryNo(shipment != null ? shipment.getShipmentNo() : (origEntry != null ? String.valueOf(origEntry.getRefId()) : ""));
+            ref.setBizDate(now);
+            ref.setBaseAmount(refBaseAmount);
+            ref.setLedgerEntryId(writeOffEntryId);
+            paymentRefMapper.insert(ref);
+        }
+
+        // 4. 更新原单 prepayUsedAmount 快照
+        payment.setPrepayUsedAmount(advanceWrittenOff.add(totalAllocating));
+        paymentMapper.updateById(payment);
+
+        log.info("[advanceWriteoff] 预收转核销成功: paymentId={}, totalAllocated={}", payment.getId(), totalAllocating);
+    }
+
+    private BigDecimal calculateAdvanceWrittenOff(Long paymentId) {
+        if (paymentId == null) {
+            return BigDecimal.ZERO;
+        }
+        List<LedgerEntryDO> list = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eq(LedgerEntryDO::getRefType, "RECEIPT")
+                .eq(LedgerEntryDO::getRefId, paymentId)
+                .eq(LedgerEntryDO::getCategory, LedgerCategory.ADVANCE_WRITE_OFF.getValue()));
+        if (CollUtil.isEmpty(list)) {
+            return BigDecimal.ZERO;
+        }
+        return list.stream()
+                .map(LedgerEntryDO::getOriginalAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     // ==================== 私有辅助方法 ====================

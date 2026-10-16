@@ -23,8 +23,12 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentRefMapper;
 import com.luna.lunasrv.module.lunaerp.enums.finance.ApplyStatus;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
+import com.luna.lunasrv.module.lunaerp.enums.finance.LedgerCategory;
 import com.luna.lunasrv.module.lunaerp.enums.finance.PaymentStatus;
 import com.luna.lunasrv.module.lunaerp.enums.finance.ReceiptType;
+import com.luna.lunasrv.module.lunaerp.service.finance.account.AccountService;
+import com.luna.lunasrv.module.lunaerp.service.finance.exchangerate.ExchangeRateService;
+import com.luna.lunasrv.module.lunaerp.service.finance.ledger.LedgerService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,6 +81,15 @@ public class PaymentReceiptServiceImplTest {
 
     @Mock
     private ApprovalInstanceService approvalInstanceService;
+
+    @Mock
+    private AccountService accountService;
+
+    @Mock
+    private LedgerService ledgerService;
+
+    @Mock
+    private ExchangeRateService exchangeRateService;
 
     private MockedStatic<SecurityFrameworkUtils> mockedSecurity;
 
@@ -378,6 +391,315 @@ public class PaymentReceiptServiceImplTest {
 
         assertEquals(103L, result.get(2).getEntryId());
         assertEquals(BigDecimal.ZERO, result.get(2).getAllocateAmount());
+    }
+
+    // ==================== 红冲单元测试 ====================
+
+    @Test
+    @DisplayName("收款单红冲：反向分录(RECEIPT_REVERSAL)+账户扣减+状态置REVERSED")
+    void testReverseReceipt_FourWrites_Success() {
+        Long paymentId = 901L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setCustomerId(2001L);
+        payment.setAccountId(3001L);
+        payment.setCurrency("RMB");
+        payment.setPayAmount(new BigDecimal("5000.00"));
+        payment.setReceiptType(ReceiptType.RECEIPT.getValue());
+        payment.setStatus(PaymentStatus.COMPLETED.getValue());
+        payment.setPaymentNo("RC-20261016-001");
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+
+        LedgerEntryDO origEntry = new LedgerEntryDO();
+        origEntry.setId(7001L);
+        origEntry.setCurrency("RMB");
+        origEntry.setExchangeRate(BigDecimal.ONE);
+        origEntry.setOriginalAmount(new BigDecimal("5000.00"));
+        origEntry.setBaseAmount(new BigDecimal("5000.00"));
+        when(ledgerEntryMapper.selectOne(any())).thenReturn(origEntry);
+
+        paymentService.reverseReceipt(paymentId);
+
+        // 1. 验证反向分录
+        ArgumentCaptor<LedgerEntryDO> captor = ArgumentCaptor.forClass(LedgerEntryDO.class);
+        verify(ledgerService).append(captor.capture());
+        LedgerEntryDO rev = captor.getValue();
+        assertEquals(LedgerCategory.RECEIPT_REVERSAL.getValue(), rev.getCategory());
+        assertEquals("DEBIT", rev.getDirection());
+        assertEquals(origEntry.getId(), rev.getReversalOfId());
+        assertEquals(new BigDecimal("5000.00"), rev.getOriginalAmount());
+        assertEquals(3001L, rev.getAccountId());
+
+        // 2. 验证账户余额扣减（条件更新传入负数）
+        verify(accountService).updateBalance(3001L, new BigDecimal("-5000.00"));
+
+        // 3. 验证主表状态置为 REVERSED
+        assertEquals(PaymentStatus.REVERSED.getValue(), payment.getStatus());
+        verify(paymentMapper).updateById(payment);
+    }
+
+    @Test
+    @DisplayName("红冲幂等：REVERSED 状态不可再次红冲，抛出 RECEIPT_REVERSAL_NOT_ALLOW")
+    void testReverseReceipt_Idempotent_ThrowsWhenReversed() {
+        Long paymentId = 901L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setStatus(PaymentStatus.REVERSED.getValue());
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.reverseReceipt(paymentId));
+        assertEquals(FinanceErrorCodeConstants.RECEIPT_REVERSAL_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("红冲状态守卫：仅已过账 COMPLETED 单据可红冲，草稿抛出 RECEIPT_STATUS_NOT_ALLOW")
+    void testReverseReceipt_ThrowsWhenPending() {
+        Long paymentId = 901L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setStatus("PENDING");
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.reverseReceipt(paymentId));
+        assertEquals(FinanceErrorCodeConstants.RECEIPT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("红冲预收守卫：预收款单若已被后续预收转核销引用，禁止红冲抛出 RECEIPT_REVERSAL_NOT_ALLOW")
+    void testReverseReceipt_AdvanceWithWriteoffs_Throws() {
+        Long paymentId = 902L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setStatus(PaymentStatus.COMPLETED.getValue());
+        payment.setReceiptType(ReceiptType.ADVANCE.getValue());
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(ledgerEntryMapper.selectCount(any())).thenReturn(1L); // 已有后续预收转核销
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.reverseReceipt(paymentId));
+        assertEquals(FinanceErrorCodeConstants.RECEIPT_REVERSAL_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    // ==================== 预收转核销单元测试 ====================
+
+    @Test
+    @DisplayName("预收转核销：在原ADVANCE单追加核销行+写ADVANCE_WRITE_OFF分录+预收余额扣减")
+    void testAdvanceWriteoff_Success() {
+        Long paymentId = 902L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setCustomerId(2001L);
+        payment.setCurrency("RMB");
+        payment.setPayAmount(new BigDecimal("8000.00"));
+        payment.setReceiptType(ReceiptType.ADVANCE.getValue());
+        payment.setStatus(PaymentStatus.COMPLETED.getValue());
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+
+        // 模拟已核销历史 2000 元（预收剩余 6000）
+        LedgerEntryDO prevWriteoff = new LedgerEntryDO();
+        prevWriteoff.setOriginalAmount(new BigDecimal("2000.00"));
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(prevWriteoff));
+
+        // 待核销 AR 分录 101L（可核销额 5000）
+        LedgerEntryDO arEntry = createArEntry(101L, LocalDate.of(2026, 10, 1), new BigDecimal("5000.00"), 801L);
+        when(ledgerEntryMapper.selectList(any())).thenReturn(
+                List.of(prevWriteoff), // for calculateAdvanceWrittenOff
+                List.of(arEntry),      // for lock query
+                List.of(),             // for reversals
+                List.of()              // for return reversals
+        );
+
+        when(ledgerService.append(any())).thenReturn(7005L);
+
+        // 构造本次转核销 3000 元
+        com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO req =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO();
+        req.setPaymentId(paymentId);
+        ReceiptItemReqVO item = new ReceiptItemReqVO();
+        item.setEntryId(101L);
+        item.setAllocateAmount(new BigDecimal("3000.00"));
+        req.setItems(List.of(item));
+
+        paymentService.advanceWriteoff(req);
+
+        // 1. 验证写入 ADVANCE_WRITE_OFF 分录
+        ArgumentCaptor<LedgerEntryDO> entryCaptor = ArgumentCaptor.forClass(LedgerEntryDO.class);
+        verify(ledgerService).append(entryCaptor.capture());
+        LedgerEntryDO wo = entryCaptor.getValue();
+        assertEquals(LedgerCategory.ADVANCE_WRITE_OFF.getValue(), wo.getCategory());
+        assertEquals("CREDIT", wo.getDirection());
+        assertEquals(new BigDecimal("3000.00"), wo.getOriginalAmount());
+        assertEquals(101L, wo.getRefItemId());
+        assertEquals(paymentId, wo.getRefId());
+
+        // 2. 验证写入 payment_ref 核销行
+        verify(paymentRefMapper).insert(any(PaymentRefDO.class));
+
+        // 3. 验证更新 prepayUsedAmount 为 2000 + 3000 = 5000
+        assertEquals(new BigDecimal("5000.00"), payment.getPrepayUsedAmount());
+        verify(paymentMapper).updateById(payment);
+    }
+
+    @Test
+    @DisplayName("预收转核销守卫：核销金额超出预收余额抛出 RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH")
+    void testAdvanceWriteoff_ExceedAdvanceBalance_Throws() {
+        Long paymentId = 902L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setCustomerId(2001L);
+        payment.setCurrency("RMB");
+        payment.setPayAmount(new BigDecimal("2000.00")); // 预收 2000
+        payment.setReceiptType(ReceiptType.ADVANCE.getValue());
+        payment.setStatus(PaymentStatus.COMPLETED.getValue());
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+
+        // 已核销 1500，剩余 500
+        LedgerEntryDO prevWriteoff = new LedgerEntryDO();
+        prevWriteoff.setOriginalAmount(new BigDecimal("1500.00"));
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(prevWriteoff));
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO req =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO();
+        req.setPaymentId(paymentId);
+        ReceiptItemReqVO item = new ReceiptItemReqVO();
+        item.setEntryId(101L);
+        item.setAllocateAmount(new BigDecimal("600.00")); // 欲核销 600 > 500
+        req.setItems(List.of(item));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.advanceWriteoff(req));
+        assertEquals(FinanceErrorCodeConstants.RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("预收转核销守卫：币种不一致抛出 RECEIPT_CURRENCY_MISMATCH")
+    void testAdvanceWriteoff_CurrencyMismatch_Throws() {
+        Long paymentId = 902L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setCustomerId(2001L);
+        payment.setCurrency("USD"); // 收款为 USD
+        payment.setPayAmount(new BigDecimal("5000.00"));
+        payment.setReceiptType(ReceiptType.ADVANCE.getValue());
+        payment.setStatus(PaymentStatus.COMPLETED.getValue());
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+        when(ledgerEntryMapper.selectList(any())).thenReturn(
+                List.of(), // calculateAdvanceWrittenOff
+                List.of(createArEntry(101L, LocalDate.now(), new BigDecimal("1000.00"), 801L)) // AR 分录为 RMB
+        );
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO req =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO();
+        req.setPaymentId(paymentId);
+        ReceiptItemReqVO item = new ReceiptItemReqVO();
+        item.setEntryId(101L);
+        item.setAllocateAmount(new BigDecimal("500.00"));
+        req.setItems(List.of(item));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.advanceWriteoff(req));
+        assertEquals(FinanceErrorCodeConstants.RECEIPT_CURRENCY_MISMATCH.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("预收转核销守卫：客户不匹配抛出 RECEIPT_CUSTOMER_MISMATCH")
+    void testAdvanceWriteoff_CustomerMismatch_Throws() {
+        Long paymentId = 902L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setCustomerId(2001L); // 客户 2001
+        payment.setCurrency("RMB");
+        payment.setPayAmount(new BigDecimal("5000.00"));
+        payment.setReceiptType(ReceiptType.ADVANCE.getValue());
+        payment.setStatus(PaymentStatus.COMPLETED.getValue());
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+
+        LedgerEntryDO otherCustomerEntry = createArEntry(101L, LocalDate.now(), new BigDecimal("1000.00"), 801L);
+        otherCustomerEntry.setPartyId(2002L); // 属于客户 2002
+        when(ledgerEntryMapper.selectList(any())).thenReturn(
+                List.of(), // calculateAdvanceWrittenOff
+                List.of(otherCustomerEntry) // lock query
+        );
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO req =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO();
+        req.setPaymentId(paymentId);
+        ReceiptItemReqVO item = new ReceiptItemReqVO();
+        item.setEntryId(101L);
+        item.setAllocateAmount(new BigDecimal("500.00"));
+        req.setItems(List.of(item));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.advanceWriteoff(req));
+        assertEquals(FinanceErrorCodeConstants.RECEIPT_CUSTOMER_MISMATCH.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("预收转核销并发冲突：待核销金额超出分录未核销余额抛出 RECEIPT_POST_CONFLICT")
+    void testAdvanceWriteoff_ExceedUnallocated_ThrowsConflict() {
+        Long paymentId = 902L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setCustomerId(2001L);
+        payment.setCurrency("RMB");
+        payment.setPayAmount(new BigDecimal("5000.00"));
+        payment.setReceiptType(ReceiptType.ADVANCE.getValue());
+        payment.setStatus(PaymentStatus.COMPLETED.getValue());
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+
+        LedgerEntryDO entry = createArEntry(101L, LocalDate.now(), new BigDecimal("1000.00"), 801L);
+        when(ledgerEntryMapper.selectList(any())).thenReturn(
+                List.of(),    // calculateAdvanceWrittenOff
+                List.of(entry), // lock query
+                List.of(),    // reversals
+                List.of()     // return reversals
+        );
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO req =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO();
+        req.setPaymentId(paymentId);
+        ReceiptItemReqVO item = new ReceiptItemReqVO();
+        item.setEntryId(101L);
+        item.setAllocateAmount(new BigDecimal("2000.00")); // 欲核销 2000 > 1000
+        req.setItems(List.of(item));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.advanceWriteoff(req));
+        assertEquals(FinanceErrorCodeConstants.RECEIPT_POST_CONFLICT.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("预收转核销守卫：非 ADVANCE 预收款单抛出 RECEIPT_STATUS_NOT_ALLOW")
+    void testAdvanceWriteoff_NotAdvance_Throws() {
+        Long paymentId = 901L;
+        PaymentDO payment = new PaymentDO();
+        payment.setId(paymentId);
+        payment.setTenantId(TENANT_ID);
+        payment.setDirection("IN");
+        payment.setReceiptType(ReceiptType.RECEIPT.getValue()); // 普通收款单
+        payment.setStatus(PaymentStatus.COMPLETED.getValue());
+        when(paymentMapper.selectOne(any())).thenReturn(payment);
+
+        com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO req =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO();
+        req.setPaymentId(paymentId);
+        req.setItems(List.of(new ReceiptItemReqVO()));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> paymentService.advanceWriteoff(req));
+        assertEquals(FinanceErrorCodeConstants.RECEIPT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
     }
 
     private LedgerEntryDO createArEntry(Long id, LocalDate bizDate, BigDecimal amount, Long refId) {

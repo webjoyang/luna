@@ -69,6 +69,23 @@ public class PaymentController {
         return success(true);
     }
 
+    @PutMapping("/reverse")
+    @Operation(summary = "收款单红冲（仅 status=COMPLETED 可冲）")
+    @Parameter(name = "id", description = "收款单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:payment:reverse')")
+    public CommonResult<Boolean> reverseReceipt(@RequestParam("id") Long id) {
+        paymentService.reverseReceipt(id);
+        return success(true);
+    }
+
+    @PostMapping("/advance-writeoff")
+    @Operation(summary = "预收转核销（在原 ADVANCE 单上追加核销行，不建新单，不走审批）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:payment:writeoff')")
+    public CommonResult<Boolean> advanceWriteoff(@Valid @RequestBody AdvanceWriteoffReqVO reqVO) {
+        paymentService.advanceWriteoff(reqVO);
+        return success(true);
+    }
+
     @PostMapping("/allocate-preview")
     @Operation(summary = "按发货日 FIFO 自动分配试算（纯内存不落库）")
     @PreAuthorize("@ss.hasPermission('lunaerp:finance:payment:query')")

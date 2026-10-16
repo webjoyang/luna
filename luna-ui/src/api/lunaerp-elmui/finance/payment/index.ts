@@ -20,7 +20,6 @@ export type PaymentDirection = 'IN' | 'OUT'
  */
 export type PaymentStatus = 'COMPLETED' | 'REVERSED'
 
-
 /**
  * 付款申请单 Response VO
  */
@@ -460,5 +459,36 @@ export const getReceiptPage = (params: ReceiptPageReqVO) => {
   return request.get<PageResult<ReceiptRespVO>>({
     url: '/lunaerp/finance/payment/receipt-page',
     params
+  })
+}
+
+/**
+ * 预收转核销明细 Request VO
+ */
+export interface AdvanceWriteoffItemReqVO {
+  entryId: number
+  allocateAmount: number
+}
+
+/**
+ * 预收转核销 Request VO
+ */
+export interface AdvanceWriteoffReqVO {
+  paymentId: number
+  items: AdvanceWriteoffItemReqVO[]
+}
+
+/** 收款单红冲（仅 status=COMPLETED 可冲） */
+export const reverseReceipt = (id: number) => {
+  return request.put<boolean>({
+    url: `/lunaerp/finance/payment/reverse?id=${id}`
+  })
+}
+
+/** 预收转核销（在原已过账 ADVANCE 单上追加核销行，不建新单，不走审批） */
+export const advanceWriteoff = (data: AdvanceWriteoffReqVO) => {
+  return request.post<boolean>({
+    url: '/lunaerp/finance/payment/advance-writeoff',
+    data
   })
 }

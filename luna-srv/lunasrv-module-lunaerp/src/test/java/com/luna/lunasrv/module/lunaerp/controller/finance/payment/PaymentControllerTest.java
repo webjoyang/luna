@@ -78,6 +78,26 @@ public class PaymentControllerTest {
     }
 
     @Test
+    @DisplayName("reverseReceipt 接口：委托 Service 执行收款红冲")
+    void testReverseReceipt() {
+        CommonResult<Boolean> result = controller.reverseReceipt(2001L);
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(paymentService).reverseReceipt(2001L);
+    }
+
+    @Test
+    @DisplayName("advanceWriteoff 接口：委托 Service 执行预收转核销")
+    void testAdvanceWriteoff() {
+        com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO reqVO =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO();
+        CommonResult<Boolean> result = controller.advanceWriteoff(reqVO);
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(paymentService).advanceWriteoff(reqVO);
+    }
+
+    @Test
     @DisplayName("allocatePreview 接口：委托 Service 试算并返回列表")
     void testAllocatePreview() {
         com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AllocatePreviewReqVO reqVO =
@@ -186,6 +206,8 @@ public class PaymentControllerTest {
         assertPermission("getReceipt", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:payment:query')");
         assertPermission("getReceiptPage", new Class<?>[]{com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.ReceiptPageReqVO.class}, "@ss.hasPermission('lunaerp:finance:payment:query')");
 
+        assertPermission("reverseReceipt", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:payment:reverse')");
+        assertPermission("advanceWriteoff", new Class<?>[]{com.luna.lunasrv.module.lunaerp.controller.finance.payment.vo.AdvanceWriteoffReqVO.class}, "@ss.hasPermission('lunaerp:finance:payment:writeoff')");
         assertPermission("registerPayment", new Class<?>[]{PaymentRegisterReqVO.class}, "@ss.hasPermission('lunaerp:finance:payment:register')");
         assertPermission("getPayment", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:payment:query')");
         assertPermission("getPaymentPage", new Class<?>[]{PaymentPageReqVO.class}, "@ss.hasPermission('lunaerp:finance:payment:query')");

@@ -327,21 +327,30 @@ export const validatePaymentRegister = (
  * - APPROVING：审批中，不可改删
  * - APPROVED/COMPLETED：已审批/已过账，不可改删
  */
-export const getReceiptActionFlags = (approvalStatus?: string, status?: string) => {
+export const getReceiptActionFlags = (
+  approvalStatus?: string,
+  status?: string,
+  receiptType?: string
+) => {
   const appStatus = (approvalStatus || 'PENDING').toUpperCase()
   const isDraftOrPending = appStatus === 'PENDING' || appStatus === 'DRAFT'
   const isApproving = appStatus === 'APPROVING'
   const isApproved = appStatus === 'APPROVED'
   const isRejected = appStatus === 'REJECTED'
   const isCompleted = (status || '').toUpperCase() === 'COMPLETED'
+  const isReversed = (status || '').toUpperCase() === 'REVERSED'
+  const isAdvance = (receiptType || '').toUpperCase() === 'ADVANCE'
 
   return {
     canEdit: isDraftOrPending,
     canSubmit: isDraftOrPending,
     canDelete: isDraftOrPending,
+    canReverse: isCompleted,
+    canWriteoff: isCompleted && isAdvance,
     isApproved: isApproved || isCompleted,
     isApproving,
-    isRejected
+    isRejected,
+    isReversed
   }
 }
 
@@ -490,6 +499,62 @@ export const validateReceiptForm = (
         valid: false,
         error: `分配合计 (¥${formatMoney(totalAllocated)}) 不得超出收款金额 (¥${formatMoney(pay)})`
       }
+    }
+  }
+
+  return { valid: true }
+}
+
+/**
+ * 预收转核销校验参数
+ */
+export interface AdvanceWriteoffValidationParams {
+  advanceBalance: number
+  items?: Array<{
+    entryId: number
+    entryNo?: string
+    allocateAmount: number
+    unallocatedAmount: number
+  }>
+}
+
+/**
+ * 预收转核销表单校验
+ */
+export const validateAdvanceWriteoff = (
+  params: AdvanceWriteoffValidationParams
+): { valid: boolean; error?: string } => {
+  const advanceBal = Number(params.advanceBalance || 0)
+  if (advanceBal <= 0) {
+    return { valid: false, error: '预收可用余额不足，无法执行转核销' }
+  }
+  if (!params.items || params.items.length === 0) {
+    return { valid: false, error: '请至少选择一条待核销应收分录' }
+  }
+
+  let totalAllocated = 0
+  for (const item of params.items) {
+    const allocate = Number(item.allocateAmount || 0)
+    const unalloc = Number(item.unallocatedAmount || 0)
+    if (allocate <= 0) {
+      return {
+        valid: false,
+        error: `分录【${item.entryNo || item.entryId}】核销分配金额必须大于 0`
+      }
+    }
+    if (allocate > unalloc + 0.00001) {
+      return {
+        valid: false,
+        error: `分录【${item.entryNo || item.entryId}】核销分配金额 (¥${formatMoney(allocate)}) 超出未核销余额 (¥${formatMoney(unalloc)})`
+      }
+    }
+    totalAllocated = Number((totalAllocated + allocate).toFixed(2))
+  }
+
+  if (totalAllocated > advanceBal + 0.00001) {
+    return {
+      valid: false,
+      error: `核销分配合计 (¥${formatMoney(totalAllocated)}) 超出预收可用余额 (¥${formatMoney(advanceBal)})`
     }
   }
 
