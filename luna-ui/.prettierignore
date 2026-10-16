@@ -10,3 +10,6 @@
 /src/components/Tinyflow/ui/**
 /docs/**/*
 CHANGELOG
+# 存量全局共享大文件，防整文件格式化引发 Diff 污染
+src/utils/dict.ts
+src/router/modules/remaining.ts
