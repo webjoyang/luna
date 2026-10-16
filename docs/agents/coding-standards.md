@@ -130,6 +130,18 @@
 - **跨端共享表最小列集守卫 (Shared Table Minimal Column Set Guard)**：
   - 针对如收付款共享单据（`lunaerp_finance_payment` / `ref`）等跨模块、跨前后端共用的表结构，单侧特性开发时必须严格依照当前工单或 Spec 声明的最小列集创建表结构。
   - **强制规约**：严禁未经声明提前引入单侧衍生快照列（如 `supplier_name`、`payment_date`）或未声明的单列索引，杜绝跨端范围蔓延（Scope Creep）。
+- **跨模块字典与错误码多工单协作避让规约 (Dict & Error Code Reservation Workflow)**：
+  - 编写涉及系统字典/错误码的新模块 SQL 时，**第一步先查 `docs/contexts/shared/GLOSSARY.md`「历史避让记录」**，确认本模块对应的起始号与既有工单的边界约定。
+  - 数据 ID 判定标准化采用**双保险梯次判存模板**（优先判定预留段，若未被占用使用预留段；若意外被占则顺延空闲段，严禁硬编码跳过分配段）：
+    ```sql
+    IF NOT EXISTS (SELECT 1 FROM system_dict_data WHERE id BETWEEN <reserved_start> AND <reserved_end>) THEN
+        v_offset := <reserved_start>;
+    ELSIF NOT EXISTS (SELECT 1 FROM system_dict_data WHERE id BETWEEN <fallback_start> AND <fallback_end>) THEN
+        v_offset := <fallback_start>;
+    ELSE
+        SELECT GREATEST(COALESCE(MAX(id), <fallback_end>), <fallback_end>) + 1 INTO v_offset FROM system_dict_data;
+    END IF;
+    ```
 - **Druid SQL Parser 与 PostgreSQL 高级方言兼容边界**：
   - 单元测试中的 Druid PostgreSQL 解析器对复杂子查询 JOIN 后的 `ON CONFLICT DO NOTHING` 解析受限。
   - **强制规约**：在满足“先 DELETE 后 INSERT + 序列发号”的幂等操作下，无需且禁止在批量插入尾部追加冗余的 `ON CONFLICT DO NOTHING`，保持 SQL 纯正简洁并规避解析器异常。
@@ -232,7 +244,34 @@
   - **坚持 Spec 最小契约原则**：严禁在未获工单显式声明的情况下顺带扩展全局检索维度（例如在只要求关联选择器远程搜索的工单中，顺手向主单综合搜索 `keyword` 拼接非索引字段或更改搜索框 placeholder）。
   - **严禁跨工单字段顺带修补**：在修改底层手写 SQL（如 Mapper `@Select`）时，严禁顺带“修复”未包含在本工单范围内的其他未完成/未声明字段（如跨工单的检验单列），避免引发非预期回流审查与越界判定噪声。
   - **跨端扩展先声明后实现**：若联调确实需要扩展对侧字段或契约，必须在实现前在工单中显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延。
+- **既有业务表单局部扩列与 Git Diff 噪声守卫 (Form Item Extension Hygiene)**：
+  - 在向既有 Vue SFC 表单（如 `BasicProfileTab.vue`）或 API 接口（如 `CustomerVO`）扩展字段时，严禁让自动化格式化工具对邻近无关代码行（如原有折叠单行的输入框、方法签名等）进行无差别换行展开。
+  - **强制规约**：仅在目标插入点写入声明的新增表单项/类型属性；提交前执行 `git diff <file>` 自查，将非本工单引入的邻近格式化行恢复原样，杜绝 Diff 审查噪声与伪范围蔓延判定。
 - **全局共享存量配置文件格式化防污染守卫 (Shared Config Formatting Hygiene)**：
   - 对 `luna-ui/src/utils/dict.ts`、`luna-ui/src/router/modules/remaining.ts` 等全局共享存量大文件，禁止执行整文件 `npx prettier --write`。
   - **强制规约**：必须采用局部单块代码替换或精细编辑，提交前通过 `git diff` 严格审查，严禁带入跨业务模块的排版与空白字符 Diff 噪音。
+## 15. MyBatis-Plus 实体可空业务字段更新策略规约 (Nullable Field Update Strategy & Clearability Parity)
+
+- **场景**：在 DO 实体中新增由前端表单或业务接口控制、且允许用户清空/取消绑定的业务字段（如信用账期天数 `creditDays`、归属人 `salespersonUserId`、部门 `deptId`、备注、开票信息等）。
+- **MyBatis-Plus 默认更新策略静默丢失陷阱 (FieldStrategy.NOT_NULL Trap)**：
+  - MyBatis-Plus 的 `BaseMapper.updateById(entity)` 默认字段更新策略为 `FieldStrategy.NOT_NULL`。
+  - 当前端或调用方将该字段置为 `null`（如用户清空账期、解绑业务员）并发起更新时，MyBatis-Plus 生成的 `UPDATE` SQL 会直接忽略该列，导致数据库存量数据无法被清空，造成静默数据残留与状态无法回退。
+- **强制规约**：
+  1. **实体注解显式声明**：凡属于业务上允许置空、且由实体更新接口（如 `updateById`）承载的属性，在 DO 实体中必须显式声明注解：
+     ```java
+     @TableField(updateStrategy = FieldStrategy.ALWAYS)
+     private Integer creditDays;
+     ```
+  2. **置空单测标准覆盖**：涉及该字段的 Service 单元测试必须标准化包含置空场景（如 `updateCustomer_clearCreditDays_success()`），通过 Mockito `ArgumentCaptor<EntityDO>` 捕获并断言更新对象的对应属性值为 `null`，确保更新策略在持久层生效。
+
+## 16. 符号重命名与代码重构全引用检索纪律 (Symbol Rename & Refactoring Hygiene)
+
+- **场景**：响应 Code Review 意见对类内私有方法、常量、复用变量或内部助手进行重命名/签名调整（如将包含副作用的 `backfillShortName` 重构为 `backfillDefaults`）。
+- **局部直觉重构与长构建周期浪费陷阱**：
+  - 仅凭当前阅读视窗修改了眼前的 1~2 处调用点及方法签名，遗漏了同文件或本模块其他方法（如 Excel 导入、批量转换、校验分支等）中的调用点。
+  - 直接触发 Maven 测试或长周期构建命令，导致经过数十秒编译后才抛出 `cannot find symbol` 失败，严重消耗 token 并打断会话流畅度。
+- **强制规约**：
+  1. **重构前全量符号定标**：重命名或变更方法签名之前，**必须先在文件内全局检索目标符号**（或在模块级使用跨平台 `git grep "<symbol>" <dir>`），锁定全量调用点清单。
+  2. **原子性全量替换**：依据清单一次性完成全部调用点与方法签名的替换，避免凭记忆散落修改。
+  3. **前置语法轻量自检**：在发起 Maven 测试等后台构建前，确保所有声明与调用均已收敛闭环，杜绝将简单语法与编译符号错误转嫁给耗时的构建任务。
 
