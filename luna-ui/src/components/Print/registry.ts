@@ -1,3 +1,4 @@
+import { defineAsyncComponent } from 'vue'
 import type { Component } from 'vue'
 import { getWeavingTicketPrintData } from '@/api/lunaerp-elmui/production/weaving-ticket'
 import WeavingTicketLabel from '@/views/lunaerp-elmui/production/weaving-order/components/print/WeavingTicketLabel.vue'
@@ -15,6 +16,7 @@ import QuotationPrintTemplate from '@/views/lunaerp/business/quotation/print/Quo
 import { getColorInstructionPrintData } from '@/api/lunaerp-elmui/production/color-instruction'
 import ColorInstructionSheet from '@/views/lunaerp-elmui/production/color-instruction/components/print/ColorInstructionSheet.vue'
 import { colorInstructionPrintCss } from '@/views/lunaerp-elmui/production/color-instruction/components/print/print-styles'
+import { supplierReconPrintCss } from '@/views/lunaerp-elmui/finance/supplier-recon/components/print/print-styles'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -122,6 +124,25 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
     fetchApi: (bizId: string | number) => getColorInstructionPrintData(bizId),
     customCss: colorInstructionPrintCss,
     getDocNo: (data: any) => data?.instructionNo || ''
+  },
+  {
+    bizType: 'VENDOR_RECON',
+    templateCode: 'VENDOR_RECON_SHEET',
+    name: '供应商对账单',
+    paper: 'A4',
+    permission: 'lunaerp:finance:supplierrecon:print',
+    component: defineAsyncComponent(
+      () =>
+        import(
+          '@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierReconSheet.vue'
+        )
+    ),
+    fetchApi: (bizId: string | number) =>
+      import('@/api/lunaerp-elmui/finance/supplier-recon').then((m) =>
+        m.getSupplierReconPrintData(Number(bizId))
+      ),
+    customCss: supplierReconPrintCss,
+    getDocNo: (data: any) => data?.reconNo || ''
   }
 ]
 

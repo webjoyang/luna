@@ -153,6 +153,11 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_color_instruction_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
     { dictType: 'lunaerp_color_instruction_status', label: '已投产', value: 'IN_PRODUCTION', colorType: 'primary', cssClass: '' },
     { dictType: 'lunaerp_color_instruction_status', label: '已作废', value: 'VOID', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_supplier_recon_status: [
+    { dictType: 'lunaerp_supplier_recon_status', label: '草稿', value: 'DRAFT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_supplier_recon_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_supplier_recon_status', label: '已作废', value: 'CANCELLED', colorType: 'info', cssClass: '' }
   ]
 }
 
@@ -669,5 +674,8 @@ export enum DICT_TYPE {
   // ========== LunaERP - 生产管理-打色指示单模块 ==========
   LUNAERP_COLOR_LIGHT_SOURCE = 'lunaerp_color_light_source', // 灯源
   LUNAERP_COLOR_LINE_STATUS = 'lunaerp_color_line_status', // 颜色行状态
-  LUNAERP_COLOR_INSTRUCTION_STATUS = 'lunaerp_color_instruction_status' // 打色指示单状态
+  LUNAERP_COLOR_INSTRUCTION_STATUS = 'lunaerp_color_instruction_status', // 打色指示单状态
+
+  // ========== LunaERP - 财务管理-供应商对账模块 ==========
+  LUNAERP_SUPPLIER_RECON_STATUS = 'lunaerp_supplier_recon_status' // 供应商对账单状态
 }

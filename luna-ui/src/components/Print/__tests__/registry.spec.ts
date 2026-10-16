@@ -4,9 +4,12 @@ vi.mock('@/api/lunaerp-elmui/production/weaving-ticket', () => ({
   getWeavingTicketPrintData: vi.fn()
 }))
 
-vi.mock('@/views/lunaerp-elmui/production/weaving-order/components/print/WeavingTicketLabel.vue', () => ({
-  default: { name: 'WeavingTicketLabel' }
-}))
+vi.mock(
+  '@/views/lunaerp-elmui/production/weaving-order/components/print/WeavingTicketLabel.vue',
+  () => ({
+    default: { name: 'WeavingTicketLabel' }
+  })
+)
 
 vi.mock('@/api/lunaerp-elmui/business/shipment', () => ({
   getShipmentPrintData: vi.fn()
@@ -48,9 +51,23 @@ vi.mock('@/api/lunaerp-elmui/production/color-instruction', () => ({
   getColorInstructionPrintData: vi.fn()
 }))
 
-vi.mock('@/views/lunaerp-elmui/production/color-instruction/components/print/ColorInstructionSheet.vue', () => ({
-  default: { name: 'ColorInstructionSheet' }
+vi.mock(
+  '@/views/lunaerp-elmui/production/color-instruction/components/print/ColorInstructionSheet.vue',
+  () => ({
+    default: { name: 'ColorInstructionSheet' }
+  })
+)
+
+vi.mock('@/api/lunaerp-elmui/finance/supplier-recon', () => ({
+  getSupplierReconPrintData: vi.fn()
 }))
+
+vi.mock(
+  '@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierReconSheet.vue',
+  () => ({
+    default: { name: 'SupplierReconSheet' }
+  })
+)
 
 import {
   getTemplatesByBizType,
@@ -137,6 +154,20 @@ describe('Print Template Registry', () => {
     expect(typeof tpl.fetchApi).toBe('function')
     expect(typeof tpl.getDocNo).toBe('function')
     expect(tpl.getDocNo?.({ instructionNo: 'DS20261014001' })).toBe('DS20261014001')
+  })
+
+  it('should have VENDOR_RECON_SHEET statically registered for VENDOR_RECON', () => {
+    const reconTemplates = getTemplatesByBizType('VENDOR_RECON')
+    expect(reconTemplates).toHaveLength(1)
+
+    const tpl = reconTemplates[0]
+    expect(tpl.templateCode).toBe('VENDOR_RECON_SHEET')
+    expect(tpl.name).toBe('供应商对账单')
+    expect(tpl.paper).toBe('A4')
+    expect(tpl.permission).toBe('lunaerp:finance:supplierrecon:print')
+    expect(typeof tpl.fetchApi).toBe('function')
+    expect(typeof tpl.getDocNo).toBe('function')
+    expect(tpl.getDocNo?.({ reconNo: 'SR20261015001' })).toBe('SR20261015001')
   })
 
   it('getTemplate should return default or specific template', () => {

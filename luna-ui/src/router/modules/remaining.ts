@@ -730,6 +730,26 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/finance',
+    component: Layout,
+    name: 'lunaerpElmuiFinanceStatic',
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'supplier-recon/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/finance/supplier-recon/workspace/index.vue'),
+        name: 'LunaerpElmuiFinanceSupplierReconWorkspace',
+        meta: {
+          title: '供应商对账工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/finance/supplier-reconciliation'
+        }
+      }
+    ]
+  },
+  {
     path: '/sample',
     component: Layout,
     name: 'lunaerpElmuiSampleStatic',
