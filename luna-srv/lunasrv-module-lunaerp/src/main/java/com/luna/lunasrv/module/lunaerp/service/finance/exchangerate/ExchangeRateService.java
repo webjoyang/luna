@@ -1,5 +1,12 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.exchangerate;
 
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.finance.exchangerate.vo.ExchangeRatePageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.exchangerate.vo.ExchangeRateRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.exchangerate.vo.ExchangeRateSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.exchangerate.vo.ExchangeRateUpdateReqVO;
+import jakarta.validation.Valid;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -9,6 +16,37 @@ import java.time.LocalDate;
  * @author luna
  */
 public interface ExchangeRateService {
+
+    /**
+     * 创建汇率主档记录
+     *
+     * @param createReqVO 创建请求参数
+     * @return 汇率记录ID
+     */
+    Long createExchangeRate(@Valid ExchangeRateSaveReqVO createReqVO);
+
+    /**
+     * 更新汇率主档（停用/修改备注/维护汇率）
+     *
+     * @param updateReqVO 更新请求参数
+     */
+    void updateExchangeRate(@Valid ExchangeRateUpdateReqVO updateReqVO);
+
+    /**
+     * 获得汇率主档记录详情
+     *
+     * @param id 记录ID
+     * @return 汇率详情 VO
+     */
+    ExchangeRateRespVO getExchangeRate(Long id);
+
+    /**
+     * 分页查询汇率主档记录
+     *
+     * @param pageReqVO 分页查询请求参数
+     * @return 分页结果
+     */
+    PageResult<ExchangeRateRespVO> getExchangeRatePage(ExchangeRatePageReqVO pageReqVO);
 
     /**
      * 获得指定币种在指定业务日的生效汇率
