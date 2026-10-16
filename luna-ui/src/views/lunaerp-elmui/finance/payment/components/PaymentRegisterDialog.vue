@@ -57,9 +57,9 @@
             </el-select>
             <div
               v-if="accountOptions.length === 0 && !accountsLoading"
-              class="text-12px text-amber-600 mt-2px"
+              class="text-12px text-red-500 mt-2px"
             >
-              当前暂未查询到资金账户，使用默认基本账户 (ID: 1)
+              暂无可用的有效资金账户，请先维护并启用资金账户
             </div>
           </el-form-item>
         </div>
@@ -236,7 +236,8 @@ import {
   formatMoney,
   distributePaymentAllocation,
   validatePaymentRegister,
-  parsePaymentErrorMessage
+  parsePaymentErrorMessage,
+  calcApplyRemain
 } from '../model/payment'
 
 defineOptions({ name: 'PaymentRegisterDialog' })
@@ -342,14 +343,10 @@ const fetchAccounts = async () => {
       const active = accountOptions.value.find((a) => !isAccountDisabled(a))
       if (active) formData.accountId = active.id
     }
-  } catch {
-    // 账户接口若尚未在后端落地，提供默认降级账户
-    if (accountOptions.value.length === 0) {
-      accountOptions.value = [
-        { id: 1, name: '基本存款账户 (工行)', status: 'ENABLE', currentBalance: 9999999.0 }
-      ]
-      formData.accountId = 1
-    }
+  } catch (err: any) {
+    accountOptions.value = []
+    formData.accountId = undefined
+    ElMessage.error('获取资金账户列表失败：' + parsePaymentErrorMessage(err))
   } finally {
     accountsLoading.value = false
   }
@@ -382,8 +379,7 @@ const open = async (applies: PaymentApplyRespVO[]) => {
 
   tableItems.value = sorted.map((row) => {
     const total = Number(row.amount || 0)
-    const allocated = Number(row.allocatedAmount || 0)
-    const remain = Math.max(0, Number((total - allocated).toFixed(2)))
+    const remain = calcApplyRemain(row)
     return {
       applyId: row.id,
       applyNo: row.applyNo,

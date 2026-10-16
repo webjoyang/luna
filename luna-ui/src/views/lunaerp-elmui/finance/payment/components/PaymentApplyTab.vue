@@ -157,27 +157,36 @@
           </template>
         </el-table-column>
 
-        <!-- 操作分叉栏 -->
-        <el-table-column label="操作" width="220" align="center" fixed="right">
+        <!-- 操作分叉栏（统一消费 getPaymentApplyActionFlags 消除重复 switches） -->
+        <el-table-column label="操作" width="230" align="center" fixed="right">
           <template #default="{ row }">
-            <!-- 状态 1：草稿/待提交/驳回态 -->
-            <template v-if="row.approvalStatus === 'PENDING' || row.approvalStatus === 'DRAFT'">
+            <template v-if="getPaymentApplyActionFlags(row.approvalStatus).canEdit">
               <el-button
                 link
                 type="primary"
                 v-hasPermi="['lunaerp:finance:payment:apply']"
                 @click="handleEdit(row)"
               >
-                编辑
+                {{ getPaymentApplyActionFlags(row.approvalStatus).isRejected ? '修改' : '编辑' }}
               </el-button>
+            </template>
+
+            <template v-if="getPaymentApplyActionFlags(row.approvalStatus).canSubmit">
               <el-button
                 link
                 type="success"
                 v-hasPermi="['lunaerp:finance:payment:apply']"
                 @click="handleSubmitApprove(row)"
               >
-                提交审批
+                {{
+                  getPaymentApplyActionFlags(row.approvalStatus).isRejected
+                    ? '重提审批'
+                    : '提交审批'
+                }}
               </el-button>
+            </template>
+
+            <template v-if="getPaymentApplyActionFlags(row.approvalStatus).canDelete">
               <el-button
                 link
                 type="danger"
@@ -188,8 +197,7 @@
               </el-button>
             </template>
 
-            <!-- 状态 2：审批中态 -->
-            <template v-else-if="row.approvalStatus === 'APPROVING'">
+            <template v-if="getPaymentApplyActionFlags(row.approvalStatus).canWithdraw">
               <el-button
                 link
                 type="warning"
@@ -198,24 +206,9 @@
               >
                 撤回
               </el-button>
-              <el-button link type="primary" @click="handleViewApproval(row)"> 审批流 </el-button>
             </template>
 
-            <!-- 状态 3：已驳回态 -->
-            <template v-else-if="row.approvalStatus === 'REJECTED'">
-              <el-button
-                link
-                type="primary"
-                v-hasPermi="['lunaerp:finance:payment:apply']"
-                @click="handleEdit(row)"
-              >
-                修改重提
-              </el-button>
-              <el-button link type="info" @click="handleViewApproval(row)"> 驳回原因 </el-button>
-            </template>
-
-            <!-- 状态 4：已通过态 -->
-            <template v-else-if="row.approvalStatus === 'APPROVED'">
+            <template v-if="getPaymentApplyActionFlags(row.approvalStatus).isApproved">
               <span class="text-12px text-gray-400 mr-4px">已审批通过</span>
               <el-button
                 link
@@ -225,14 +218,18 @@
               >
                 前往付款登记
               </el-button>
-              <el-button link type="info" size="small" @click="handleViewApproval(row)">
-                查看
-              </el-button>
             </template>
 
-            <!-- 其他（如已撤回） -->
-            <template v-else>
-              <el-button link type="primary" @click="handleViewApproval(row)"> 详情 </el-button>
+            <template
+              v-if="
+                row.approvalStatus === 'APPROVING' ||
+                row.approvalStatus === 'REJECTED' ||
+                row.approvalStatus === 'APPROVED'
+              "
+            >
+              <el-button link type="info" size="small" @click="handleViewApproval(row)">
+                {{ row.approvalStatus === 'REJECTED' ? '驳回原因' : '审批流' }}
+              </el-button>
             </template>
           </template>
         </el-table-column>
@@ -273,7 +270,12 @@ import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
 import * as ApprovalInstanceApi from '@/api/approval/instance'
 import PaymentApplyDialog from './PaymentApplyDialog.vue'
-import { formatMoney, parsePaymentErrorMessage, calcApplyRemain } from '../model/payment'
+import {
+  formatMoney,
+  parsePaymentErrorMessage,
+  calcApplyRemain,
+  getPaymentApplyActionFlags
+} from '../model/payment'
 
 defineOptions({ name: 'PaymentApplyTab' })
 

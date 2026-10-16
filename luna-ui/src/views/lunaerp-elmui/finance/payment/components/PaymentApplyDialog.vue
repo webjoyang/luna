@@ -107,97 +107,127 @@
 
       <!-- ==================== PREPAY 预付付款分支 ==================== -->
       <template v-if="formData.applyType === 'PREPAY'">
-        <el-form-item label="供应商" prop="supplierId">
-          <el-select
-            v-if="!isEdit"
-            v-model="formData.supplierId"
-            placeholder="搜索并选择供应商"
-            filterable
-            remote
-            reserve-keyword
-            :remote-method="searchSuppliers"
-            :loading="supplierLoading"
-            class="!w-full"
-            @change="handleSupplierChange"
-          >
-            <el-option
-              v-for="item in supplierOptions"
-              :key="item.id"
-              :label="item.companyName"
-              :value="item.id!"
-            />
-          </el-select>
-          <span v-else class="font-medium text-gray-800">{{ formData.supplierName || '—' }}</span>
-        </el-form-item>
+        <div class="grid grid-cols-12 gap-16px mb-12px">
+          <div class="col-span-8">
+            <el-form-item label="供应商" prop="supplierId">
+              <el-select
+                v-if="!isEdit"
+                v-model="formData.supplierId"
+                placeholder="搜索并选择供应商"
+                filterable
+                remote
+                reserve-keyword
+                :remote-method="searchSuppliers"
+                :loading="supplierLoading"
+                class="!w-full"
+                @change="handleSupplierChange"
+              >
+                <el-option
+                  v-for="item in supplierOptions"
+                  :key="item.id"
+                  :label="item.companyName"
+                  :value="item.id!"
+                />
+              </el-select>
+              <span v-else class="font-medium text-gray-800">{{
+                formData.supplierName || '—'
+              }}</span>
+            </el-form-item>
 
-        <!-- 供应商预付余额提示卡片 -->
-        <div
-          v-if="formData.supplierId"
-          class="bg-amber-50 border border-amber-200 rounded p-12px mb-18px flex items-center justify-between"
-        >
-          <div class="text-13px">
-            <span class="text-gray-600">该供应商当前实时预付余额（只读）：</span>
-            <span class="font-mono font-bold text-amber-700 text-15px"
-              >¥ {{ formatMoney(currentPrepayBalance) }}</span
-            >
+            <el-form-item label="申请金额" prop="amount">
+              <el-input-number
+                v-model="formData.amount"
+                :min="0.01"
+                :precision="2"
+                :step="500"
+                controls-position="right"
+                class="!w-full"
+                placeholder="请输入预付申请付款金额"
+              />
+              <div class="text-12px text-gray-400 mt-2px">
+                审批通过后可在【付款登记】中执行扣款。
+              </div>
+            </el-form-item>
+
+            <el-form-item label="预付用途" prop="purpose">
+              <el-input
+                v-model="formData.purpose"
+                placeholder="如：纱线采购定金、大货订金"
+                maxlength="200"
+                show-word-limit
+              />
+            </el-form-item>
+
+            <el-form-item label="收款开户行" prop="bankName">
+              <el-input
+                v-model="formData.bankName"
+                placeholder="供应商收款开户行快照（可选）"
+                maxlength="100"
+                :disabled="isEdit"
+              />
+            </el-form-item>
+
+            <el-form-item label="收款银行账号" prop="bankAccount">
+              <el-input
+                v-model="formData.bankAccount"
+                placeholder="供应商收款银行账号快照（可选）"
+                maxlength="50"
+                :disabled="isEdit"
+              />
+            </el-form-item>
           </div>
-          <el-tooltip content="刷新供应商预付余额" placement="top">
-            <el-button
-              link
-              type="primary"
-              size="small"
-              :loading="balanceLoading"
-              @click="fetchPrepayBalance(formData.supplierId)"
+
+          <!-- 表单侧栏展示该供应商当前预付余额（只读）与银行信息快照 -->
+          <div class="col-span-4">
+            <div
+              class="bg-amber-50/70 border border-amber-200 rounded p-12px text-13px h-full flex flex-col justify-between"
             >
-              <Icon icon="ep:refresh" class="mr-2px" /> 刷新
-            </el-button>
-          </el-tooltip>
+              <div>
+                <div class="flex items-center justify-between mb-8px">
+                  <span class="font-bold text-gray-800 text-13px">供应商预付参考（只读）</span>
+                  <el-tooltip content="刷新预付余额" placement="top">
+                    <el-button
+                      v-if="formData.supplierId"
+                      link
+                      type="primary"
+                      size="small"
+                      :loading="balanceLoading"
+                      @click="fetchPrepayBalance(formData.supplierId)"
+                    >
+                      <Icon icon="ep:refresh" />
+                    </el-button>
+                  </el-tooltip>
+                </div>
+
+                <div class="mb-12px bg-white/90 p-8px rounded border border-amber-100">
+                  <div class="text-gray-500 text-12px mb-2px">当前可用预付余额：</div>
+                  <div class="font-mono font-bold text-amber-700 text-16px">
+                    ¥ {{ formatMoney(currentPrepayBalance) }}
+                  </div>
+                </div>
+
+                <div
+                  class="bg-white/90 p-8px rounded border border-amber-100 text-12px space-y-4px"
+                >
+                  <div>
+                    <span class="text-gray-500">开户行：</span>
+                    <span class="text-gray-800">{{ formData.bankName || '—' }}</span>
+                  </div>
+                  <div>
+                    <span class="text-gray-500">账号脱敏：</span>
+                    <span class="font-mono text-gray-800">{{
+                      maskBankAccount(formData.bankAccount)
+                    }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="text-11px text-gray-400 mt-8px leading-relaxed">
+                预付款由出纳在付款登记时执行抵扣；审批通过前不发生资金账户变动。
+              </div>
+            </div>
+          </div>
         </div>
-
-        <el-form-item label="申请金额" prop="amount">
-          <el-input-number
-            v-model="formData.amount"
-            :min="0.01"
-            :precision="2"
-            :step="500"
-            controls-position="right"
-            class="!w-full"
-            placeholder="请输入预付申请付款金额"
-          />
-          <div class="text-12px text-gray-400 mt-4px">
-            请输入本次预付款申请金额，审批通过后可在【付款登记】中执行扣款。
-          </div>
-        </el-form-item>
-
-        <el-form-item label="预付用途" prop="purpose">
-          <el-input
-            v-model="formData.purpose"
-            placeholder="如：纱线采购定金、大货订金"
-            maxlength="200"
-            show-word-limit
-          />
-        </el-form-item>
-
-        <el-form-item label="收款开户行" prop="bankName">
-          <el-input
-            v-model="formData.bankName"
-            placeholder="供应商收款开户行快照（可选）"
-            maxlength="100"
-            :disabled="isEdit"
-          />
-        </el-form-item>
-
-        <el-form-item label="收款银行账号" prop="bankAccount">
-          <el-input
-            v-model="formData.bankAccount"
-            placeholder="供应商收款银行账号快照（可选，提交后脱敏）"
-            maxlength="50"
-            :disabled="isEdit"
-          />
-          <div v-if="formData.bankAccount && !isEdit" class="text-12px text-gray-400 mt-2px">
-            脱敏预览：{{ maskBankAccount(formData.bankAccount) }}
-          </div>
-        </el-form-item>
       </template>
 
       <!-- 公共备注说明 -->
@@ -214,14 +244,23 @@
     </el-form>
 
     <template #footer>
-      <div class="flex justify-end">
+      <div class="flex justify-end gap-x-8px">
         <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button
+          v-if="isEdit && isRejected"
+          type="success"
+          :loading="submitting"
+          v-hasPermi="['lunaerp:finance:payment:apply']"
+          @click="handleSubmit(true)"
+        >
+          保存并提交审批
+        </el-button>
         <el-button
           type="primary"
           :loading="submitting"
           :disabled="formData.applyType === 'RECON' && !isEdit && remainingLimit <= 0"
           v-hasPermi="['lunaerp:finance:payment:apply']"
-          @click="handleSubmit"
+          @click="handleSubmit(false)"
         >
           {{ isEdit ? '保存修改' : '确认发起' }}
         </el-button>
@@ -242,6 +281,7 @@ import type {
 import {
   createPaymentApply,
   updatePaymentApply,
+  submitPaymentApply,
   getPrepayBalance
 } from '@/api/lunaerp-elmui/finance/payment'
 import {
@@ -267,6 +307,7 @@ const dialogVisible = ref(false)
 const submitting = ref(false)
 const formRef = ref<FormInstance>()
 const isEdit = ref(false)
+const isRejected = ref(false)
 const editId = ref<number>()
 const editApplyNo = ref<string>('')
 
@@ -444,7 +485,18 @@ const handleSupplierChange = async (val?: number) => {
     if (sup) {
       formData.supplierName = sup.companyName
     }
-    await fetchPrepayBalance(val)
+    await Promise.all([
+      fetchPrepayBalance(val),
+      SupplierApi.getSupplier(val)
+        .then((detail: any) => {
+          if (detail && !isEdit.value) {
+            if (detail.bankName && !formData.bankName) formData.bankName = detail.bankName
+            if (detail.bankAccount && !formData.bankAccount)
+              formData.bankAccount = detail.bankAccount
+          }
+        })
+        .catch(() => {})
+    ])
   } else {
     currentPrepayBalance.value = 0
   }
@@ -472,6 +524,7 @@ const open = async (row?: PaymentApplyRespVO) => {
   if (row) {
     // 编辑模式
     isEdit.value = true
+    isRejected.value = row.approvalStatus === 'REJECTED'
     editId.value = row.id
     editApplyNo.value = row.applyNo
     formData.applyType = (row.applyType as 'RECON' | 'PREPAY') || 'RECON'
@@ -491,6 +544,7 @@ const open = async (row?: PaymentApplyRespVO) => {
   } else {
     // 新建模式
     isEdit.value = false
+    isRejected.value = false
     editId.value = undefined
     editApplyNo.value = ''
     formData.applyType = 'RECON'
@@ -510,7 +564,7 @@ const open = async (row?: PaymentApplyRespVO) => {
   }
 }
 
-const handleSubmit = async () => {
+const handleSubmit = async (autoSubmitApproval = false) => {
   if (!formRef.value) return
   await formRef.value.validate()
 
@@ -524,7 +578,12 @@ const handleSubmit = async () => {
         remark: formData.remark
       }
       await updatePaymentApply(updateData)
-      ElMessage.success('付款申请已修改')
+      if (autoSubmitApproval) {
+        await submitPaymentApply(editId.value)
+        ElMessage.success('付款申请已修改并成功提交审批')
+      } else {
+        ElMessage.success('付款申请已修改')
+      }
     } else {
       const createData: PaymentApplyCreateReqVO = {
         applyType: formData.applyType,
@@ -536,8 +595,13 @@ const handleSubmit = async () => {
         bankAccount: formData.applyType === 'PREPAY' ? formData.bankAccount : undefined,
         remark: formData.remark
       }
-      await createPaymentApply(createData)
-      ElMessage.success('付款申请发起成功')
+      const newId = await createPaymentApply(createData)
+      if (autoSubmitApproval && newId) {
+        await submitPaymentApply(newId)
+        ElMessage.success('付款申请已创建并提交审批')
+      } else {
+        ElMessage.success('付款申请发起成功')
+      }
     }
     dialogVisible.value = false
     emit('success')

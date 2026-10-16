@@ -114,7 +114,8 @@
           </el-table-column>
           <el-table-column label="剩余待核销" min-width="120" align="right">
             <template #default="{ row }">
-              <span class="font-mono font-bold text-emerald-700">
+              <el-tag v-if="calcApplyRemain(row) <= 0" type="info" size="small">已结清</el-tag>
+              <span v-else class="font-mono font-bold text-emerald-700">
                 ¥ {{ formatMoney(calcApplyRemain(row)) }}
               </span>
             </template>
@@ -135,6 +136,7 @@
           <el-table-column label="操作" width="100" align="center" fixed="right">
             <template #default="{ row }">
               <el-button
+                v-if="calcApplyRemain(row) > 0"
                 link
                 type="primary"
                 v-hasPermi="['lunaerp:finance:payment:register']"
@@ -142,6 +144,7 @@
               >
                 直接登记
               </el-button>
+              <span v-else class="text-gray-400 text-12px">已结清</span>
             </template>
           </el-table-column>
         </el-table>
@@ -248,7 +251,65 @@
 
       <!-- 付款单表格 -->
       <div class="mt-14px">
-        <el-table v-loading="paymentLoading" :data="paymentList" border stripe>
+        <el-table
+          v-loading="paymentLoading"
+          :data="paymentList"
+          border
+          stripe
+          @expand-change="handleExpandChange"
+        >
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <div class="py-10px px-16px bg-gray-50 border-y border-gray-200">
+                <div class="text-12px font-bold text-gray-700 mb-8px flex items-center">
+                  <Icon icon="ep:tickets" class="mr-4px text-primary" />
+                  核销申请明细列表
+                </div>
+                <div v-if="expandedItemsLoading[row.id]" class="text-gray-400 text-12px py-6px">
+                  <Icon icon="ep:loading" class="animate-spin mr-4px" /> 正在加载关联核销申请...
+                </div>
+                <el-table
+                  v-else-if="expandedItemsMap[row.id] && expandedItemsMap[row.id].length > 0"
+                  :data="expandedItemsMap[row.id]"
+                  size="small"
+                  border
+                  class="!w-full max-w-650px"
+                >
+                  <el-table-column type="index" label="#" width="45" align="center" />
+                  <el-table-column label="关联业务类型" prop="refType" width="130" align="center">
+                    <template #default="{ row: item }">
+                      <el-tag size="small">{{
+                        item.refType === 'PAYMENT_APPLY' ? '付款申请' : item.refType
+                      }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="申请单号" prop="applyNo" min-width="160">
+                    <template #default="{ row: item }">
+                      <span class="font-mono font-medium text-primary">{{
+                        item.applyNo || `ID #${item.refId}`
+                      }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column
+                    label="分配核销金额"
+                    prop="allocateAmount"
+                    min-width="130"
+                    align="right"
+                  >
+                    <template #default="{ row: item }">
+                      <span class="font-mono font-bold text-emerald-700">
+                        ¥ {{ formatMoney(item.allocateAmount) }}
+                      </span>
+                    </template>
+                  </el-table-column>
+                </el-table>
+                <div v-else class="text-gray-400 text-12px py-6px">
+                  暂无核销申请明细或纯预付款充值
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+
           <el-table-column label="付款单号" prop="paymentNo" min-width="150" show-overflow-tooltip>
             <template #default="{ row }">
               <el-link type="primary" :underline="false" @click="handleOpenDetail(row.id)">
@@ -295,7 +356,21 @@
 
           <el-table-column label="核销申请单号" min-width="180">
             <template #default="{ row }">
-              <div v-if="row.items && row.items.length > 0" class="flex flex-wrap gap-4px">
+              <div
+                v-if="expandedItemsMap[row.id] && expandedItemsMap[row.id].length > 0"
+                class="flex flex-wrap gap-4px"
+              >
+                <el-tag
+                  v-for="item in expandedItemsMap[row.id]"
+                  :key="item.id"
+                  size="small"
+                  type="info"
+                  class="font-mono"
+                >
+                  {{ item.applyNo || `ID#${item.refId}` }} (¥{{ formatMoney(item.allocateAmount) }})
+                </el-tag>
+              </div>
+              <div v-else-if="row.items && row.items.length > 0" class="flex flex-wrap gap-4px">
                 <el-tag
                   v-for="item in row.items"
                   :key="item.id"
@@ -306,7 +381,7 @@
                   {{ item.applyNo || `ID#${item.refId}` }} (¥{{ formatMoney(item.allocateAmount) }})
                 </el-tag>
               </div>
-              <span v-else class="text-gray-400 text-12px">—</span>
+              <span v-else class="text-gray-400 text-12px">展开行查看明细</span>
             </template>
           </el-table-column>
 
@@ -364,12 +439,14 @@ import { DICT_TYPE } from '@/utils/dict'
 import type {
   PaymentApplyRespVO,
   PaymentRespVO,
+  PaymentRefRespVO,
   PaymentPageReqVO,
   FinanceAccountSimpleRespVO
 } from '@/api/lunaerp-elmui/finance/payment'
 import {
   getPaymentApplyPage,
   getPaymentPage,
+  getPayment,
   getFinanceAccountSimpleList
 } from '@/api/lunaerp-elmui/finance/payment'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
@@ -402,6 +479,10 @@ const paymentLoading = ref(false)
 const paymentList = ref<PaymentRespVO[]>([])
 const paymentTotal = ref(0)
 
+// 展开行动态加载核销明细
+const expandedItemsMap = reactive<Record<number, PaymentRefRespVO[]>>({})
+const expandedItemsLoading = reactive<Record<number, boolean>>({})
+
 const paymentQueryParams = reactive<PaymentPageReqVO>({
   pageNo: 1,
   pageSize: 20,
@@ -416,8 +497,9 @@ const supplierLoading = ref(false)
 const supplierOptions = ref<SupplierVO[]>([])
 const accountOptions = ref<FinanceAccountSimpleRespVO[]>([])
 
-/** 只能勾选同一供应商的待核销申请 */
+/** 只能勾选同一供应商的待核销申请，且待核销金额 > 0 */
 const canSelectApply = (row: PaymentApplyRespVO): boolean => {
+  if (calcApplyRemain(row) <= 0) return false
   if (selectedApplies.value.length === 0) return true
   const firstSupId = selectedApplies.value[0].supplierId
   return row.supplierId === firstSupId
@@ -437,14 +519,27 @@ const fetchPendingApplies = async () => {
       supplierId: applyQueryParams.supplierId,
       keyword: applyQueryParams.keyword
     })
-    // 过滤出尚未完全核销完的申请 (remainAmount > 0)
-    const list = res.list || []
-    pendingAppliesList.value = list.filter((item) => calcRemain(item) > 0)
+    pendingAppliesList.value = res.list || []
     applyTotal.value = res.total || 0
   } catch (err: any) {
     ElMessage.error(parsePaymentErrorMessage(err))
   } finally {
     applyLoading.value = false
+  }
+}
+
+const handleExpandChange = async (row: PaymentRespVO, expandedRows: PaymentRespVO[]) => {
+  const isExpanded = expandedRows.some((r) => r.id === row.id)
+  if (isExpanded && !expandedItemsMap[row.id]) {
+    expandedItemsLoading[row.id] = true
+    try {
+      const detail = await getPayment(row.id)
+      expandedItemsMap[row.id] = detail.items || []
+    } catch {
+      expandedItemsMap[row.id] = []
+    } finally {
+      expandedItemsLoading[row.id] = false
+    }
   }
 }
 
@@ -525,6 +620,9 @@ const handleOpenDetail = (id: number) => {
 
 const handleRegisterSuccess = () => {
   selectedApplies.value = []
+  Object.keys(expandedItemsMap).forEach((key) => {
+    delete expandedItemsMap[Number(key)]
+  })
   fetchPendingApplies()
   fetchPaymentList()
 }
