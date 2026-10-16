@@ -19,6 +19,9 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 发货事件财务记账监听器（finance 域公共内核，ADR-0043，Q1）
@@ -154,15 +157,25 @@ public class ShipmentFinanceEventListener {
             return;
         }
 
-        // 2. 逐条追加红冲分录
+        // 2. 批量反查已存在的红冲分录，防 N+1（coding-standards §2）
+        Set<Long> origIds = origEntries.stream()
+                .map(LedgerEntryDO::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        List<LedgerEntryDO> existingReversals = ledgerService.getReversalEntriesByReversalOfIds(origIds);
+        Set<Long> reversedOrigIds = existingReversals.stream()
+                .map(LedgerEntryDO::getReversalOfId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // 3. 逐条追加红冲分录
         for (LedgerEntryDO orig : origEntries) {
             if (orig == null || !CATEGORY_AR_INC.equals(orig.getCategory())) {
                 continue;
             }
 
             // 防重红冲检查：已存在回指该分录的红冲行时跳过
-            List<LedgerEntryDO> existingReversals = ledgerService.getReversalEntries(orig.getId());
-            if (CollUtil.isNotEmpty(existingReversals)) {
+            if (reversedOrigIds.contains(orig.getId())) {
                 log.info("[ShipmentFinanceEventListener] 原分录已存在红冲记录，跳过: origEntryId={}", orig.getId());
                 continue;
             }

@@ -58,6 +58,21 @@ public interface LedgerEntryMapper extends BaseMapperX<LedgerEntryDO> {
     }
 
     /**
+     * 批量查询指定原分录的红冲分录列表（防 N+1）
+     *
+     * @param reversalOfIds 原分录ID集合
+     * @return 红冲分录列表
+     */
+    default List<LedgerEntryDO> selectListByReversalOfIds(java.util.Collection<Long> reversalOfIds) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(reversalOfIds)) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapper<LedgerEntryDO>()
+                .in(LedgerEntryDO::getReversalOfId, reversalOfIds)
+                .orderByAsc(LedgerEntryDO::getId));
+    }
+
+    /**
      * 统计指定资金账户的分录数量（用于账户删除保护）
      *
      * @param accountId 资金账户ID

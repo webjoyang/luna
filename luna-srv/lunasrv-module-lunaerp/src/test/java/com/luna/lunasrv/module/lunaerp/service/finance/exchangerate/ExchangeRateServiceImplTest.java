@@ -87,4 +87,17 @@ public class ExchangeRateServiceImplTest {
         assertEquals(FinanceErrorCodeConstants.EXCHANGE_RATE_NOT_FOUND.getCode(), ex.getCode());
     }
 
+    @Test
+    @DisplayName("getRate: 停用（DISABLE）汇率被剔除，无可用启用汇率时抛出 1_030_020_200 EXCHANGE_RATE_NOT_FOUND")
+    void testGetRate_disabledRate_excluded() {
+        LocalDate bizDate = LocalDate.of(2026, 10, 16);
+        // mapper.selectLatestEffectiveRate 查询条件包含 status = 'ENABLE'，停用记录不会被查出
+        when(exchangeRateMapper.selectLatestEffectiveRate("HKD", bizDate)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> exchangeRateService.getRate("HKD", bizDate));
+        assertEquals(FinanceErrorCodeConstants.EXCHANGE_RATE_NOT_FOUND.getCode(), ex.getCode());
+        verify(exchangeRateMapper).selectLatestEffectiveRate("HKD", bizDate);
+    }
+
 }

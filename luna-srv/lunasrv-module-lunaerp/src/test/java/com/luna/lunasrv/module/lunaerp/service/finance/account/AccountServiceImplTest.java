@@ -99,7 +99,7 @@ public class AccountServiceImplTest {
     }
 
     @Test
-    @DisplayName("updateAccount: 仅更新备注/状态/名称，期初与当前余额保持只读不可变")
+    @DisplayName("updateAccount: 仅更新备注/状态，期初与当前余额保持只读不可变")
     void testUpdateAccount_success() {
         AccountDO existing = new AccountDO();
         existing.setId(101L);
@@ -115,7 +115,6 @@ public class AccountServiceImplTest {
 
         AccountUpdateReqVO req = new AccountUpdateReqVO();
         req.setId(101L);
-        req.setAccountName("招商银行一般户");
         req.setStatus("DISABLE");
         req.setRemark("新备注");
 
@@ -124,12 +123,33 @@ public class AccountServiceImplTest {
         ArgumentCaptor<AccountDO> captor = ArgumentCaptor.forClass(AccountDO.class);
         verify(accountMapper).updateById(captor.capture());
         AccountDO updated = captor.getValue();
-        assertEquals("招商银行一般户", updated.getAccountName());
+        assertEquals("招商银行基本户", updated.getAccountName()); // 名称不变
         assertEquals("DISABLE", updated.getStatus());
         assertEquals("新备注", updated.getRemark());
         // 关键断言：期初余额与当前余额未被变更
         assertEquals(new BigDecimal("10000.00"), updated.getOpeningBalance());
         assertEquals(new BigDecimal("15000.00"), updated.getCurrentBalance());
+    }
+
+    @Test
+    @DisplayName("updateAccount: 备注允许显式置空为 null (FieldStrategy.ALWAYS 验证)")
+    void testUpdateAccount_clearRemark_success() {
+        AccountDO existing = new AccountDO();
+        existing.setId(101L);
+        existing.setStatus("ENABLE");
+        existing.setRemark("原有备注");
+        when(accountMapper.selectById(101L)).thenReturn(existing);
+
+        AccountUpdateReqVO req = new AccountUpdateReqVO();
+        req.setId(101L);
+        req.setStatus("ENABLE");
+        req.setRemark(null); // 清空备注
+
+        accountService.updateAccount(req);
+
+        ArgumentCaptor<AccountDO> captor = ArgumentCaptor.forClass(AccountDO.class);
+        verify(accountMapper).updateById(captor.capture());
+        assertNull(captor.getValue().getRemark());
     }
 
     @Test

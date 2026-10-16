@@ -229,7 +229,7 @@ public class ShipmentFinanceEventListenerTest {
 
         when(ledgerService.getEntriesByRef("SHIPMENT_ITEM", 88L)).thenReturn(List.of(origItem));
         when(ledgerService.getEntriesByRef("SHIPMENT_FREIGHT", 88L)).thenReturn(List.of(origFreight));
-        when(ledgerService.getReversalEntries(anyLong())).thenReturn(Collections.emptyList());
+        when(ledgerService.getReversalEntriesByReversalOfIds(anyCollection())).thenReturn(Collections.emptyList());
 
         // Act
         listener.onShipmentCancelled(event);

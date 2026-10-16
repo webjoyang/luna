@@ -519,20 +519,7 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         // 7. 发布发货单审核出库完成事件（同事务 BEFORE_COMMIT 记账，Q1）
         if (applicationEventPublisher != null) {
-            List<ShipmentItemSnapshotDTO> snapshots = new ArrayList<>(items.size());
-            for (ShipmentItemDO item : items) {
-                snapshots.add(ShipmentItemSnapshotDTO.builder()
-                        .shipmentItemId(item.getId())
-                        .productId(item.getProductId())
-                        .productCode(item.getProductCode())
-                        .productName(item.getProductName())
-                        .quantity(item.getQuantity())
-                        .unit(item.getUnit())
-                        .unitPrice(item.getUnitPrice())
-                        .amount(item.getAmount())
-                        .remark(item.getRemark())
-                        .build());
-            }
+            List<ShipmentItemSnapshotDTO> snapshots = buildItemSnapshots(items);
             ShipmentAuditedEvent event = ShipmentAuditedEvent.builder()
                     .shipmentId(existing.getId())
                     .shipmentNo(existing.getShipmentNo())
@@ -603,22 +590,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             // 2.2.3 发布发货单红冲完成事件（同事务 BEFORE_COMMIT 记账，Q1）
             if (applicationEventPublisher != null) {
                 List<ShipmentItemDO> items = shipmentItemMapper.selectListByShipmentId(id);
-                List<ShipmentItemSnapshotDTO> snapshots = new ArrayList<>();
-                if (CollUtil.isNotEmpty(items)) {
-                    for (ShipmentItemDO item : items) {
-                        snapshots.add(ShipmentItemSnapshotDTO.builder()
-                                .shipmentItemId(item.getId())
-                                .productId(item.getProductId())
-                                .productCode(item.getProductCode())
-                                .productName(item.getProductName())
-                                .quantity(item.getQuantity())
-                                .unit(item.getUnit())
-                                .unitPrice(item.getUnitPrice())
-                                .amount(item.getAmount())
-                                .remark(item.getRemark())
-                                .build());
-                    }
-                }
+                List<ShipmentItemSnapshotDTO> snapshots = buildItemSnapshots(items);
                 ShipmentCancelledEvent event = ShipmentCancelledEvent.builder()
                         .shipmentId(existing.getId())
                         .shipmentNo(existing.getShipmentNo())
@@ -662,6 +634,30 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     // ==================== 私有方法 ====================
+
+    /**
+     * 构建发货明细快照数组（用于发货审核/红冲事件通知，解耦业务与财务）
+     */
+    private List<ShipmentItemSnapshotDTO> buildItemSnapshots(List<ShipmentItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        List<ShipmentItemSnapshotDTO> snapshots = new ArrayList<>(items.size());
+        for (ShipmentItemDO item : items) {
+            snapshots.add(ShipmentItemSnapshotDTO.builder()
+                    .shipmentItemId(item.getId())
+                    .productId(item.getProductId())
+                    .productCode(item.getProductCode())
+                    .productName(item.getProductName())
+                    .quantity(item.getQuantity())
+                    .unit(item.getUnit())
+                    .unitPrice(item.getUnitPrice())
+                    .amount(item.getAmount())
+                    .remark(item.getRemark())
+                    .build());
+        }
+        return snapshots;
+    }
 
     /**
      * 校验发货单存在

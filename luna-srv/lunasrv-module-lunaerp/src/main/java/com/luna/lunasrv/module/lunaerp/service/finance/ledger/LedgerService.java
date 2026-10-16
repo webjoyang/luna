@@ -2,6 +2,7 @@ package com.luna.lunasrv.module.lunaerp.service.finance.ledger;
 
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -18,20 +19,6 @@ public interface LedgerService {
      * @return 分录ID
      */
     Long append(LedgerEntryDO entry);
-
-    /**
-     * 更新分录（禁止操作，抛出 1_030_020_000 LEDGER_IMMUTABLE）
-     *
-     * @param entry 分录数据对象
-     */
-    void updateEntry(LedgerEntryDO entry);
-
-    /**
-     * 删除分录（禁止操作，抛出 1_030_020_000 LEDGER_IMMUTABLE）
-     *
-     * @param id 分录ID
-     */
-    void deleteEntry(Long id);
 
     /**
      * 按业务回指查询分录列表
@@ -59,6 +46,14 @@ public interface LedgerService {
      * @return 红冲分录列表
      */
     List<LedgerEntryDO> getReversalEntries(Long reversalOfId);
+
+    /**
+     * 批量查询指定原分录集合的红冲分录列表（防 N+1）
+     *
+     * @param reversalOfIds 原分录ID集合
+     * @return 红冲分录列表
+     */
+    List<LedgerEntryDO> getReversalEntriesByReversalOfIds(Collection<Long> reversalOfIds);
 
     /**
      * 查询资金账户被分录引用的数量

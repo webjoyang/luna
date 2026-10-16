@@ -68,11 +68,7 @@ public class AccountServiceImpl implements AccountService {
         // 1. 校验账户存在
         AccountDO existing = validateAccountExists(updateReqVO.getId());
 
-        // 2. 校验账户名称唯一性
-        validateAccountNameUnique(updateReqVO.getId(), updateReqVO.getAccountName());
-
-        // 3. 仅更新备注、状态、名称（期初与当前余额只读不可变）
-        existing.setAccountName(updateReqVO.getAccountName());
+        // 2. 仅更新状态与备注（期初与当前余额只读不可变）
         existing.setStatus(updateReqVO.getStatus());
         existing.setRemark(updateReqVO.getRemark());
 
