@@ -115,7 +115,7 @@
           <el-table-column label="剩余待核销" min-width="120" align="right">
             <template #default="{ row }">
               <span class="font-mono font-bold text-emerald-700">
-                ¥ {{ formatMoney(calcRemain(row)) }}
+                ¥ {{ formatMoney(calcApplyRemain(row)) }}
               </span>
             </template>
           </el-table-column>
@@ -376,7 +376,7 @@ import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
 import PaymentRegisterDialog from './PaymentRegisterDialog.vue'
 import PaymentDetailDrawer from './PaymentDetailDrawer.vue'
-import { formatMoney, parsePaymentErrorMessage } from '../model/payment'
+import { formatMoney, parsePaymentErrorMessage, calcApplyRemain } from '../model/payment'
 
 defineOptions({ name: 'PaymentRegisterTab' })
 
@@ -415,15 +415,6 @@ const paymentQueryParams = reactive<PaymentPageReqVO>({
 const supplierLoading = ref(false)
 const supplierOptions = ref<SupplierVO[]>([])
 const accountOptions = ref<FinanceAccountSimpleRespVO[]>([])
-
-const calcRemain = (row: PaymentApplyRespVO): number => {
-  if (row.remainAmount !== undefined && row.remainAmount !== null) {
-    return Number(row.remainAmount)
-  }
-  const total = Number(row.amount || 0)
-  const allocated = Number(row.allocatedAmount || 0)
-  return Math.max(0, Number((total - allocated).toFixed(2)))
-}
 
 /** 只能勾选同一供应商的待核销申请 */
 const canSelectApply = (row: PaymentApplyRespVO): boolean => {

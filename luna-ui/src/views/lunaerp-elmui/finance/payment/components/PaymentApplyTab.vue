@@ -127,7 +127,7 @@
         <el-table-column label="剩余待核销" min-width="120" align="right">
           <template #default="{ row }">
             <span class="font-mono font-medium text-emerald-700">
-              ¥ {{ formatMoney(calcRemain(row)) }}
+              ¥ {{ formatMoney(calcApplyRemain(row)) }}
             </span>
           </template>
         </el-table-column>
@@ -273,7 +273,7 @@ import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
 import * as ApprovalInstanceApi from '@/api/approval/instance'
 import PaymentApplyDialog from './PaymentApplyDialog.vue'
-import { formatMoney, parsePaymentErrorMessage } from '../model/payment'
+import { formatMoney, parsePaymentErrorMessage, calcApplyRemain } from '../model/payment'
 
 defineOptions({ name: 'PaymentApplyTab' })
 
@@ -299,15 +299,6 @@ const queryParams = reactive<PaymentApplyPageReqVO>({
   approvalStatus: undefined,
   keyword: undefined
 })
-
-const calcRemain = (row: PaymentApplyRespVO): number => {
-  if (row.remainAmount !== undefined && row.remainAmount !== null) {
-    return Number(row.remainAmount)
-  }
-  const total = Number(row.amount || 0)
-  const allocated = Number(row.allocatedAmount || 0)
-  return Math.max(0, Number((total - allocated).toFixed(2)))
-}
 
 const getList = async () => {
   loading.value = true

@@ -13,6 +13,7 @@ import {
   formatMoney,
   maskBankAccount,
   calcReconRemainingLimit,
+  calcApplyRemain,
   getPaymentApplyActionFlags,
   parsePaymentErrorMessage,
   distributePaymentAllocation,
@@ -63,6 +64,24 @@ describe('Payment Domain Model & Utilities (Pure Node)', () => {
       expect(calcReconRemainingLimit(10000, 10000)).toBe(0)
       expect(calcReconRemainingLimit(5000, 6000)).toBe(0)
       expect(calcReconRemainingLimit(0, 0)).toBe(0)
+    })
+  })
+
+  describe('calcApplyRemain', () => {
+    it('should return remainAmount directly if present', () => {
+      expect(calcApplyRemain({ amount: 1000, allocatedAmount: 200, remainAmount: 800 })).toBe(800)
+      expect(calcApplyRemain({ remainAmount: '350.50' })).toBe(350.5)
+    })
+
+    it('should calculate amount - allocatedAmount when remainAmount is missing', () => {
+      expect(calcApplyRemain({ amount: 5000, allocatedAmount: 2000 })).toBe(3000)
+      expect(calcApplyRemain({ amount: 5000, allocatedAmount: 5000 })).toBe(0)
+      expect(calcApplyRemain({ amount: 5000, allocatedAmount: 6000 })).toBe(0)
+    })
+
+    it('should handle null/undefined row gracefully', () => {
+      expect(calcApplyRemain(null)).toBe(0)
+      expect(calcApplyRemain(undefined)).toBe(0)
     })
   })
 

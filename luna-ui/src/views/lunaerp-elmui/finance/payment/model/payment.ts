@@ -44,6 +44,23 @@ export const calcReconRemainingLimit = (
 }
 
 /**
+ * 计算付款申请单剩余待核销金额
+ */
+export const calcApplyRemain = (row?: {
+  amount?: number | string | null
+  allocatedAmount?: number | string | null
+  remainAmount?: number | string | null
+} | null): number => {
+  if (!row) return 0
+  if (row.remainAmount !== undefined && row.remainAmount !== null && row.remainAmount !== '') {
+    return Number(Number(row.remainAmount).toFixed(2))
+  }
+  const total = Number(row.amount || 0)
+  const allocated = Number(row.allocatedAmount || 0)
+  return Math.max(0, Number((total - allocated).toFixed(2)))
+}
+
+/**
  * 计算付款申请审批状态的操作权限标识
  * - 草稿/待提交/已驳回：可编辑、可提交、可删除（仅草稿/待提交可删）
  * - 审批中：可撤回，不可编辑/删除
