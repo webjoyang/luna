@@ -103,6 +103,12 @@
 - **全局打印注册表异步按需加载规约 (Async Print Registry Pattern)**：
   - 打印模板注册表（`luna-ui/src/components/Print/registry.ts`）新增业务模板时，必须统一使用 `defineAsyncComponent(() => import(...))` 与动态 `fetchApi: (id) => import('@/api/...').then(...)` 进行解耦注册。
   - **强制规约**：严禁在注册表顶层静态 import Vue SFC 组件与带路由级联副作用的 API 文件，防止破坏 Vitest 纯 Node 测试环境或在非打印单测中级联引发 `ReferenceError: window is not defined`。
+- **前端领域模型纯净度与防逆向依赖规约 (Domain Model Pure Functions & Inverted Dependency Guard)**：
+  - **场景**：`src/views/**/model/*.ts` 定义纯 TS 领域模型、金额计算函数、日期区间处理与表单校验器。
+  - **逆向依赖陷阱**：领域模型文件若为了复用类型或错误码常量而反向 `import` 视图层接口文件（`@/api/**`），会导致级联引入 `@/config/axios` 及其绑定的 Vue Router 实例。在纯 Node 单测环境执行时，任何未显式声明 Axios Mock 的单测都会因此触发 `createWebHistory` 抛出 `ReferenceError: window is not defined`。
+  - **强制规约**：
+    1. 领域模型文件必须保持为纯 TypeScript 逻辑与类型，**严禁反向 import 视图层 API 文件（`@/api/**`）或 Vue SFC 组件**。
+    2. 领域模型所需的错误码常量、枚举与 VO/DTO 类型定义，应收敛于 `model/` 或独立的 `types/` 声明文件中并向外暴露；由 API 层和 View 视图向内依赖 Model，严禁逆向倒置。
 
 ## 8. PostgreSQL 脚本与多端幂等规约 (PostgreSQL DDL/DML & Sequence Parity)
 
@@ -155,6 +161,37 @@
     2. 若被测方法级联涉及多个实体（如主表实体、明细实体及关联来源单实体），所有在 LambdaWrapper 泛型或方法引用中出现的实体类必须在 `setUp()` 中一并预热，杜绝运行时缓存缺失与误导性测试失败。
 - **单测基础实体 Mock 辅助工厂方法规约 (Test Fixture & Mock Factory Pattern)**：
   - 在大型领域 Service 单测中（如涉及仓库、供应商、产品、客户、采购单等多实体引用），测试类应集中定义私有基础实体构建工厂方法（如 `mockWarehouse(id, name, status)`、`mockProduct(id, name, code)`、`mockYarnOrder(id, orderNo)`），避免在单测用例内分散重复手写零碎的 `new EntityDO()` 样板代码，杜绝 TDD 红灯编译期因推测缺失 helper 方法导致的编译中断与往返构建损耗。
+- **MyBatis-Plus Wrapper 动态打桩与参数惰性求值规约 (Wrapper Lazy Evaluation & Param Extraction in Mocks)**：
+  - **场景**：在纯 Mockito 单元测试中，通过 `when(mapper.update(entity, wrapper))` 或 `when(mapper.selectCount(wrapper))` 拦截调用，并试图从 `Wrapper` 中提取条件参数（如通过 `aw.getParamNameValuePairs()` 提取目标 ID 或过滤值）以驱动动态打桩或内存仓储更新。
+  - **惰性求值陷阱**：MyBatis-Plus 的 `AbstractWrapper` 中，参数命名与键值对（`MPGENVAL1`、`MPGENVAL2`...）是在构建 SQL 片段（调用 `getSqlSegment()` / `getCustomSqlSegment()`）时**惰性生成并填充**入 `paramNameValuePairs` 的。在 Mockito 拦截桩中，如果直接调用 `aw.getParamNameValuePairs()`，返回的将始终是一个空的 Map `{}`，导致无法按预期解析参数值，引发条件漏判、误更目标或测试假失败。
+  - **强制规约**：
+    1. 凡在 Mock 拦截逻辑中需要读取 `aw.getParamNameValuePairs()` 的，必须在读取前显式调用一次 `aw.getSqlSegment()` 触发包装器的内部惰性求值与参数映射：
+       ```java
+       when(mapper.update(any(), any(Wrapper.class))).thenAnswer(inv -> {
+           Wrapper<?> wrapper = inv.getArgument(1);
+           if (wrapper instanceof AbstractWrapper<?, ?, ?> aw) {
+               aw.getSqlSegment(); // 关键：触发包装器惰性求值以填充 paramNameValuePairs
+               Map<String, Object> params = aw.getParamNameValuePairs();
+               // 此时 params 包含 MPGENVAL1 -> 1002L 等实际入参
+           }
+           ...
+       });
+       ```
+    2. 针对包含集合条件的查询（如 `.in(Column, list)`），MyBatis-Plus 在生成 SQL 时会将集合展开为多个标量参数（`MPGENVAL2 -> "VAL_A"`, `MPGENVAL3 -> "VAL_B"`），`params.values()` 中的元素为具体标量而非 `Collection`，判断时应以具体标量匹配或检查 `aw.getSqlSegment().contains("column_name")`。
+- **单测软删除真实状态翻转与防伪造打桩规约 (Soft-delete Repository State Mutation in Mocks)**：
+  - **场景**：在单测中验证软删除、回收站恢复（`RecycleBinHandler.restore`）或状态逆向流转时。
+  - **伪造打桩陷阱**：直接调用 Service 层的删除方法后，因底层 `mapper.deleteById(id)` 未打桩或默认返回 0，测试人员易在测试方法体内手动编写 `entity.setDeleted(true)` 等内存状态强制赋值，掩盖了真实删除逻辑未执行或异常未触发的缺陷。
+  - **强制规约**：
+    1. 严禁在测试主体中通过手动 `entity.setDeleted(true)` 伪造状态来强行配合后续断言。
+    2. 必须在 `mapper.deleteById(anyLong())` 的 Mock 行为中真实模拟底层仓储翻转（`entity.setDeleted(true)`），确保 Service 删除调用的真实性与被测度：
+       ```java
+       when(mapper.deleteById(anyLong())).thenAnswer(inv -> {
+           Long id = inv.getArgument(0);
+           EntityDO entity = repo.get(id);
+           if (entity != null) entity.setDeleted(true);
+           return 1;
+       });
+       ```
 
 ## 11. 跨服务涌现语义单测归位规约 (Cross-service Emergent Behavior & Anti-Tautological Mocking)
 
