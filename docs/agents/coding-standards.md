@@ -45,6 +45,9 @@
   - **接口纯粹性**：Mapper 专注定义 SQL 映射方法，空安全由 Service 前置守卫负责，避免在 Mapper 中编写冗余 `default` 包装方法（容易导致 Mockito 穿透执行真实方法体及产生推测性死代码）。
   - **空参数匹配**：在纯 Mockito 单测中，当打桩方法的重载参数为 `Collection` 且可能为 `null` 时，必须使用 `nullable(Collection.class)` 或明确的具体对象，严禁使用 `anyCollection()`（`null` 会导致匹配失败）或无限定的裸 `any()`（产生重载歧义）。
   - **集合类型相等性**：Java 中 `Set.equals(List)` 恒为 `false`。若 Service 实现层传入 `Set`（如 `Map.keySet()`），单测打桩严禁使用 `eq(List.of(...))`，优先使用 `argThat(c -> c.contains(...))`、`nullable(Collection.class)` 或传入匹配的具体集合类型。
+  - **`BaseMapperX` 重载消歧与打桩范式**：
+    `BaseMapperX` 包含 `selectOne(Wrapper)`、`selectOne(String, Object)` 与 `selectOne(SFunction, Object)` 等多个同名重载。单测打桩严禁使用裸 `when(mapper.selectOne(any(), any()))`，会导致 Java 编译器报 `ambiguous call` 编译失败；亦严禁裸 `selectOne(any())`，易因 Mockito strict stubbing 判定签名不匹配报 `PotentialStubbingProblem`。
+    **强制规约**：打桩多参数重载必须显式指定类型：`when(mapper.selectOne(any(SFunction.class), any())).thenReturn(...)`；或在实现与测试中统一优先使用 `LambdaQueryWrapperX`：`when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(...)`。
 
 ## 5. 工作区快速代码与文件检索 (Fast Code & File Search)
 
@@ -52,7 +55,7 @@
 - **检索规约**：
   - 禁止在根目录使用无深度限制且未排除依赖目录的 `Get-ChildItem -Recurse`。
   - 文件路径定标优先使用 `git ls-files "*<keyword>*"`。
-  - 文件内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`（或 `git grep -i "<pattern>"`），严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；必须显式指定子工程目录路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`），严禁使用不存在的根路径 `src/`。
+  - 文件内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`（或 `git grep -i "<pattern>"`），严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；必须显式指定子工程目录路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`），严禁使用不存在的根路径 `src/`；特性开发中检索刚创建未暂存的文件必须携带 `--untracked`（如 `git grep --untracked "<pattern>"`）。
 
 ## 6. 前端组件与交互规范 (Frontend Standards)
 
@@ -257,7 +260,9 @@
 - **Update VO 属性极小集原则 (Update VO Minimal Field Set Guard)**：
   - 更新接口 Request VO 严禁默认全盘拷贝 Create VO 字段；必须严格依照 Spec 声明的可编辑列集合（如仅允许修改状态/备注的账户、仅允许变更特定配置的单据）。
   - **强制规约**：严禁投机性放开未在 Spec 声明的关键标识、名称、金额等敏感维度的更新入口；只读不可变字段（如银行账户名、期初余额、分录编号等）在 Update VO 中坚决不暴露，从契约根源杜绝越权或非法覆写。
-  - **自动化守护保障**：财务域由 `ArchitectureStandardsTest.testFinanceUpdateVOsFollowMinimalFieldSetConvention()` 自动反射检验所有 `*UpdateReqVO`，对黑名单不可变字段（`effectiveDate`, `accountName`, `currency`, `tenantId`, `openingBalance`, `applyNo`, `reconNo`, `statementNo`, `partyType`, `partyId` 等）进行前置物理拦截。
+  - **自动化守护保障**：全域由 `ArchitectureStandardsTest.testUpdateVOsFollowMinimalFieldSetConvention()` 自动反射检验所有 `*UpdateReqVO`，对黑名单不可变字段（`effectiveDate`, `accountName`, `currency`, `tenantId`, `openingBalance`, `applyNo`, `reconNo`, `statementNo`, `partyType`, `partyId`, `shipmentId`, `returnNo`, `sourceId`, `sourceNo`, `sourceDocType`, `sourceDocId` 等）进行前置物理拦截。
+- **工单错误码声明与常量命名对齐规约 (Error Code Citation Hygiene)**：
+  - 特性工单在描述业务校验要求时，若引用业务错误码，必须以常量标识符或对照 `docs/contexts/<domain>/GLOSSARY.md` 段位总表引用，严禁凭直觉或假设裸写未在基建工单确认的数字代号（如臆测数字），避免导致实现方与 Reviewer 因字面错位产生伪需求冲突；在常量已落库时优先写出明确常量名（如 `SALES_RETURN_REASON_EMPTY`）。
 - **全局共享存量配置文件格式化防污染守卫 (Shared Config Formatting Hygiene)**：
   - 对 `luna-ui/src/utils/dict.ts`、`luna-ui/src/router/modules/remaining.ts` 等全局共享存量大文件，禁止执行整文件 `npx prettier --write`。
   - **强制规约**：必须采用局部单块代码替换或精细编辑，提交前通过 `git diff` 严格审查，严禁带入跨业务模块的排版与空白字符 Diff 噪音。
