@@ -8,6 +8,9 @@ import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
 import com.luna.lunasrv.module.lunaerp.service.finance.ledger.LedgerService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+import jakarta.annotation.security.PermitAll;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -275,6 +278,68 @@ public class ArchitectureStandardsTest {
         assertTrue(violations.isEmpty(),
                 "检测到 finance 域 Update VO 暴露了不可变/唯一索引业务字段:\n"
                         + String.join("\n", violations));
+    }
+
+    @Test
+    @DisplayName("规约审查：finance 域 Controller 类级 @RequestMapping 必须为单一标准路径（禁止多重别名）")
+    public void testFinanceControllersHaveSingleRequestMappingPath() {
+        Set<Class<?>> controllerClasses = ClassUtil.scanPackage("com.luna.lunasrv.module.lunaerp.controller.finance");
+        assertTrue(!controllerClasses.isEmpty(), "未扫描到 finance 域的 Controller 类");
+
+        List<String> violations = new ArrayList<>();
+        for (Class<?> clazz : controllerClasses) {
+            if (clazz.isInterface() || !clazz.isAnnotationPresent(RestController.class)) {
+                continue;
+            }
+            RequestMapping rm = clazz.getAnnotation(RequestMapping.class);
+            if (rm != null) {
+                String[] paths = rm.value().length > 0 ? rm.value() : rm.path();
+                if (paths.length > 1) {
+                    violations.add(clazz.getSimpleName() + " 声明了多重路径别名 " + String.join(", ", paths)
+                            + "，违反 coding-standards.md §12（接口路由统一使用单一标准路径）");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到 Controller 包含多重路径映射:\n" + String.join("\n", violations));
+    }
+
+    @Test
+    @DisplayName("规约审查：finance 域 Controller 公开端点必须具备权限守卫（@PreAuthorize 或 @PermitAll）")
+    public void testFinanceControllerMethodsHavePermissionGuards() {
+        Set<Class<?>> controllerClasses = ClassUtil.scanPackage("com.luna.lunasrv.module.lunaerp.controller.finance");
+        assertTrue(!controllerClasses.isEmpty(), "未扫描到 finance 域的 Controller 类");
+
+        List<String> violations = new ArrayList<>();
+        for (Class<?> clazz : controllerClasses) {
+            if (clazz.isInterface() || !clazz.isAnnotationPresent(RestController.class)) {
+                continue;
+            }
+            // 整个 Controller 显式声明 @PermitAll（如客户门户免登控制器）豁免方法级 @PreAuthorize
+            if (clazz.isAnnotationPresent(PermitAll.class)) {
+                continue;
+            }
+
+            for (Method method : clazz.getDeclaredMethods()) {
+                boolean isMappingMethod = method.isAnnotationPresent(GetMapping.class)
+                        || method.isAnnotationPresent(PostMapping.class)
+                        || method.isAnnotationPresent(PutMapping.class)
+                        || method.isAnnotationPresent(DeleteMapping.class)
+                        || method.isAnnotationPresent(RequestMapping.class);
+
+                if (isMappingMethod) {
+                    boolean hasPermission = method.isAnnotationPresent(PreAuthorize.class)
+                            || method.isAnnotationPresent(PermitAll.class);
+                    if (!hasPermission) {
+                        violations.add(clazz.getSimpleName() + "." + method.getName() + "() 缺失 @PreAuthorize 权限注解");
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到 Controller 端点缺失权限控制注解:\n" + String.join("\n", violations));
     }
 
     private void collectJavaFiles(java.io.File dir, List<java.io.File> result) {

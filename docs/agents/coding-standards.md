@@ -307,3 +307,23 @@
      发货红冲分录（`AR_INC_REVERSAL`）若发生在当期，但其被冲减的原发货分录（`reversalOfId`）发生于前期（不在当期候选列表中）：
      严禁直接跳过该红冲分录；必须将其作为当期贷方冲减分录独立入单，确保前期已计入期初的发货金额在当期得到准确扣减。
 
+## 18. 财务经营分录级联状态守卫与账龄勾稽恒等式规约 (Ledger Entry Cascading State Guard & Aging Reconcile Invariant)
+
+- **场景**：客户账龄汇总与下钻（`CustomerAgingService`）、客户/供应商对账单候选提取（`CustomerStatementService`）等消费经营分录账（`ledger_entry`）的统计计算与报表分析。
+- **已红冲单据核销分录级联作废陷阱**：
+  - 收款单（`PaymentDO`）执行红冲（`reverseReceipt`）时，系统追加反向 `RECEIPT_REVERSAL` 分录并将原单状态置为 `REVERSED`，使得关联核销行重开。
+  - 但其在过账时产生的 `RECEIPT_WRITE_OFF` / `ADVANCE_WRITE_OFF` 经营分录**不会物理删除，亦不生成反向核销分录**（仅回指原 `ref_id = payment.id`）。
+  - 若消费端服务仅按 `category IN ('RECEIPT_WRITE_OFF', 'ADVANCE_WRITE_OFF')` 汇总应收减少额，未反查关联收款单的生命周期终态，会导致已红冲单据的核销额继续非法冲减应收，造成应收虚减与重大财务审计事故。
+- **发货红冲净额前置扣减与明细勾稽失衡陷阱**：
+  - 在 FIFO 账龄纯函数计算中，若发货单（`AR_INC`）发生发货红冲（`AR_INC_REVERSAL`），纯函数通常以前置扣除红冲后的净额（`netOriginalAmount = originalAmount - reversalAmount`）参与 FIFO 队列冲抵。
+  - 若下钻明细表格直接向前端暴露 `originalAmount`（原始金额）、`writtenOffAmount`（仅统计本次 FIFO 消耗额）与 `remainingAmount`（结存余额），会导致 `originalAmount - writtenOffAmount != remainingAmount`，呈现虚假的不平齐（不平金额恰好等于已红冲额）。
+- **强制规约**：
+  1. **核销分录级联状态守卫 (Reversed Payment Cascade Filter)**：
+     - 所有消费 `RECEIPT_WRITE_OFF` / `ADVANCE_WRITE_OFF` 进行应收冲减或对账候选汇总的服务，**必须**批量提取所有 `refType = 'RECEIPT'` 的关联单据 ID，通过 `paymentMapper.selectBatchIds(ids)` 校验其状态。
+     - 凡属于 `PaymentStatus.REVERSED` 的收款单，其派生的一切核销分录与预收分录必须严格排除，严禁计入冲减队列。
+  2. **账龄明细下钻勾稽恒等式 (Aging Detail Balance Parity)**：
+     - 在账龄未核销明细行（`AgingDetailItem` / `CustomerAgingDetailRespVO`）中，**必须保证严格数学恒等式**：
+       `originalAmount（原始金额） - writtenOffAmount（已核销/冲减） == remainingAmount（未核销余额）`。
+     - 当发生发货红冲时，`writtenOffAmount` 必须统合“发货红冲扣减额 + FIFO 核销消耗额”（列名定标为【已核销/冲减】），或在 VO 中独立声明并透传 `reversalAmount`（已红冲金额）列，严禁输出数学公式失衡的明细数据。
+
+

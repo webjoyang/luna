@@ -77,6 +77,21 @@ export default tseslint.config(
     }
   },
 
+  // 时区日期初始化守卫：严禁使用 toISOString() 截取业务日期（存在 UTC 时区偏移），统一使用 toLocaleDateString('en-CA') 或 dayjs()
+  {
+    files: ['src/views/lunaerp-elmui/**/*.{vue,ts,js,mts,cts}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='toISOString']",
+          message:
+            "严禁使用 toISOString() 初始化业务日期（存在 UTC 偏移，东八区早晨会回退前一天），请使用 new Date().toLocaleDateString('en-CA') 或 dayjs().format('YYYY-MM-DD')"
+        }
+      ]
+    }
+  },
+
   // Main rules config
   {
     languageOptions: {

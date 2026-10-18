@@ -1,20 +1,32 @@
 #!/bin/sh
 # Git pre-commit hook: button permissions guard on staged Vue files
 node -e "
+const fs = require('fs');
 const { execSync } = require('child_process');
 const output = execSync('git diff --cached --name-only --diff-filter=d', { encoding: 'utf-8' });
-const files = output
-  .split(/[\r\n]+/)
-  .map(f => f.trim())
-  .filter(f => f.startsWith('luna-ui/') && f.endsWith('.vue'));
+const allStaged = output.split(/[\r\n]+/).map(f => f.trim()).filter(Boolean);
 
-if (files.length > 0) {
-  console.log('[pre-commit] Checking v-hasPermi for staged Vue files: ' + files.join(', '));
+// 1. 按钮权限检查
+const vueFiles = allStaged.filter(f => f.startsWith('luna-ui/') && f.endsWith('.vue'));
+if (vueFiles.length > 0) {
+  console.log('[pre-commit] Checking v-hasPermi for staged Vue files: ' + vueFiles.join(', '));
   try {
-    execSync('node luna-ui/scripts/check-button-perm.mjs ' + files.join(' '), { stdio: 'inherit' });
+    execSync('node luna-ui/scripts/check-button-perm.mjs ' + vueFiles.join(' '), { stdio: 'inherit' });
   } catch (err) {
     console.error('[pre-commit] Error: button permission check failed. Please ensure write buttons have v-hasPermi before committing.');
     process.exit(1);
+  }
+}
+
+// 2. 时区日期初始化守卫：禁止在业务视图中调用 toISOString()（存在 UTC 偏移）
+const businessFiles = allStaged.filter(f => f.startsWith('luna-ui/src/views/lunaerp-elmui/') && (f.endsWith('.vue') || f.endsWith('.ts')));
+for (const f of businessFiles) {
+  if (fs.existsSync(f)) {
+    const content = fs.readFileSync(f, 'utf-8');
+    if (/\.toISOString\(/.test(content)) {
+      console.error('[pre-commit] Error: ' + f + ' 包含 toISOString() 调用。禁止在业务视图中使用 toISOString 初始化日期（存在 UTC 时区偏移），请改用 new Date().toLocaleDateString(\'en-CA\') 或 dayjs()。');
+      process.exit(1);
+    }
   }
 }
 "
