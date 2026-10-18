@@ -316,6 +316,28 @@ public class ErrorCodeConstantsTest {
         assertEquals(1_030_023_007, ErrorCodeConstants.PAYMENT_AMOUNT_INVALID.getCode());
         assertEquals(1_030_023_008, ErrorCodeConstants.PAYMENT_APPLY_NO_EXHAUSTED.getCode());
     }
+
+    @Test
+    void testSalesReturnErrorCodes() {
+        // 销售退货 1-030-037-000 ~ 014
+        assertEquals(1_030_037_000, ErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode());
+        assertEquals("退货单不存在", ErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getMsg());
+        assertEquals(1_030_037_001, ErrorCodeConstants.SALES_RETURN_NO_DUPLICATE.getCode());
+        assertEquals("退货单号【{}】已存在", ErrorCodeConstants.SALES_RETURN_NO_DUPLICATE.getMsg());
+        assertEquals(1_030_037_002, ErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode());
+        assertEquals(1_030_037_003, ErrorCodeConstants.SALES_RETURN_SHIPMENT_NOT_COMPLETED.getCode());
+        assertEquals(1_030_037_004, ErrorCodeConstants.SALES_RETURN_ITEM_LINEAGE_INVALID.getCode());
+        assertEquals(1_030_037_005, ErrorCodeConstants.SALES_RETURN_QTY_EXCEED_AVAILABLE.getCode());
+        assertEquals(1_030_037_006, ErrorCodeConstants.SALES_RETURN_AMOUNT_EXCEED_AVAILABLE.getCode());
+        assertEquals(1_030_037_007, ErrorCodeConstants.SALES_RETURN_ROLL_INVALID.getCode());
+        assertEquals(1_030_037_008, ErrorCodeConstants.SALES_RETURN_APPROVAL_NOT_APPROVED.getCode());
+        assertEquals(1_030_037_009, ErrorCodeConstants.SALES_RETURN_STOCK_IN_STATUS_INVALID.getCode());
+        assertEquals(1_030_037_010, ErrorCodeConstants.SALES_RETURN_ROLL_QC_UNRESOLVED.getCode());
+        assertEquals(1_030_037_011, ErrorCodeConstants.SALES_RETURN_RESTOCK_QTY_MISMATCH.getCode());
+        assertEquals(1_030_037_012, ErrorCodeConstants.SALES_RETURN_STOCK_IN_NOT_COMPLETED.getCode());
+        assertEquals(1_030_037_013, ErrorCodeConstants.SALES_RETURN_CURRENCY_MISMATCH.getCode());
+        assertEquals(1_030_037_014, ErrorCodeConstants.SALES_RETURN_EXCHANGE_RATE_MISSING.getCode());
+    }
 }
 
 
