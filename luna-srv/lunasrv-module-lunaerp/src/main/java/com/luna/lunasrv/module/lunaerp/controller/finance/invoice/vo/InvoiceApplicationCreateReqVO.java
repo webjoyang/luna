@@ -20,6 +20,9 @@ import java.util.List;
 @Builder
 public class InvoiceApplicationCreateReqVO {
 
+    @Schema(description = "自定义发票申请单号（为空则系统自动按 IA{yyyy}{4位流水} 生成）", example = "IA20260001")
+    private String invoiceNo;
+
     @Schema(description = "客户ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1001")
     @NotNull(message = "客户ID不能为空")
     private Long customerId;

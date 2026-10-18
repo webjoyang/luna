@@ -11,10 +11,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
+import com.luna.lunasrv.module.lunaerp.enums.finance.LedgerCategory;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 
@@ -99,4 +103,33 @@ public class LedgerServiceImpl implements LedgerService {
         return ledgerEntryMapper.selectCountByAccountId(accountId);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long recordArReturnReversal(Long customerId, Long shipmentItemId, BigDecimal returnQty,
+                                        BigDecimal origAmount, String currency,
+                                        BigDecimal exchangeRate, Long returnOrderId) {
+        BigDecimal rate = exchangeRate != null ? exchangeRate : BigDecimal.ONE;
+        BigDecimal baseAmount = origAmount != null
+                ? origAmount.multiply(rate).setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
+        LedgerEntryDO entry = new LedgerEntryDO();
+        entry.setBizDate(LocalDate.now());
+        entry.setPartyType("CUSTOMER");
+        entry.setPartyId(customerId);
+        entry.setCategory(LedgerCategory.AR_RETURN_REVERSAL.getValue());
+        entry.setDirection("CREDIT");
+        entry.setCurrency(currency);
+        entry.setExchangeRate(rate);
+        entry.setOriginalAmount(origAmount);
+        entry.setBaseAmount(baseAmount);
+        entry.setRefType("SALES_RETURN");
+        entry.setRefId(returnOrderId);
+        entry.setRefItemId(shipmentItemId);
+        entry.setRemark("销售退货应收冲减");
+
+        return append(entry);
+    }
+
 }
+

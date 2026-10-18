@@ -133,7 +133,13 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
         InvoiceTaxCalculator.TaxCalculationResult taxCalc = InvoiceTaxCalculator.calculate(totalAmountInclTax, createReqVO.getTaxRate());
 
         // 4. IA 取号
-        String invoiceNo = generateInvoiceNo(LocalDate.now());
+        String invoiceNo = StrUtil.isNotBlank(createReqVO.getInvoiceNo())
+                ? createReqVO.getInvoiceNo().trim()
+                : generateInvoiceNo(LocalDate.now());
+        InvoiceApplicationDO existing = invoiceApplicationMapper.selectByInvoiceNoIncludingDeleted(invoiceNo);
+        if (existing != null) {
+            throw exception(INVOICE_NO_EXHAUSTED);
+        }
 
         // 5. 落库主表
         InvoiceApplicationDO app = new InvoiceApplicationDO();

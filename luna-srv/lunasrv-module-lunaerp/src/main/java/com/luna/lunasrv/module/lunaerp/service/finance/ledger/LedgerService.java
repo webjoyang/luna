@@ -63,4 +63,21 @@ public interface LedgerService {
      */
     Long countEntriesByAccountId(Long accountId);
 
+    /**
+     * 追加销售退货应收冲减分录（13号销售退货冻结契约）
+     *
+     * @param customerId 客户ID
+     * @param shipmentItemId 发货明细ID
+     * @param returnQty 退货数量
+     * @param origAmount 原币冲减金额
+     * @param currency 币种
+     * @param exchangeRate 原发货入账汇率快照
+     * @param returnOrderId 退货单ID
+     * @return 分录ID
+     */
+    Long recordArReturnReversal(Long customerId, Long shipmentItemId, java.math.BigDecimal returnQty,
+                                java.math.BigDecimal origAmount, String currency,
+                                java.math.BigDecimal exchangeRate, Long returnOrderId);
+
 }
+

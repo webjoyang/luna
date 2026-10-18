@@ -104,6 +104,7 @@ lunaerp 段位总表在 `docs/contexts/shared/GLOSSARY.md`。现有 001~019 已�
 | 10750 | 报销 | 2 | 5 | 10700 | `expense` | `ep:tickets` | `lunaerp:finance:expense:query` | `finance/expense/index` |
 | 10760 | 工资 | 2 | 6 | 10700 | `payroll` | `ep:wallet` | `lunaerp:finance:payroll:query` | `finance/payroll/index` |
 | 10770 | 发票申请 | 2 | 7 | 10700 | `invoice-application` | `ep:document` | `lunaerp:finance:invoice:query` | `finance/invoice-application/index` |
+| 10780 | 汇率 | 2 | 8 | 10700 | `exchange-rate` | `ep:data-analysis` | `lunaerp:finance:exchangerate:query` | `finance/exchange-rate/index` |
 
 component 字符串按最终 UI 落点加 `lunaerp/` 或 `lunaerp-elmui/` 前缀，componentName 取 `LunaerpFinance<驼峰子模块>`。本 ticket 只锁定骨架，**INSERT SQL 随 W3 各模块建表脚本交付**，不提前插空菜单（租户套餐网关按菜单开通，空菜单会造成可开通不可用）。
 

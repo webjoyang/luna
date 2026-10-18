@@ -212,6 +212,10 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         String statementNo = StrUtil.isNotBlank(createReqVO.getStatementNo())
                 ? createReqVO.getStatementNo().trim()
                 : generateStatementNo(createReqVO.getPeriodEnd() != null ? createReqVO.getPeriodEnd() : LocalDate.now());
+        CustomerStatementDO existing = customerStatementMapper.selectByStatementNoIncludingDeleted(statementNo);
+        if (existing != null) {
+            throw exception(STATEMENT_NO_EXHAUSTED);
+        }
 
         // 5. 插入对账单主表
         CustomerStatementDO statementDO = new CustomerStatementDO();

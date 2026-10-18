@@ -106,4 +106,44 @@ public class LedgerServiceImplTest {
         assertEquals(888L, result.get(0).getId());
     }
 
+    @Test
+    @DisplayName("recordArReturnReversal: 销售退货冲减直接追加反向 CREDIT 分录，折合本位币正确")
+    void testRecordArReturnReversal_success() {
+        Long customerId = 1001L;
+        Long shipmentItemId = 2001L;
+        BigDecimal returnQty = new BigDecimal("50.00");
+        BigDecimal origAmount = new BigDecimal("1200.00");
+        String currency = "USD";
+        BigDecimal exchangeRate = new BigDecimal("7.15000000");
+        Long returnOrderId = 3001L;
+
+        doAnswer(invocation -> {
+            LedgerEntryDO arg = invocation.getArgument(0);
+            arg.setId(999L);
+            return 1;
+        }).when(ledgerEntryMapper).insert(any(LedgerEntryDO.class));
+
+        Long entryId = ledgerService.recordArReturnReversal(customerId, shipmentItemId, returnQty,
+                origAmount, currency, exchangeRate, returnOrderId);
+
+        assertNotNull(entryId);
+        assertEquals(999L, entryId);
+
+        org.mockito.ArgumentCaptor<LedgerEntryDO> captor = org.mockito.ArgumentCaptor.forClass(LedgerEntryDO.class);
+        verify(ledgerEntryMapper).insert(captor.capture());
+        LedgerEntryDO saved = captor.getValue();
+        assertEquals("CUSTOMER", saved.getPartyType());
+        assertEquals(customerId, saved.getPartyId());
+        assertEquals("AR_RETURN_REVERSAL", saved.getCategory());
+        assertEquals("CREDIT", saved.getDirection());
+        assertEquals("USD", saved.getCurrency());
+        assertEquals(exchangeRate, saved.getExchangeRate());
+        assertEquals(origAmount, saved.getOriginalAmount());
+        assertEquals(new BigDecimal("8580.00"), saved.getBaseAmount()); // 1200 * 7.15 = 8580.00
+        assertEquals("SALES_RETURN", saved.getRefType());
+        assertEquals(returnOrderId, saved.getRefId());
+        assertEquals(shipmentItemId, saved.getRefItemId());
+    }
+
 }
+
