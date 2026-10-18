@@ -70,6 +70,9 @@ public class CustomerStatementServiceImplTest {
     @Mock
     private PaymentMapper paymentMapper;
 
+    @Mock
+    private com.luna.lunasrv.module.infra.api.config.ConfigApi configApi;
+
     private MockedStatic<TenantContextHolder> tenantContextMock;
 
     @BeforeEach
@@ -804,6 +807,308 @@ public class CustomerStatementServiceImplTest {
 
         // 默认汇总只统计未被占用的 entry2 (2000.00)
         assertEquals(new BigDecimal("2000.00"), result.getPeriodDebit());
+    }
+
+    // ==================== 6. 状态流转与白名单守卫测试 (Seam 1 & 2) ====================
+
+    @Test
+    @DisplayName("sendCustomerStatement 成功：DRAFT 态通过条件更新转换为 SENT")
+    void testSendCustomerStatement_success() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.DRAFT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+        when(customerStatementMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+
+        customerStatementService.sendCustomerStatement(id);
+
+        verify(customerStatementMapper).update(any(), any(Wrapper.class));
+    }
+
+    @Test
+    @DisplayName("sendCustomerStatement 异常：非 DRAFT 状态发送抛出 STATEMENT_STATUS_NOT_ALLOW")
+    void testSendCustomerStatement_notDraft_throwsException() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.SENT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.sendCustomerStatement(id));
+        assertEquals(FinanceErrorCodeConstants.STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("sendCustomerStatement 异常：条件更新因并发冲突受影响行数为0抛出 STATEMENT_STATUS_NOT_ALLOW")
+    void testSendCustomerStatement_concurrencyConflict_throwsException() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.DRAFT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+        when(customerStatementMapper.update(any(), any(Wrapper.class))).thenReturn(0);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.sendCustomerStatement(id));
+        assertEquals(FinanceErrorCodeConstants.STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("voidCustomerStatement 成功：DRAFT/SENT/REJECTED 非终态可作废")
+    void testVoidCustomerStatement_success_nonTerminal() {
+        // 1. DRAFT 可作废
+        Long draftId = 101L;
+        CustomerStatementDO draftStmt = mockStatement(draftId, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.DRAFT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(draftId)).thenReturn(draftStmt);
+        when(customerStatementMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+        customerStatementService.voidCustomerStatement(draftId);
+
+        // 2. SENT 可作废
+        Long sentId = 102L;
+        CustomerStatementDO sentStmt = mockStatement(sentId, "CS20260002", 1001L, "RMB",
+                CustomerStatementStatus.SENT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(sentId)).thenReturn(sentStmt);
+        customerStatementService.voidCustomerStatement(sentId);
+
+        // 3. REJECTED 可作废
+        Long rejectedId = 103L;
+        CustomerStatementDO rejectedStmt = mockStatement(rejectedId, "CS20260003", 1001L, "RMB",
+                CustomerStatementStatus.REJECTED, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(rejectedId)).thenReturn(rejectedStmt);
+        customerStatementService.voidCustomerStatement(rejectedId);
+
+        verify(customerStatementMapper, times(3)).update(any(), any(Wrapper.class));
+    }
+
+    @Test
+    @DisplayName("voidCustomerStatement 异常：CONFIRMED 终态作废抛出 STATEMENT_CONFIRMED_NOT_VOID")
+    void testVoidCustomerStatement_confirmed_throwsException() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.CONFIRMED, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.voidCustomerStatement(id));
+        assertEquals(FinanceErrorCodeConstants.STATEMENT_CONFIRMED_NOT_VOID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("voidCustomerStatement 异常：已作废对账单再次作废抛出 STATEMENT_STATUS_NOT_ALLOW")
+    void testVoidCustomerStatement_alreadyVoid_throwsException() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.VOID, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.voidCustomerStatement(id));
+        assertEquals(FinanceErrorCodeConstants.STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("confirmOnBehalf 成功：SENT 态代客确认落库 ON_BEHALF 及经办字段")
+    void testConfirmOnBehalf_success() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.SENT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+        when(customerStatementMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+
+        CustomerStatementConfirmOnBehalfReqVO req = new CustomerStatementConfirmOnBehalfReqVO();
+        req.setId(id);
+        req.setConfirmMethod("微信");
+        req.setRemark("客户微信确认核对无误");
+
+        customerStatementService.confirmOnBehalf(req);
+
+        verify(customerStatementMapper).update(any(), any(Wrapper.class));
+    }
+
+    @Test
+    @DisplayName("confirmOnBehalf 异常：非 SENT 状态代客确认抛出 STATEMENT_STATUS_NOT_ALLOW")
+    void testConfirmOnBehalf_notSent_throwsException() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.DRAFT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+
+        CustomerStatementConfirmOnBehalfReqVO req = new CustomerStatementConfirmOnBehalfReqVO();
+        req.setId(id);
+        req.setConfirmMethod("微信");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.confirmOnBehalf(req));
+        assertEquals(FinanceErrorCodeConstants.STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("rejectCustomerStatement 成功：SENT 态驳回记录 rejectReason 并置为 REJECTED")
+    void testRejectCustomerStatement_success() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.SENT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+        when(customerStatementMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+
+        CustomerStatementRejectReqVO req = new CustomerStatementRejectReqVO();
+        req.setId(id);
+        req.setRejectReason("运费分摊计算有异议");
+
+        customerStatementService.rejectCustomerStatement(req);
+
+        verify(customerStatementMapper).update(any(), any(Wrapper.class));
+    }
+
+    @Test
+    @DisplayName("rejectCustomerStatement 异常：非 SENT 状态驳回抛出 STATEMENT_STATUS_NOT_ALLOW")
+    void testRejectCustomerStatement_notSent_throwsException() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.CONFIRMED, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+
+        CustomerStatementRejectReqVO req = new CustomerStatementRejectReqVO();
+        req.setId(id);
+        req.setRejectReason("异议原因");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.rejectCustomerStatement(req));
+        assertEquals(FinanceErrorCodeConstants.STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("rejectReplyCustomerStatement 成功：REJECTED 态回复异议备注并重置为 DRAFT")
+    void testRejectReplyCustomerStatement_success() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.REJECTED, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+        when(customerStatementMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+
+        CustomerStatementRejectReplyReqVO req = new CustomerStatementRejectReplyReqVO();
+        req.setId(id);
+        req.setReplyRemark("已重新核算运费，请复核");
+
+        customerStatementService.rejectReplyCustomerStatement(req);
+
+        verify(customerStatementMapper).update(any(), any(Wrapper.class));
+    }
+
+    @Test
+    @DisplayName("rejectReplyCustomerStatement 异常：非 REJECTED 状态回复异议抛出 STATEMENT_STATUS_NOT_ALLOW")
+    void testRejectReplyCustomerStatement_notRejected_throwsException() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.SENT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+
+        CustomerStatementRejectReplyReqVO req = new CustomerStatementRejectReplyReqVO();
+        req.setId(id);
+        req.setReplyRemark("回复说明");
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.rejectReplyCustomerStatement(req));
+        assertEquals(FinanceErrorCodeConstants.STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    // ==================== 7. 套打出参契约与二维码基址降级测试 (Seam 3) ====================
+
+    @Test
+    @DisplayName("getCustomerStatementPrintData 成功：包含客户四要素、全量行快照且正确组装二维码 URL")
+    void testGetCustomerStatementPrintData_withPortalBaseUrl_success() {
+        Long id = 100L;
+        Long customerId = 1001L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", customerId, "RMB",
+                CustomerStatementStatus.CONFIRMED, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        stmt.setOpeningBalance(new BigDecimal("1000.00"));
+        stmt.setPeriodDebit(new BigDecimal("5000.00"));
+        stmt.setPeriodCredit(new BigDecimal("2000.00"));
+        stmt.setClosingBalance(new BigDecimal("4000.00"));
+        stmt.setConfirmType("ON_BEHALF");
+        stmt.setConfirmByName("王财务");
+        stmt.setConfirmMethod("微信");
+        stmt.setRemark("按月对账");
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+
+        CustomerDO customer = mockCustomer(customerId, "盛泽纺织实业有限公司");
+        customer.setInvoiceTitle("盛泽纺织实业有限公司");
+        customer.setUnifiedSocialCreditCode("91330100MA2XXXXX1");
+        customer.setInvoiceAddress("江苏省苏州市吴江区盛泽镇西环路100号");
+        customer.setBankName("中国工商银行吴江盛泽支行");
+        customer.setBankAccountNo("1055020109200000000");
+        customer.setPhone("0512-63000000");
+        when(customerMapper.selectById(customerId)).thenReturn(customer);
+
+        CustomerStatementItemDO item1 = new CustomerStatementItemDO();
+        item1.setId(10L);
+        item1.setStatementId(id);
+        item1.setLineNo(1);
+        item1.setBizDate(LocalDate.of(2026, 9, 10));
+        item1.setDirection("DEBIT");
+        item1.setRefType("SHIPMENT_ITEM");
+        item1.setRefNo("SH2026090001");
+        item1.setSummary("高弹涤纶布");
+        item1.setDebitAmount(new BigDecimal("5000.00"));
+        item1.setCreditAmount(BigDecimal.ZERO);
+        item1.setSignStatus("SIGNED");
+        when(customerStatementItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(item1));
+
+        // 模拟已配置门户基准地址
+        when(configApi.getConfigValueByKey("luna.portal.base-url")).thenReturn("https://portal.lunaerp.com///");
+
+        CustomerStatementPrintRespVO printVO = customerStatementService.getCustomerStatementPrintData(id);
+
+        assertNotNull(printVO);
+        assertEquals("FINANCE_STATEMENT", printVO.getBizType());
+        assertEquals("CS20260001", printVO.getStatementNo());
+        assertEquals("盛泽纺织实业有限公司", printVO.getCustomerName());
+        assertEquals("91330100MA2XXXXX1", printVO.getTaxNo());
+        assertEquals("江苏省苏州市吴江区盛泽镇西环路100号", printVO.getAddress());
+        assertEquals("中国工商银行吴江盛泽支行", printVO.getBankName());
+        assertEquals("1055020109200000000", printVO.getBankAccountNo());
+        assertEquals("0512-63000000", printVO.getContactPhone());
+        assertEquals(new BigDecimal("1000.00"), printVO.getOpeningBalance());
+        assertEquals(new BigDecimal("5000.00"), printVO.getPeriodDebit());
+        assertEquals(new BigDecimal("2000.00"), printVO.getPeriodCredit());
+        assertEquals(new BigDecimal("4000.00"), printVO.getClosingBalance());
+        assertEquals("https://portal.lunaerp.com/portal/statement?no=CS20260001", printVO.getQrUrl());
+        assertEquals(1, printVO.getItems().size());
+        assertEquals("SH2026090001", printVO.getItems().get(0).getRefNo());
+        assertEquals(new BigDecimal("5000.00"), printVO.getItems().get(0).getDebitAmount());
+    }
+
+    @Test
+    @DisplayName("getCustomerStatementPrintData 成功：luna.portal.base-url 未配置或为空时二维码降级为 null 不阻断打印")
+    void testGetCustomerStatementPrintData_withoutPortalBaseUrl_degradesGracefully() {
+        Long id = 100L;
+        Long customerId = 1001L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", customerId, "RMB",
+                CustomerStatementStatus.DRAFT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+        when(customerMapper.selectById(customerId)).thenReturn(mockCustomer(customerId, "盛泽纺织"));
+        when(customerStatementItemMapper.selectList(any(Wrapper.class))).thenReturn(Collections.emptyList());
+
+        // 模拟基址未配置
+        when(configApi.getConfigValueByKey("luna.portal.base-url")).thenReturn(null);
+
+        CustomerStatementPrintRespVO printVO = customerStatementService.getCustomerStatementPrintData(id);
+
+        assertNotNull(printVO);
+        assertNull(printVO.getQrUrl());
+        assertEquals("CS20260001", printVO.getStatementNo());
+    }
+
+    @Test
+    @DisplayName("getCustomerStatementPrintData 异常：对账单不存在抛出 STATEMENT_NOT_EXISTS")
+    void testGetCustomerStatementPrintData_notExists_throwsException() {
+        when(customerStatementMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.getCustomerStatementPrintData(999L));
+        assertEquals(FinanceErrorCodeConstants.STATEMENT_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("getCustomerStatementPrintData 审计审查：方法必须标注 @LogRecord 留痕")
+    void testGetCustomerStatementPrintData_hasLogRecordAnnotation() throws NoSuchMethodException {
+        java.lang.reflect.Method method = CustomerStatementServiceImpl.class.getMethod("getCustomerStatementPrintData", Long.class);
+        com.mzt.logapi.starter.annotation.LogRecord annotation = method.getAnnotation(com.mzt.logapi.starter.annotation.LogRecord.class);
+        assertNotNull(annotation, "getCustomerStatementPrintData 必须标注 @LogRecord");
+        assertEquals("FINANCE_STATEMENT", annotation.type());
+        assertEquals("PRINT", annotation.subType());
     }
 
 }

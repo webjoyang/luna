@@ -82,4 +82,88 @@ public class CustomerStatementController {
         return success(customerStatementService.addStatementEntry(addEntryReqVO));
     }
 
+    @PutMapping("/send")
+    @Operation(summary = "发送客户对账单（DRAFT -> SENT，条件更新防并发）")
+    @Parameter(name = "id", description = "对账单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:customerrecon:send')")
+    public CommonResult<Boolean> sendCustomerStatement(@RequestParam("id") Long id) {
+        customerStatementService.sendCustomerStatement(id);
+        return success(true);
+    }
+
+    @PutMapping("/void")
+    @Operation(summary = "作废客户对账单（非终态可作废，释放行占用，不删分录）")
+    @Parameter(name = "id", description = "对账单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:customerrecon:void')")
+    public CommonResult<Boolean> voidCustomerStatement(@RequestParam("id") Long id) {
+        customerStatementService.voidCustomerStatement(id);
+        return success(true);
+    }
+
+    @PutMapping("/confirm-on-behalf")
+    @Operation(summary = "代客确认客户对账单（SENT -> CONFIRMED）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:customerrecon:confirm-on-behalf')")
+    public CommonResult<Boolean> confirmOnBehalf(
+            @RequestBody(required = false) @Valid CustomerStatementConfirmOnBehalfReqVO bodyReqVO,
+            @RequestParam(value = "id", required = false) Long idParam,
+            @RequestParam(value = "confirmMethod", required = false) String confirmMethodParam,
+            @RequestParam(value = "remark", required = false) String remarkParam) {
+        CustomerStatementConfirmOnBehalfReqVO reqVO = bodyReqVO != null ? bodyReqVO : new CustomerStatementConfirmOnBehalfReqVO();
+        if (reqVO.getId() == null && idParam != null) {
+            reqVO.setId(idParam);
+        }
+        if (reqVO.getConfirmMethod() == null && confirmMethodParam != null) {
+            reqVO.setConfirmMethod(confirmMethodParam);
+        }
+        if (reqVO.getRemark() == null && remarkParam != null) {
+            reqVO.setRemark(remarkParam);
+        }
+        customerStatementService.confirmOnBehalf(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/reject")
+    @Operation(summary = "驳回客户对账单（SENT -> REJECTED）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:customerrecon:update')")
+    public CommonResult<Boolean> rejectCustomerStatement(
+            @RequestBody(required = false) @Valid CustomerStatementRejectReqVO bodyReqVO,
+            @RequestParam(value = "id", required = false) Long idParam,
+            @RequestParam(value = "rejectReason", required = false) String rejectReasonParam) {
+        CustomerStatementRejectReqVO reqVO = bodyReqVO != null ? bodyReqVO : new CustomerStatementRejectReqVO();
+        if (reqVO.getId() == null && idParam != null) {
+            reqVO.setId(idParam);
+        }
+        if (reqVO.getRejectReason() == null && rejectReasonParam != null) {
+            reqVO.setRejectReason(rejectReasonParam);
+        }
+        customerStatementService.rejectCustomerStatement(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/reject-reply")
+    @Operation(summary = "回复客户对账单异议并重置为草稿（REJECTED -> DRAFT）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:customerrecon:update')")
+    public CommonResult<Boolean> rejectReplyCustomerStatement(
+            @RequestBody(required = false) @Valid CustomerStatementRejectReplyReqVO bodyReqVO,
+            @RequestParam(value = "id", required = false) Long idParam,
+            @RequestParam(value = "replyRemark", required = false) String replyRemarkParam) {
+        CustomerStatementRejectReplyReqVO reqVO = bodyReqVO != null ? bodyReqVO : new CustomerStatementRejectReplyReqVO();
+        if (reqVO.getId() == null && idParam != null) {
+            reqVO.setId(idParam);
+        }
+        if (reqVO.getReplyRemark() == null && replyRemarkParam != null) {
+            reqVO.setReplyRemark(replyRemarkParam);
+        }
+        customerStatementService.rejectReplyCustomerStatement(reqVO);
+        return success(true);
+    }
+
+    @GetMapping("/print-data")
+    @Operation(summary = "获得客户对账单打印数据（豁免金额脱敏）")
+    @Parameter(name = "id", description = "对账单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:customerrecon:print')")
+    public CommonResult<CustomerStatementPrintRespVO> getCustomerStatementPrintData(@RequestParam("id") Long id) {
+        return success(customerStatementService.getCustomerStatementPrintData(id));
+    }
+
 }

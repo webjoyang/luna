@@ -138,6 +138,78 @@ public class CustomerStatementControllerTest {
     }
 
     @Test
+    @DisplayName("sendCustomerStatement 接口：委托 Service 执行发送并返回成功")
+    void testSendCustomerStatement() {
+        CommonResult<Boolean> result = controller.sendCustomerStatement(200L);
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(customerStatementService).sendCustomerStatement(200L);
+    }
+
+    @Test
+    @DisplayName("voidCustomerStatement 接口：委托 Service 执行作废并返回成功")
+    void testVoidCustomerStatement() {
+        CommonResult<Boolean> result = controller.voidCustomerStatement(200L);
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(customerStatementService).voidCustomerStatement(200L);
+    }
+
+    @Test
+    @DisplayName("confirmOnBehalf 接口：委托 Service 执行代客确认并返回成功")
+    void testConfirmOnBehalf() {
+        CustomerStatementConfirmOnBehalfReqVO reqVO = new CustomerStatementConfirmOnBehalfReqVO();
+        reqVO.setId(200L);
+        reqVO.setConfirmMethod("微信");
+        reqVO.setRemark("客户李总微信确认");
+
+        CommonResult<Boolean> result = controller.confirmOnBehalf(reqVO, null, null, null);
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(customerStatementService).confirmOnBehalf(any(CustomerStatementConfirmOnBehalfReqVO.class));
+    }
+
+    @Test
+    @DisplayName("rejectCustomerStatement 接口：委托 Service 执行驳回并返回成功")
+    void testRejectCustomerStatement() {
+        CustomerStatementRejectReqVO reqVO = new CustomerStatementRejectReqVO();
+        reqVO.setId(200L);
+        reqVO.setRejectReason("明细数量有误");
+
+        CommonResult<Boolean> result = controller.rejectCustomerStatement(reqVO, null, null);
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(customerStatementService).rejectCustomerStatement(any(CustomerStatementRejectReqVO.class));
+    }
+
+    @Test
+    @DisplayName("rejectReplyCustomerStatement 接口：委托 Service 执行回复并返回成功")
+    void testRejectReplyCustomerStatement() {
+        CustomerStatementRejectReplyReqVO reqVO = new CustomerStatementRejectReplyReqVO();
+        reqVO.setId(200L);
+        reqVO.setReplyRemark("已调整");
+
+        CommonResult<Boolean> result = controller.rejectReplyCustomerStatement(reqVO, null, null);
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(customerStatementService).rejectReplyCustomerStatement(any(CustomerStatementRejectReplyReqVO.class));
+    }
+
+    @Test
+    @DisplayName("getCustomerStatementPrintData 接口：委托 Service 获得打印 VO")
+    void testGetCustomerStatementPrintData() {
+        CustomerStatementPrintRespVO printVO = new CustomerStatementPrintRespVO();
+        printVO.setId(200L);
+        printVO.setStatementNo("CS20260001");
+        when(customerStatementService.getCustomerStatementPrintData(200L)).thenReturn(printVO);
+
+        CommonResult<CustomerStatementPrintRespVO> result = controller.getCustomerStatementPrintData(200L);
+        assertTrue(result.isSuccess());
+        assertEquals(printVO, result.getData());
+        verify(customerStatementService).getCustomerStatementPrintData(200L);
+    }
+
+    @Test
     @DisplayName("权限注解校验：确认各端点声明了正确的权限码")
     void testPermissions() throws NoSuchMethodException {
         assertPermission("prefetchLines", new Class<?>[]{CustomerStatementPrefetchReqVO.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:query')");
@@ -147,6 +219,12 @@ public class CustomerStatementControllerTest {
         assertPermission("updateCustomerStatement", new Class<?>[]{CustomerStatementUpdateReqVO.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:update')");
         assertPermission("deleteCustomerStatement", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:delete')");
         assertPermission("addStatementEntry", new Class<?>[]{CustomerStatementAddEntryReqVO.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:update')");
+        assertPermission("sendCustomerStatement", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:send')");
+        assertPermission("voidCustomerStatement", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:void')");
+        assertPermission("confirmOnBehalf", new Class<?>[]{CustomerStatementConfirmOnBehalfReqVO.class, Long.class, String.class, String.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:confirm-on-behalf')");
+        assertPermission("rejectCustomerStatement", new Class<?>[]{CustomerStatementRejectReqVO.class, Long.class, String.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:update')");
+        assertPermission("rejectReplyCustomerStatement", new Class<?>[]{CustomerStatementRejectReplyReqVO.class, Long.class, String.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:update')");
+        assertPermission("getCustomerStatementPrintData", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:print')");
     }
 
     private void assertPermission(String methodName, Class<?>[] paramTypes, String expectedExpression) throws NoSuchMethodException {

@@ -54,4 +54,7 @@ public class CustomerStatementItemRespVO {
     @Schema(description = "行备注说明")
     private String remark;
 
+    @Schema(description = "源单是否红冲/异常（SENT 状态下红冲行标红标记）", example = "false")
+    private Boolean hasReversal;
+
 }

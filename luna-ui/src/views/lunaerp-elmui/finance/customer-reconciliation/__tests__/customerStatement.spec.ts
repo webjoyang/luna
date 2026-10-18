@@ -14,6 +14,8 @@ import {
   validateStatementPeriod,
   calculateStatementSummary,
   getCustomerStatementActionFlags,
+  validateConfirmOnBehalfForm,
+  validateRejectForm,
   formatMoney,
   formatSignStatusTag,
   formatStatementStatusTag,
@@ -94,22 +96,86 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
     })
   })
 
-  describe('Action Flags by Status', () => {
-    it('should allow edit, delete, addEntry only for DRAFT', () => {
-      const draftFlags = getCustomerStatementActionFlags('DRAFT')
-      expect(draftFlags.canEdit).toBe(true)
-      expect(draftFlags.canDelete).toBe(true)
-      expect(draftFlags.canAddEntry).toBe(true)
+  describe('Action Flags by Status Matrix', () => {
+    it('DRAFT should allow edit, delete, addEntry, send, void, print', () => {
+      const flags = getCustomerStatementActionFlags('DRAFT')
+      expect(flags.canEdit).toBe(true)
+      expect(flags.canDelete).toBe(true)
+      expect(flags.canAddEntry).toBe(true)
+      expect(flags.canSend).toBe(true)
+      expect(flags.canVoid).toBe(true)
+      expect(flags.canConfirmOnBehalf).toBe(false)
+      expect(flags.canReject).toBe(false)
+      expect(flags.canRejectReply).toBe(false)
+      expect(flags.canPrint).toBe(true)
+    })
 
-      const sentFlags = getCustomerStatementActionFlags('SENT')
-      expect(sentFlags.canEdit).toBe(false)
-      expect(sentFlags.canDelete).toBe(false)
-      expect(sentFlags.canAddEntry).toBe(false)
+    it('SENT should allow confirmOnBehalf, reject, void, print', () => {
+      const flags = getCustomerStatementActionFlags('SENT')
+      expect(flags.canEdit).toBe(false)
+      expect(flags.canDelete).toBe(false)
+      expect(flags.canAddEntry).toBe(false)
+      expect(flags.canSend).toBe(false)
+      expect(flags.canVoid).toBe(true)
+      expect(flags.canConfirmOnBehalf).toBe(true)
+      expect(flags.canReject).toBe(true)
+      expect(flags.canRejectReply).toBe(false)
+      expect(flags.canPrint).toBe(true)
+    })
 
-      const confirmedFlags = getCustomerStatementActionFlags('CONFIRMED')
-      expect(confirmedFlags.canEdit).toBe(false)
-      expect(confirmedFlags.canDelete).toBe(false)
-      expect(confirmedFlags.canAddEntry).toBe(false)
+    it('CONFIRMED terminal state should only allow print, forbid void/edit/send', () => {
+      const flags = getCustomerStatementActionFlags('CONFIRMED')
+      expect(flags.canEdit).toBe(false)
+      expect(flags.canDelete).toBe(false)
+      expect(flags.canAddEntry).toBe(false)
+      expect(flags.canSend).toBe(false)
+      expect(flags.canVoid).toBe(false)
+      expect(flags.canConfirmOnBehalf).toBe(false)
+      expect(flags.canReject).toBe(false)
+      expect(flags.canRejectReply).toBe(false)
+      expect(flags.canPrint).toBe(true)
+    })
+
+    it('REJECTED should allow rejectReply, void, print', () => {
+      const flags = getCustomerStatementActionFlags('REJECTED')
+      expect(flags.canEdit).toBe(false)
+      expect(flags.canDelete).toBe(false)
+      expect(flags.canAddEntry).toBe(false)
+      expect(flags.canSend).toBe(false)
+      expect(flags.canVoid).toBe(true)
+      expect(flags.canConfirmOnBehalf).toBe(false)
+      expect(flags.canReject).toBe(false)
+      expect(flags.canRejectReply).toBe(true)
+      expect(flags.canPrint).toBe(true)
+    })
+
+    it('VOID terminal state should forbid all operations', () => {
+      const flags = getCustomerStatementActionFlags('VOID')
+      expect(flags.canEdit).toBe(false)
+      expect(flags.canDelete).toBe(false)
+      expect(flags.canAddEntry).toBe(false)
+      expect(flags.canSend).toBe(false)
+      expect(flags.canVoid).toBe(false)
+      expect(flags.canConfirmOnBehalf).toBe(false)
+      expect(flags.canReject).toBe(false)
+      expect(flags.canRejectReply).toBe(false)
+      expect(flags.canPrint).toBe(false)
+    })
+  })
+
+  describe('Form Validations', () => {
+    it('validateConfirmOnBehalfForm should require confirmMethod', () => {
+      expect(validateConfirmOnBehalfForm('微信').valid).toBe(true)
+      expect(validateConfirmOnBehalfForm('').valid).toBe(false)
+      expect(validateConfirmOnBehalfForm('   ').valid).toBe(false)
+      expect(validateConfirmOnBehalfForm(undefined).valid).toBe(false)
+    })
+
+    it('validateRejectForm should require rejectReason', () => {
+      expect(validateRejectForm('金额有误').valid).toBe(true)
+      expect(validateRejectForm('').valid).toBe(false)
+      expect(validateRejectForm('   ').valid).toBe(false)
+      expect(validateRejectForm(undefined).valid).toBe(false)
     })
   })
 
@@ -130,10 +196,14 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
 
     it('formatStatementStatusTag should map correctly', () => {
       expect(formatStatementStatusTag('DRAFT').label).toBe('草稿')
-      expect(formatStatementStatusTag('SENT').label).toBe('已发送')
+      expect(formatStatementStatusTag('SENT').label).toBe('已发出')
+      expect(formatStatementStatusTag('SENT').type).toBe('primary')
       expect(formatStatementStatusTag('CONFIRMED').label).toBe('已确认')
-      expect(formatStatementStatusTag('REJECTED').label).toBe('已退回')
+      expect(formatStatementStatusTag('CONFIRMED').type).toBe('success')
+      expect(formatStatementStatusTag('REJECTED').label).toBe('已驳回')
+      expect(formatStatementStatusTag('REJECTED').type).toBe('danger')
       expect(formatStatementStatusTag('VOID').label).toBe('已作废')
+      expect(formatStatementStatusTag('VOID').type).toBe('info')
     })
 
     it('parseCustomerStatementError should map code to message', () => {
@@ -252,6 +322,99 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
         }
       })
       expect(res).toBe(999)
+    })
+
+    it('should invoke sendCustomerStatement with PUT', async () => {
+      ;(request.put as any).mockResolvedValueOnce(true)
+
+      const res = await CustomerStatementApi.sendCustomerStatement(200)
+
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/customerrecon/statement/send',
+        params: { id: 200 }
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should invoke voidCustomerStatement with PUT', async () => {
+      ;(request.put as any).mockResolvedValueOnce(true)
+
+      const res = await CustomerStatementApi.voidCustomerStatement(200)
+
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/customerrecon/statement/void',
+        params: { id: 200 }
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should invoke confirmOnBehalf with PUT', async () => {
+      ;(request.put as any).mockResolvedValueOnce(true)
+
+      const res = await CustomerStatementApi.confirmOnBehalf({
+        id: 200,
+        confirmMethod: '微信',
+        remark: '李总确认'
+      })
+
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/customerrecon/statement/confirm-on-behalf',
+        data: {
+          id: 200,
+          confirmMethod: '微信',
+          remark: '李总确认'
+        }
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should invoke rejectCustomerStatement with PUT', async () => {
+      ;(request.put as any).mockResolvedValueOnce(true)
+
+      const res = await CustomerStatementApi.rejectCustomerStatement({
+        id: 200,
+        rejectReason: '数量有异议'
+      })
+
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/customerrecon/statement/reject',
+        data: {
+          id: 200,
+          rejectReason: '数量有异议'
+        }
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should invoke rejectReplyCustomerStatement with PUT', async () => {
+      ;(request.put as any).mockResolvedValueOnce(true)
+
+      const res = await CustomerStatementApi.rejectReplyCustomerStatement({
+        id: 200,
+        replyRemark: '已按要求核减'
+      })
+
+      expect(request.put).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/customerrecon/statement/reject-reply',
+        data: {
+          id: 200,
+          replyRemark: '已按要求核减'
+        }
+      })
+      expect(res).toBe(true)
+    })
+
+    it('should invoke getCustomerStatementPrintData with GET', async () => {
+      const mockPrintData = { id: 200, statementNo: 'CS20260001', items: [] }
+      ;(request.get as any).mockResolvedValueOnce(mockPrintData)
+
+      const res = await CustomerStatementApi.getCustomerStatementPrintData(200)
+
+      expect(request.get).toHaveBeenCalledWith({
+        url: '/lunaerp/finance/customerrecon/statement/print-data',
+        params: { id: 200 }
+      })
+      expect(res).toEqual(mockPrintData)
     })
   })
 })

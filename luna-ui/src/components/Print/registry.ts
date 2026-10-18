@@ -17,6 +17,7 @@ import { getColorInstructionPrintData } from '@/api/lunaerp-elmui/production/col
 import ColorInstructionSheet from '@/views/lunaerp-elmui/production/color-instruction/components/print/ColorInstructionSheet.vue'
 import { colorInstructionPrintCss } from '@/views/lunaerp-elmui/production/color-instruction/components/print/print-styles'
 import { supplierReconPrintCss } from '@/views/lunaerp-elmui/finance/supplier-recon/components/print/print-styles'
+import { customerStatementPrintCss } from '@/views/lunaerp-elmui/finance/customer-reconciliation/components/print/print-styles'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -137,9 +138,7 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
     permission: 'lunaerp:finance:supplierrecon:print',
     component: defineAsyncComponent(
       () =>
-        import(
-          '@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierReconSheet.vue'
-        )
+        import('@/views/lunaerp-elmui/finance/supplier-recon/components/print/SupplierReconSheet.vue')
     ),
     fetchApi: (bizId: string | number) =>
       import('@/api/lunaerp-elmui/finance/supplier-recon').then((m) =>
@@ -147,6 +146,23 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
       ),
     customCss: supplierReconPrintCss,
     getDocNo: (data: any) => data?.reconNo || ''
+  },
+  {
+    bizType: 'FINANCE_STATEMENT',
+    templateCode: 'FINANCE_STATEMENT',
+    name: '客户对账单',
+    paper: 'A4',
+    permission: 'lunaerp:finance:customerrecon:print',
+    component: defineAsyncComponent(
+      () =>
+        import('@/views/lunaerp-elmui/finance/customer-reconciliation/components/print/CustomerStatementSheet.vue')
+    ),
+    fetchApi: (bizId: string | number) =>
+      import('@/api/lunaerp-elmui/finance/customer-reconciliation').then((m) =>
+        m.getCustomerStatementPrintData(Number(bizId))
+      ),
+    customCss: customerStatementPrintCss,
+    getDocNo: (data: any) => data?.statementNo || ''
   }
 ]
 

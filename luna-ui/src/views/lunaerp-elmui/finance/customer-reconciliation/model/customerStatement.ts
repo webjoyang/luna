@@ -89,19 +89,69 @@ export function calculateStatementSummary(
 
 /**
  * 客户对账单操作权限与行为标识（单一信任源）
- * 严格守卫：仅 DRAFT 状态允许编辑、删除、手工追加分录
+ * 严格守卫：
+ * - 发送：仅 DRAFT
+ * - 作废：非终态（DRAFT / SENT / REJECTED），CONFIRMED 不可作废
+ * - 代客确认：仅 SENT
+ * - 驳回：仅 SENT
+ * - 回复异议：仅 REJECTED
+ * - 增删改追加：仅 DRAFT
+ * - 打印：非 VOID 态
  */
 export function getCustomerStatementActionFlags(status?: string): {
   canEdit: boolean
   canDelete: boolean
   canAddEntry: boolean
+  canSend: boolean
+  canVoid: boolean
+  canConfirmOnBehalf: boolean
+  canReject: boolean
+  canRejectReply: boolean
+  canPrint: boolean
 } {
   const isDraft = status === 'DRAFT'
+  const isSent = status === 'SENT'
+  const isRejected = status === 'REJECTED'
+  const isConfirmed = status === 'CONFIRMED'
+  const isVoid = status === 'VOID'
+
   return {
     canEdit: isDraft,
     canDelete: isDraft,
-    canAddEntry: isDraft
+    canAddEntry: isDraft,
+    canSend: isDraft,
+    canVoid: !isConfirmed && !isVoid && Boolean(status),
+    canConfirmOnBehalf: isSent,
+    canReject: isSent,
+    canRejectReply: isRejected,
+    canPrint: !isVoid && Boolean(status)
   }
+}
+
+/**
+ * 校验代客确认表单
+ */
+export function validateConfirmOnBehalfForm(confirmMethod?: string): {
+  valid: boolean
+  message?: string
+} {
+  if (!confirmMethod || !confirmMethod.trim()) {
+    return { valid: false, message: '请选择或填写代客确认方式' }
+  }
+  return { valid: true }
+}
+
+/**
+ * 校验异议驳回表单
+ */
+export function validateRejectForm(rejectReason?: string): {
+  valid: boolean
+  message?: string
+} {
+  if (!rejectReason || !rejectReason.trim()) {
+    return { valid: false, message: '请填写异议驳回原因' }
+  }
+  return { valid: true }
 }
 
 /**
@@ -140,21 +190,21 @@ export function formatSignStatusTag(signStatus?: string): {
 }
 
 /**
- * 对账单状态标签展示映射
+ * 对账单状态标签展示映射（对齐字典 2272）
  */
 export function formatStatementStatusTag(status?: string): {
   label: string
-  type: 'info' | 'warning' | 'success' | 'danger' | ''
+  type: 'info' | 'primary' | 'success' | 'danger' | ''
 } {
   switch (status) {
     case 'DRAFT':
       return { label: '草稿', type: 'info' }
     case 'SENT':
-      return { label: '已发送', type: 'warning' }
+      return { label: '已发出', type: 'primary' }
     case 'CONFIRMED':
       return { label: '已确认', type: 'success' }
     case 'REJECTED':
-      return { label: '已退回', type: 'danger' }
+      return { label: '已驳回', type: 'danger' }
     case 'VOID':
       return { label: '已作废', type: 'info' }
     default:

@@ -82,6 +82,9 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
     @Resource
     private PaymentMapper paymentMapper;
 
+    @Resource
+    private com.luna.lunasrv.module.infra.api.config.ConfigApi configApi;
+
     @Override
     public CustomerStatementPrefetchRespVO prefetchLines(CustomerStatementPrefetchReqVO reqVO) {
         // 1. 入参守卫
@@ -260,7 +263,32 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
                         .orderByAsc(CustomerStatementItemDO::getId));
 
         CustomerStatementDetailRespVO detailVO = BeanUtils.toBean(statement, CustomerStatementDetailRespVO.class);
-        detailVO.setItems(BeanUtils.toBean(items, CustomerStatementItemRespVO.class));
+        List<CustomerStatementItemRespVO> itemVOs = BeanUtils.toBean(items, CustomerStatementItemRespVO.class);
+
+        // 如果单据处于 SENT 状态，检查各借方明细分录是否有后续红冲分录（AR_INC_REVERSAL）
+        if (CustomerStatementStatus.SENT.getValue().equals(statement.getStatus()) && CollUtil.isNotEmpty(items)) {
+            List<Long> ledgerEntryIds = items.stream()
+                    .filter(i -> "DEBIT".equalsIgnoreCase(i.getDirection()) && i.getLedgerEntryId() != null)
+                    .map(CustomerStatementItemDO::getLedgerEntryId)
+                    .toList();
+            if (CollUtil.isNotEmpty(ledgerEntryIds)) {
+                List<LedgerEntryDO> reversals = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                        .inOrEmpty(LedgerEntryDO::getReversalOfId, ledgerEntryIds));
+                Set<Long> reversedEntryIdSet = reversals.stream()
+                        .map(LedgerEntryDO::getReversalOfId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+                for (CustomerStatementItemRespVO itemVO : itemVOs) {
+                    if (itemVO.getLedgerEntryId() != null && reversedEntryIdSet.contains(itemVO.getLedgerEntryId())) {
+                        itemVO.setHasReversal(true);
+                    } else {
+                        itemVO.setHasReversal(false);
+                    }
+                }
+            }
+        }
+
+        detailVO.setItems(itemVOs);
         return detailVO;
     }
 
@@ -491,6 +519,265 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         customerStatementMapper.updateById(statement);
 
         return newItem.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "FINANCE_STATEMENT", subType = "SEND", bizNo = "{{#id}}", success = "发送客户对账单【{{#id}}】成功")
+    public void sendCustomerStatement(Long id) {
+        if (id == null) {
+            throw exception(STATEMENT_NOT_EXISTS);
+        }
+        CustomerStatementDO statement = customerStatementMapper.selectById(id);
+        validateStatementExistsAndTenant(statement);
+
+        if (!CustomerStatementStatus.DRAFT.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        CustomerStatementDO updateDO = new CustomerStatementDO();
+        updateDO.setStatus(CustomerStatementStatus.SENT.getValue());
+
+        int affected = customerStatementMapper.update(updateDO,
+                new LambdaQueryWrapperX<CustomerStatementDO>()
+                        .eq(CustomerStatementDO::getId, id)
+                        .eq(CustomerStatementDO::getStatus, CustomerStatementStatus.DRAFT.getValue()));
+        if (affected == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "FINANCE_STATEMENT", subType = "VOID", bizNo = "{{#id}}", success = "作废客户对账单【{{#id}}】成功")
+    public void voidCustomerStatement(Long id) {
+        if (id == null) {
+            throw exception(STATEMENT_NOT_EXISTS);
+        }
+        CustomerStatementDO statement = customerStatementMapper.selectById(id);
+        validateStatementExistsAndTenant(statement);
+
+        if (CustomerStatementStatus.CONFIRMED.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_CONFIRMED_NOT_VOID);
+        }
+        if (CustomerStatementStatus.VOID.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+        if (!CustomerStatementStatus.DRAFT.getValue().equals(statement.getStatus())
+                && !CustomerStatementStatus.SENT.getValue().equals(statement.getStatus())
+                && !CustomerStatementStatus.REJECTED.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        CustomerStatementDO updateDO = new CustomerStatementDO();
+        updateDO.setStatus(CustomerStatementStatus.VOID.getValue());
+
+        int affected = customerStatementMapper.update(updateDO,
+                new LambdaQueryWrapperX<CustomerStatementDO>()
+                        .eq(CustomerStatementDO::getId, id)
+                        .in(CustomerStatementDO::getStatus,
+                                CustomerStatementStatus.DRAFT.getValue(),
+                                CustomerStatementStatus.SENT.getValue(),
+                                CustomerStatementStatus.REJECTED.getValue()));
+        if (affected == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "FINANCE_STATEMENT", subType = "CONFIRM_ON_BEHALF", bizNo = "{{#reqVO.id}}", success = "代客确认客户对账单【{{#reqVO.id}}】成功")
+    public void confirmOnBehalf(CustomerStatementConfirmOnBehalfReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(STATEMENT_NOT_EXISTS);
+        }
+        CustomerStatementDO statement = customerStatementMapper.selectById(reqVO.getId());
+        validateStatementExistsAndTenant(statement);
+
+        if (!CustomerStatementStatus.SENT.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        String confirmByName = "线下代办";
+        try {
+            String nickname = com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils.getLoginUserNickname();
+            if (cn.hutool.core.util.StrUtil.isNotBlank(nickname)) {
+                confirmByName = nickname;
+            } else {
+                Long loginUserId = com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId();
+                if (loginUserId != null) {
+                    confirmByName = "用户#" + loginUserId;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        CustomerStatementDO updateDO = new CustomerStatementDO();
+        updateDO.setStatus(CustomerStatementStatus.CONFIRMED.getValue());
+        updateDO.setConfirmType(com.luna.lunasrv.module.lunaerp.enums.finance.CustomerStatementConfirmType.ON_BEHALF.getValue());
+        updateDO.setConfirmByName(confirmByName);
+        updateDO.setConfirmTime(java.time.LocalDateTime.now());
+        updateDO.setConfirmMethod(reqVO.getConfirmMethod());
+        if (reqVO.getRemark() != null) {
+            updateDO.setRemark(reqVO.getRemark());
+        }
+
+        int affected = customerStatementMapper.update(updateDO,
+                new LambdaQueryWrapperX<CustomerStatementDO>()
+                        .eq(CustomerStatementDO::getId, reqVO.getId())
+                        .eq(CustomerStatementDO::getStatus, CustomerStatementStatus.SENT.getValue()));
+        if (affected == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "FINANCE_STATEMENT", subType = "REJECT", bizNo = "{{#reqVO.id}}", success = "驳回客户对账单【{{#reqVO.id}}】成功")
+    public void rejectCustomerStatement(CustomerStatementRejectReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(STATEMENT_NOT_EXISTS);
+        }
+        CustomerStatementDO statement = customerStatementMapper.selectById(reqVO.getId());
+        validateStatementExistsAndTenant(statement);
+
+        if (!CustomerStatementStatus.SENT.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        CustomerStatementDO updateDO = new CustomerStatementDO();
+        updateDO.setStatus(CustomerStatementStatus.REJECTED.getValue());
+        updateDO.setRejectReason(reqVO.getRejectReason());
+
+        int affected = customerStatementMapper.update(updateDO,
+                new LambdaQueryWrapperX<CustomerStatementDO>()
+                        .eq(CustomerStatementDO::getId, reqVO.getId())
+                        .eq(CustomerStatementDO::getStatus, CustomerStatementStatus.SENT.getValue()));
+        if (affected == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "FINANCE_STATEMENT", subType = "REJECT_REPLY", bizNo = "{{#reqVO.id}}", success = "回复客户对账单【{{#reqVO.id}}】异议并重置为草稿成功")
+    public void rejectReplyCustomerStatement(CustomerStatementRejectReplyReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(STATEMENT_NOT_EXISTS);
+        }
+        CustomerStatementDO statement = customerStatementMapper.selectById(reqVO.getId());
+        validateStatementExistsAndTenant(statement);
+
+        if (!CustomerStatementStatus.REJECTED.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        CustomerStatementDO updateDO = new CustomerStatementDO();
+        updateDO.setStatus(CustomerStatementStatus.DRAFT.getValue());
+        updateDO.setReplyRemark(reqVO.getReplyRemark());
+
+        int affected = customerStatementMapper.update(updateDO,
+                new LambdaQueryWrapperX<CustomerStatementDO>()
+                        .eq(CustomerStatementDO::getId, reqVO.getId())
+                        .eq(CustomerStatementDO::getStatus, CustomerStatementStatus.REJECTED.getValue()));
+        if (affected == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @LogRecord(type = "FINANCE_STATEMENT", subType = "PRINT", bizNo = "{{#id}}", success = "打印客户对账单【{{#id}}】成功")
+    public CustomerStatementPrintRespVO getCustomerStatementPrintData(Long id) {
+        if (id == null) {
+            throw exception(STATEMENT_NOT_EXISTS);
+        }
+        CustomerStatementDO statement = customerStatementMapper.selectById(id);
+        validateStatementExistsAndTenant(statement);
+
+        CustomerDO customer = customerMapper.selectById(statement.getCustomerId());
+
+        String customerName = statement.getCustomerName();
+        String taxNo = null;
+        String address = null;
+        String bankName = null;
+        String bankAccountNo = null;
+        String contactPhone = null;
+
+        if (customer != null) {
+            if (StrUtil.isNotBlank(customer.getInvoiceTitle())) {
+                customerName = customer.getInvoiceTitle();
+            } else if (StrUtil.isNotBlank(customer.getCompanyName())) {
+                customerName = customer.getCompanyName();
+            }
+            taxNo = customer.getUnifiedSocialCreditCode();
+            address = StrUtil.isNotBlank(customer.getInvoiceAddress()) ? customer.getInvoiceAddress() : customer.getAddress();
+            bankName = customer.getBankName();
+            bankAccountNo = customer.getBankAccountNo();
+            contactPhone = customer.getPhone();
+        }
+
+        String qrUrl = null;
+        String baseUrl = configApi != null ? configApi.getConfigValueByKey("luna.portal.base-url") : null;
+        if (StrUtil.isNotBlank(baseUrl)) {
+            String cleanBaseUrl = baseUrl.trim().replaceAll("/+$", "");
+            qrUrl = cleanBaseUrl + "/portal/statement?no=" + statement.getStatementNo();
+        }
+
+        List<CustomerStatementItemDO> items = customerStatementItemMapper.selectList(
+                new LambdaQueryWrapperX<CustomerStatementItemDO>()
+                        .eq(CustomerStatementItemDO::getStatementId, id)
+                        .orderByAsc(CustomerStatementItemDO::getLineNo)
+                        .orderByAsc(CustomerStatementItemDO::getId));
+
+        List<CustomerStatementPrintRespVO.ItemVO> printItems = new ArrayList<>();
+        if (CollUtil.isNotEmpty(items)) {
+            for (CustomerStatementItemDO item : items) {
+                printItems.add(CustomerStatementPrintRespVO.ItemVO.builder()
+                        .lineNo(item.getLineNo())
+                        .bizDate(item.getBizDate())
+                        .direction(item.getDirection())
+                        .refType(item.getRefType())
+                        .refNo(item.getRefNo())
+                        .summary(item.getSummary())
+                        .debitAmount(item.getDebitAmount())
+                        .creditAmount(item.getCreditAmount())
+                        .signStatus(item.getSignStatus())
+                        .remark(item.getRemark())
+                        .build());
+            }
+        }
+
+        return CustomerStatementPrintRespVO.builder()
+                .bizType("FINANCE_STATEMENT")
+                .title("客户对账单")
+                .id(statement.getId())
+                .statementNo(statement.getStatementNo())
+                .customerId(statement.getCustomerId())
+                .customerName(customerName)
+                .taxNo(taxNo)
+                .address(address)
+                .bankName(bankName)
+                .bankAccountNo(bankAccountNo)
+                .contactPhone(contactPhone)
+                .currency(statement.getCurrency())
+                .periodStart(statement.getPeriodStart())
+                .periodEnd(statement.getPeriodEnd())
+                .openingBalance(statement.getOpeningBalance())
+                .periodDebit(statement.getPeriodDebit())
+                .periodCredit(statement.getPeriodCredit())
+                .closingBalance(statement.getClosingBalance())
+                .status(statement.getStatus())
+                .confirmType(statement.getConfirmType())
+                .confirmByName(statement.getConfirmByName())
+                .confirmTime(statement.getConfirmTime())
+                .confirmMethod(statement.getConfirmMethod())
+                .qrUrl(qrUrl)
+                .remark(statement.getRemark())
+                .creator(statement.getCreator())
+                .createTime(statement.getCreateTime())
+                .printTime(java.time.LocalDateTime.now())
+                .items(printItems)
+                .build();
     }
 
     // ==================== 私有辅助计算与防 N+1 批量快照方法 ====================
