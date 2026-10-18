@@ -405,6 +405,47 @@ public class ArchitectureStandardsTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    @DisplayName("规约审查：ApprovalHandler 严禁注入外部域 Mapper 直连写库，必须委托外部域 Service (coding-standards.md §20, §21)")
+    public void testApprovalHandlersDoNotInjectForeignDomainMappers() {
+        Set<Class<?>> handlerClasses = ClassUtil.scanPackage("com.luna.lunasrv.module.lunaerp.approval.handler");
+        assertTrue(!handlerClasses.isEmpty(), "未扫描到 approval.handler 包下的类");
+
+        List<String> violations = new ArrayList<>();
+        for (Class<?> clazz : handlerClasses) {
+            if (clazz.isInterface() || clazz.isEnum()) {
+                continue;
+            }
+            String handlerName = clazz.getSimpleName();
+            String allowedDomainPackage;
+            if (handlerName.startsWith("Sales") || handlerName.startsWith("Shipment")) {
+                allowedDomainPackage = "com.luna.lunasrv.module.lunaerp.dal.mysql.business";
+            } else if (handlerName.contains("Payment") || handlerName.contains("Receipt") || handlerName.contains("Finance") || handlerName.contains("CustomerReceipt")) {
+                allowedDomainPackage = "com.luna.lunasrv.module.lunaerp.dal.mysql.finance";
+            } else if (handlerName.startsWith("Stock")) {
+                allowedDomainPackage = "com.luna.lunasrv.module.lunaerp.dal.mysql.stock";
+            } else if (handlerName.startsWith("Production") || handlerName.startsWith("Weaving") || handlerName.startsWith("Dyeing")) {
+                allowedDomainPackage = "com.luna.lunasrv.module.lunaerp.dal.mysql.production";
+            } else {
+                continue;
+            }
+
+            for (Field field : clazz.getDeclaredFields()) {
+                Class<?> fieldType = field.getType();
+                if (BaseMapper.class.isAssignableFrom(fieldType) || fieldType.getSimpleName().endsWith("Mapper")) {
+                    String mapperPackage = fieldType.getPackage().getName();
+                    if (!mapperPackage.startsWith(allowedDomainPackage)) {
+                        violations.add(clazz.getSimpleName() + "." + field.getName() + " (" + fieldType.getSimpleName()
+                                + ") 是外部域 Mapper (" + mapperPackage + ")，违反 coding-standards.md §20/§21 严禁跨域直连他人 Mapper 写库（必须调用外部域 Service）");
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到 ApprovalHandler 注入了非本领域的 Mapper 接口:\n" + String.join("\n", violations));
+    }
+
     private void collectJavaFiles(java.io.File dir, List<java.io.File> result) {
         java.io.File[] files = dir.listFiles();
         if (files == null) {

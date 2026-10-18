@@ -21,6 +21,7 @@
   - 禁止在列表遍历或分页拼装循环内单条查表（严禁 N+1）。
   - 关联单据/实体快照一律采用批量抽取与 Map 索引：提取私有方法 `batchLoadXxx(Collection<Long> ids)`，返回 `Map<Long, DO>`，主循环中通过 `map.get(id)` 内存读取。
   - `batchLoadXxx` 内部必须遵循集合空安全，空集合直接返回 `Collections.emptyMap()`。
+  - **“详情字段不入列表”最小契约原则**：Spec 声明在详情页（Detail/Workspace）的只读拓展字段（如审批伴生的下游单据号/状态、审批历史链路、时序时间线等），**严禁**顺带扩展至分页列表 `PageRespVO` 中，亦**严禁**在分页查询实现中发起额外的批量关联查询（如 `selectBatchIds`），坚持 Spec 最小契约原则，杜绝无序跨域蔓延与非必要查询负载。
 
 ## 3. 只读聚合子包规约 (Read-only Projections)
 
@@ -367,6 +368,21 @@
   2. **Service 单元测试打桩规约**：
      - 在 Service 层测试打桩 `approvalInstanceService` 时，必须断言 Service 专注于前置校验与引擎触发，不发起重复状态覆写；
      - 涉及回调副作用的集成测试，必须通过真实注入或 `doAnswer` 模拟引擎触发 `ApprovalBizHandler` 的标准回调链路。
+
+## 21. 跨域伴生单据协同作废与内部服务 SPI 规约 (Cross-Domain Companion Cascade Cancellation & Internal Service SPI)
+
+- **场景**：业务单据在生命周期中伴生其他域单据（如销售退货审批通过自动生成 DRAFT 入库单、销售发货单自动生成财务应收对账单、生产单生成领料单等）。当源单作废/取消时，必须同事务原子级联作废下游伴生单据（或拒绝作废）。
+- **强制规约**：
+  1. **内部协同 SPI 解耦 Web 权限**：
+     - 被依赖域 Service 应暴露专供内部协同调用的无 Web 权限轻量 SPI（如 `boolean cancelDraftStockIn(Long id)` 或 `void cancelDraftBySource(Long id, ...)`）；
+     - **严禁**在内部方法中硬编码针对 HTTP 上下文的用户权限校验（如 `hasPermission("...:update")`），用户操作鉴权一律由外层 Controller 端点通过 `@PreAuthorize` 承担，防止跨域业务联动因调用方缺少下游操作权限而误抛 `AccessDeniedException`。
+  2. **原子条件行锁守卫**：
+     - 内部伴生单据作废方法必须使用乐观条件更新（如 `eq(status, 'DRAFT').set(status, 'CANCELLED')`），返回更新行数或布尔值，防范并发状态竞争与数据脏写。
+  3. **严禁越权跨域写库**：
+     - 上游业务 Service / ApprovalHandler **严禁**越权注入被依赖模块的 `Mapper` 执行跨域直接写库，必须通过该内部 Service SPI 协同完成（由 `ArchitectureStandardsTest` 机械化测试强制守护）。
+  4. **下游非草稿态阻断与异常精准转译**：
+     - 若伴生单据已被下游人工审核、已过账或已被取消，乐观条件更新将匹配 0 行（返回 `false`）；
+     - 上游调用方 Service 必须阻断当前单据的作废流程，并精准抛出对应领域业务异常（如 `1_030_037_009` `SALES_RETURN_STOCK_IN_STATUS_INVALID`），严禁静默忽略或直接抛出底层数据库异常。
 
 
 
