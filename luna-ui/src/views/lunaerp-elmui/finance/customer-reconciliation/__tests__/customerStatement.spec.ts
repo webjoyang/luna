@@ -15,7 +15,6 @@ import {
   calculateStatementSummary,
   getCustomerStatementActionFlags,
   validateConfirmOnBehalfForm,
-  validateRejectForm,
   formatMoney,
   formatSignStatusTag,
   formatStatementStatusTag,
@@ -105,12 +104,11 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
       expect(flags.canSend).toBe(true)
       expect(flags.canVoid).toBe(true)
       expect(flags.canConfirmOnBehalf).toBe(false)
-      expect(flags.canReject).toBe(false)
       expect(flags.canRejectReply).toBe(false)
       expect(flags.canPrint).toBe(true)
     })
 
-    it('SENT should allow confirmOnBehalf, reject, void, print', () => {
+    it('SENT should allow confirmOnBehalf, void, print', () => {
       const flags = getCustomerStatementActionFlags('SENT')
       expect(flags.canEdit).toBe(false)
       expect(flags.canDelete).toBe(false)
@@ -118,7 +116,6 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
       expect(flags.canSend).toBe(false)
       expect(flags.canVoid).toBe(true)
       expect(flags.canConfirmOnBehalf).toBe(true)
-      expect(flags.canReject).toBe(true)
       expect(flags.canRejectReply).toBe(false)
       expect(flags.canPrint).toBe(true)
     })
@@ -131,7 +128,6 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
       expect(flags.canSend).toBe(false)
       expect(flags.canVoid).toBe(false)
       expect(flags.canConfirmOnBehalf).toBe(false)
-      expect(flags.canReject).toBe(false)
       expect(flags.canRejectReply).toBe(false)
       expect(flags.canPrint).toBe(true)
     })
@@ -144,7 +140,6 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
       expect(flags.canSend).toBe(false)
       expect(flags.canVoid).toBe(true)
       expect(flags.canConfirmOnBehalf).toBe(false)
-      expect(flags.canReject).toBe(false)
       expect(flags.canRejectReply).toBe(true)
       expect(flags.canPrint).toBe(true)
     })
@@ -157,25 +152,18 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
       expect(flags.canSend).toBe(false)
       expect(flags.canVoid).toBe(false)
       expect(flags.canConfirmOnBehalf).toBe(false)
-      expect(flags.canReject).toBe(false)
       expect(flags.canRejectReply).toBe(false)
       expect(flags.canPrint).toBe(false)
     })
   })
 
   describe('Form Validations', () => {
-    it('validateConfirmOnBehalfForm should require confirmMethod', () => {
-      expect(validateConfirmOnBehalfForm('微信').valid).toBe(true)
-      expect(validateConfirmOnBehalfForm('').valid).toBe(false)
-      expect(validateConfirmOnBehalfForm('   ').valid).toBe(false)
-      expect(validateConfirmOnBehalfForm(undefined).valid).toBe(false)
-    })
-
-    it('validateRejectForm should require rejectReason', () => {
-      expect(validateRejectForm('金额有误').valid).toBe(true)
-      expect(validateRejectForm('').valid).toBe(false)
-      expect(validateRejectForm('   ').valid).toBe(false)
-      expect(validateRejectForm(undefined).valid).toBe(false)
+    it('validateConfirmOnBehalfForm should require confirmMethod and remark', () => {
+      expect(validateConfirmOnBehalfForm('微信', '李总确认').valid).toBe(true)
+      expect(validateConfirmOnBehalfForm('', '李总确认').valid).toBe(false)
+      expect(validateConfirmOnBehalfForm('微信', '').valid).toBe(false)
+      expect(validateConfirmOnBehalfForm('微信', '   ').valid).toBe(false)
+      expect(validateConfirmOnBehalfForm(undefined, '李总确认').valid).toBe(false)
     })
   })
 
@@ -208,20 +196,14 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
 
     it('parseCustomerStatementError should map code to message', () => {
       expect(
-        parseCustomerStatementError(
-          CUSTOMER_STATEMENT_ERROR_CODES.STATUS_NOT_DRAFT
-        )
+        parseCustomerStatementError(CUSTOMER_STATEMENT_ERROR_CODES.STATUS_NOT_DRAFT)
       ).toContain('草稿（DRAFT）')
-      expect(
-        parseCustomerStatementError(
-          CUSTOMER_STATEMENT_ERROR_CODES.CURRENCY_MIXED
-        )
-      ).toContain('多币种')
-      expect(
-        parseCustomerStatementError(
-          CUSTOMER_STATEMENT_ERROR_CODES.ENTRY_OCCUPIED
-        )
-      ).toContain('占用')
+      expect(parseCustomerStatementError(CUSTOMER_STATEMENT_ERROR_CODES.CURRENCY_MIXED)).toContain(
+        '多币种'
+      )
+      expect(parseCustomerStatementError(CUSTOMER_STATEMENT_ERROR_CODES.ENTRY_OCCUPIED)).toContain(
+        '占用'
+      )
       expect(parseCustomerStatementError(999999)).toBe('对账单操作失败，请重试')
     })
   })
@@ -363,24 +345,6 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
           id: 200,
           confirmMethod: '微信',
           remark: '李总确认'
-        }
-      })
-      expect(res).toBe(true)
-    })
-
-    it('should invoke rejectCustomerStatement with PUT', async () => {
-      ;(request.put as any).mockResolvedValueOnce(true)
-
-      const res = await CustomerStatementApi.rejectCustomerStatement({
-        id: 200,
-        rejectReason: '数量有异议'
-      })
-
-      expect(request.put).toHaveBeenCalledWith({
-        url: '/lunaerp/finance/customerrecon/statement/reject',
-        data: {
-          id: 200,
-          rejectReason: '数量有异议'
         }
       })
       expect(res).toBe(true)

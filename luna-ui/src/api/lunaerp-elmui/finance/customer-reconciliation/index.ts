@@ -236,15 +236,7 @@ export const addStatementEntry = (data: CustomerStatementAddEntryReqVO) => {
 export interface CustomerStatementConfirmOnBehalfReqVO {
   id: number
   confirmMethod: string
-  remark?: string
-}
-
-/**
- * 异议驳回 Request VO
- */
-export interface CustomerStatementRejectReqVO {
-  id: number
-  rejectReason: string
+  remark: string
 }
 
 /**
@@ -332,16 +324,6 @@ export const voidCustomerStatement = (id: number) => {
 export const confirmOnBehalf = (data: CustomerStatementConfirmOnBehalfReqVO) => {
   return request.put<boolean>({
     url: '/lunaerp/finance/customerrecon/statement/confirm-on-behalf',
-    data
-  })
-}
-
-/**
- * 驳回客户对账单（SENT -> REJECTED）
- */
-export const rejectCustomerStatement = (data: CustomerStatementRejectReqVO) => {
-  return request.put<boolean>({
-    url: '/lunaerp/finance/customerrecon/statement/reject',
     data
   })
 }

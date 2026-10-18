@@ -105,7 +105,6 @@ export function getCustomerStatementActionFlags(status?: string): {
   canSend: boolean
   canVoid: boolean
   canConfirmOnBehalf: boolean
-  canReject: boolean
   canRejectReply: boolean
   canPrint: boolean
 } {
@@ -122,7 +121,6 @@ export function getCustomerStatementActionFlags(status?: string): {
     canSend: isDraft,
     canVoid: !isConfirmed && !isVoid && Boolean(status),
     canConfirmOnBehalf: isSent,
-    canReject: isSent,
     canRejectReply: isRejected,
     canPrint: !isVoid && Boolean(status)
   }
@@ -131,25 +129,18 @@ export function getCustomerStatementActionFlags(status?: string): {
 /**
  * 校验代客确认表单
  */
-export function validateConfirmOnBehalfForm(confirmMethod?: string): {
+export function validateConfirmOnBehalfForm(
+  confirmMethod?: string,
+  remark?: string
+): {
   valid: boolean
   message?: string
 } {
   if (!confirmMethod || !confirmMethod.trim()) {
     return { valid: false, message: '请选择或填写代客确认方式' }
   }
-  return { valid: true }
-}
-
-/**
- * 校验异议驳回表单
- */
-export function validateRejectForm(rejectReason?: string): {
-  valid: boolean
-  message?: string
-} {
-  if (!rejectReason || !rejectReason.trim()) {
-    return { valid: false, message: '请填写异议驳回原因' }
+  if (!remark || !remark.trim()) {
+    return { valid: false, message: '请填写代客确认依据及备注' }
   }
   return { valid: true }
 }

@@ -591,6 +591,9 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         if (reqVO == null || reqVO.getId() == null) {
             throw exception(STATEMENT_NOT_EXISTS);
         }
+        if (cn.hutool.core.util.StrUtil.isBlank(reqVO.getConfirmMethod()) || cn.hutool.core.util.StrUtil.isBlank(reqVO.getRemark())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
         CustomerStatementDO statement = customerStatementMapper.selectById(reqVO.getId());
         validateStatementExistsAndTenant(statement);
 

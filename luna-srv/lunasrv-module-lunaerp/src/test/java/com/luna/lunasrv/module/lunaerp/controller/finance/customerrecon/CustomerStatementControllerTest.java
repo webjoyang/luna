@@ -31,6 +31,9 @@ public class CustomerStatementControllerTest {
     @Mock
     private CustomerStatementService customerStatementService;
 
+    @Mock
+    private jakarta.validation.Validator validator;
+
     @InjectMocks
     private CustomerStatementController controller;
 
@@ -170,19 +173,6 @@ public class CustomerStatementControllerTest {
     }
 
     @Test
-    @DisplayName("rejectCustomerStatement 接口：委托 Service 执行驳回并返回成功")
-    void testRejectCustomerStatement() {
-        CustomerStatementRejectReqVO reqVO = new CustomerStatementRejectReqVO();
-        reqVO.setId(200L);
-        reqVO.setRejectReason("明细数量有误");
-
-        CommonResult<Boolean> result = controller.rejectCustomerStatement(reqVO, null, null);
-        assertTrue(result.isSuccess());
-        assertTrue(result.getData());
-        verify(customerStatementService).rejectCustomerStatement(any(CustomerStatementRejectReqVO.class));
-    }
-
-    @Test
     @DisplayName("rejectReplyCustomerStatement 接口：委托 Service 执行回复并返回成功")
     void testRejectReplyCustomerStatement() {
         CustomerStatementRejectReplyReqVO reqVO = new CustomerStatementRejectReplyReqVO();
@@ -196,17 +186,22 @@ public class CustomerStatementControllerTest {
     }
 
     @Test
-    @DisplayName("getCustomerStatementPrintData 接口：委托 Service 获得打印 VO")
+    @DisplayName("getCustomerStatementPrintData 接口：委托 Service 获得打印 VO（支持 QueryParam 与 PathVariable）")
     void testGetCustomerStatementPrintData() {
         CustomerStatementPrintRespVO printVO = new CustomerStatementPrintRespVO();
         printVO.setId(200L);
         printVO.setStatementNo("CS20260001");
         when(customerStatementService.getCustomerStatementPrintData(200L)).thenReturn(printVO);
 
-        CommonResult<CustomerStatementPrintRespVO> result = controller.getCustomerStatementPrintData(200L);
-        assertTrue(result.isSuccess());
-        assertEquals(printVO, result.getData());
-        verify(customerStatementService).getCustomerStatementPrintData(200L);
+        CommonResult<CustomerStatementPrintRespVO> result1 = controller.getCustomerStatementPrintData(200L, null);
+        assertTrue(result1.isSuccess());
+        assertEquals(printVO, result1.getData());
+
+        CommonResult<CustomerStatementPrintRespVO> result2 = controller.getCustomerStatementPrintData(null, 200L);
+        assertTrue(result2.isSuccess());
+        assertEquals(printVO, result2.getData());
+
+        verify(customerStatementService, times(2)).getCustomerStatementPrintData(200L);
     }
 
     @Test
@@ -222,9 +217,8 @@ public class CustomerStatementControllerTest {
         assertPermission("sendCustomerStatement", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:send')");
         assertPermission("voidCustomerStatement", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:void')");
         assertPermission("confirmOnBehalf", new Class<?>[]{CustomerStatementConfirmOnBehalfReqVO.class, Long.class, String.class, String.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:confirm-on-behalf')");
-        assertPermission("rejectCustomerStatement", new Class<?>[]{CustomerStatementRejectReqVO.class, Long.class, String.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:update')");
         assertPermission("rejectReplyCustomerStatement", new Class<?>[]{CustomerStatementRejectReplyReqVO.class, Long.class, String.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:update')");
-        assertPermission("getCustomerStatementPrintData", new Class<?>[]{Long.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:print')");
+        assertPermission("getCustomerStatementPrintData", new Class<?>[]{Long.class, Long.class}, "@ss.hasPermission('lunaerp:finance:customerrecon:print')");
     }
 
     private void assertPermission(String methodName, Class<?>[] paramTypes, String expectedExpression) throws NoSuchMethodException {

@@ -932,9 +932,26 @@ public class CustomerStatementServiceImplTest {
         CustomerStatementConfirmOnBehalfReqVO req = new CustomerStatementConfirmOnBehalfReqVO();
         req.setId(id);
         req.setConfirmMethod("微信");
+        req.setRemark("客户李总微信确认");
 
         ServiceException ex = assertThrows(ServiceException.class, () -> customerStatementService.confirmOnBehalf(req));
         assertEquals(FinanceErrorCodeConstants.STATEMENT_STATUS_NOT_ALLOW.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("confirmOnBehalf 异常：缺少 confirmMethod 或 remark 时抛出 STATEMENT_STATUS_NOT_ALLOW")
+    void testConfirmOnBehalf_blankParams_throwsException() {
+        CustomerStatementConfirmOnBehalfReqVO req1 = new CustomerStatementConfirmOnBehalfReqVO();
+        req1.setId(100L);
+        req1.setConfirmMethod("");
+        req1.setRemark("备注");
+        assertThrows(ServiceException.class, () -> customerStatementService.confirmOnBehalf(req1));
+
+        CustomerStatementConfirmOnBehalfReqVO req2 = new CustomerStatementConfirmOnBehalfReqVO();
+        req2.setId(100L);
+        req2.setConfirmMethod("微信");
+        req2.setRemark("  ");
+        assertThrows(ServiceException.class, () -> customerStatementService.confirmOnBehalf(req2));
     }
 
     @Test

@@ -222,7 +222,11 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 import type { CustomerStatementPrintRespVO } from '@/api/lunaerp-elmui/finance/customer-reconciliation'
-import { formatMoney } from '../../model/customerStatement'
+import {
+  formatMoney,
+  formatStatementStatusTag,
+  formatSignStatusTag
+} from '../../model/customerStatement'
 import QrSlot from '@/components/Print/src/QrSlot.vue'
 
 defineOptions({ name: 'CustomerStatementSheet' })
@@ -240,20 +244,7 @@ const sheetList = computed<CustomerStatementPrintRespVO[]>(() => {
 })
 
 const formatStatusText = (status?: string) => {
-  switch (status) {
-    case 'CONFIRMED':
-      return '已确认'
-    case 'SENT':
-      return '已发出'
-    case 'REJECTED':
-      return '已驳回'
-    case 'DRAFT':
-      return '草稿'
-    case 'VOID':
-      return '已作废'
-    default:
-      return status || '—'
-  }
+  return status ? formatStatementStatusTag(status).label : '—'
 }
 
 const formatBankInfo = (bankName?: string, bankAccountNo?: string) => {
@@ -290,17 +281,7 @@ const formatRefTypeLabel = (refType?: string) => {
 }
 
 const formatSignStatus = (signStatus?: string) => {
-  switch (signStatus) {
-    case 'SIGNED':
-      return '已签收'
-    case 'UNSIGNED':
-    case 'UN_SIGN':
-      return '未签收'
-    case 'REJECTED':
-      return '拒签'
-    default:
-      return signStatus || '—'
-  }
+  return signStatus ? formatSignStatusTag(signStatus).label : '—'
 }
 
 const formatPrintTime = (time?: string) => {

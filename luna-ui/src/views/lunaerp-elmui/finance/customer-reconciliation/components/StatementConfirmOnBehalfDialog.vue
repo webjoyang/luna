@@ -82,7 +82,8 @@ const formData = reactive({
 })
 
 const rules: FormRules = {
-  confirmMethod: [{ required: true, message: '请选择或输入代客确认方式', trigger: 'change' }]
+  confirmMethod: [{ required: true, message: '请选择或输入代客确认方式', trigger: 'change' }],
+  remark: [{ required: true, message: '请输入代客确认依据及备注', trigger: 'blur' }]
 }
 
 const open = (id: number, no: string) => {

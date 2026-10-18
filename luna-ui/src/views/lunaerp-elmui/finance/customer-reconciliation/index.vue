@@ -180,17 +180,6 @@
             代客确认
           </el-button>
 
-          <!-- 驳回：仅 SENT -->
-          <el-button
-            v-if="getCustomerStatementActionFlags(row.status).canReject"
-            link
-            type="warning"
-            @click="openRejectDialog(row)"
-            v-hasPermi="['lunaerp:finance:customerrecon:update']"
-          >
-            驳回
-          </el-button>
-
           <!-- 异议回复：仅 REJECTED -->
           <el-button
             v-if="getCustomerStatementActionFlags(row.status).canRejectReply"
@@ -281,9 +270,6 @@
     <!-- 代客确认弹窗 -->
     <StatementConfirmOnBehalfDialog ref="confirmOnBehalfDialogRef" @success="getList" />
 
-    <!-- 驳回弹窗 -->
-    <StatementRejectDialog ref="rejectDialogRef" @success="getList" />
-
     <!-- 异议回复弹窗 -->
     <StatementRejectReplyDialog ref="rejectReplyDialogRef" @success="getList" />
   </ContentWrap>
@@ -298,9 +284,7 @@ import type {
 } from '@/api/lunaerp-elmui/finance/customer-reconciliation'
 import {
   getCustomerStatementPage,
-  deleteCustomerStatement,
-  sendCustomerStatement,
-  voidCustomerStatement
+  deleteCustomerStatement
 } from '@/api/lunaerp-elmui/finance/customer-reconciliation'
 import { getCustomerPage, type CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import {
@@ -309,11 +293,11 @@ import {
   getCustomerStatementActionFlags
 } from './model/customerStatement'
 import { PrintDispatcher } from '@/components/Print'
+import { useCustomerStatementActions } from './composables/useCustomerStatementActions'
 import StatementCreateDialog from './components/StatementCreateDialog.vue'
 import StatementDetailDrawer from './components/StatementDetailDrawer.vue'
 import StatementEditDialog from './components/StatementEditDialog.vue'
 import StatementConfirmOnBehalfDialog from './components/StatementConfirmOnBehalfDialog.vue'
-import StatementRejectDialog from './components/StatementRejectDialog.vue'
 import StatementRejectReplyDialog from './components/StatementRejectReplyDialog.vue'
 
 defineOptions({ name: 'LunaerpFinanceCustomerReconciliation' })
@@ -324,12 +308,13 @@ const list = ref<CustomerStatementRespVO[]>([])
 const total = ref(0)
 const customerOptions = ref<CustomerVO[]>([])
 
+const { handleSend: doSend, handleVoid: doVoid } = useCustomerStatementActions()
+
 const queryFormRef = ref()
 const createDialogRef = ref<InstanceType<typeof StatementCreateDialog>>()
 const detailDrawerRef = ref<InstanceType<typeof StatementDetailDrawer>>()
 const editDialogRef = ref<InstanceType<typeof StatementEditDialog>>()
 const confirmOnBehalfDialogRef = ref<InstanceType<typeof StatementConfirmOnBehalfDialog>>()
-const rejectDialogRef = ref<InstanceType<typeof StatementRejectDialog>>()
 const rejectReplyDialogRef = ref<InstanceType<typeof StatementRejectReplyDialog>>()
 
 const queryParams = reactive<{
@@ -417,54 +402,16 @@ const openEditDialog = (row: CustomerStatementRespVO) => {
   editDialogRef.value?.open(row.id, row.remark)
 }
 
-const handleSend = async (row: CustomerStatementRespVO) => {
-  await ElMessageBox.confirm(
-    `确定要将客户对账单【${row.statementNo}】发送给客户吗？发送后客户可在门户查阅并进行核对确认。`,
-    '发送确认',
-    {
-      confirmButtonText: '确定发送',
-      cancelButtonText: '取消',
-      type: 'info'
-    }
-  )
-
-  loading.value = true
-  try {
-    await sendCustomerStatement(row.id)
-    ElMessage.success('对账单已成功发送')
-    getList()
-  } finally {
-    loading.value = false
-  }
+const handleSend = (row: CustomerStatementRespVO) => {
+  return doSend(row, () => getList())
 }
 
-const handleVoid = async (row: CustomerStatementRespVO) => {
-  await ElMessageBox.confirm(
-    `确定要作废客户对账单【${row.statementNo}】吗？作废后已占用的明细分录将释放，单据无法恢复。`,
-    '作废确认',
-    {
-      confirmButtonText: '确定作废',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }
-  )
-
-  loading.value = true
-  try {
-    await voidCustomerStatement(row.id)
-    ElMessage.success('对账单已作废')
-    getList()
-  } finally {
-    loading.value = false
-  }
+const handleVoid = (row: CustomerStatementRespVO) => {
+  return doVoid(row, () => getList())
 }
 
 const openConfirmOnBehalfDialog = (row: CustomerStatementRespVO) => {
   confirmOnBehalfDialogRef.value?.open(row.id, row.statementNo)
-}
-
-const openRejectDialog = (row: CustomerStatementRespVO) => {
-  rejectDialogRef.value?.open(row.id, row.statementNo)
 }
 
 const openRejectReplyDialog = (row: CustomerStatementRespVO) => {

@@ -61,17 +61,6 @@
             <Icon icon="ep:check" class="mr-1" /> 代客确认
           </el-button>
 
-          <!-- 驳回按钮：仅 SENT -->
-          <el-button
-            v-if="getCustomerStatementActionFlags(detail?.status).canReject"
-            type="warning"
-            plain
-            @click="handleReject"
-            v-hasPermi="['lunaerp:finance:customerrecon:update']"
-          >
-            <Icon icon="ep:close" class="mr-1" /> 驳回单据
-          </el-button>
-
           <!-- 异议回复按钮：仅 REJECTED -->
           <el-button
             v-if="getCustomerStatementActionFlags(detail?.status).canRejectReply"
@@ -292,7 +281,6 @@
     <StatementAddEntryDialog ref="addEntryDialogRef" @success="handleSubSuccess" />
     <StatementEditDialog ref="editDialogRef" @success="handleSubSuccess" />
     <StatementConfirmOnBehalfDialog ref="confirmOnBehalfDialogRef" @success="handleSubSuccess" />
-    <StatementRejectDialog ref="rejectDialogRef" @success="handleSubSuccess" />
     <StatementRejectReplyDialog ref="rejectReplyDialogRef" @success="handleSubSuccess" />
   </el-drawer>
 </template>
@@ -304,8 +292,6 @@ import {
   getCustomerStatement,
   deleteCustomerStatement,
   updateCustomerStatement,
-  sendCustomerStatement,
-  voidCustomerStatement,
   type CustomerStatementDetailRespVO,
   type CustomerStatementItemRespVO
 } from '@/api/lunaerp-elmui/finance/customer-reconciliation'
@@ -316,10 +302,10 @@ import {
   getCustomerStatementActionFlags
 } from '../model/customerStatement'
 import { PrintDispatcher } from '@/components/Print'
+import { useCustomerStatementActions } from '../composables/useCustomerStatementActions'
 import StatementAddEntryDialog from './StatementAddEntryDialog.vue'
 import StatementEditDialog from './StatementEditDialog.vue'
 import StatementConfirmOnBehalfDialog from './StatementConfirmOnBehalfDialog.vue'
-import StatementRejectDialog from './StatementRejectDialog.vue'
 import StatementRejectReplyDialog from './StatementRejectReplyDialog.vue'
 
 defineOptions({ name: 'StatementDetailDrawer' })
@@ -332,10 +318,11 @@ const visible = ref(false)
 const loading = ref(false)
 const detail = ref<CustomerStatementDetailRespVO | null>(null)
 
+const { handleSend: doSend, handleVoid: doVoid } = useCustomerStatementActions()
+
 const addEntryDialogRef = ref<InstanceType<typeof StatementAddEntryDialog>>()
 const editDialogRef = ref<InstanceType<typeof StatementEditDialog>>()
 const confirmOnBehalfDialogRef = ref<InstanceType<typeof StatementConfirmOnBehalfDialog>>()
-const rejectDialogRef = ref<InstanceType<typeof StatementRejectDialog>>()
 const rejectReplyDialogRef = ref<InstanceType<typeof StatementRejectReplyDialog>>()
 
 // 加载详情数据
@@ -360,64 +347,28 @@ const itemRowClassName = ({ row }: { row: CustomerStatementItemRespVO }) => {
   return row.hasReversal ? 'reversal-highlight-row' : ''
 }
 
-// 发送对账单
+// 发送对账单（委托单一来源提交助手）
 const handleSend = async () => {
   if (!detail.value) return
-  await ElMessageBox.confirm(
-    `确定要将客户对账单【${detail.value.statementNo}】发送给客户吗？发送后客户可在门户查阅并进行核对确认。`,
-    '发送确认',
-    {
-      confirmButtonText: '确定发送',
-      cancelButtonText: '取消',
-      type: 'info'
-    }
-  )
-
-  loading.value = true
-  try {
-    await sendCustomerStatement(detail.value.id)
-    ElMessage.success('对账单已成功发送')
-    await fetchDetail(detail.value.id)
+  await doSend(detail.value, async () => {
+    await fetchDetail(detail.value!.id)
     emit('refresh')
-  } finally {
-    loading.value = false
-  }
+  })
 }
 
-// 作废对账单
+// 作废对账单（委托单一来源提交助手）
 const handleVoid = async () => {
   if (!detail.value) return
-  await ElMessageBox.confirm(
-    `确定要作废客户对账单【${detail.value.statementNo}】吗？作废后已占用的分录将被释放。`,
-    '作废确认',
-    {
-      confirmButtonText: '确定作废',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }
-  )
-
-  loading.value = true
-  try {
-    await voidCustomerStatement(detail.value.id)
-    ElMessage.success('对账单已成功作废')
-    await fetchDetail(detail.value.id)
+  await doVoid(detail.value, async () => {
+    await fetchDetail(detail.value!.id)
     emit('refresh')
-  } finally {
-    loading.value = false
-  }
+  })
 }
 
 // 代客确认
 const handleConfirmOnBehalf = () => {
   if (!detail.value) return
   confirmOnBehalfDialogRef.value?.open(detail.value.id, detail.value.statementNo)
-}
-
-// 驳回
-const handleReject = () => {
-  if (!detail.value) return
-  rejectDialogRef.value?.open(detail.value.id, detail.value.statementNo)
 }
 
 // 异议回复
