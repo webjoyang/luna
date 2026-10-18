@@ -697,5 +697,10 @@ export enum DICT_TYPE {
   // ========== LunaERP - 财务管理-收付款与付款申请模块 ==========
   LUNAERP_PAYMENT_APPLY_TYPE = 'lunaerp_payment_apply_type', // 付款申请类型
   LUNAERP_FINANCE_PAYMENT_DIRECTION = 'lunaerp_finance_payment_direction', // 收付款方向
-  LUNAERP_APPROVAL_STATUS = 'lunaerp_approval_status' // 业务单据审批状态
+  LUNAERP_APPROVAL_STATUS = 'lunaerp_approval_status', // 业务单据审批状态
+
+  // ========== LunaERP - 销售退货模块 ==========
+  LUNAERP_SALES_RETURN_STATUS = 'lunaerp_sales_return_status', // 销售退货状态
+  LUNAERP_SALES_RETURN_REASON = 'lunaerp_sales_return_reason', // 销售退货原因
+  LUNAERP_SALES_RETURN_QC_RESULT = 'lunaerp_sales_return_qc_result' // 销售退货质检判定
 }

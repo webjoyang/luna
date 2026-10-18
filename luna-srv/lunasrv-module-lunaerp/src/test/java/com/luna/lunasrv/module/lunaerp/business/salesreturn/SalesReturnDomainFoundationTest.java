@@ -228,6 +228,7 @@ public class SalesReturnDomainFoundationTest {
         assertEquals(1_030_037_012, SalesReturnErrorCodeConstants.SALES_RETURN_STOCK_IN_NOT_COMPLETED.getCode());
         assertEquals(1_030_037_013, SalesReturnErrorCodeConstants.SALES_RETURN_CURRENCY_MISMATCH.getCode());
         assertEquals(1_030_037_014, SalesReturnErrorCodeConstants.SALES_RETURN_EXCHANGE_RATE_MISSING.getCode());
+        assertEquals(1_030_037_015, SalesReturnErrorCodeConstants.SALES_RETURN_REASON_EMPTY.getCode());
     }
 
 }

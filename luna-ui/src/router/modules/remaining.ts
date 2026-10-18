@@ -592,6 +592,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
         }
       },
       {
+        path: 'sales-return/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/business/sales-return/workspace/index.vue'),
+        name: 'LunaerpElmuiBusinessSalesReturnWorkspace',
+        meta: {
+          title: '退货工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/business/sales-return'
+        }
+      },
+      {
         path: 'cost-card/edit/:id?',
         component: () => import('@/views/lunaerp/business/cost-card/edit.vue'),
         name: 'LunaerpBusinessCostCardEdit',

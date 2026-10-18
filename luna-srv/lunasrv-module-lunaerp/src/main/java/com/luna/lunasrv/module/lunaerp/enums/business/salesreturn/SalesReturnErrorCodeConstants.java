@@ -24,5 +24,6 @@ public interface SalesReturnErrorCodeConstants {
     ErrorCode SALES_RETURN_STOCK_IN_NOT_COMPLETED = new ErrorCode(1_030_037_012, "存在可入库卷但入库单未审核完成，不可财务确认");
     ErrorCode SALES_RETURN_CURRENCY_MISMATCH = new ErrorCode(1_030_037_013, "退货币种与发货单不一致");
     ErrorCode SALES_RETURN_EXCHANGE_RATE_MISSING = new ErrorCode(1_030_037_014, "原发货入账汇率缺失，无法执行退货冲减");
+    ErrorCode SALES_RETURN_REASON_EMPTY = new ErrorCode(1_030_037_015, "退货原因不能为空或非法");
 
 }
