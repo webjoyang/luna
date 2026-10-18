@@ -36,6 +36,7 @@ public interface FinanceErrorCodeConstants {
     ErrorCode STATEMENT_CURRENCY_MIXED = new ErrorCode(1_030_021_005, "多币种需分单生成对账单");
     ErrorCode STATEMENT_CUSTOMER_MISMATCH = new ErrorCode(1_030_021_006, "客户信息不匹配");
     ErrorCode STATEMENT_PERIOD_INVALID = new ErrorCode(1_030_021_007, "对账起止日期非法");
+    ErrorCode STATEMENT_NO_EXHAUSTED = new ErrorCode(1_030_021_008, "对账单号生成重试耗尽");
 
     // ========== 供应商对账 1-030-022-000 ~ 099 ==========
     ErrorCode SUPPLIER_RECON_NOT_EXISTS = new ErrorCode(1_030_022_000, "对账单不存在");

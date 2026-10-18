@@ -70,4 +70,22 @@ class FinanceEnumsTest {
         assertEquals("STOCK_IN_ITEM", SourceRefType.STOCK_IN_ITEM.getValue());
     }
 
+    @Test
+    @DisplayName("测试 CustomerStatementStatus 与 CustomerStatementConfirmType 枚举")
+    void testCustomerStatementEnums() {
+        assertEquals("DRAFT", CustomerStatementStatus.DRAFT.getValue());
+        assertEquals("草稿", CustomerStatementStatus.DRAFT.getLabel());
+        assertEquals("DRAFT", CustomerStatementStatus.DRAFT.getCode());
+        assertEquals("SENT", CustomerStatementStatus.SENT.getValue());
+        assertEquals("CONFIRMED", CustomerStatementStatus.CONFIRMED.getValue());
+        assertEquals("REJECTED", CustomerStatementStatus.REJECTED.getValue());
+        assertEquals("VOID", CustomerStatementStatus.VOID.getValue());
+
+        assertEquals("ONLINE_PORTAL", CustomerStatementConfirmType.ONLINE_PORTAL.getValue());
+        assertEquals("在线确认", CustomerStatementConfirmType.ONLINE_PORTAL.getLabel());
+        assertEquals("ONLINE_PORTAL", CustomerStatementConfirmType.ONLINE_PORTAL.getCode());
+        assertEquals("ON_BEHALF", CustomerStatementConfirmType.ON_BEHALF.getValue());
+        assertEquals("代客确认", CustomerStatementConfirmType.ON_BEHALF.getLabel());
+    }
+
 }

@@ -106,6 +106,7 @@ public class FinanceErrorCodeConstantsTest {
         assertEquals(1_030_021_005, FinanceErrorCodeConstants.STATEMENT_CURRENCY_MIXED.getCode());
         assertEquals(1_030_021_006, FinanceErrorCodeConstants.STATEMENT_CUSTOMER_MISMATCH.getCode());
         assertEquals(1_030_021_007, FinanceErrorCodeConstants.STATEMENT_PERIOD_INVALID.getCode());
+        assertEquals(1_030_021_008, FinanceErrorCodeConstants.STATEMENT_NO_EXHAUSTED.getCode());
     }
 
     @Test
