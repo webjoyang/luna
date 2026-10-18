@@ -123,7 +123,7 @@ public class FinanceErrorCodeConstantsTest {
     }
 
     @Test
-    @DisplayName("验证发票申请错误码 1-030-026-000 ~ 007")
+    @DisplayName("验证发票申请错误码 1-030-026-000 ~ 008")
     void testInvoiceErrorCodes() {
         assertEquals(1_030_026_000, FinanceErrorCodeConstants.INVOICE_NOT_EXISTS.getCode());
         assertEquals(1_030_026_001, FinanceErrorCodeConstants.INVOICE_STATUS_NOT_ALLOW.getCode());
@@ -133,5 +133,6 @@ public class FinanceErrorCodeConstantsTest {
         assertEquals(1_030_026_005, FinanceErrorCodeConstants.INVOICE_OFFICIAL_NO_REQUIRED.getCode());
         assertEquals(1_030_026_006, FinanceErrorCodeConstants.INVOICE_OFFICIAL_NO_DUPLICATE.getCode());
         assertEquals(1_030_026_007, FinanceErrorCodeConstants.INVOICE_TAX_RATE_INVALID.getCode());
+        assertEquals(1_030_026_008, FinanceErrorCodeConstants.INVOICE_NO_EXHAUSTED.getCode());
     }
 }

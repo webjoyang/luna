@@ -168,7 +168,7 @@ payment_ref 的 ref_type 扩值：OUT=PAY_APPLY（11 号，一期唯一）；IN=
 |---|---|
 | customerrecon | `/statement` page/get/create/update/delete；`PUT /send?id=`、`PUT /void?id=`、`PUT /confirm-on-behalf?id=`（必填 confirm_method）、`PUT /reject-reply?id=`（回备注）、`POST /add-entry`（DRAFT 手工追加未占用分录，守卫客户/币种一致+未占用）、`GET /prefetch-lines?customerId&currency&periodStart&periodEnd`（生成预览与追加选择器）、`GET /{id}/print-data`（打印 VO 豁免脱敏+@LogRecord+qrUrl）、`GET /aging/summary?agingDate&customerIds&salesmanId`、`GET /aging/detail?customerId&agingDate` |
 | payment | `/payment` page/get/create（IN：customer/account/currency/amount/receipt_date/receipt_type/分配数组）/update/delete（仅 PENDING）；`PUT /submit?id=`（进 02 审批）；`PUT /reverse?id=`（红冲）；`POST /allocate-preview`（自动分配 FIFO 试算，不落库）；`POST /advance-writeoff`（paymentId=已过账 ADVANCE 单 + 分配数组）；`GET /ar-balance?customerId&currency`（未核销明细分录列表，三视角选单数据源）；`GET /account/simple-list`（收款选账户下拉，账户管理页归 12 号） |
-| invoice | `/invoice` page/get/create/update/delete（DRAFT）；`PUT /submit?id=`、`PUT /issue?id=`（回填 official_invoice_no/invoice_date/attachment）、`PUT /reject?id=`（可空原因） |
+| invoice | `/invoice` page/get/create/update/delete（DRAFT/REJECTED 可改重提）；`PUT /submit?id=`、`PUT /issue?id=`（回填 official_invoice_no/invoice_date/attachment）、`PUT /reject?id=`（可空原因）、`GET /candidate-shipments?customerId&currency`（候选发货单与未开票余额查询） |
 | exchangerate | `/exchange-rate` page/get（query）/create/update（停用）；无删除 |
 | account | `/account` page/get/create（opening_balance 仅此可写）/update（仅备注/状态）；无删除（有分录引用） |
 | ledger | `/ledger/page`、`/ledger/customer-balance`（party 维度只读视图查询，含汇率差异列） |

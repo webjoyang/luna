@@ -80,4 +80,5 @@ public interface FinanceErrorCodeConstants {
     ErrorCode INVOICE_OFFICIAL_NO_REQUIRED = new ErrorCode(1_030_026_005, "登记必填发票号");
     ErrorCode INVOICE_OFFICIAL_NO_DUPLICATE = new ErrorCode(1_030_026_006, "发票号码已存在");
     ErrorCode INVOICE_TAX_RATE_INVALID = new ErrorCode(1_030_026_007, "开票税率不合法");
+    ErrorCode INVOICE_NO_EXHAUSTED = new ErrorCode(1_030_026_008, "发票申请单号生成重试耗尽");
 }

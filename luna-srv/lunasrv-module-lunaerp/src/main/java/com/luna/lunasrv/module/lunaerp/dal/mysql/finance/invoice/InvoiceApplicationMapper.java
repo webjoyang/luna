@@ -1,11 +1,14 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.finance.invoice;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
+import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.invoice.InvoiceApplicationDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -48,5 +51,53 @@ public interface InvoiceApplicationMapper extends BaseMapperX<InvoiceApplication
      */
     @Select("SELECT " + COLUMNS + " FROM lunaerp_finance_invoice_application WHERE official_invoice_no = #{officialInvoiceNo} LIMIT 1")
     InvoiceApplicationDO selectByOfficialInvoiceNoIncludingDeleted(@Param("officialInvoiceNo") String officialInvoiceNo);
+
+    /**
+     * 回收站分页查询已软删草稿发票申请
+     *
+     * @param page 分页参数
+     * @param tenantId 租户ID
+     * @return 分页结果
+     */
+    IPage<RecycleItemRespVO> selectRecyclePage(IPage<RecycleItemRespVO> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的草稿发票申请记录
+     *
+     * @param id 发票申请ID
+     * @param tenantId 租户ID
+     * @return 发票申请DO
+     */
+    InvoiceApplicationDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿发票申请
+     *
+     * @param id 发票申请ID
+     * @param tenantId 租户ID
+     * @param updater 更新人
+     * @param now 更新时间
+     * @return 影响行数
+     */
+    int restoreInvoiceApplication(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                                  @Param("updater") String updater, @Param("now") LocalDateTime now);
+
+    /**
+     * 彻底物理删除草稿发票申请
+     *
+     * @param id 发票申请ID
+     * @param tenantId 租户ID
+     * @return 影响行数
+     */
+    int purgeInvoiceApplication(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 检查发票申请是否存在活跃业务引用
+     *
+     * @param id 发票申请ID
+     * @param tenantId 租户ID
+     * @return 活跃引用数量
+     */
+    Long selectActiveReferenceCount(@Param("id") Long id, @Param("tenantId") Long tenantId);
 
 }

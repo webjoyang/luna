@@ -55,9 +55,11 @@ describe('发票申请前端领域模型与工具函数单元测试', () => {
       expect(flags.isFinal).toBe(false)
     })
 
-    it('已驳回 REJECTED 态：允许重新提交；不允许开票、删除', () => {
+    it('已驳回 REJECTED 态：允许改单与重新提交；不允许开票、删除', () => {
       const flags = getInvoiceActionFlags('REJECTED')
+      expect(flags.canEdit).toBe(true)
       expect(flags.canSubmit).toBe(true)
+      expect(flags.canDelete).toBe(false)
       expect(flags.canIssue).toBe(false)
       expect(flags.canReject).toBe(false)
       expect(flags.isFinal).toBe(false)

@@ -117,7 +117,7 @@ export function getInvoiceActionFlags(status?: string) {
   const isIssued = status === 'ISSUED'
 
   return {
-    canEdit: isDraft,
+    canEdit: isDraft || isRejected,
     canDelete: isDraft,
     canSubmit: isDraft || isRejected,
     canIssue: isSubmitted,

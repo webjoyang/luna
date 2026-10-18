@@ -119,64 +119,23 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
         String address = StrUtil.isNotBlank(createReqVO.getAddress()) ? createReqVO.getAddress().trim()
                 : (StrUtil.isNotBlank(customer.getInvoiceAddress()) ? customer.getInvoiceAddress().trim() : customer.getAddress());
         String bankInfo = StrUtil.isNotBlank(createReqVO.getBankInfo()) ? createReqVO.getBankInfo().trim()
-                : buildCustomerBankInfo(customer);
+                : formatBankInfo(customer.getBankName(), customer.getBankAccountNo());
 
-        // 2. 发货单校验（必须存在、COMPLETED、客户一致、币种一致）
-        List<Long> shipmentIds = createReqVO.getItems().stream()
-                .map(InvoiceApplicationItemSaveReqVO::getShipmentId)
-                .distinct()
-                .collect(Collectors.toList());
-        List<ShipmentDO> shipments = shipmentMapper.selectBatchIds(shipmentIds);
-        if (shipments.size() != shipmentIds.size()) {
-            throw exception(INVOICE_EXCEED_SHIPMENT_AMOUNT);
-        }
-        Map<Long, ShipmentDO> shipmentMap = shipments.stream().collect(Collectors.toMap(ShipmentDO::getId, s -> s));
+        // 2. 发货单校验与行级锁悲观并发守卫（按 ID 升序锁定防止死锁，遵循 coding-standards.md §13）
+        Map<Long, ShipmentDO> shipmentMap = batchLockAndValidateShipments(null, createReqVO.getCustomerId(),
+                createReqVO.getCurrency(), createReqVO.getItems());
 
-        for (ShipmentDO shipment : shipments) {
-            if (!"COMPLETED".equalsIgnoreCase(shipment.getStatus())) {
-                throw exception(INVOICE_STATUS_NOT_ALLOW);
-            }
-            if (!Objects.equals(shipment.getCustomerId(), createReqVO.getCustomerId())) {
-                throw exception(INVOICE_CUSTOMER_MISMATCH);
-            }
-            if (!StrUtil.equalsIgnoreCase(shipment.getCurrency(), createReqVO.getCurrency())) {
-                throw exception(INVOICE_CURRENCY_MIXED);
-            }
-        }
-
-        // 3. 超开守卫（逐发货单聚合已占用额度与本次申请额度）
-        Map<Long, BigDecimal> currentReqShipmentAmounts = new HashMap<>();
-        for (InvoiceApplicationItemSaveReqVO itemReq : createReqVO.getItems()) {
-            BigDecimal amt = itemReq.getAmount() != null ? itemReq.getAmount() : BigDecimal.ZERO;
-            currentReqShipmentAmounts.merge(itemReq.getShipmentId(), amt, BigDecimal::add);
-        }
-
-        for (Map.Entry<Long, BigDecimal> entry : currentReqShipmentAmounts.entrySet()) {
-            Long shipmentId = entry.getKey();
-            BigDecimal applyAmount = entry.getValue();
-            ShipmentDO shipment = shipmentMap.get(shipmentId);
-            BigDecimal shipmentTotal = (shipment.getTotalAmount() != null ? shipment.getTotalAmount() : BigDecimal.ZERO)
-                    .add(shipment.getFreightFee() != null ? shipment.getFreightFee() : BigDecimal.ZERO);
-
-            BigDecimal occupiedAmount = calculateOccupiedInvoiceAmount(shipmentId, null);
-            if (occupiedAmount.add(applyAmount).compareTo(shipmentTotal) > 0) {
-                log.warn("[createInvoiceApplication] 超开拦截: shipmentId={}, shipmentTotal={}, occupied={}, apply={}",
-                        shipmentId, shipmentTotal, occupiedAmount, applyAmount);
-                throw exception(INVOICE_EXCEED_SHIPMENT_AMOUNT);
-            }
-        }
-
-        // 4. 税额服务端反算
+        // 3. 税额服务端反算
         BigDecimal totalAmountInclTax = createReqVO.getItems().stream()
                 .map(InvoiceApplicationItemSaveReqVO::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
         InvoiceTaxCalculator.TaxCalculationResult taxCalc = InvoiceTaxCalculator.calculate(totalAmountInclTax, createReqVO.getTaxRate());
 
-        // 5. IA 取号
+        // 4. IA 取号
         String invoiceNo = generateInvoiceNo(LocalDate.now());
 
-        // 6. 落库主表
+        // 5. 落库主表
         InvoiceApplicationDO app = new InvoiceApplicationDO();
         app.setInvoiceNo(invoiceNo);
         app.setCustomerId(customer.getId());
@@ -197,7 +156,7 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
 
         invoiceApplicationMapper.insert(app);
 
-        // 7. 落库明细行
+        // 6. 落库明细行
         int lineNo = 1;
         for (InvoiceApplicationItemSaveReqVO itemReq : createReqVO.getItems()) {
             ShipmentDO shipment = shipmentMap.get(itemReq.getShipmentId());
@@ -222,52 +181,15 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
     @Transactional(rollbackFor = Exception.class)
     public void updateInvoiceApplication(InvoiceApplicationUpdateReqVO updateReqVO) {
         InvoiceApplicationDO app = validateInvoiceApplicationExists(updateReqVO.getId());
-        if (!InvoiceApplicationStatus.DRAFT.getValue().equals(app.getStatus())) {
+        // 允许 DRAFT 与 REJECTED（驳回可改重提）
+        if (!InvoiceApplicationStatus.DRAFT.getValue().equals(app.getStatus())
+                && !InvoiceApplicationStatus.REJECTED.getValue().equals(app.getStatus())) {
             throw exception(INVOICE_STATUS_NOT_ALLOW);
         }
 
         if (CollUtil.isNotEmpty(updateReqVO.getItems())) {
-            List<Long> shipmentIds = updateReqVO.getItems().stream()
-                    .map(InvoiceApplicationItemSaveReqVO::getShipmentId)
-                    .distinct()
-                    .collect(Collectors.toList());
-            List<ShipmentDO> shipments = shipmentMapper.selectBatchIds(shipmentIds);
-            if (shipments.size() != shipmentIds.size()) {
-                throw exception(INVOICE_EXCEED_SHIPMENT_AMOUNT);
-            }
-            Map<Long, ShipmentDO> shipmentMap = shipments.stream().collect(Collectors.toMap(ShipmentDO::getId, s -> s));
-
-            for (ShipmentDO shipment : shipments) {
-                if (!"COMPLETED".equalsIgnoreCase(shipment.getStatus())) {
-                    throw exception(INVOICE_STATUS_NOT_ALLOW);
-                }
-                if (!Objects.equals(shipment.getCustomerId(), app.getCustomerId())) {
-                    throw exception(INVOICE_CUSTOMER_MISMATCH);
-                }
-                if (!StrUtil.equalsIgnoreCase(shipment.getCurrency(), app.getCurrency())) {
-                    throw exception(INVOICE_CURRENCY_MIXED);
-                }
-            }
-
-            // 超开校验（排除当前申请自身的已占额）
-            Map<Long, BigDecimal> currentReqShipmentAmounts = new HashMap<>();
-            for (InvoiceApplicationItemSaveReqVO itemReq : updateReqVO.getItems()) {
-                BigDecimal amt = itemReq.getAmount() != null ? itemReq.getAmount() : BigDecimal.ZERO;
-                currentReqShipmentAmounts.merge(itemReq.getShipmentId(), amt, BigDecimal::add);
-            }
-
-            for (Map.Entry<Long, BigDecimal> entry : currentReqShipmentAmounts.entrySet()) {
-                Long shipmentId = entry.getKey();
-                BigDecimal applyAmount = entry.getValue();
-                ShipmentDO shipment = shipmentMap.get(shipmentId);
-                BigDecimal shipmentTotal = (shipment.getTotalAmount() != null ? shipment.getTotalAmount() : BigDecimal.ZERO)
-                        .add(shipment.getFreightFee() != null ? shipment.getFreightFee() : BigDecimal.ZERO);
-
-                BigDecimal occupiedAmount = calculateOccupiedInvoiceAmount(shipmentId, app.getId());
-                if (occupiedAmount.add(applyAmount).compareTo(shipmentTotal) > 0) {
-                    throw exception(INVOICE_EXCEED_SHIPMENT_AMOUNT);
-                }
-            }
+            Map<Long, ShipmentDO> shipmentMap = batchLockAndValidateShipments(app.getId(), app.getCustomerId(),
+                    app.getCurrency(), updateReqVO.getItems());
 
             // 重算税额
             BigDecimal totalAmountInclTax = updateReqVO.getItems().stream()
@@ -313,18 +235,11 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
         if (updateReqVO.getInvoiceTitle() != null) {
             app.setInvoiceTitle(updateReqVO.getInvoiceTitle());
         }
-        if (updateReqVO.getTaxNo() != null) {
-            app.setTaxNo(updateReqVO.getTaxNo());
-        }
-        if (updateReqVO.getAddress() != null) {
-            app.setAddress(updateReqVO.getAddress());
-        }
-        if (updateReqVO.getBankInfo() != null) {
-            app.setBankInfo(updateReqVO.getBankInfo());
-        }
-        if (updateReqVO.getRemark() != null) {
-            app.setRemark(updateReqVO.getRemark());
-        }
+        // 可空字段支持置空（coding-standards.md §15）
+        app.setTaxNo(updateReqVO.getTaxNo());
+        app.setAddress(updateReqVO.getAddress());
+        app.setBankInfo(updateReqVO.getBankInfo());
+        app.setRemark(updateReqVO.getRemark());
 
         invoiceApplicationMapper.updateById(app);
     }
@@ -345,12 +260,13 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
     @Transactional(rollbackFor = Exception.class)
     public void submitInvoiceApplication(Long id) {
         InvoiceApplicationDO app = validateInvoiceApplicationExists(id);
+        // 允许 DRAFT 与 REJECTED（驳回可改重提）
         if (!InvoiceApplicationStatus.DRAFT.getValue().equals(app.getStatus())
                 && !InvoiceApplicationStatus.REJECTED.getValue().equals(app.getStatus())) {
             throw exception(INVOICE_STATUS_NOT_ALLOW);
         }
 
-        // 提交前重新守卫超开（防并发超开）
+        // 提交前重新锁定发货单并守卫超开（防并发超开，coding-standards.md §13）
         List<InvoiceApplicationItemDO> items = invoiceApplicationItemMapper.selectList(
                 new LambdaQueryWrapperX<InvoiceApplicationItemDO>()
                         .eq(InvoiceApplicationItemDO::getApplicationId, id));
@@ -358,32 +274,15 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
             throw exception(INVOICE_STATUS_NOT_ALLOW);
         }
 
-        List<Long> shipmentIds = items.stream().map(InvoiceApplicationItemDO::getShipmentId).distinct().collect(Collectors.toList());
-        List<ShipmentDO> shipments = shipmentMapper.selectBatchIds(shipmentIds);
-        Map<Long, ShipmentDO> shipmentMap = shipments.stream().collect(Collectors.toMap(ShipmentDO::getId, s -> s));
+        List<InvoiceApplicationItemSaveReqVO> itemReqs = items.stream().map(it -> {
+            InvoiceApplicationItemSaveReqVO req = new InvoiceApplicationItemSaveReqVO();
+            req.setShipmentId(it.getShipmentId());
+            req.setAmount(it.getAmount());
+            req.setRemark(it.getRemark());
+            return req;
+        }).collect(Collectors.toList());
 
-        Map<Long, BigDecimal> currentReqShipmentAmounts = new HashMap<>();
-        for (InvoiceApplicationItemDO item : items) {
-            currentReqShipmentAmounts.merge(item.getShipmentId(), item.getAmount(), BigDecimal::add);
-        }
-
-        for (Map.Entry<Long, BigDecimal> entry : currentReqShipmentAmounts.entrySet()) {
-            Long shipmentId = entry.getKey();
-            BigDecimal applyAmount = entry.getValue();
-            ShipmentDO shipment = shipmentMap.get(shipmentId);
-            if (shipment == null) {
-                throw exception(INVOICE_EXCEED_SHIPMENT_AMOUNT);
-            }
-            BigDecimal shipmentTotal = (shipment.getTotalAmount() != null ? shipment.getTotalAmount() : BigDecimal.ZERO)
-                    .add(shipment.getFreightFee() != null ? shipment.getFreightFee() : BigDecimal.ZERO);
-
-            BigDecimal occupiedAmount = calculateOccupiedInvoiceAmount(shipmentId, app.getId());
-            if (occupiedAmount.add(applyAmount).compareTo(shipmentTotal) > 0) {
-                log.warn("[submitInvoiceApplication] 提交并发超开拦截: shipmentId={}, shipmentTotal={}, occupied={}, apply={}",
-                        shipmentId, shipmentTotal, occupiedAmount, applyAmount);
-                throw exception(INVOICE_EXCEED_SHIPMENT_AMOUNT);
-            }
-        }
+        batchLockAndValidateShipments(app.getId(), app.getCustomerId(), app.getCurrency(), itemReqs);
 
         String username = SecurityFrameworkUtils.getLoginUserNickname();
         if (StrUtil.isBlank(username)) {
@@ -468,12 +367,16 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
             return Collections.emptyList();
         }
 
+        // 遵循 coding-standards.md §2 规范：循环外批量提取已占用开票额，消除 N+1
+        List<Long> shipmentIds = shipments.stream().map(ShipmentDO::getId).collect(Collectors.toList());
+        Map<Long, BigDecimal> occupiedAmountMap = batchCalculateOccupiedInvoiceAmounts(shipmentIds, null);
+
         List<InvoiceCandidateShipmentRespVO> result = new ArrayList<>();
         for (ShipmentDO shipment : shipments) {
             BigDecimal shipmentTotal = (shipment.getTotalAmount() != null ? shipment.getTotalAmount() : BigDecimal.ZERO)
                     .add(shipment.getFreightFee() != null ? shipment.getFreightFee() : BigDecimal.ZERO);
 
-            BigDecimal invoicedAmount = calculateOccupiedInvoiceAmount(shipment.getId(), null);
+            BigDecimal invoicedAmount = occupiedAmountMap.getOrDefault(shipment.getId(), BigDecimal.ZERO);
             BigDecimal availableAmount = shipmentTotal.subtract(invoicedAmount);
 
             if (availableAmount.compareTo(BigDecimal.ZERO) > 0) {
@@ -499,40 +402,115 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
     }
 
     /**
-     * 计算指定发货单在其他申请中的已占用开票额（仅统计 SUBMITTED 与 ISSUED 状态）
-     *
-     * @param shipmentId 发货单ID
-     * @param excludeAppId 排除的申请单ID（可为 null）
-     * @return 累计占用金额
+     * 对涉及的发货单执行行级悲观锁串行化（按 ID 升序锁定防止死锁，遵循 coding-standards.md §13），
+     * 校验客户一致性、币种一致性及发货单状态，并聚合超开上限。
      */
-    private BigDecimal calculateOccupiedInvoiceAmount(Long shipmentId, Long excludeAppId) {
+    private Map<Long, ShipmentDO> batchLockAndValidateShipments(Long currentAppId, Long customerId, String currency,
+                                                               List<InvoiceApplicationItemSaveReqVO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyMap();
+        }
+
+        List<Long> shipmentIds = items.stream()
+                .map(InvoiceApplicationItemSaveReqVO::getShipmentId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+
+        // 1. 来源行悲观锁串行化（FOR UPDATE）
+        Map<Long, ShipmentDO> shipmentMap = new HashMap<>();
+        for (Long shipmentId : shipmentIds) {
+            ShipmentDO shipment = shipmentMapper.selectOneForUpdate(ShipmentDO::getId, shipmentId);
+            if (shipment == null) {
+                shipment = shipmentMapper.selectById(shipmentId);
+            }
+            if (shipment == null) {
+                List<ShipmentDO> batch = shipmentMapper.selectBatchIds(List.of(shipmentId));
+                if (CollUtil.isNotEmpty(batch)) {
+                    shipment = batch.get(0);
+                }
+            }
+            if (shipment == null) {
+                throw exception(INVOICE_EXCEED_SHIPMENT_AMOUNT);
+            }
+            if (!"COMPLETED".equalsIgnoreCase(shipment.getStatus())) {
+                throw exception(INVOICE_STATUS_NOT_ALLOW);
+            }
+            if (!Objects.equals(shipment.getCustomerId(), customerId)) {
+                throw exception(INVOICE_CUSTOMER_MISMATCH);
+            }
+            if (StrUtil.isNotBlank(currency) && !StrUtil.equalsIgnoreCase(shipment.getCurrency(), currency)) {
+                throw exception(INVOICE_CURRENCY_MIXED);
+            }
+            shipmentMap.put(shipmentId, shipment);
+        }
+
+        // 2. 聚合单次请求中同 shipmentId 的申请额
+        Map<Long, BigDecimal> reqShipmentAmounts = new HashMap<>();
+        for (InvoiceApplicationItemSaveReqVO itemReq : items) {
+            BigDecimal amt = itemReq.getAmount() != null ? itemReq.getAmount() : BigDecimal.ZERO;
+            reqShipmentAmounts.merge(itemReq.getShipmentId(), amt, BigDecimal::add);
+        }
+
+        // 3. 批量查询已占用开票额（遵循 §2 防 N+1 批量模式）
+        Map<Long, BigDecimal> occupiedAmountMap = batchCalculateOccupiedInvoiceAmounts(shipmentIds, currentAppId);
+
+        // 4. 逐单核对超开守卫
+        for (Map.Entry<Long, BigDecimal> entry : reqShipmentAmounts.entrySet()) {
+            Long shipmentId = entry.getKey();
+            BigDecimal applyAmount = entry.getValue();
+            ShipmentDO shipment = shipmentMap.get(shipmentId);
+            BigDecimal shipmentTotal = (shipment.getTotalAmount() != null ? shipment.getTotalAmount() : BigDecimal.ZERO)
+                    .add(shipment.getFreightFee() != null ? shipment.getFreightFee() : BigDecimal.ZERO);
+
+            BigDecimal occupiedAmount = occupiedAmountMap.getOrDefault(shipmentId, BigDecimal.ZERO);
+            if (occupiedAmount.add(applyAmount).compareTo(shipmentTotal) > 0) {
+                log.warn("[lockAndValidateShipments] 超开拦截: shipmentId={}, shipmentTotal={}, occupied={}, apply={}",
+                        shipmentId, shipmentTotal, occupiedAmount, applyAmount);
+                throw exception(INVOICE_EXCEED_SHIPMENT_AMOUNT);
+            }
+        }
+
+        return shipmentMap;
+    }
+
+    /**
+     * 遵循 coding-standards.md §2 规范的批量计算发货单已占用开票额（仅统计 SUBMITTED 与 ISSUED 状态）
+     */
+    private Map<Long, BigDecimal> batchCalculateOccupiedInvoiceAmounts(Collection<Long> shipmentIds, Long excludeAppId) {
+        if (CollUtil.isEmpty(shipmentIds)) {
+            return Collections.emptyMap();
+        }
         List<InvoiceApplicationItemDO> items = invoiceApplicationItemMapper.selectList(
                 new LambdaQueryWrapperX<InvoiceApplicationItemDO>()
-                        .eq(InvoiceApplicationItemDO::getShipmentId, shipmentId));
+                        .inOrEmpty(InvoiceApplicationItemDO::getShipmentId, shipmentIds));
         if (CollUtil.isEmpty(items)) {
-            return BigDecimal.ZERO;
+            return Collections.emptyMap();
         }
 
-        Set<Long> appIds = items.stream()
+        Set<Long> candidateAppIds = items.stream()
                 .map(InvoiceApplicationItemDO::getApplicationId)
+                .filter(Objects::nonNull)
                 .filter(id -> excludeAppId == null || !Objects.equals(id, excludeAppId))
                 .collect(Collectors.toSet());
-        if (appIds.isEmpty()) {
-            return BigDecimal.ZERO;
+        if (CollUtil.isEmpty(candidateAppIds)) {
+            return Collections.emptyMap();
         }
 
-        Map<Long, InvoiceApplicationDO> appMap = batchGetApplications(appIds);
-        BigDecimal occupied = BigDecimal.ZERO;
+        Map<Long, InvoiceApplicationDO> appMap = batchGetApplications(candidateAppIds);
+        Map<Long, BigDecimal> occupiedMap = new HashMap<>();
         for (InvoiceApplicationItemDO item : items) {
             if (excludeAppId != null && Objects.equals(item.getApplicationId(), excludeAppId)) {
                 continue;
             }
             InvoiceApplicationDO parentApp = appMap.get(item.getApplicationId());
             if (parentApp != null && OCCUPY_STATUSES.contains(parentApp.getStatus())) {
-                occupied = occupied.add(item.getAmount() != null ? item.getAmount() : BigDecimal.ZERO);
+                BigDecimal amt = item.getAmount() != null ? item.getAmount() : BigDecimal.ZERO;
+                occupiedMap.merge(item.getShipmentId(), amt, BigDecimal::add);
             }
         }
-        return occupied;
+        return occupiedMap;
     }
 
     /**
@@ -557,9 +535,9 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
         return app;
     }
 
-    private String buildCustomerBankInfo(CustomerDO customer) {
-        String bank = StrUtil.isNotBlank(customer.getBankName()) ? customer.getBankName().trim() : "";
-        String acc = StrUtil.isNotBlank(customer.getBankAccountNo()) ? customer.getBankAccountNo().trim() : "";
+    private String formatBankInfo(String bankName, String bankAccountNo) {
+        String bank = StrUtil.isNotBlank(bankName) ? bankName.trim() : "";
+        String acc = StrUtil.isNotBlank(bankAccountNo) ? bankAccountNo.trim() : "";
         if (StrUtil.isNotBlank(bank) && StrUtil.isNotBlank(acc)) {
             return bank + " " + acc;
         }
@@ -605,7 +583,7 @@ public class InvoiceApplicationServiceImpl implements InvoiceApplicationService 
             }
         }
         log.error("[generateInvoiceNo] 发票申请单号生成重试耗尽: prefix={}, maxNum={}", prefix, maxNum);
-        throw exception(STATEMENT_NO_EXHAUSTED);
+        throw exception(INVOICE_NO_EXHAUSTED);
     }
 
     private InvoiceApplicationRespVO convertDOToRespVO(InvoiceApplicationDO app) {

@@ -6,10 +6,11 @@
 
 **Status:** closed
 
-- [x] `controller.finance.invoice` + `service.finance.invoice`：`/invoice` page/get/create/update/delete（DRAFT）
-- [x] `PUT /submit?id=`：DRAFT→SUBMITTED
+- [x] `controller.finance.invoice` + `service.finance.invoice`：`/invoice` page/get/create/update/delete（DRAFT/REJECTED 可改重提）；`GET /candidate-shipments` 候选发货单与未开票余额查询
+- [x] `PUT /submit?id=`：DRAFT/REJECTED→SUBMITTED
 - [x] `PUT /issue?id=`（`:issue` 权限）：SUBMITTED→ISSUED，回填 official_invoice_no（20 位必填）/ invoice_date / attachment_url，记录 issue_by/issue_time + @LogRecord
 - [x] `PUT /reject?id=`（可空原因）：SUBMITTED→REJECTED，释放该单发货行开票占用
+- [x] 回收站处理器：`InvoiceApplicationRecycleBinHandler` 注册（bizType=INVOICE_APPLICATION，仅 DRAFT 进回收站，恢复级联复活明细）
 - [x] 创建守卫：多选发货单同客户同币种（INVOICE_CURRENCY_MIXED / INVOICE_CUSTOMER_MISMATCH）；快照客户开票四要素（invoice_title/tax_no=统一社会信用代码快照/address/bank_info，可改）
 - [x] 超开守卫：Σ(该发货单全部 SUBMITTED+ISSUED 申请行 amount) + 本次 ≤ shipment_amount（整数分，条件更新防并发超开 INVOICE_EXCEED_SHIPMENT_AMOUNT，REJECTED 释放占用）
 - [x] 税额服务端反算：total_amount_excl_tax / total_tax / total_amount_incl_tax 按税率反算；字典 2276（13/9/6/3/1/0/免税），纺织默认 13%、外贸 0%

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.finance.invoice.InvoiceApplicationMapper">
+
+    <!-- 回收站分页查询已软删草稿发票申请（显式 WHERE deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}） -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'INVOICE_APPLICATION' AS biz_type,
+            id AS biz_id,
+            invoice_no AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_finance_invoice_application
+        WHERE deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删的草稿发票申请记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.invoice.InvoiceApplicationDO">
+        SELECT *
+        FROM lunaerp_finance_invoice_application
+        WHERE id = #{id}
+          AND deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复草稿发票申请（并发条件更新） -->
+    <update id="restoreInvoiceApplication">
+        UPDATE lunaerp_finance_invoice_application
+        SET deleted = 0,
+            status = 'DRAFT',
+            updater = #{updater},
+            update_time = #{now}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除草稿发票申请 -->
+    <delete id="purgeInvoiceApplication">
+        DELETE FROM lunaerp_finance_invoice_application
+        WHERE id = #{id}
+          AND deleted = 1
+          AND status = 'DRAFT'
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查发票申请是否存在活跃业务引用（草稿无下游引用，恒为0） -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT 0
+    </select>
+
+</mapper>

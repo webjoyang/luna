@@ -309,6 +309,7 @@ public class InvoiceApplicationServiceImplTest {
         app.setId(appId);
         app.setStatus(InvoiceApplicationStatus.DRAFT.getValue());
         app.setCustomerId(1001L);
+        app.setCurrency("RMB");
         when(invoiceApplicationMapper.selectById(appId)).thenReturn(app);
 
         InvoiceApplicationItemDO item = new InvoiceApplicationItemDO();
@@ -470,7 +471,7 @@ public class InvoiceApplicationServiceImplTest {
         item2.setAmount(new BigDecimal("500.00"));
 
         when(invoiceApplicationItemMapper.selectList(any()))
-                .thenReturn(List.of(item1), List.of(item2));
+                .thenReturn(List.of(item1, item2));
 
         InvoiceApplicationDO app1 = new InvoiceApplicationDO();
         app1.setId(101L);
@@ -491,5 +492,112 @@ public class InvoiceApplicationServiceImplTest {
         assertEquals(new BigDecimal("2200.00"), resp.getShipmentAmount());
         assertEquals(new BigDecimal("500.00"), resp.getInvoicedAmount());
         assertEquals(new BigDecimal("1700.00"), resp.getAvailableAmount());
+    }
+
+    @Test
+    @DisplayName("修改守卫：REJECTED 状态允许改单重提")
+    public void testUpdate_rejectedStatus_success() {
+        Long appId = 10001L;
+        InvoiceApplicationDO app = new InvoiceApplicationDO();
+        app.setId(appId);
+        app.setCustomerId(1001L);
+        app.setCurrency("RMB");
+        app.setTaxRate(new BigDecimal("13.00"));
+        app.setStatus(InvoiceApplicationStatus.REJECTED.getValue());
+        app.setRemark("历史驳回说明");
+        when(invoiceApplicationMapper.selectById(appId)).thenReturn(app);
+
+        InvoiceApplicationUpdateReqVO updateReqVO = InvoiceApplicationUpdateReqVO.builder()
+                .id(appId)
+                .remark("修改后重提备注")
+                .build();
+
+        assertDoesNotThrow(() -> invoiceApplicationService.updateInvoiceApplication(updateReqVO));
+
+        ArgumentCaptor<InvoiceApplicationDO> captor = ArgumentCaptor.forClass(InvoiceApplicationDO.class);
+        verify(invoiceApplicationMapper).updateById(captor.capture());
+        assertEquals("修改后重提备注", captor.getValue().getRemark());
+    }
+
+    @Test
+    @DisplayName("可空字段更新：备注置空生效（coding-standards.md §15）")
+    public void testUpdate_clearRemark_success() {
+        Long appId = 10001L;
+        InvoiceApplicationDO app = new InvoiceApplicationDO();
+        app.setId(appId);
+        app.setCustomerId(1001L);
+        app.setCurrency("RMB");
+        app.setStatus(InvoiceApplicationStatus.DRAFT.getValue());
+        app.setRemark("旧备注");
+        when(invoiceApplicationMapper.selectById(appId)).thenReturn(app);
+
+        InvoiceApplicationUpdateReqVO updateReqVO = InvoiceApplicationUpdateReqVO.builder()
+                .id(appId)
+                .remark(null) // 显式置空
+                .build();
+
+        invoiceApplicationService.updateInvoiceApplication(updateReqVO);
+
+        ArgumentCaptor<InvoiceApplicationDO> captor = ArgumentCaptor.forClass(InvoiceApplicationDO.class);
+        verify(invoiceApplicationMapper).updateById(captor.capture());
+        assertNull(captor.getValue().getRemark(), "允许置空字段必须成功置为 null");
+    }
+
+    @Test
+    @DisplayName("提交守卫：REJECTED 状态允许重新提交流转为 SUBMITTED")
+    public void testSubmit_rejectedStatus_success() {
+        Long appId = 10001L;
+        InvoiceApplicationDO app = new InvoiceApplicationDO();
+        app.setId(appId);
+        app.setCustomerId(1001L);
+        app.setCurrency("RMB");
+        app.setStatus(InvoiceApplicationStatus.REJECTED.getValue());
+        when(invoiceApplicationMapper.selectById(appId)).thenReturn(app);
+
+        InvoiceApplicationItemDO item = new InvoiceApplicationItemDO();
+        item.setId(5001L);
+        item.setApplicationId(appId);
+        item.setShipmentId(2001L);
+        item.setAmount(new BigDecimal("1000.00"));
+        when(invoiceApplicationItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        ShipmentDO shipment = mockShipment(2001L, "SH-001", 1001L, "RMB", "COMPLETED",
+                new BigDecimal("1000.00"), BigDecimal.ZERO);
+        when(shipmentMapper.selectBatchIds(any())).thenReturn(List.of(shipment));
+
+        assertDoesNotThrow(() -> invoiceApplicationService.submitInvoiceApplication(appId));
+
+        ArgumentCaptor<InvoiceApplicationDO> captor = ArgumentCaptor.forClass(InvoiceApplicationDO.class);
+        verify(invoiceApplicationMapper).updateById(captor.capture());
+        assertEquals(InvoiceApplicationStatus.SUBMITTED.getValue(), captor.getValue().getStatus());
+    }
+
+    @Test
+    @DisplayName("取号守卫：重试耗尽抛出 INVOICE_NO_EXHAUSTED")
+    public void testGenerateInvoiceNo_exhausted_throwsException() {
+        Long customerId = 1001L;
+        CustomerDO customer = mockCustomer(customerId, "盛泽纺织", null, null, null, null, null);
+        when(customerMapper.selectById(customerId)).thenReturn(customer);
+
+        ShipmentDO shipment = mockShipment(2001L, "SH-20261010-001", customerId, "RMB", "COMPLETED",
+                new BigDecimal("9000.00"), new BigDecimal("1000.00"));
+        when(shipmentMapper.selectBatchIds(any())).thenReturn(List.of(shipment));
+
+        InvoiceApplicationDO dummyApp = new InvoiceApplicationDO();
+        dummyApp.setInvoiceNo("IA20260001");
+        // 模拟候选号码一直已存在
+        when(invoiceApplicationMapper.selectByInvoiceNoIncludingDeleted(any())).thenReturn(dummyApp);
+
+        InvoiceApplicationCreateReqVO reqVO = InvoiceApplicationCreateReqVO.builder()
+                .customerId(customerId)
+                .currency("RMB")
+                .taxRate(new BigDecimal("13.00"))
+                .invoiceKind("DIGITAL_SPECIAL")
+                .items(List.of(InvoiceApplicationItemSaveReqVO.builder().shipmentId(2001L).amount(new BigDecimal("100.00")).build()))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                invoiceApplicationService.createInvoiceApplication(reqVO));
+        assertEquals(FinanceErrorCodeConstants.INVOICE_NO_EXHAUSTED.getCode(), ex.getCode());
     }
 }
