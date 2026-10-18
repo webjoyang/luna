@@ -69,8 +69,9 @@ describe('Approval Todo Helpers & Step Calculation', () => {
     expect(parseSnapshotNodes('{}')).toEqual([])
   })
 
-  it('getBizJumpUrl resolves sales contract detail url correctly', () => {
+  it('getBizJumpUrl resolves sales contract and sales return detail url correctly', () => {
     expect(getBizJumpUrl('sales_contract', 1024)).toBe('/lunaerp/business/sales-contract?id=1024')
+    expect(getBizJumpUrl('sales_return', 2048)).toBe('/business/sales-return/workspace/2048')
     expect(getBizJumpUrl('', 1024)).toBe('')
     expect(getBizJumpUrl('unknown', 1024)).toBe('')
   })

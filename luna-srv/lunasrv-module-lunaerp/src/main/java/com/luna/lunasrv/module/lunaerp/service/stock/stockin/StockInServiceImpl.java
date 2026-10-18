@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.stock.stockin;
 
 import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -462,6 +463,19 @@ public class StockInServiceImpl implements StockInService {
             // 2.3 CANCELLED 终态或非法状态：报 1_030_011_002
             throw exception(STOCK_IN_STATUS_NOT_ALLOWED);
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean cancelDraftStockIn(Long id) {
+        if (id == null) {
+            return false;
+        }
+        int rows = stockInMapper.update(null, new LambdaUpdateWrapper<StockInDO>()
+                .eq(StockInDO::getId, id)
+                .eq(StockInDO::getStatus, DEFAULT_STATUS)
+                .set(StockInDO::getStatus, STATUS_CANCELLED));
+        return rows > 0;
     }
 
     // ==================== 私有方法 ====================

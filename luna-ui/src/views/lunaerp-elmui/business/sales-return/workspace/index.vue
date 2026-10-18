@@ -163,6 +163,30 @@
               </el-form-item>
             </el-col>
           </el-row>
+          <el-row v-if="formData.stockInNo || formData.stockInId" :gutter="20">
+            <el-col :span="6">
+              <el-form-item label="退货入库单">
+                <el-link
+                  v-if="formData.stockInId"
+                  type="primary"
+                  :underline="false"
+                  class="font-mono font-bold"
+                  @click="handleJumpStockIn"
+                >
+                  <Icon icon="ep:link" class="mr-1" />
+                  {{ formData.stockInNo || ('ID: ' + formData.stockInId) }}
+                </el-link>
+                <el-tag v-else type="info" class="font-mono font-bold">{{ formData.stockInNo }}</el-tag>
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-form-item label="入库单状态">
+                <el-tag :type="formData.stockInStatus === 'COMPLETED' ? 'success' : (formData.stockInStatus === 'CANCELLED' ? 'danger' : 'warning')">
+                  {{ formData.stockInStatus || 'DRAFT' }}
+                </el-tag>
+              </el-form-item>
+            </el-col>
+          </el-row>
         </el-form>
       </ContentWrap>
 
@@ -521,7 +545,10 @@ const formData = reactive({
   warehouseName: '',
   currency: 'RMB',
   returnDate: new Date().toLocaleDateString('en-CA'),
-  remark: ''
+  remark: '',
+  stockInId: undefined as number | undefined,
+  stockInNo: '',
+  stockInStatus: ''
 })
 
 const items = ref<EditableLineItem[]>([])
@@ -542,6 +569,12 @@ const summaryQty = computed(() => {
 const summaryAmount = computed(() => {
   return items.value.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
 })
+
+const handleJumpStockIn = () => {
+  if (formData.stockInId) {
+    router.push(`/stock/stock-in/workspace/${formData.stockInId}`)
+  }
+}
 
 const recalculateLineAmount = (line: EditableLineItem) => {
   const qty = Number(line.returnQty) || 0
@@ -846,6 +879,9 @@ const loadSalesReturn = async (id: number) => {
     formData.currency = res.currency || 'RMB'
     formData.returnDate = res.returnDate || new Date().toLocaleDateString('en-CA')
     formData.remark = res.remark || ''
+    formData.stockInId = res.stockInId
+    formData.stockInNo = res.stockInNo || ''
+    formData.stockInStatus = res.stockInStatus || ''
 
     // 查询对应发货单的实时可退量
     const shipmentDetail = await getShipmentDetail(res.shipmentId)

@@ -101,7 +101,7 @@ public class SalesReturnController {
     }
 
     @PostMapping("/cancel")
-    @Operation(summary = "作废销售退货单（草稿分支）")
+    @Operation(summary = "作废销售退货单（草稿分支与已审批分支）")
     @Parameter(name = "id", description = "退货单ID", required = true, example = "10")
     @PreAuthorize("@ss.hasPermission('lunaerp:business:sales-return:cancel')")
     public CommonResult<Boolean> cancelSalesReturn(

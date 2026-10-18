@@ -1704,6 +1704,22 @@ class StockInServiceImplTest {
     }
 
     @Test
+    void cancelDraftStockIn_success() {
+        when(stockInMapper.update(isNull(), any())).thenReturn(1);
+        boolean result = stockInService.cancelDraftStockIn(100L);
+        assertTrue(result);
+        verify(stockInMapper).update(isNull(), any());
+    }
+
+    @Test
+    void cancelDraftStockIn_failedOrNotFound() {
+        when(stockInMapper.update(isNull(), any())).thenReturn(0);
+        boolean result = stockInService.cancelDraftStockIn(100L);
+        assertFalse(result);
+        assertFalse(stockInService.cancelDraftStockIn(null));
+    }
+
+    @Test
     void cancelStockIn_completedStatus_redFlush_success() {
         StockInDO existing = new StockInDO();
         existing.setId(100L);

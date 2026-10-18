@@ -62,6 +62,12 @@ public class StockInSaveReqVO {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY)
     private LocalDate inDate;
 
+    @Schema(description = "通用来源单据类型（SALES_RETURN 等通用业务来源，ADR-0042）", example = "SALES_RETURN")
+    private String sourceDocType;
+
+    @Schema(description = "通用来源单据ID（lunaerp_business_sales_return.id 等）", example = "1024")
+    private Long sourceDocId;
+
     @Schema(description = "备注", example = "采购大货入库")
     private String remark;
 

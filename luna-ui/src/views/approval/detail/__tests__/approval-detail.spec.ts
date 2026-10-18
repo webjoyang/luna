@@ -135,8 +135,9 @@ describe('Approval Detail Helpers & Progress Calculation', () => {
     expect(getActiveStepIndex(steps, 'APPROVED')).toBe(3)
   })
 
-  it('getBizJumpUrl should generate sales contract url', () => {
+  it('getBizJumpUrl should generate sales contract and sales return url', () => {
     expect(getBizJumpUrl('sales_contract', 2001)).toBe('/lunaerp/business/sales-contract?id=2001')
+    expect(getBizJumpUrl('sales_return', 3001)).toBe('/business/sales-return/workspace/3001')
     expect(getBizJumpUrl('unknown', 2001)).toBe('')
     expect(getBizJumpUrl(undefined, 2001)).toBe('')
   })

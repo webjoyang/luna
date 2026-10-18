@@ -93,7 +93,9 @@ export function getBizJumpUrl(bizType?: string, bizId?: number): string {
   if (bizType === 'sales_contract') {
     return `/lunaerp/business/sales-contract?id=${bizId}`
   }
-  // 未来扩展其他业务单据：payment, expense, payroll, sales_return
+  if (bizType === 'sales_return') {
+    return `/business/sales-return/workspace/${bizId}`
+  }
   return ''
 }
 

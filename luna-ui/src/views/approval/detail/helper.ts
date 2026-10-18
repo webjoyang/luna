@@ -93,5 +93,8 @@ export function getBizJumpUrl(bizType?: string, bizId?: number): string {
   if (bizType === 'sales_contract') {
     return `/lunaerp/business/sales-contract?id=${bizId}`
   }
+  if (bizType === 'sales_return') {
+    return `/business/sales-return/workspace/${bizId}`
+  }
   return ''
 }

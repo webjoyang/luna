@@ -19,10 +19,13 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salesreturn.Sales
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouse.WarehouseDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnRollMapper;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInRespVO;
+import com.luna.lunasrv.module.lunaerp.service.stock.stockin.StockInService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
@@ -78,6 +81,9 @@ public class SalesReturnServiceImplTest {
     private WarehouseMapper warehouseMapper;
 
     @Mock
+    private StockInService stockInService;
+
+    @Mock
     private SalesReturnAvailabilityService availabilityService;
 
     @Mock
@@ -99,6 +105,7 @@ public class SalesReturnServiceImplTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), ShipmentItemDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), ShipmentRollDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), WarehouseDO.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), StockInDO.class);
     }
 
     @AfterEach
@@ -1060,6 +1067,109 @@ public class SalesReturnServiceImplTest {
         salesReturnService.cancelSalesReturn(10L, "客户取消退货需求");
 
         verify(salesReturnMapper).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("作废已审批退货单：缺失 stockInId 抛 009")
+    void testCancelSalesReturn_approved_missingStockInId_throws009() {
+        SalesReturnDO approved = new SalesReturnDO();
+        approved.setId(10L);
+        approved.setStatus("APPROVED");
+        approved.setApprovalStatus("APPROVED");
+        approved.setStockInId(null);
+        when(salesReturnMapper.selectById(10L)).thenReturn(approved);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(10L, "原因"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STOCK_IN_STATUS_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废已审批退货单：入库单不存在抛 009")
+    void testCancelSalesReturn_approved_stockInNotFound_throws009() {
+        SalesReturnDO approved = new SalesReturnDO();
+        approved.setId(10L);
+        approved.setStatus("APPROVED");
+        approved.setApprovalStatus("APPROVED");
+        approved.setStockInId(501L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(approved);
+        when(stockInService.cancelDraftStockIn(501L)).thenReturn(false);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(10L, "原因"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STOCK_IN_STATUS_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废已审批退货单：入库单非 DRAFT 态（如 COMPLETED / CANCELLED）抛 009")
+    void testCancelSalesReturn_approved_stockInNotDraft_throws009() {
+        SalesReturnDO approved = new SalesReturnDO();
+        approved.setId(10L);
+        approved.setStatus("APPROVED");
+        approved.setApprovalStatus("APPROVED");
+        approved.setStockInId(501L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(approved);
+        when(stockInService.cancelDraftStockIn(501L)).thenReturn(false);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(10L, "原因"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STOCK_IN_STATUS_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废已审批退货单：同事务取消 DRAFT 入库单并置退货单 CANCELLED")
+    void testCancelSalesReturn_approved_success_cancelsDraftStockInAndUpdatesSalesReturn() {
+        SalesReturnDO approved = new SalesReturnDO();
+        approved.setId(10L);
+        approved.setStatus("APPROVED");
+        approved.setApprovalStatus("APPROVED");
+        approved.setStockInId(501L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(approved);
+        when(stockInService.cancelDraftStockIn(501L)).thenReturn(true);
+        when(salesReturnMapper.update(isNull(), any())).thenReturn(1);
+
+        salesReturnService.cancelSalesReturn(10L, "客户紧急取消退货");
+
+        verify(stockInService).cancelDraftStockIn(501L);
+        verify(salesReturnMapper).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("详情回显：已审批退货单详情正确回显入库单号与状态")
+    void testGetSalesReturn_populatesStockInNoAndStatus() {
+        SalesReturnDO salesReturn = createDraftSalesReturn(10L, 100L);
+        salesReturn.setStatus("APPROVED");
+        salesReturn.setApprovalStatus("APPROVED");
+        salesReturn.setStockInId(501L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(501L);
+        stockIn.setInNo("IN-20261018-001");
+        stockIn.setStatus("DRAFT");
+        when(stockInService.getStockIn(501L)).thenReturn(stockIn);
+
+        SalesReturnRespVO resp = salesReturnService.getSalesReturn(10L);
+        assertNotNull(resp);
+        assertEquals(501L, resp.getStockInId());
+        assertEquals("IN-20261018-001", resp.getStockInNo());
+        assertEquals("DRAFT", resp.getStockInStatus());
+    }
+
+    @Test
+    @DisplayName("分页查询：分页查询退货单")
+    void testGetSalesReturnPage_success() {
+        SalesReturnDO r1 = createDraftSalesReturn(10L, 100L);
+        r1.setStockInId(501L);
+        SalesReturnDO r2 = createDraftSalesReturn(20L, 100L);
+        r2.setStockInId(502L);
+
+        PageResult<SalesReturnDO> pageResult = new PageResult<>(List.of(r1, r2), 2L);
+        when(salesReturnMapper.selectPage(any(SalesReturnPageReqVO.class), any())).thenReturn(pageResult);
+
+        SalesReturnPageReqVO req = new SalesReturnPageReqVO();
+        PageResult<SalesReturnRespVO> result = salesReturnService.getSalesReturnPage(req);
+        assertEquals(2, result.getList().size());
+        assertEquals(10L, result.getList().get(0).getId());
+        assertEquals(20L, result.getList().get(1).getId());
     }
 
     // ==================== 9. 切面注解审计审查 ====================
