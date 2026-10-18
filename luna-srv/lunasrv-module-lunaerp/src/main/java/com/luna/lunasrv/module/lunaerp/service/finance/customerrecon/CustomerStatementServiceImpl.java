@@ -21,6 +21,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.customerrecon.CustomerS
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.customerrecon.CustomerStatementMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
+import com.luna.lunasrv.module.lunaerp.enums.finance.CustomerStatementConfirmType;
 import com.luna.lunasrv.module.lunaerp.enums.finance.CustomerStatementStatus;
 import com.luna.lunasrv.module.lunaerp.enums.finance.LedgerCategory;
 import com.mzt.logapi.starter.annotation.LogRecord;
@@ -266,27 +267,7 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         List<CustomerStatementItemRespVO> itemVOs = BeanUtils.toBean(items, CustomerStatementItemRespVO.class);
 
         // 如果单据处于 SENT 状态，检查各借方明细分录是否有后续红冲分录（AR_INC_REVERSAL）
-        if (CustomerStatementStatus.SENT.getValue().equals(statement.getStatus()) && CollUtil.isNotEmpty(items)) {
-            List<Long> ledgerEntryIds = items.stream()
-                    .filter(i -> "DEBIT".equalsIgnoreCase(i.getDirection()) && i.getLedgerEntryId() != null)
-                    .map(CustomerStatementItemDO::getLedgerEntryId)
-                    .toList();
-            if (CollUtil.isNotEmpty(ledgerEntryIds)) {
-                List<LedgerEntryDO> reversals = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
-                        .inOrEmpty(LedgerEntryDO::getReversalOfId, ledgerEntryIds));
-                Set<Long> reversedEntryIdSet = reversals.stream()
-                        .map(LedgerEntryDO::getReversalOfId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-                for (CustomerStatementItemRespVO itemVO : itemVOs) {
-                    if (itemVO.getLedgerEntryId() != null && reversedEntryIdSet.contains(itemVO.getLedgerEntryId())) {
-                        itemVO.setHasReversal(true);
-                    } else {
-                        itemVO.setHasReversal(false);
-                    }
-                }
-            }
-        }
+        populateReversalFlags(statement.getStatus(), items, itemVOs);
 
         detailVO.setItems(itemVOs);
         return detailVO;
@@ -783,7 +764,171 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
                 .build();
     }
 
+    @Override
+    public List<CustomerStatementRespVO> getPortalCustomerStatementList(Long customerId) {
+        if (customerId == null) {
+            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        }
+        LambdaQueryWrapperX<CustomerStatementDO> query = new LambdaQueryWrapperX<CustomerStatementDO>()
+                .eq(CustomerStatementDO::getCustomerId, customerId)
+                .in(CustomerStatementDO::getStatus,
+                        List.of(CustomerStatementStatus.SENT.getValue(), CustomerStatementStatus.CONFIRMED.getValue()))
+                .orderByDesc(CustomerStatementDO::getId);
+
+        List<CustomerStatementDO> list = customerStatementMapper.selectList(query);
+        return BeanUtils.toBean(list, CustomerStatementRespVO.class);
+    }
+
+    @Override
+    public CustomerStatementDetailRespVO getPortalCustomerStatement(Long id, Long customerId) {
+        if (id == null) {
+            throw exception(STATEMENT_NOT_EXISTS);
+        }
+        if (customerId == null) {
+            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        }
+        CustomerStatementDO statement = customerStatementMapper.selectById(id);
+        validateStatementExistsAndTenant(statement);
+
+        // 隔离校验：单据所属客户与请求客户必须一致
+        if (!Objects.equals(statement.getCustomerId(), customerId)) {
+            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        }
+
+        // 门户权限守卫：草稿态或已作废单据不可在门户中查阅
+        if (CustomerStatementStatus.DRAFT.getValue().equals(statement.getStatus())
+                || CustomerStatementStatus.VOID.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        List<CustomerStatementItemDO> items = customerStatementItemMapper.selectList(
+                new LambdaQueryWrapperX<CustomerStatementItemDO>()
+                        .eq(CustomerStatementItemDO::getStatementId, id)
+                        .orderByAsc(CustomerStatementItemDO::getLineNo)
+                        .orderByAsc(CustomerStatementItemDO::getId));
+
+        CustomerStatementDetailRespVO detailVO = BeanUtils.toBean(statement, CustomerStatementDetailRespVO.class);
+        List<CustomerStatementItemRespVO> itemVOs = BeanUtils.toBean(items, CustomerStatementItemRespVO.class);
+
+        // 如果单据处于 SENT 状态，检查各借方明细分录是否有后续红冲分录（AR_INC_REVERSAL），提供标红标记
+        populateReversalFlags(statement.getStatus(), items, itemVOs);
+
+        detailVO.setItems(itemVOs);
+        return detailVO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "FINANCE_STATEMENT", subType = "PORTAL_CONFIRM", bizNo = "{{#reqVO.id}}", success = "门户在线确认客户对账单【{{#reqVO.id}}】成功")
+    public void confirmPortalCustomerStatement(CustomerStatementPortalConfirmReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(STATEMENT_NOT_EXISTS);
+        }
+        if (reqVO.getCustomerId() == null) {
+            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        }
+        if (StrUtil.isBlank(reqVO.getConfirmByName())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        CustomerStatementDO statement = customerStatementMapper.selectById(reqVO.getId());
+        validateStatementExistsAndTenant(statement);
+
+        // 隔离校验：单据归属客户与请求客户严格一致
+        if (!Objects.equals(statement.getCustomerId(), reqVO.getCustomerId())) {
+            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        }
+
+        // 状态守卫：仅 SENT 状态允许确认
+        if (!CustomerStatementStatus.SENT.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        CustomerStatementDO updateDO = new CustomerStatementDO();
+        updateDO.setStatus(CustomerStatementStatus.CONFIRMED.getValue());
+        updateDO.setConfirmType(CustomerStatementConfirmType.ONLINE_PORTAL.getValue());
+        updateDO.setConfirmByName(reqVO.getConfirmByName().trim());
+        updateDO.setConfirmTime(java.time.LocalDateTime.now());
+        if (StrUtil.isNotBlank(reqVO.getConfirmIp())) {
+            updateDO.setConfirmIp(reqVO.getConfirmIp().trim());
+        }
+
+        int affected = customerStatementMapper.update(updateDO,
+                new LambdaQueryWrapperX<CustomerStatementDO>()
+                        .eq(CustomerStatementDO::getId, reqVO.getId())
+                        .eq(CustomerStatementDO::getStatus, CustomerStatementStatus.SENT.getValue()));
+        if (affected == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "FINANCE_STATEMENT", subType = "PORTAL_REJECT", bizNo = "{{#reqVO.id}}", success = "门户驳回客户对账单【{{#reqVO.id}}】成功")
+    public void rejectPortalCustomerStatement(CustomerStatementPortalRejectReqVO reqVO) {
+        if (reqVO == null || reqVO.getId() == null) {
+            throw exception(STATEMENT_NOT_EXISTS);
+        }
+        if (reqVO.getCustomerId() == null) {
+            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        }
+        if (StrUtil.isBlank(reqVO.getRejectReason())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        CustomerStatementDO statement = customerStatementMapper.selectById(reqVO.getId());
+        validateStatementExistsAndTenant(statement);
+
+        // 隔离校验：单据归属客户与请求客户严格一致
+        if (!Objects.equals(statement.getCustomerId(), reqVO.getCustomerId())) {
+            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        }
+
+        // 状态守卫：仅 SENT 状态允许驳回
+        if (!CustomerStatementStatus.SENT.getValue().equals(statement.getStatus())) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+
+        CustomerStatementDO updateDO = new CustomerStatementDO();
+        updateDO.setStatus(CustomerStatementStatus.REJECTED.getValue());
+        updateDO.setRejectReason(reqVO.getRejectReason().trim());
+
+        int affected = customerStatementMapper.update(updateDO,
+                new LambdaQueryWrapperX<CustomerStatementDO>()
+                        .eq(CustomerStatementDO::getId, reqVO.getId())
+                        .eq(CustomerStatementDO::getStatus, CustomerStatementStatus.SENT.getValue()));
+        if (affected == 0) {
+            throw exception(STATEMENT_STATUS_NOT_ALLOW);
+        }
+    }
+
     // ==================== 私有辅助计算与防 N+1 批量快照方法 ====================
+
+    private void populateReversalFlags(String status, List<CustomerStatementItemDO> items, List<CustomerStatementItemRespVO> itemVOs) {
+        if (!CustomerStatementStatus.SENT.getValue().equals(status) || CollUtil.isEmpty(items)) {
+            return;
+        }
+        List<Long> ledgerEntryIds = items.stream()
+                .filter(i -> "DEBIT".equalsIgnoreCase(i.getDirection()) && i.getLedgerEntryId() != null)
+                .map(CustomerStatementItemDO::getLedgerEntryId)
+                .toList();
+        if (CollUtil.isEmpty(ledgerEntryIds)) {
+            return;
+        }
+        List<LedgerEntryDO> reversals = ledgerEntryMapper.selectList(new LambdaQueryWrapperX<LedgerEntryDO>()
+                .inOrEmpty(LedgerEntryDO::getReversalOfId, ledgerEntryIds));
+        Set<Long> reversedEntryIdSet = reversals.stream()
+                .map(LedgerEntryDO::getReversalOfId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        for (CustomerStatementItemRespVO itemVO : itemVOs) {
+            if (itemVO.getLedgerEntryId() != null && reversedEntryIdSet.contains(itemVO.getLedgerEntryId())) {
+                itemVO.setHasReversal(true);
+            } else {
+                itemVO.setHasReversal(false);
+            }
+        }
+    }
 
     private void validatePeriod(LocalDate periodStart, LocalDate periodEnd) {
         if (periodStart == null || periodEnd == null || periodStart.isAfter(periodEnd)) {

@@ -4,6 +4,8 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.*;
 import jakarta.validation.Valid;
 
+import java.util.List;
+
 /**
  * 财务管理 - 客户对账单 Service 接口
  *
@@ -107,5 +109,36 @@ public interface CustomerStatementService {
      * @return 打印数据
      */
     CustomerStatementPrintRespVO getCustomerStatementPrintData(Long id);
+
+    /**
+     * 客户门户：按 customerId 查询对账单列表（仅 SENT/CONFIRMED 状态）
+     *
+     * @param customerId 客户ID（严格隔离）
+     * @return 对账单列表
+     */
+    List<CustomerStatementRespVO> getPortalCustomerStatementList(Long customerId);
+
+    /**
+     * 客户门户：查询客户对账单详情（含全表明细行，严格校验客户归属）
+     *
+     * @param id 对账单ID
+     * @param customerId 客户ID
+     * @return 对账单详情
+     */
+    CustomerStatementDetailRespVO getPortalCustomerStatement(Long id, Long customerId);
+
+    /**
+     * 客户门户：在线确认对账单（SENT -> CONFIRMED，落库 confirm_type=ONLINE_PORTAL、确认人、时间、IP）
+     *
+     * @param reqVO 在线确认参数
+     */
+    void confirmPortalCustomerStatement(@Valid CustomerStatementPortalConfirmReqVO reqVO);
+
+    /**
+     * 客户门户：在线驳回对账单（SENT -> REJECTED，必填 reject_reason）
+     *
+     * @param reqVO 在线驳回参数
+     */
+    void rejectPortalCustomerStatement(@Valid CustomerStatementPortalRejectReqVO reqVO);
 
 }
