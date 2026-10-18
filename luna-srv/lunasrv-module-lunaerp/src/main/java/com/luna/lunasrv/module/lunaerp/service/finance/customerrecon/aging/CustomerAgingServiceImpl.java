@@ -12,10 +12,14 @@ import com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.Custo
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
 import com.luna.lunasrv.module.lunaerp.enums.finance.LedgerCategory;
+import com.luna.lunasrv.module.lunaerp.enums.finance.PaymentStatus;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
@@ -60,6 +64,9 @@ public class CustomerAgingServiceImpl implements CustomerAgingService {
     private ShipmentMapper shipmentMapper;
 
     @Resource
+    private PaymentMapper paymentMapper;
+
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Override
@@ -69,7 +76,7 @@ public class CustomerAgingServiceImpl implements CustomerAgingService {
         // 1. 查询匹配的客户列表
         LambdaQueryWrapper<CustomerDO> customerQuery = new LambdaQueryWrapperX<CustomerDO>()
                 .inIfPresent(CustomerDO::getId, reqVO != null ? reqVO.getCustomerIds() : null)
-                .eqIfPresent(CustomerDO::getSalespersonUserId, reqVO != null ? reqVO.getSalesmanId() : null)
+                .eqIfPresent(CustomerDO::getSalespersonUserId, reqVO != null ? reqVO.getEffectiveSalespersonUserId() : null)
                 .orderByAsc(CustomerDO::getId);
 
         List<CustomerDO> customers = customerMapper.selectList(customerQuery);
@@ -86,6 +93,9 @@ public class CustomerAgingServiceImpl implements CustomerAgingService {
                 .le(LedgerEntryDO::getBizDate, queryDate)
                 .orderByAsc(LedgerEntryDO::getBizDate)
                 .orderByAsc(LedgerEntryDO::getId));
+
+        // 批量识别已红冲的收款单ID，其关联核销分录不应冲减应收
+        Set<Long> reversedPaymentIds = getReversedPaymentIds(entries);
 
         // 按 customerId 分组
         Map<Long, List<LedgerEntryDO>> customerEntriesMap = entries.stream()
@@ -106,84 +116,11 @@ public class CustomerAgingServiceImpl implements CustomerAgingService {
             }
         }
 
-        boolean filterZeroBalance = reqVO == null || CollUtil.isEmpty(reqVO.getCustomerIds());
         List<CustomerAgingSummaryRespVO> result = new ArrayList<>();
 
         for (CustomerDO customer : customers) {
             List<LedgerEntryDO> custEntries = customerEntriesMap.getOrDefault(customer.getId(), Collections.emptyList());
-
-            // 区分分录类型
-            List<LedgerEntryDO> arIncEntries = new ArrayList<>();
-            List<LedgerEntryDO> arIncReversals = new ArrayList<>();
-            List<CustomerAgingCalculator.CreditReduction> reductions = new ArrayList<>();
-            List<LedgerEntryDO> advanceEntries = new ArrayList<>();
-            List<LedgerEntryDO> advanceReversals = new ArrayList<>();
-            List<LedgerEntryDO> advanceWriteOffEntries = new ArrayList<>();
-
-            for (LedgerEntryDO e : custEntries) {
-                String cat = e.getCategory();
-                if (LedgerCategory.AR_INC.getValue().equalsIgnoreCase(cat)) {
-                    arIncEntries.add(e);
-                } else if (LedgerCategory.AR_INC_REVERSAL.getValue().equalsIgnoreCase(cat)) {
-                    arIncReversals.add(e);
-                } else if (CREDIT_REDUCTION_CATEGORIES.contains(cat)) {
-                    reductions.add(new CustomerAgingCalculator.CreditReduction(
-                            e.getId(), e.getBizDate(), cat, e.getOriginalAmount()));
-                } else if (LedgerCategory.ADVANCE.getValue().equalsIgnoreCase(cat)) {
-                    advanceEntries.add(e);
-                } else if (LedgerCategory.RECEIPT_REVERSAL.getValue().equalsIgnoreCase(cat)) {
-                    advanceReversals.add(e);
-                }
-                if (LedgerCategory.ADVANCE_WRITE_OFF.getValue().equalsIgnoreCase(cat)) {
-                    advanceWriteOffEntries.add(e);
-                }
-            }
-
-            // 统计 AR_INC 的红冲
-            Map<Long, BigDecimal> arReversalMap = new HashMap<>();
-            for (LedgerEntryDO rev : arIncReversals) {
-                if (rev.getReversalOfId() != null && rev.getOriginalAmount() != null) {
-                    arReversalMap.merge(rev.getReversalOfId(), rev.getOriginalAmount(), BigDecimal::add);
-                }
-            }
-
-            List<CustomerAgingCalculator.ArEntry> calcArEntries = new ArrayList<>();
-            for (LedgerEntryDO e : arIncEntries) {
-                BigDecimal revAmount = arReversalMap.getOrDefault(e.getId(), BigDecimal.ZERO);
-                calcArEntries.add(new CustomerAgingCalculator.ArEntry(
-                        e.getId(), e.getBizDate(), e.getOriginalAmount(), e.getRefType(),
-                        e.getRefId(), "", e.getRemark(), revAmount));
-            }
-
-            // 统计预收余额 = (ADVANCE 入账 - 其红冲) - ADVANCE_WRITE_OFF
-            Map<Long, BigDecimal> advReversalMap = new HashMap<>();
-            for (LedgerEntryDO rev : advanceReversals) {
-                if (rev.getReversalOfId() != null && rev.getOriginalAmount() != null) {
-                    advReversalMap.merge(rev.getReversalOfId(), rev.getOriginalAmount(), BigDecimal::add);
-                }
-            }
-
-            BigDecimal totalAdvance = BigDecimal.ZERO;
-            for (LedgerEntryDO adv : advanceEntries) {
-                BigDecimal orig = adv.getOriginalAmount() != null ? adv.getOriginalAmount() : BigDecimal.ZERO;
-                BigDecimal rev = advReversalMap.getOrDefault(adv.getId(), BigDecimal.ZERO);
-                BigDecimal net = orig.subtract(rev);
-                if (net.compareTo(BigDecimal.ZERO) > 0) {
-                    totalAdvance = totalAdvance.add(net);
-                }
-            }
-
-            BigDecimal totalAdvanceWriteOff = BigDecimal.ZERO;
-            for (LedgerEntryDO awo : advanceWriteOffEntries) {
-                if (awo.getOriginalAmount() != null) {
-                    totalAdvanceWriteOff = totalAdvanceWriteOff.add(awo.getOriginalAmount());
-                }
-            }
-
-            BigDecimal advanceBalance = totalAdvance.subtract(totalAdvanceWriteOff);
-            if (advanceBalance.compareTo(BigDecimal.ZERO) < 0) {
-                advanceBalance = BigDecimal.ZERO;
-            }
+            CustomerParsedEntries parsed = parseCustomerEntries(custEntries, reversedPaymentIds);
 
             // 调用 FIFO 纯函数计算
             CustomerAgingCalculator.AgingResult agingResult = CustomerAgingCalculator.calculate(
@@ -191,17 +128,10 @@ public class CustomerAgingServiceImpl implements CustomerAgingService {
                     customer.getCompanyName(),
                     customer.getCreditDays(),
                     queryDate,
-                    calcArEntries,
-                    reductions,
-                    advanceBalance
+                    parsed.getArEntries(),
+                    parsed.getReductions(),
+                    parsed.getAdvanceBalance()
             );
-
-            // 默认无 customerIds 条件过滤时，排除完全无应收且无预收余额的客户
-            if (filterZeroBalance
-                    && agingResult.getTotalArBalance().compareTo(BigDecimal.ZERO) == 0
-                    && agingResult.getAdvanceBalance().compareTo(BigDecimal.ZERO) == 0) {
-                continue;
-            }
 
             // 获取业务员姓名
             String salesmanName = null;
@@ -240,6 +170,10 @@ public class CustomerAgingServiceImpl implements CustomerAgingService {
         if (customer == null) {
             throw exception(STATEMENT_CUSTOMER_MISMATCH);
         }
+        Long currentTenantId = TenantContextHolder.getTenantId();
+        if (currentTenantId != null && customer.getTenantId() != null && !currentTenantId.equals(customer.getTenantId())) {
+            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        }
 
         LocalDate queryDate = reqVO.getAgingDate() != null ? reqVO.getAgingDate() : LocalDate.now();
 
@@ -251,46 +185,15 @@ public class CustomerAgingServiceImpl implements CustomerAgingService {
                 .orderByAsc(LedgerEntryDO::getBizDate)
                 .orderByAsc(LedgerEntryDO::getId));
 
-        List<LedgerEntryDO> arIncEntries = new ArrayList<>();
-        List<LedgerEntryDO> arIncReversals = new ArrayList<>();
-        List<CustomerAgingCalculator.CreditReduction> reductions = new ArrayList<>();
-
-        for (LedgerEntryDO e : entries) {
-            String cat = e.getCategory();
-            if (LedgerCategory.AR_INC.getValue().equalsIgnoreCase(cat)) {
-                arIncEntries.add(e);
-            } else if (LedgerCategory.AR_INC_REVERSAL.getValue().equalsIgnoreCase(cat)) {
-                arIncReversals.add(e);
-            } else if (CREDIT_REDUCTION_CATEGORIES.contains(cat)) {
-                reductions.add(new CustomerAgingCalculator.CreditReduction(
-                        e.getId(), e.getBizDate(), cat, e.getOriginalAmount()));
-            }
-        }
-
-        Map<Long, BigDecimal> arReversalMap = new HashMap<>();
-        for (LedgerEntryDO rev : arIncReversals) {
-            if (rev.getReversalOfId() != null && rev.getOriginalAmount() != null) {
-                arReversalMap.merge(rev.getReversalOfId(), rev.getOriginalAmount(), BigDecimal::add);
-            }
-        }
-
-        List<CustomerAgingCalculator.ArEntry> calcArEntries = new ArrayList<>();
-        Set<Long> shipmentIds = new HashSet<>();
-        for (LedgerEntryDO e : arIncEntries) {
-            BigDecimal revAmount = arReversalMap.getOrDefault(e.getId(), BigDecimal.ZERO);
-            calcArEntries.add(new CustomerAgingCalculator.ArEntry(
-                    e.getId(), e.getBizDate(), e.getOriginalAmount(), e.getRefType(),
-                    e.getRefId(), "", e.getRemark(), revAmount));
-            if (e.getRefId() != null && ("SHIPMENT_ITEM".equalsIgnoreCase(e.getRefType()) || "SHIPMENT_FREIGHT".equalsIgnoreCase(e.getRefType()))) {
-                shipmentIds.add(e.getRefId());
-            }
-        }
+        // 批量识别已红冲的收款单ID
+        Set<Long> reversedPaymentIds = getReversedPaymentIds(entries);
+        CustomerParsedEntries parsed = parseCustomerEntries(entries, reversedPaymentIds);
 
         // 批量加载发货单信息
         Map<Long, ShipmentDO> shipmentMap = Collections.emptyMap();
-        if (CollUtil.isNotEmpty(shipmentIds)) {
+        if (CollUtil.isNotEmpty(parsed.getShipmentIds())) {
             List<ShipmentDO> shipments = shipmentMapper.selectList(new LambdaQueryWrapperX<ShipmentDO>()
-                    .inOrEmpty(ShipmentDO::getId, shipmentIds));
+                    .inOrEmpty(ShipmentDO::getId, parsed.getShipmentIds()));
             shipmentMap = CollectionUtils.convertMap(shipments, ShipmentDO::getId);
         }
 
@@ -300,8 +203,8 @@ public class CustomerAgingServiceImpl implements CustomerAgingService {
                 customer.getCompanyName(),
                 customer.getCreditDays(),
                 queryDate,
-                calcArEntries,
-                reductions,
+                parsed.getArEntries(),
+                parsed.getReductions(),
                 BigDecimal.ZERO
         );
 
@@ -334,5 +237,131 @@ public class CustomerAgingServiceImpl implements CustomerAgingService {
         }
 
         return result;
+    }
+
+    /**
+     * 识别与分录关联但已被红冲的收款单ID集合
+     */
+    private Set<Long> getReversedPaymentIds(List<LedgerEntryDO> entries) {
+        if (CollUtil.isEmpty(entries) || paymentMapper == null) {
+            return Collections.emptySet();
+        }
+        Set<Long> paymentIds = entries.stream()
+                .filter(e -> "RECEIPT".equalsIgnoreCase(e.getRefType()) && e.getRefId() != null)
+                .map(LedgerEntryDO::getRefId)
+                .collect(Collectors.toSet());
+        if (CollUtil.isEmpty(paymentIds)) {
+            return Collections.emptySet();
+        }
+        List<PaymentDO> payments = paymentMapper.selectBatchIds(paymentIds);
+        if (CollUtil.isEmpty(payments)) {
+            return Collections.emptySet();
+        }
+        return payments.stream()
+                .filter(p -> PaymentStatus.REVERSED.getValue().equalsIgnoreCase(p.getStatus()))
+                .map(PaymentDO::getId)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * 解析客户分录：过滤已红冲收款核销、归集应收增加净额与减少分录、核算预收余额
+     */
+    private CustomerParsedEntries parseCustomerEntries(List<LedgerEntryDO> custEntries, Set<Long> reversedPaymentIds) {
+        List<LedgerEntryDO> arIncEntries = new ArrayList<>();
+        List<LedgerEntryDO> arIncReversals = new ArrayList<>();
+        List<CustomerAgingCalculator.CreditReduction> reductions = new ArrayList<>();
+        List<LedgerEntryDO> advanceEntries = new ArrayList<>();
+        List<LedgerEntryDO> advanceReversals = new ArrayList<>();
+        List<LedgerEntryDO> advanceWriteOffEntries = new ArrayList<>();
+
+        for (LedgerEntryDO e : custEntries) {
+            String cat = e.getCategory();
+            boolean isReversedPayment = "RECEIPT".equalsIgnoreCase(e.getRefType())
+                    && e.getRefId() != null
+                    && reversedPaymentIds.contains(e.getRefId());
+
+            if (LedgerCategory.AR_INC.getValue().equalsIgnoreCase(cat)) {
+                arIncEntries.add(e);
+            } else if (LedgerCategory.AR_INC_REVERSAL.getValue().equalsIgnoreCase(cat)) {
+                arIncReversals.add(e);
+            } else if (CREDIT_REDUCTION_CATEGORIES.contains(cat)) {
+                if (!isReversedPayment) {
+                    reductions.add(new CustomerAgingCalculator.CreditReduction(
+                            e.getId(), e.getBizDate(), cat, e.getOriginalAmount()));
+                }
+            } else if (LedgerCategory.ADVANCE.getValue().equalsIgnoreCase(cat)) {
+                if (!isReversedPayment) {
+                    advanceEntries.add(e);
+                }
+            } else if (LedgerCategory.RECEIPT_REVERSAL.getValue().equalsIgnoreCase(cat)) {
+                if (!isReversedPayment) {
+                    advanceReversals.add(e);
+                }
+            }
+            if (LedgerCategory.ADVANCE_WRITE_OFF.getValue().equalsIgnoreCase(cat) && !isReversedPayment) {
+                advanceWriteOffEntries.add(e);
+            }
+        }
+
+        // 统计 AR_INC 的红冲
+        Map<Long, BigDecimal> arReversalMap = new HashMap<>();
+        for (LedgerEntryDO rev : arIncReversals) {
+            if (rev.getReversalOfId() != null && rev.getOriginalAmount() != null) {
+                arReversalMap.merge(rev.getReversalOfId(), rev.getOriginalAmount(), BigDecimal::add);
+            }
+        }
+
+        List<CustomerAgingCalculator.ArEntry> calcArEntries = new ArrayList<>();
+        Set<Long> shipmentIds = new HashSet<>();
+        for (LedgerEntryDO e : arIncEntries) {
+            BigDecimal revAmount = arReversalMap.getOrDefault(e.getId(), BigDecimal.ZERO);
+            calcArEntries.add(new CustomerAgingCalculator.ArEntry(
+                    e.getId(), e.getBizDate(), e.getOriginalAmount(), e.getRefType(),
+                    e.getRefId(), "", e.getRemark(), revAmount));
+            if (e.getRefId() != null && ("SHIPMENT_ITEM".equalsIgnoreCase(e.getRefType()) || "SHIPMENT_FREIGHT".equalsIgnoreCase(e.getRefType()))) {
+                shipmentIds.add(e.getRefId());
+            }
+        }
+
+        // 统计预收余额 = (ADVANCE 入账 - 其红冲) - ADVANCE_WRITE_OFF
+        Map<Long, BigDecimal> advReversalMap = new HashMap<>();
+        for (LedgerEntryDO rev : advanceReversals) {
+            if (rev.getReversalOfId() != null && rev.getOriginalAmount() != null) {
+                advReversalMap.merge(rev.getReversalOfId(), rev.getOriginalAmount(), BigDecimal::add);
+            }
+        }
+
+        BigDecimal totalAdvance = BigDecimal.ZERO;
+        for (LedgerEntryDO adv : advanceEntries) {
+            BigDecimal orig = adv.getOriginalAmount() != null ? adv.getOriginalAmount() : BigDecimal.ZERO;
+            BigDecimal rev = advReversalMap.getOrDefault(adv.getId(), BigDecimal.ZERO);
+            BigDecimal net = orig.subtract(rev);
+            if (net.compareTo(BigDecimal.ZERO) > 0) {
+                totalAdvance = totalAdvance.add(net);
+            }
+        }
+
+        BigDecimal totalAdvanceWriteOff = BigDecimal.ZERO;
+        for (LedgerEntryDO awo : advanceWriteOffEntries) {
+            if (awo.getOriginalAmount() != null) {
+                totalAdvanceWriteOff = totalAdvanceWriteOff.add(awo.getOriginalAmount());
+            }
+        }
+
+        BigDecimal advanceBalance = totalAdvance.subtract(totalAdvanceWriteOff);
+        if (advanceBalance.compareTo(BigDecimal.ZERO) < 0) {
+            advanceBalance = BigDecimal.ZERO;
+        }
+
+        return new CustomerParsedEntries(calcArEntries, reductions, advanceBalance, shipmentIds);
+    }
+
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    private static class CustomerParsedEntries {
+        private final List<CustomerAgingCalculator.ArEntry> arEntries;
+        private final List<CustomerAgingCalculator.CreditReduction> reductions;
+        private final BigDecimal advanceBalance;
+        private final Set<Long> shipmentIds;
     }
 }

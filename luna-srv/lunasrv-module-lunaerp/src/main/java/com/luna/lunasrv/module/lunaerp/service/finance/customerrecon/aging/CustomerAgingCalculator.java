@@ -234,6 +234,9 @@ public class CustomerAgingCalculator {
                     }
                 }
 
+                BigDecimal reversalAmt = entry.getReversalAmount() != null ? entry.getReversalAmount() : BigDecimal.ZERO;
+                BigDecimal totalWrittenOff = consumed.add(reversalAmt);
+
                 detailItems.add(AgingDetailItem.builder()
                         .ledgerEntryId(entry.getLedgerEntryId())
                         .bizDate(entry.getBizDate())
@@ -242,7 +245,7 @@ public class CustomerAgingCalculator {
                         .refNo(entry.getRefNo())
                         .summary(entry.getSummary())
                         .originalAmount(entry.getOriginalAmount() != null ? entry.getOriginalAmount().setScale(2, RoundingMode.HALF_UP) : netAmount.setScale(2, RoundingMode.HALF_UP))
-                        .writtenOffAmount(consumed.setScale(2, RoundingMode.HALF_UP))
+                        .writtenOffAmount(totalWrittenOff.setScale(2, RoundingMode.HALF_UP))
                         .remainingAmount(remaining.setScale(2, RoundingMode.HALF_UP))
                         .agingDays(agingDays)
                         .bucket(bucket)

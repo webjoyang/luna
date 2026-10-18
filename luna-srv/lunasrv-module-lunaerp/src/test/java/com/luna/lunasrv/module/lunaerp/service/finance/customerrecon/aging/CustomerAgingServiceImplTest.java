@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.customerrecon.aging;
 
+import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerAgingDetailReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerAgingDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.CustomerAgingSummaryReqVO;
@@ -8,10 +10,14 @@ import com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.Custo
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper;
+import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
 import com.luna.lunasrv.module.lunaerp.enums.finance.LedgerCategory;
+import com.luna.lunasrv.module.lunaerp.enums.finance.PaymentStatus;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +53,9 @@ public class CustomerAgingServiceImplTest {
 
     @Mock
     private ShipmentMapper shipmentMapper;
+
+    @Mock
+    private PaymentMapper paymentMapper;
 
     @Mock
     private AdminUserApi adminUserApi;
@@ -118,14 +127,19 @@ public class CustomerAgingServiceImplTest {
 
         List<CustomerAgingSummaryRespVO> result = customerAgingService.getAgingSummary(reqVO);
 
-        // 验证：仅客户甲有未结清应收（1000.00），客户甲绝未被客户乙的核销冲抵
+        // 验证：客户甲有未结清应收（1000.00），客户甲绝未被客户乙的核销冲抵；按客户一行返回客户乙且余额为0
         assertNotNull(result);
-        assertEquals(1, result.size());
+        assertEquals(2, result.size());
         CustomerAgingSummaryRespVO voA = result.get(0);
         assertEquals(100L, voA.getCustomerId());
         assertEquals("客户甲", voA.getCustomerName());
         assertEquals(new BigDecimal("1000.00"), voA.getTotalArBalance());
         assertEquals(new BigDecimal("1000.00"), voA.getBucket0To30());
+
+        CustomerAgingSummaryRespVO voB = result.get(1);
+        assertEquals(200L, voB.getCustomerId());
+        assertEquals("客户乙", voB.getCustomerName());
+        assertEquals(BigDecimal.ZERO.setScale(2), voB.getTotalArBalance());
     }
 
     @Test
@@ -271,5 +285,105 @@ public class CustomerAgingServiceImplTest {
         // 逾期判断：发货日 45 天前，账期 30 天，已逾期 15 天
         assertTrue(item.getIsOverdue());
         assertEquals(15, item.getOverdueDays());
+    }
+
+    @Test
+    @DisplayName("已红冲收款单核销排除测试：当收款单已红冲（status=REVERSED）时，其关联核销分录不参与应收冲减")
+    public void testAgingSummary_ReversedReceiptWriteoffIgnored() {
+        LocalDate queryDate = LocalDate.of(2026, 7, 1);
+
+        when(customerMapper.selectList(any())).thenReturn(List.of(customerA));
+
+        // AR_INC 1000.00
+        LedgerEntryDO arEntry = new LedgerEntryDO();
+        arEntry.setId(1L);
+        arEntry.setPartyType("CUSTOMER");
+        arEntry.setPartyId(100L);
+        arEntry.setCategory(LedgerCategory.AR_INC.getValue());
+        arEntry.setDirection("DEBIT");
+        arEntry.setOriginalAmount(new BigDecimal("1000.00"));
+        arEntry.setBizDate(queryDate.minusDays(10));
+        arEntry.setCurrency("CNY");
+
+        // RECEIPT_WRITE_OFF 600.00，关联 paymentId=999L
+        LedgerEntryDO writeOff = new LedgerEntryDO();
+        writeOff.setId(2L);
+        writeOff.setPartyType("CUSTOMER");
+        writeOff.setPartyId(100L);
+        writeOff.setCategory(LedgerCategory.RECEIPT_WRITE_OFF.getValue());
+        writeOff.setDirection("CREDIT");
+        writeOff.setOriginalAmount(new BigDecimal("600.00"));
+        writeOff.setBizDate(queryDate.minusDays(5));
+        writeOff.setRefType("RECEIPT");
+        writeOff.setRefId(999L);
+        writeOff.setCurrency("CNY");
+
+        when(ledgerEntryMapper.selectList(any())).thenReturn(List.of(arEntry, writeOff));
+
+        // Mock paymentMapper 返回该 paymentId 已是 REVERSED 状态
+        PaymentDO reversedPayment = new PaymentDO();
+        reversedPayment.setId(999L);
+        reversedPayment.setStatus(PaymentStatus.REVERSED.getValue());
+        when(paymentMapper.selectBatchIds(any())).thenReturn(List.of(reversedPayment));
+
+        CustomerAgingSummaryReqVO reqVO = CustomerAgingSummaryReqVO.builder()
+                .agingDate(queryDate)
+                .customerIds(List.of(100L))
+                .build();
+
+        List<CustomerAgingSummaryRespVO> result = customerAgingService.getAgingSummary(reqVO);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        // 因为收款单已红冲，其关联的 600.00 核销被排除，应收总额完整保留为 1000.00
+        assertEquals(new BigDecimal("1000.00"), result.get(0).getTotalArBalance());
+        assertEquals(new BigDecimal("1000.00"), result.get(0).getBucket0To30());
+    }
+
+    @Test
+    @DisplayName("多租户越权隔离测试：跨租户查询客户明细抛出 STATEMENT_CUSTOMER_MISMATCH 异常")
+    public void testAgingDetail_CrossTenantIsolated() {
+        try {
+            TenantContextHolder.setTenantId(1L);
+
+            CustomerDO foreignCustomer = new CustomerDO();
+            foreignCustomer.setId(999L);
+            foreignCustomer.setCompanyName("异租户客户");
+            foreignCustomer.setTenantId(2L); // 属于租户 2
+
+            when(customerMapper.selectById(999L)).thenReturn(foreignCustomer);
+
+            CustomerAgingDetailReqVO reqVO = CustomerAgingDetailReqVO.builder()
+                    .customerId(999L)
+                    .agingDate(LocalDate.now())
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class,
+                    () -> customerAgingService.getAgingDetail(reqVO));
+            assertEquals(FinanceErrorCodeConstants.STATEMENT_CUSTOMER_MISMATCH.getCode(), ex.getCode());
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    @Test
+    @DisplayName("salespersonUserId 与 salesmanId 参数兼容测试：两者均能正确提取并传递过滤")
+    public void testAgingSummary_SalespersonUserIdParameter() {
+        CustomerAgingSummaryReqVO vo1 = CustomerAgingSummaryReqVO.builder()
+                .salespersonUserId(2048L)
+                .build();
+        assertEquals(2048L, vo1.getEffectiveSalespersonUserId());
+
+        CustomerAgingSummaryReqVO vo2 = CustomerAgingSummaryReqVO.builder()
+                .salesmanId(2049L)
+                .build();
+        assertEquals(2049L, vo2.getEffectiveSalespersonUserId());
+
+        CustomerAgingSummaryReqVO vo3 = CustomerAgingSummaryReqVO.builder()
+                .salespersonUserId(2048L)
+                .salesmanId(2049L)
+                .build();
+        // 优先使用 salespersonUserId
+        assertEquals(2048L, vo3.getEffectiveSalespersonUserId());
     }
 }

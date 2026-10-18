@@ -23,11 +23,11 @@ export interface CustomerAgingSummaryData {
  * 五桶常量定义
  */
 export const AGING_BUCKETS = [
-  { key: 'bucket0To30', label: '0–30天', color: '#67c23a' },
-  { key: 'bucket31To60', label: '31–60天', color: '#409eff' },
-  { key: 'bucket61To90', label: '61–90天', color: '#e6a23c' },
-  { key: 'bucket91To180', label: '91–180天', color: '#f56c6c' },
-  { key: 'bucket181Plus', label: '181天以上', color: '#909399' }
+  { key: 'bucket0To30', pctKey: 'pct0To30', label: '0–30天', color: '#67c23a' },
+  { key: 'bucket31To60', pctKey: 'pct31To60', label: '31–60天', color: '#409eff' },
+  { key: 'bucket61To90', pctKey: 'pct61To90', label: '61–90天', color: '#e6a23c' },
+  { key: 'bucket91To180', pctKey: 'pct91To180', label: '91–180天', color: '#f56c6c' },
+  { key: 'bucket181Plus', pctKey: 'pct181Plus', label: '181天以上', color: '#909399' }
 ] as const
 
 /**

@@ -27,7 +27,7 @@ import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
  */
 @Tag(name = "财务管理 - 客户账龄分析")
 @RestController
-@RequestMapping({"/lunaerp/finance/customerrecon/aging", "/lunaerp/finance/customerrecon/statement/aging"})
+@RequestMapping("/lunaerp/finance/customerrecon/aging")
 @Validated
 public class CustomerAgingController {
 

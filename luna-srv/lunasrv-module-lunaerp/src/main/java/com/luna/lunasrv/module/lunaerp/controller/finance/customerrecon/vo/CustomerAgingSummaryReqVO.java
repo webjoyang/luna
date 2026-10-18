@@ -27,5 +27,12 @@ public class CustomerAgingSummaryReqVO {
     private List<Long> customerIds;
 
     @Schema(description = "归属业务员用户ID筛选", example = "2048")
+    private Long salespersonUserId;
+
+    @Schema(description = "归属业务员用户ID筛选（salespersonUserId 别名）", example = "2048")
     private Long salesmanId;
+
+    public Long getEffectiveSalespersonUserId() {
+        return salespersonUserId != null ? salespersonUserId : salesmanId;
+    }
 }

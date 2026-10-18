@@ -206,7 +206,12 @@ public class CustomerAgingCalculatorTest {
         assertEquals(new BigDecimal("1500.00"), result.getBucket0To30());
         assertEquals(BigDecimal.ZERO.setScale(2), result.getBucket31To60());
         assertEquals(1, result.getDetailItems().size());
-        assertEquals(2L, result.getDetailItems().get(0).getLedgerEntryId());
-        assertEquals(new BigDecimal("1500.00"), result.getDetailItems().get(0).getRemainingAmount());
+        CustomerAgingCalculator.AgingDetailItem detailItem = result.getDetailItems().get(0);
+        assertEquals(2L, detailItem.getLedgerEntryId());
+        assertEquals(new BigDecimal("2000.00"), detailItem.getOriginalAmount());
+        // writtenOffAmount 包含红冲额 500.00，满足 originalAmount - writtenOffAmount == remainingAmount 勾稽关系
+        assertEquals(new BigDecimal("500.00"), detailItem.getWrittenOffAmount());
+        assertEquals(new BigDecimal("1500.00"), detailItem.getRemainingAmount());
+        assertEquals(detailItem.getOriginalAmount().subtract(detailItem.getWrittenOffAmount()), detailItem.getRemainingAmount());
     }
 }

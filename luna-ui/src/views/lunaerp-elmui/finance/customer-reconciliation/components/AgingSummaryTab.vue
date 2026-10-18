@@ -138,63 +138,25 @@
           <span class="text-gray-400">纯函数实时计算 · FIFO冲抵</span>
         </div>
         <div class="h-6 w-full flex rounded overflow-hidden">
-          <div
-            v-if="globalPercentages.pct0To30 > 0"
-            :style="{ width: `${globalPercentages.pct0To30}%`, backgroundColor: '#67c23a' }"
-            class="flex items-center justify-center text-white text-11px font-mono"
-            :title="`0–30天: ${globalPercentages.pct0To30}%`"
-          >
-            {{ globalPercentages.pct0To30 > 7 ? `${globalPercentages.pct0To30}%` : '' }}
-          </div>
-          <div
-            v-if="globalPercentages.pct31To60 > 0"
-            :style="{ width: `${globalPercentages.pct31To60}%`, backgroundColor: '#409eff' }"
-            class="flex items-center justify-center text-white text-11px font-mono"
-            :title="`31–60天: ${globalPercentages.pct31To60}%`"
-          >
-            {{ globalPercentages.pct31To60 > 7 ? `${globalPercentages.pct31To60}%` : '' }}
-          </div>
-          <div
-            v-if="globalPercentages.pct61To90 > 0"
-            :style="{ width: `${globalPercentages.pct61To90}%`, backgroundColor: '#e6a23c' }"
-            class="flex items-center justify-center text-white text-11px font-mono"
-            :title="`61–90天: ${globalPercentages.pct61To90}%`"
-          >
-            {{ globalPercentages.pct61To90 > 7 ? `${globalPercentages.pct61To90}%` : '' }}
-          </div>
-          <div
-            v-if="globalPercentages.pct91To180 > 0"
-            :style="{ width: `${globalPercentages.pct91To180}%`, backgroundColor: '#f56c6c' }"
-            class="flex items-center justify-center text-white text-11px font-mono"
-            :title="`91–180天: ${globalPercentages.pct91To180}%`"
-          >
-            {{ globalPercentages.pct91To180 > 7 ? `${globalPercentages.pct91To180}%` : '' }}
-          </div>
-          <div
-            v-if="globalPercentages.pct181Plus > 0"
-            :style="{ width: `${globalPercentages.pct181Plus}%`, backgroundColor: '#909399' }"
-            class="flex items-center justify-center text-white text-11px font-mono"
-            :title="`181天以上: ${globalPercentages.pct181Plus}%`"
-          >
-            {{ globalPercentages.pct181Plus > 7 ? `${globalPercentages.pct181Plus}%` : '' }}
-          </div>
+          <template v-for="b in AGING_BUCKETS" :key="b.key">
+            <div
+              v-if="globalPercentages[b.pctKey] > 0"
+              :style="{ width: `${globalPercentages[b.pctKey]}%`, backgroundColor: b.color }"
+              class="flex items-center justify-center text-white text-11px font-mono"
+              :title="`${b.label}: ${globalPercentages[b.pctKey]}%`"
+            >
+              {{ globalPercentages[b.pctKey] > 7 ? `${globalPercentages[b.pctKey]}%` : '' }}
+            </div>
+          </template>
         </div>
         <div class="flex gap-4 text-11px text-gray-600 mt-2">
-          <span class="flex items-center"
-            ><span class="w-2.5 h-2.5 rounded-full mr-1 bg-green-500"></span> 0–30天</span
-          >
-          <span class="flex items-center"
-            ><span class="w-2.5 h-2.5 rounded-full mr-1 bg-blue-500"></span> 31–60天</span
-          >
-          <span class="flex items-center"
-            ><span class="w-2.5 h-2.5 rounded-full mr-1 bg-amber-500"></span> 61–90天</span
-          >
-          <span class="flex items-center"
-            ><span class="w-2.5 h-2.5 rounded-full mr-1 bg-red-500"></span> 91–180天</span
-          >
-          <span class="flex items-center"
-            ><span class="w-2.5 h-2.5 rounded-full mr-1 bg-gray-500"></span> 181天以上</span
-          >
+          <span v-for="b in AGING_BUCKETS" :key="b.key" class="flex items-center">
+            <span
+              class="w-2.5 h-2.5 rounded-full mr-1"
+              :style="{ backgroundColor: b.color }"
+            ></span>
+            {{ b.label }}
+          </span>
         </div>
       </div>
 
@@ -329,41 +291,15 @@
         <el-table-column label="账龄结构" width="130" align="center">
           <template #default="{ row }">
             <div class="h-3 w-full flex rounded overflow-hidden bg-gray-100">
-              <div
-                v-if="calculateAgingBucketPercentages(row).pct0To30 > 0"
-                :style="{
-                  width: `${calculateAgingBucketPercentages(row).pct0To30}%`,
-                  backgroundColor: '#67c23a'
-                }"
-              ></div>
-              <div
-                v-if="calculateAgingBucketPercentages(row).pct31To60 > 0"
-                :style="{
-                  width: `${calculateAgingBucketPercentages(row).pct31To60}%`,
-                  backgroundColor: '#409eff'
-                }"
-              ></div>
-              <div
-                v-if="calculateAgingBucketPercentages(row).pct61To90 > 0"
-                :style="{
-                  width: `${calculateAgingBucketPercentages(row).pct61To90}%`,
-                  backgroundColor: '#e6a23c'
-                }"
-              ></div>
-              <div
-                v-if="calculateAgingBucketPercentages(row).pct91To180 > 0"
-                :style="{
-                  width: `${calculateAgingBucketPercentages(row).pct91To180}%`,
-                  backgroundColor: '#f56c6c'
-                }"
-              ></div>
-              <div
-                v-if="calculateAgingBucketPercentages(row).pct181Plus > 0"
-                :style="{
-                  width: `${calculateAgingBucketPercentages(row).pct181Plus}%`,
-                  backgroundColor: '#909399'
-                }"
-              ></div>
+              <template v-for="b in AGING_BUCKETS" :key="b.key">
+                <div
+                  v-if="calculateAgingBucketPercentages(row)[b.pctKey] > 0"
+                  :style="{
+                    width: `${calculateAgingBucketPercentages(row)[b.pctKey]}%`,
+                    backgroundColor: b.color
+                  }"
+                ></div>
+              </template>
             </div>
           </template>
         </el-table-column>
@@ -404,7 +340,8 @@ import { getCustomerPage, type CustomerVO } from '@/api/lunaerp-elmui/baseinfo/c
 import {
   formatMoney,
   calculateAgingBucketPercentages,
-  calculateAgingGrandTotals
+  calculateAgingGrandTotals,
+  AGING_BUCKETS
 } from '../model/customerAging'
 import AgingDetailDrawer from './AgingDetailDrawer.vue'
 
@@ -412,7 +349,7 @@ const loading = ref(false)
 const list = ref<CustomerAgingSummaryRespVO[]>([])
 const detailDrawerRef = ref<InstanceType<typeof AgingDetailDrawer>>()
 
-const todayStr = new Date().toISOString().split('T')[0]
+const todayStr = new Date().toLocaleDateString('en-CA')
 const queryParams = reactive<{
   agingDate: string
   customerId?: number
