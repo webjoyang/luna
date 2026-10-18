@@ -48,6 +48,33 @@
           >
             <Icon icon="ep:check" class="mr-2px" /> 保存草稿
           </el-button>
+          <el-button
+            v-if="!isNew && actionFlags.canSubmit"
+            type="success"
+            :loading="submitting"
+            @click="handleSubmit"
+            v-hasPermi="['lunaerp:business:sales-return:submit']"
+          >
+            <Icon icon="ep:promotion" class="mr-2px" /> 提交审批
+          </el-button>
+          <el-button
+            v-if="!isNew && actionFlags.canWithdraw"
+            type="warning"
+            :loading="withdrawing"
+            @click="handleWithdraw"
+            v-hasPermi="['lunaerp:business:sales-return:submit']"
+          >
+            <Icon icon="ep:back" class="mr-2px" /> 撤回审批
+          </el-button>
+          <el-button
+            v-if="!isNew && actionFlags.canCancel"
+            type="danger"
+            :loading="cancelling"
+            @click="handleCancel"
+            v-hasPermi="['lunaerp:business:sales-return:cancel']"
+          >
+            <Icon icon="ep:circle-close" class="mr-2px" /> 作废
+          </el-button>
         </div>
       </div>
     </ContentWrap>
@@ -414,7 +441,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { getWarehouseListAll, type WarehouseVO } from '@/api/lunaerp-elmui/stock/warehouse'
 import {
@@ -422,6 +449,9 @@ import {
   updateSalesReturn,
   getSalesReturn,
   getShipmentDetail,
+  submitSalesReturn,
+  withdrawSalesReturn,
+  cancelSalesReturn,
   type SalesReturnCandidateVO,
   type SalesReturnShipmentDetailVO,
   type SalesReturnCreateReqVO,
@@ -469,6 +499,9 @@ const router = useRouter()
 const returnId = ref<number | null>(route.params.id ? Number(route.params.id) : null)
 const isNew = computed(() => !returnId.value)
 const saving = ref(false)
+const submitting = ref(false)
+const withdrawing = ref(false)
+const cancelling = ref(false)
 
 const shipmentSelectDialogRef = ref<InstanceType<typeof ShipmentSelectDialog> | null>(null)
 const warehouseOptions = ref<WarehouseVO[]>([])
@@ -493,10 +526,13 @@ const formData = reactive({
 
 const items = ref<EditableLineItem[]>([])
 
+const actionFlags = computed(() =>
+  getSalesReturnActionFlags(formData.status, formData.approvalStatus)
+)
+
 const isEditable = computed(() => {
   if (isNew.value) return true
-  const flags = getSalesReturnActionFlags(formData.status, formData.approvalStatus)
-  return flags.canEdit
+  return actionFlags.value.canEdit
 })
 
 const summaryQty = computed(() => {
@@ -629,14 +665,14 @@ const handleRemoveItem = (index: number) => {
   items.value.splice(index, 1)
 }
 
-const handleSave = async () => {
+const handleSave = async (silent = false): Promise<boolean> => {
   if (!formData.warehouseId) {
     ElMessage.warning('请选择退货仓库')
-    return
+    return false
   }
   if (items.value.length === 0) {
     ElMessage.warning('退货单明细不能为空')
-    return
+    return false
   }
 
   for (let i = 0; i < items.value.length; i++) {
@@ -644,18 +680,18 @@ const handleSave = async () => {
     const check = validateSalesReturnLine(item)
     if (!check.valid) {
       ElMessage.error(`第 ${i + 1} 行【${item.productName}】：${check.message}`)
-      return
+      return false
     }
     if (item.returnQty > item.availableQty) {
       ElMessage.error(
         `第 ${i + 1} 行退货数量 (${item.returnQty}) 超过可退量 (${item.availableQty})`
       )
-      return
+      return false
     }
     const maxAmount = Number((item.availableQty * item.originalUnitPrice).toFixed(2))
     if (item.amount > maxAmount) {
       ElMessage.error(`第 ${i + 1} 行金额 (${item.amount}) 超过可退额上限 (${maxAmount})`)
-      return
+      return false
     }
   }
 
@@ -688,7 +724,9 @@ const handleSave = async () => {
         items: itemsPayload
       }
       const newId = await createSalesReturn(payload)
-      ElMessage.success('销售退货草稿创建成功')
+      if (!silent) {
+        ElMessage.success('销售退货草稿创建成功')
+      }
       router.push(`/business/sales-return/workspace/${newId}`)
     } else {
       const payload: SalesReturnUpdateReqVO = {
@@ -699,13 +737,94 @@ const handleSave = async () => {
         items: itemsPayload
       }
       await updateSalesReturn(payload)
-      ElMessage.success('销售退货草稿保存成功')
+      if (!silent) {
+        ElMessage.success('销售退货草稿保存成功')
+      }
       await loadSalesReturn(formData.id!)
     }
+    return true
   } catch (err: any) {
     ElMessage.error(err.message || '保存失败')
+    return false
   } finally {
     saving.value = false
+  }
+}
+
+const handleSubmit = async () => {
+  if (!formData.id) return
+  try {
+    await ElMessageBox.confirm(`确认提交销售退货单【${formData.returnNo}】审批吗？`, '提交确认', {
+      confirmButtonText: '确定提交',
+      cancelButtonText: '取消',
+      type: 'info'
+    })
+    submitting.value = true
+    // 依 coding-standards.md §6 规约：终态流转前自动前置执行静默保存草稿
+    const saved = await handleSave(true)
+    if (!saved) {
+      return
+    }
+    await submitSalesReturn(formData.id)
+    ElMessage.success('提交审批成功')
+    await loadSalesReturn(formData.id)
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '提交审批失败')
+    }
+  } finally {
+    submitting.value = false
+  }
+}
+
+const handleWithdraw = async () => {
+  if (!formData.id) return
+  try {
+    await ElMessageBox.confirm(
+      `确认撤回销售退货单【${formData.returnNo}】审批吗？撤回后单据恢复为草稿状态并释放占量。`,
+      '撤回确认',
+      {
+        confirmButtonText: '确定撤回',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    withdrawing.value = true
+    await withdrawSalesReturn(formData.id)
+    ElMessage.success('撤回审批成功')
+    await loadSalesReturn(formData.id)
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '撤回审批失败')
+    }
+  } finally {
+    withdrawing.value = false
+  }
+}
+
+const handleCancel = async () => {
+  if (!formData.id) return
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `请输入作废销售退货单【${formData.returnNo}】的原因：`,
+      '作废确认',
+      {
+        confirmButtonText: '确定作废',
+        cancelButtonText: '取消',
+        inputPattern: /\S+/,
+        inputErrorMessage: '作废原因不能为空'
+      }
+    )
+    cancelling.value = true
+    await cancelSalesReturn(formData.id, { cancelReason: value })
+    ElMessage.success('作废成功')
+    await loadSalesReturn(formData.id)
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '作废失败')
+    }
+  } finally {
+    cancelling.value = false
   }
 }
 

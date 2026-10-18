@@ -82,4 +82,33 @@ public class SalesReturnController {
         return success(salesReturnService.getSalesReturnPage(pageReqVO));
     }
 
+    @PostMapping("/submit")
+    @Operation(summary = "提交销售退货审批")
+    @Parameter(name = "id", description = "退货单ID", required = true, example = "10")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:sales-return:submit')")
+    public CommonResult<Boolean> submitSalesReturn(@RequestParam("id") Long id) {
+        salesReturnService.submitSalesReturn(id);
+        return success(true);
+    }
+
+    @PostMapping("/withdraw")
+    @Operation(summary = "撤回销售退货审批")
+    @Parameter(name = "id", description = "退货单ID", required = true, example = "10")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:sales-return:submit')")
+    public CommonResult<Boolean> withdrawSalesReturn(@RequestParam("id") Long id) {
+        salesReturnService.withdrawSalesReturn(id);
+        return success(true);
+    }
+
+    @PostMapping("/cancel")
+    @Operation(summary = "作废销售退货单（草稿分支）")
+    @Parameter(name = "id", description = "退货单ID", required = true, example = "10")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:sales-return:cancel')")
+    public CommonResult<Boolean> cancelSalesReturn(
+            @RequestParam("id") Long id,
+            @Valid @RequestBody SalesReturnCancelReqVO reqVO) {
+        salesReturnService.cancelSalesReturn(id, reqVO.getCancelReason());
+        return success(true);
+    }
+
 }

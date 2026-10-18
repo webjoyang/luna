@@ -153,10 +153,11 @@
           <span>{{ row.createTime ? parseTime(row.createTime) : '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right" align="center">
+      <el-table-column label="操作" width="220" fixed="right" align="center">
         <template #default="{ row }">
           <div class="flex items-center justify-center gap-6px">
             <el-button
+              v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canDetail"
               type="primary"
               link
               size="small"
@@ -174,6 +175,26 @@
               v-hasPermi="['lunaerp:business:sales-return:update']"
             >
               编辑
+            </el-button>
+            <el-button
+              v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canSubmit"
+              type="success"
+              link
+              size="small"
+              @click="handleSubmit(row)"
+              v-hasPermi="['lunaerp:business:sales-return:submit']"
+            >
+              提交
+            </el-button>
+            <el-button
+              v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canWithdraw"
+              type="warning"
+              link
+              size="small"
+              @click="handleWithdraw(row)"
+              v-hasPermi="['lunaerp:business:sales-return:submit']"
+            >
+              撤回
             </el-button>
             <el-button
               v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canDelete"
@@ -209,6 +230,8 @@ import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import {
   getSalesReturnPage,
   deleteSalesReturn,
+  submitSalesReturn,
+  withdrawSalesReturn,
   type SalesReturnVO,
   type SalesReturnPageParam
 } from '@/api/lunaerp-elmui/business/sales-return'
@@ -299,6 +322,44 @@ const handleDelete = async (row: SalesReturnVO) => {
   } catch (err: any) {
     if (err !== 'cancel') {
       ElMessage.error(err.message || '删除失败')
+    }
+  }
+}
+
+const handleSubmit = async (row: SalesReturnVO) => {
+  try {
+    await ElMessageBox.confirm(`确认提交销售退货单【${row.returnNo}】审批吗？`, '提交确认', {
+      confirmButtonText: '确定提交',
+      cancelButtonText: '取消',
+      type: 'info'
+    })
+    await submitSalesReturn(row.id!)
+    ElMessage.success('提交审批成功')
+    await getList()
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '提交审批失败')
+    }
+  }
+}
+
+const handleWithdraw = async (row: SalesReturnVO) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认撤回销售退货单【${row.returnNo}】审批吗？撤回后单据恢复为草稿状态并释放占量。`,
+      '撤回确认',
+      {
+        confirmButtonText: '确定撤回',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    await withdrawSalesReturn(row.id!)
+    ElMessage.success('撤回审批成功')
+    await getList()
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '撤回审批失败')
     }
   }
 }

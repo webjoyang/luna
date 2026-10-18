@@ -3,12 +3,19 @@ package com.luna.lunasrv.module.lunaerp.service.business.salesreturn;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
 import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.approval.handler.ApprovalHandler;
+import com.luna.lunasrv.module.lunaerp.approval.instance.ApprovalInstanceService;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceRespVO;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceSubmitReqVO;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceWithdrawReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salesreturn.SalesReturnDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salesreturn.SalesReturnItemDO;
@@ -26,6 +33,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollM
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnReasonEnum;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnStatusEnum;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,6 +43,7 @@ import org.springframework.validation.annotation.Validated;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Function;
@@ -84,6 +93,9 @@ public class SalesReturnServiceImpl implements SalesReturnService {
 
     @Resource
     private SalesReturnAvailabilityService availabilityService;
+
+    @Resource
+    private ApprovalInstanceService approvalInstanceService;
 
     @Override
     public List<SalesReturnCandidateRespVO> getShipmentCandidates(Long customerId, String shipmentNo) {
@@ -383,6 +395,206 @@ public class SalesReturnServiceImpl implements SalesReturnService {
 
         PageResult<SalesReturnDO> pageResult = salesReturnMapper.selectPage(reqVO, wrapper);
         return BeanUtils.toBean(pageResult, SalesReturnRespVO.class);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "SALES_RETURN", subType = "SUBMIT", bizNo = "{{#id}}",
+            success = "提交销售退货单【{{#id}}】审批")
+    public void submitSalesReturn(Long id) {
+        // 1. 校验单据存在且为草稿待提交/已驳回状态
+        SalesReturnDO existing = validateSalesReturnExists(id);
+        if (!SalesReturnStatusEnum.DRAFT.getValue().equals(existing.getStatus())
+                || (!"PENDING".equalsIgnoreCase(existing.getApprovalStatus())
+                && !"REJECTED".equalsIgnoreCase(existing.getApprovalStatus()))) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+
+        // 2. 加载明细行与卷清单，进行完整性守卫
+        List<SalesReturnItemDO> items = salesReturnItemMapper.selectList(new LambdaQueryWrapperX<SalesReturnItemDO>()
+                .eq(SalesReturnItemDO::getReturnId, id));
+        if (CollUtil.isEmpty(items)) {
+            throw invalidParamException("退货明细行不能为空");
+        }
+
+        List<SalesReturnRollDO> rolls = salesReturnRollMapper.selectList(new LambdaQueryWrapperX<SalesReturnRollDO>()
+                .eq(SalesReturnRollDO::getReturnId, id));
+        Map<Long, List<SalesReturnRollDO>> rollsByItemId = CollUtil.isEmpty(rolls) ? Collections.emptyMap()
+                : rolls.stream().collect(Collectors.groupingBy(SalesReturnRollDO::getReturnItemId));
+
+        for (SalesReturnItemDO item : items) {
+            // 行级原因必填且有效 (015)
+            if (StrUtil.isBlank(item.getReturnReason()) || !SalesReturnReasonEnum.isValid(item.getReturnReason())) {
+                throw exception(SALES_RETURN_REASON_EMPTY);
+            }
+            List<SalesReturnRollDO> itemRolls = rollsByItemId.get(item.getId());
+            if (CollUtil.isEmpty(itemRolls)) {
+                throw exception(SALES_RETURN_ROLL_INVALID);
+            }
+            for (SalesReturnRollDO roll : itemRolls) {
+                if (StrUtil.isBlank(roll.getRollNo())) {
+                    throw exception(SALES_RETURN_ROLL_INVALID);
+                }
+                boolean hasWeight = roll.getWeight() != null && roll.getWeight().compareTo(BigDecimal.ZERO) > 0;
+                boolean hasLength = roll.getLengthM() != null && roll.getLengthM().compareTo(BigDecimal.ZERO) > 0;
+                if (!hasWeight && !hasLength) {
+                    throw exception(SALES_RETURN_ROLL_INVALID);
+                }
+            }
+        }
+
+        // 3. 加载发货单与卷血缘校验
+        ShipmentDO shipment = validateCompletedShipment(existing.getShipmentId());
+        List<ShipmentRollDO> shipmentRolls = shipmentRollMapper.selectList(new LambdaQueryWrapperX<ShipmentRollDO>()
+                .eq(ShipmentRollDO::getShipmentId, shipment.getId()));
+        Map<Long, ShipmentRollDO> shipmentRollMap = CollUtil.isEmpty(shipmentRolls) ? Collections.emptyMap()
+                : shipmentRolls.stream().collect(Collectors.toMap(ShipmentRollDO::getId, Function.identity()));
+
+        for (SalesReturnItemDO item : items) {
+            List<SalesReturnRollDO> itemRolls = rollsByItemId.get(item.getId());
+            for (SalesReturnRollDO roll : itemRolls) {
+                if (roll.getShipmentRollId() != null) {
+                    ShipmentRollDO sRoll = shipmentRollMap.get(roll.getShipmentRollId());
+                    if (sRoll == null || !item.getShipmentItemId().equals(sRoll.getShipmentItemId())) {
+                        throw exception(SALES_RETURN_ROLL_INVALID);
+                    }
+                }
+            }
+        }
+
+        // 4. 行级悲观锁：按 shipmentItemId 升序对父发货明细行执行 FOR UPDATE 锁定，防死锁并串行化并发退货
+        List<Long> shipmentItemIds = items.stream()
+                .map(SalesReturnItemDO::getShipmentItemId)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+
+        Map<Long, ShipmentItemDO> lockedShipmentItemMap = new HashMap<>(shipmentItemIds.size());
+        for (Long sItemId : shipmentItemIds) {
+            ShipmentItemDO lockedItem = shipmentItemMapper.selectOneForUpdate(ShipmentItemDO::getId, sItemId);
+            if (lockedItem == null) {
+                lockedItem = shipmentItemMapper.selectById(sItemId);
+            }
+            if (lockedItem == null || !shipment.getId().equals(lockedItem.getShipmentId())) {
+                throw exception(SALES_RETURN_ITEM_LINEAGE_INVALID);
+            }
+            lockedShipmentItemMap.put(sItemId, lockedItem);
+        }
+
+        // 5. 锁内原子重算双维度防超退（005/006）
+        Map<Long, BigDecimal> occupiedMap = availabilityService.getOccupiedQtyMap(shipmentItemIds, id);
+        for (SalesReturnItemDO item : items) {
+            ShipmentItemDO sItem = lockedShipmentItemMap.get(item.getShipmentItemId());
+            BigDecimal occupied = occupiedMap.getOrDefault(sItem.getId(), BigDecimal.ZERO);
+            BigDecimal originalQty = sItem.getQuantity() != null ? sItem.getQuantity() : BigDecimal.ZERO;
+            BigDecimal availableQty = originalQty.subtract(occupied).max(BigDecimal.ZERO);
+
+            if (item.getReturnQty().compareTo(availableQty) > 0) {
+                throw exception(SALES_RETURN_QTY_EXCEED_AVAILABLE, item.getReturnQty(), availableQty);
+            }
+
+            BigDecimal origUnitPrice = sItem.getUnitPrice() != null ? sItem.getUnitPrice() : BigDecimal.ZERO;
+            BigDecimal maxAllowedAmount = availableQty.multiply(origUnitPrice).setScale(2, RoundingMode.HALF_UP);
+            if (item.getAmount().compareTo(maxAllowedAmount) > 0) {
+                throw exception(SALES_RETURN_AMOUNT_EXCEED_AVAILABLE);
+            }
+        }
+
+        // 6. 条件更新 approval_status=PENDING/REJECTED → APPROVING
+        int rows = salesReturnMapper.update(null, new LambdaUpdateWrapper<SalesReturnDO>()
+                .eq(SalesReturnDO::getId, id)
+                .eq(SalesReturnDO::getStatus, SalesReturnStatusEnum.DRAFT.getValue())
+                .in(SalesReturnDO::getApprovalStatus, "PENDING", "REJECTED")
+                .set(SalesReturnDO::getApprovalStatus, "APPROVING"));
+        if (rows == 0) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+
+        // 7. 调用 02 号审批引擎发起审批实例
+        ApprovalInstanceSubmitReqVO submitReqVO = new ApprovalInstanceSubmitReqVO();
+        submitReqVO.setBizType(ApprovalHandler.BIZ_TYPE_SALES_RETURN);
+        submitReqVO.setBizId(id);
+        submitReqVO.setComment("提交销售退货审批");
+        approvalInstanceService.submitInstance(submitReqVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "SALES_RETURN", subType = "WITHDRAW", bizNo = "{{#id}}",
+            success = "撤回销售退货单【{{#id}}】审批")
+    public void withdrawSalesReturn(Long id) {
+        // 1. 校验单据存在
+        SalesReturnDO existing = validateSalesReturnExists(id);
+
+        // 2. 状态机守卫：仅 status=DRAFT 且 approval_status=APPROVING 可撤回
+        if (!SalesReturnStatusEnum.DRAFT.getValue().equals(existing.getStatus())
+                || !"APPROVING".equalsIgnoreCase(existing.getApprovalStatus())) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 查询审批引擎最新审批实例并调用撤回
+        ApprovalInstanceRespVO instance = approvalInstanceService.getLatestInstanceByBiz(
+                ApprovalHandler.BIZ_TYPE_SALES_RETURN, id);
+        if (instance != null && "APPROVING".equalsIgnoreCase(instance.getStatus())) {
+            ApprovalInstanceWithdrawReqVO withdrawReqVO = new ApprovalInstanceWithdrawReqVO();
+            withdrawReqVO.setReason("发起人撤回销售退货审批");
+            approvalInstanceService.withdrawInstance(instance.getId(), withdrawReqVO);
+            // approvalInstanceService.withdrawInstance 内部已通过 SalesReturnApprovalBizHandler.updateApprovalStatus
+            // 将 approval_status 回调重置为 PENDING 并释放占量
+        } else {
+            // 4. 兜底更新：若未匹配到审批中实例，直接原子更新 approval_status = 'PENDING'
+            salesReturnMapper.update(null, new LambdaUpdateWrapper<SalesReturnDO>()
+                    .eq(SalesReturnDO::getId, id)
+                    .eq(SalesReturnDO::getStatus, SalesReturnStatusEnum.DRAFT.getValue())
+                    .set(SalesReturnDO::getApprovalStatus, "PENDING"));
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "SALES_RETURN", subType = "CANCEL", bizNo = "{{#id}}",
+            success = "作废销售退货单【{{#id}}】")
+    public void cancelSalesReturn(Long id, String cancelReason) {
+        // 0. 校验作废原因非空
+        if (StrUtil.isBlank(cancelReason)) {
+            throw exception(SALES_RETURN_REASON_EMPTY);
+        }
+
+        // 1. 校验单据存在
+        SalesReturnDO existing = validateSalesReturnExists(id);
+
+        // 2. 状态机守卫：
+        //    CANCELLED 终态不可再动
+        //    RECEIVED / POSTED 终态不可作废
+        //    APPROVING 必须先撤回
+        //    仅 status=DRAFT 且 approvalStatus IN (PENDING, REJECTED) 可直接作废
+        if (SalesReturnStatusEnum.CANCELLED.getValue().equals(existing.getStatus())
+                || SalesReturnStatusEnum.RECEIVED.getValue().equals(existing.getStatus())
+                || SalesReturnStatusEnum.POSTED.getValue().equals(existing.getStatus())) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+        if ("APPROVING".equalsIgnoreCase(existing.getApprovalStatus())) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+        if (!SalesReturnStatusEnum.DRAFT.getValue().equals(existing.getStatus())
+                || (!"PENDING".equalsIgnoreCase(existing.getApprovalStatus()) && !"REJECTED".equalsIgnoreCase(existing.getApprovalStatus()))) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 条件更新置 CANCELLED 并联动置 approval_status 为 CANCELLED，落 cancelled_* 留痕（DRAFT 分支无入库单无需库存动作）
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        int rows = salesReturnMapper.update(null, new LambdaUpdateWrapper<SalesReturnDO>()
+                .eq(SalesReturnDO::getId, id)
+                .eq(SalesReturnDO::getStatus, SalesReturnStatusEnum.DRAFT.getValue())
+                .in(SalesReturnDO::getApprovalStatus, "PENDING", "REJECTED")
+                .set(SalesReturnDO::getStatus, SalesReturnStatusEnum.CANCELLED.getValue())
+                .set(SalesReturnDO::getApprovalStatus, "CANCELLED")
+                .set(SalesReturnDO::getCancelledBy, loginUserId)
+                .set(SalesReturnDO::getCancelledAt, LocalDateTime.now())
+                .set(SalesReturnDO::getCancelReason, cancelReason));
+        if (rows == 0) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
     }
 
     // ==================== 私有辅助方法 ====================

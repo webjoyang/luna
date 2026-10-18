@@ -6,6 +6,10 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.approval.instance.ApprovalInstanceService;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceRespVO;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceSubmitReqVO;
+import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceWithdrawReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
@@ -75,6 +79,9 @@ public class SalesReturnServiceImplTest {
 
     @Mock
     private SalesReturnAvailabilityService availabilityService;
+
+    @Mock
+    private ApprovalInstanceService approvalInstanceService;
 
     @InjectMocks
     private SalesReturnServiceImpl salesReturnService;
@@ -635,6 +642,509 @@ public class SalesReturnServiceImplTest {
         assertEquals("纯棉斜纹", resp.getItems().get(0).getProductName());
         assertEquals(1, resp.getItems().get(0).getRolls().size());
         assertEquals("ROLL-001", resp.getItems().get(0).getRolls().get(0).getRollNo());
+    }
+
+    // ==================== 6. 提交审批（POST /submit） ====================
+
+    @Test
+    @DisplayName("提交审批：退货单不存在抛 000")
+    void testSubmitSalesReturn_notExists_throws000() {
+        when(salesReturnMapper.selectById(999L)).thenReturn(null);
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(999L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批：非 DRAFT 状态抛 002")
+    void testSubmitSalesReturn_nonDraftStatus_throws002() {
+        SalesReturnDO nonDraft = new SalesReturnDO();
+        nonDraft.setId(10L);
+        nonDraft.setStatus("APPROVED");
+        nonDraft.setApprovalStatus("APPROVED");
+        when(salesReturnMapper.selectById(10L)).thenReturn(nonDraft);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批：审批中（APPROVING）不可重复提交抛 002")
+    void testSubmitSalesReturn_approvingStatus_throws002() {
+        SalesReturnDO approving = new SalesReturnDO();
+        approving.setId(10L);
+        approving.setStatus("DRAFT");
+        approving.setApprovalStatus("APPROVING");
+        when(salesReturnMapper.selectById(10L)).thenReturn(approving);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批：明细行缺失抛参数异常")
+    void testSubmitSalesReturn_emptyItems_throwsException() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+    }
+
+    @Test
+    @DisplayName("提交审批：明细行原因为空或非法抛 015")
+    void testSubmitSalesReturn_emptyReason_throws015() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 501L, "KG", new BigDecimal("50.00"), new BigDecimal("100.00"), "");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_REASON_EMPTY.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批：某明细行缺少卷记录抛 007")
+    void testSubmitSalesReturn_missingRolls_throws007() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 501L, "KG", new BigDecimal("50.00"), new BigDecimal("100.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(item));
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_ROLL_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批：卷号为空或重量米数双空抛 007")
+    void testSubmitSalesReturn_invalidRollData_throws007() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 501L, "KG", new BigDecimal("50.00"), new BigDecimal("100.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        SalesReturnRollDO roll = new SalesReturnRollDO();
+        roll.setId(1001L);
+        roll.setReturnId(10L);
+        roll.setReturnItemId(101L);
+        roll.setRollNo("   "); // 空卷号
+        when(salesReturnRollMapper.selectList(any())).thenReturn(List.of(roll));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_ROLL_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批：发货单非 COMPLETED 状态抛 003")
+    void testSubmitSalesReturn_shipmentNotCompleted_throws003() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 501L, "KG", new BigDecimal("50.00"), new BigDecimal("100.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        SalesReturnRollDO roll = createSalesReturnRoll(10L, 101L, 801L, "R-01", new BigDecimal("50.00"), null);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(List.of(roll));
+
+        when(shipmentMapper.selectById(100L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_SHIPMENT_NOT_COMPLETED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批：卷血缘不属于该发货明细行抛 007")
+    void testSubmitSalesReturn_rollLineageMismatch_throws007() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 501L, "KG", new BigDecimal("50.00"), new BigDecimal("100.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        SalesReturnRollDO roll = createSalesReturnRoll(10L, 101L, 801L, "R-01", new BigDecimal("50.00"), null);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(List.of(roll));
+
+        ShipmentDO shipment = createCompletedShipment(100L);
+        when(shipmentMapper.selectById(100L)).thenReturn(shipment);
+
+        // 原发货卷属于另一发货行 502L
+        ShipmentRollDO sRoll = new ShipmentRollDO();
+        sRoll.setId(801L);
+        sRoll.setShipmentId(100L);
+        sRoll.setShipmentItemId(502L); //  mismatch!
+        when(shipmentRollMapper.selectList(any())).thenReturn(List.of(sRoll));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_ROLL_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批：锁内重算退货数量超实时可退量抛 005")
+    void testSubmitSalesReturn_qtyExceedAvailable_throws005() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 501L, "KG", new BigDecimal("50.00"), new BigDecimal("100.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        SalesReturnRollDO roll = createSalesReturnRoll(10L, 101L, null, "R-01", new BigDecimal("50.00"), null);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(List.of(roll));
+
+        ShipmentDO shipment = createCompletedShipment(100L);
+        when(shipmentMapper.selectById(100L)).thenReturn(shipment);
+        when(shipmentRollMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        ShipmentItemDO sItem = new ShipmentItemDO();
+        sItem.setId(501L);
+        sItem.setShipmentId(100L);
+        sItem.setQuantity(new BigDecimal("100.00"));
+        sItem.setUnitPrice(new BigDecimal("2.00"));
+        when(shipmentItemMapper.selectOneForUpdate(any(), any())).thenReturn(sItem);
+
+        // 已占用 60，可用仅剩 40，退货需要 50
+        when(availabilityService.getOccupiedQtyMap(eq(List.of(501L)), eq(10L)))
+                .thenReturn(Map.of(501L, new BigDecimal("60.00")));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_QTY_EXCEED_AVAILABLE.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批：锁内重算退货金额超可退额上限抛 006")
+    void testSubmitSalesReturn_amountExceedAvailable_throws006() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+
+        // 退货单金额 150.00
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 501L, "KG", new BigDecimal("50.00"), new BigDecimal("150.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        SalesReturnRollDO roll = createSalesReturnRoll(10L, 101L, null, "R-01", new BigDecimal("50.00"), null);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(List.of(roll));
+
+        ShipmentDO shipment = createCompletedShipment(100L);
+        when(shipmentMapper.selectById(100L)).thenReturn(shipment);
+        when(shipmentRollMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        // 原发货行单价 2.00，可用量 60 -> 上限 120.00，本次金额 150.00 超额
+        ShipmentItemDO sItem = new ShipmentItemDO();
+        sItem.setId(501L);
+        sItem.setShipmentId(100L);
+        sItem.setQuantity(new BigDecimal("100.00"));
+        sItem.setUnitPrice(new BigDecimal("2.00"));
+        when(shipmentItemMapper.selectOneForUpdate(any(), any())).thenReturn(sItem);
+
+        when(availabilityService.getOccupiedQtyMap(eq(List.of(501L)), eq(10L)))
+                .thenReturn(Map.of(501L, new BigDecimal("40.00")));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_AMOUNT_EXCEED_AVAILABLE.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("提交审批成功：行锁父行、重算通过、条件更新 APPROVING 并推送到审批中心")
+    void testSubmitSalesReturn_success() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 501L, "KG", new BigDecimal("40.00"), new BigDecimal("80.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        SalesReturnRollDO roll = createSalesReturnRoll(10L, 101L, null, "R-01", new BigDecimal("40.00"), null);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(List.of(roll));
+
+        ShipmentDO shipment = createCompletedShipment(100L);
+        when(shipmentMapper.selectById(100L)).thenReturn(shipment);
+        when(shipmentRollMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        ShipmentItemDO sItem = new ShipmentItemDO();
+        sItem.setId(501L);
+        sItem.setShipmentId(100L);
+        sItem.setQuantity(new BigDecimal("100.00"));
+        sItem.setUnitPrice(new BigDecimal("2.00"));
+        when(shipmentItemMapper.selectOneForUpdate(any(), any())).thenReturn(sItem);
+
+        when(availabilityService.getOccupiedQtyMap(eq(List.of(501L)), eq(10L)))
+                .thenReturn(Map.of(501L, new BigDecimal("20.00")));
+        when(salesReturnMapper.update(any(), any())).thenReturn(1);
+
+        salesReturnService.submitSalesReturn(10L);
+
+        // 验证行级悲观锁
+        verify(shipmentItemMapper).selectOneForUpdate(any(), eq(501L));
+        // 验证主表状态条件更新为 APPROVING
+        verify(salesReturnMapper).update(any(), any());
+        // 验证推送到审批中心
+        ArgumentCaptor<ApprovalInstanceSubmitReqVO> captor = ArgumentCaptor.forClass(ApprovalInstanceSubmitReqVO.class);
+        verify(approvalInstanceService).submitInstance(captor.capture());
+        assertEquals("sales_return", captor.getValue().getBizType());
+        assertEquals(10L, captor.getValue().getBizId());
+    }
+
+    @Test
+    @DisplayName("并发守卫测试：两单同时提交同一发货明细行，第二单在行锁后重算超退失败（005），不出现超退占量")
+    void testSubmitSalesReturn_concurrencySimulation_secondOrderExceedsAvailable_throws005() {
+        // 发货明细总量 60.00
+        ShipmentDO shipment = createCompletedShipment(100L);
+        when(shipmentMapper.selectById(100L)).thenReturn(shipment);
+        when(shipmentRollMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        ShipmentItemDO sItem = new ShipmentItemDO();
+        sItem.setId(501L);
+        sItem.setShipmentId(100L);
+        sItem.setQuantity(new BigDecimal("60.00"));
+        sItem.setUnitPrice(new BigDecimal("5.00"));
+        when(shipmentItemMapper.selectOneForUpdate(any(), any())).thenReturn(sItem);
+
+        // --- 单据 A（50 KG）先行提交 ---
+        SalesReturnDO orderA = createDraftSalesReturn(10L, 100L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(orderA);
+        SalesReturnItemDO itemA = createSalesReturnItem(10L, 101L, 501L, "KG", new BigDecimal("50.00"), new BigDecimal("250.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(itemA));
+        SalesReturnRollDO rollA = createSalesReturnRoll(10L, 101L, null, "R-01", new BigDecimal("50.00"), null);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(List.of(rollA));
+
+        // 单据 A 检查时尚无占用
+        when(availabilityService.getOccupiedQtyMap(eq(List.of(501L)), eq(10L)))
+                .thenReturn(Map.of(501L, BigDecimal.ZERO));
+        when(salesReturnMapper.update(any(), any())).thenReturn(1);
+
+        salesReturnService.submitSalesReturn(10L);
+        verify(approvalInstanceService).submitInstance(any());
+
+        // --- 单据 B（20 KG）并发提交（等待 A 事务释放锁后，重算发现已占用 50 KG，可用仅剩 10 KG） ---
+        SalesReturnDO orderB = createDraftSalesReturn(20L, 100L);
+        when(salesReturnMapper.selectById(20L)).thenReturn(orderB);
+        SalesReturnItemDO itemB = createSalesReturnItem(20L, 201L, 501L, "KG", new BigDecimal("20.00"), new BigDecimal("100.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(List.of(itemB));
+        SalesReturnRollDO rollB = createSalesReturnRoll(20L, 201L, null, "R-02", new BigDecimal("20.00"), null);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(List.of(rollB));
+
+        // 单据 B 锁内重算时获取到单据 A 已占用的 50 KG
+        when(availabilityService.getOccupiedQtyMap(eq(List.of(501L)), eq(20L)))
+                .thenReturn(Map.of(501L, new BigDecimal("50.00")));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.submitSalesReturn(20L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_QTY_EXCEED_AVAILABLE.getCode(), ex.getCode());
+
+        // 验证单据 B 并没有被推送到审批中心（未产生超退占量）
+        verify(approvalInstanceService, times(1)).submitInstance(any());
+    }
+
+    // ==================== 7. 撤回审批（POST /withdraw） ====================
+
+    @Test
+    @DisplayName("撤回审批：退货单不存在抛 000")
+    void testWithdrawSalesReturn_notExists_throws000() {
+        when(salesReturnMapper.selectById(999L)).thenReturn(null);
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.withdrawSalesReturn(999L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("撤回审批：非 APPROVING 状态（如 PENDING 或 APPROVED）不可撤回报 002")
+    void testWithdrawSalesReturn_notApproving_throws002() {
+        SalesReturnDO pending = new SalesReturnDO();
+        pending.setId(10L);
+        pending.setStatus("DRAFT");
+        pending.setApprovalStatus("PENDING");
+        when(salesReturnMapper.selectById(10L)).thenReturn(pending);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.withdrawSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("撤回审批成功：调用审批引擎 withdraw 并将 approvalStatus 置为 PENDING 释放占量")
+    void testWithdrawSalesReturn_success() {
+        SalesReturnDO approving = new SalesReturnDO();
+        approving.setId(10L);
+        approving.setStatus("DRAFT");
+        approving.setApprovalStatus("APPROVING");
+        when(salesReturnMapper.selectById(10L)).thenReturn(approving);
+
+        ApprovalInstanceRespVO instance = new ApprovalInstanceRespVO();
+        instance.setId(5001L);
+        instance.setStatus("APPROVING");
+        when(approvalInstanceService.getLatestInstanceByBiz("sales_return", 10L)).thenReturn(instance);
+
+        salesReturnService.withdrawSalesReturn(10L);
+
+        // 验证调用审批引擎撤回
+        verify(approvalInstanceService).withdrawInstance(eq(5001L), any(ApprovalInstanceWithdrawReqVO.class));
+    }
+
+    @Test
+    @DisplayName("撤回审批兜底：若无审批中实例，直接原子更新 approvalStatus 为 PENDING")
+    void testWithdrawSalesReturn_fallbackWhenNoInstance() {
+        SalesReturnDO approving = new SalesReturnDO();
+        approving.setId(10L);
+        approving.setStatus("DRAFT");
+        approving.setApprovalStatus("APPROVING");
+        when(salesReturnMapper.selectById(10L)).thenReturn(approving);
+        when(approvalInstanceService.getLatestInstanceByBiz("sales_return", 10L)).thenReturn(null);
+        when(salesReturnMapper.update(any(), any())).thenReturn(1);
+
+        salesReturnService.withdrawSalesReturn(10L);
+
+        verify(salesReturnMapper).update(any(), any());
+    }
+
+    // ==================== 8. 作废草稿（POST /cancel） ====================
+
+    @Test
+    @DisplayName("作废退货单：作废原因空或空白抛 015")
+    void testCancelSalesReturn_emptyReason_throws015() {
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(10L, "  "));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_REASON_EMPTY.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废退货单：不存在抛 000")
+    void testCancelSalesReturn_notExists_throws000() {
+        when(salesReturnMapper.selectById(999L)).thenReturn(null);
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(999L, "作废"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废退货单：已是 CANCELLED 终态不可再动抛 002")
+    void testCancelSalesReturn_alreadyCancelled_throws002() {
+        SalesReturnDO cancelled = new SalesReturnDO();
+        cancelled.setId(10L);
+        cancelled.setStatus("CANCELLED");
+        cancelled.setApprovalStatus("CANCELLED");
+        when(salesReturnMapper.selectById(10L)).thenReturn(cancelled);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(10L, "原因"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废退货单：RECEIVED 或 POSTED 终态不可作废抛 002")
+    void testCancelSalesReturn_receivedOrPosted_throws002() {
+        SalesReturnDO posted = new SalesReturnDO();
+        posted.setId(10L);
+        posted.setStatus("POSTED");
+        posted.setApprovalStatus("APPROVED");
+        when(salesReturnMapper.selectById(10L)).thenReturn(posted);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(10L, "原因"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废退货单：APPROVING 状态必须先撤回，直接作废抛 002")
+    void testCancelSalesReturn_approvingMustWithdrawFirst_throws002() {
+        SalesReturnDO approving = new SalesReturnDO();
+        approving.setId(10L);
+        approving.setStatus("DRAFT");
+        approving.setApprovalStatus("APPROVING");
+        when(salesReturnMapper.selectById(10L)).thenReturn(approving);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(10L, "原因"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("作废草稿成功：DRAFT（PENDING/REJECTED）直接置 CANCELLED，落 cancelled_* 留痕")
+    void testCancelSalesReturn_success_draftBranch() {
+        SalesReturnDO draft = createDraftSalesReturn(10L, 100L);
+        draft.setApprovalStatus("PENDING");
+        when(salesReturnMapper.selectById(10L)).thenReturn(draft);
+        when(salesReturnMapper.update(any(), any())).thenReturn(1);
+
+        salesReturnService.cancelSalesReturn(10L, "客户取消退货需求");
+
+        verify(salesReturnMapper).update(any(), any());
+    }
+
+    // ==================== 9. 切面注解审计审查 ====================
+
+    @Test
+    @DisplayName("切面注解：submitSalesReturn / withdrawSalesReturn / cancelSalesReturn 正确标注 @LogRecord")
+    void testLogRecordAnnotations() throws NoSuchMethodException {
+        var submitLog = SalesReturnServiceImpl.class.getMethod("submitSalesReturn", Long.class)
+                .getAnnotation(com.mzt.logapi.starter.annotation.LogRecord.class);
+        assertNotNull(submitLog, "submitSalesReturn 必须标注 @LogRecord");
+        assertEquals("SALES_RETURN", submitLog.type());
+        assertEquals("SUBMIT", submitLog.subType());
+
+        var withdrawLog = SalesReturnServiceImpl.class.getMethod("withdrawSalesReturn", Long.class)
+                .getAnnotation(com.mzt.logapi.starter.annotation.LogRecord.class);
+        assertNotNull(withdrawLog, "withdrawSalesReturn 必须标注 @LogRecord");
+        assertEquals("SALES_RETURN", withdrawLog.type());
+        assertEquals("WITHDRAW", withdrawLog.subType());
+
+        var cancelLog = SalesReturnServiceImpl.class.getMethod("cancelSalesReturn", Long.class, String.class)
+                .getAnnotation(com.mzt.logapi.starter.annotation.LogRecord.class);
+        assertNotNull(cancelLog, "cancelSalesReturn 必须标注 @LogRecord");
+        assertEquals("SALES_RETURN", cancelLog.type());
+        assertEquals("CANCEL", cancelLog.subType());
+    }
+
+    // ==================== 私有辅助工厂方法 ====================
+
+    private SalesReturnDO createDraftSalesReturn(Long id, Long shipmentId) {
+        SalesReturnDO ret = new SalesReturnDO();
+        ret.setId(id);
+        ret.setReturnNo("RT-20261018-001");
+        ret.setStatus("DRAFT");
+        ret.setApprovalStatus("PENDING");
+        ret.setShipmentId(shipmentId);
+        ret.setShipmentNo("SH-20261018-001");
+        ret.setCustomerId(1L);
+        ret.setCustomerName("测试客户");
+        ret.setWarehouseId(10L);
+        ret.setWarehouseName("成品仓");
+        ret.setCurrency("RMB");
+        ret.setReturnDate(LocalDate.now());
+        return ret;
+    }
+
+    private ShipmentDO createCompletedShipment(Long id) {
+        ShipmentDO shipment = new ShipmentDO();
+        shipment.setId(id);
+        shipment.setShipmentNo("SH-20261018-001");
+        shipment.setStatus("COMPLETED");
+        shipment.setCustomerId(1L);
+        shipment.setCustomerName("测试客户");
+        shipment.setWarehouseId(10L);
+        shipment.setWarehouseName("成品仓");
+        shipment.setCurrency("RMB");
+        return shipment;
+    }
+
+    private SalesReturnItemDO createSalesReturnItem(Long returnId, Long id, Long shipmentItemId, String unit, BigDecimal returnQty, BigDecimal amount, String reason) {
+        SalesReturnItemDO item = new SalesReturnItemDO();
+        item.setId(id);
+        item.setReturnId(returnId);
+        item.setShipmentItemId(shipmentItemId);
+        item.setProductId(1L);
+        item.setProductCode("P001");
+        item.setProductName("测试面料");
+        item.setUnit(unit);
+        item.setReturnQty(returnQty);
+        item.setPieces(1);
+        item.setUnitPrice(new BigDecimal("2.00"));
+        item.setAmount(amount);
+        item.setReturnReason(reason);
+        return item;
+    }
+
+    private SalesReturnRollDO createSalesReturnRoll(Long returnId, Long returnItemId, Long shipmentRollId, String rollNo, BigDecimal weight, BigDecimal lengthM) {
+        SalesReturnRollDO roll = new SalesReturnRollDO();
+        roll.setId(1001L);
+        roll.setReturnId(returnId);
+        roll.setReturnItemId(returnItemId);
+        roll.setShipmentRollId(shipmentRollId);
+        roll.setRollNo(rollNo);
+        roll.setWeight(weight);
+        roll.setLengthM(lengthM);
+        return roll;
     }
 
 }

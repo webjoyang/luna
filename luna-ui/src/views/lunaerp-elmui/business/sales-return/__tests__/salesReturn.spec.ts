@@ -10,8 +10,9 @@ import {
 
 describe('SalesReturn Domain Model Tests', () => {
   describe('getSalesReturnActionFlags', () => {
-    it('草稿态且未提交（DRAFT + PENDING）允许编辑、删除、提交审批', () => {
+    it('草稿态且未提交（DRAFT + PENDING）允许编辑、删除、提交审批，不显示详情', () => {
       const flags = getSalesReturnActionFlags('DRAFT', 'PENDING')
+      expect(flags.canDetail).toBe(false)
       expect(flags.canEdit).toBe(true)
       expect(flags.canDelete).toBe(true)
       expect(flags.canSubmit).toBe(true)
@@ -22,16 +23,18 @@ describe('SalesReturn Domain Model Tests', () => {
       expect(flags.canPrint).toBe(true)
     })
 
-    it('草稿被驳回（DRAFT + REJECTED）允许修改重提与删除', () => {
+    it('草稿被驳回（DRAFT + REJECTED）按规范仅允许编辑与提交，禁止删除', () => {
       const flags = getSalesReturnActionFlags('DRAFT', 'REJECTED')
+      expect(flags.canDetail).toBe(false)
       expect(flags.canEdit).toBe(true)
-      expect(flags.canDelete).toBe(true)
+      expect(flags.canDelete).toBe(false)
       expect(flags.canSubmit).toBe(true)
       expect(flags.canWithdraw).toBe(false)
     })
 
     it('审批中（DRAFT + APPROVING）仅允许撤回，禁止编辑和删除', () => {
       const flags = getSalesReturnActionFlags('DRAFT', 'APPROVING')
+      expect(flags.canDetail).toBe(false)
       expect(flags.canEdit).toBe(false)
       expect(flags.canDelete).toBe(false)
       expect(flags.canSubmit).toBe(false)
@@ -40,6 +43,7 @@ describe('SalesReturn Domain Model Tests', () => {
 
     it('已审批（APPROVED）允许到货质检与作废，禁止编辑', () => {
       const flags = getSalesReturnActionFlags('APPROVED', 'APPROVED')
+      expect(flags.canDetail).toBe(true)
       expect(flags.canReceive).toBe(true)
       expect(flags.canCancel).toBe(true)
       expect(flags.canEdit).toBe(false)
@@ -48,6 +52,7 @@ describe('SalesReturn Domain Model Tests', () => {
 
     it('已收货（RECEIVED）允许财务确认', () => {
       const flags = getSalesReturnActionFlags('RECEIVED', 'APPROVED')
+      expect(flags.canDetail).toBe(true)
       expect(flags.canPost).toBe(true)
       expect(flags.canReceive).toBe(false)
       expect(flags.canEdit).toBe(false)
@@ -55,14 +60,16 @@ describe('SalesReturn Domain Model Tests', () => {
 
     it('已过账（POSTED）为终态，仅允许打印与查看详情', () => {
       const flags = getSalesReturnActionFlags('POSTED', 'APPROVED')
+      expect(flags.canDetail).toBe(true)
       expect(flags.canEdit).toBe(false)
       expect(flags.canDelete).toBe(false)
       expect(flags.canCancel).toBe(false)
       expect(flags.canPrint).toBe(true)
     })
 
-    it('已作废（CANCELLED）全部写动作禁止且不可打印', () => {
+    it('已作废（CANCELLED）全部写动作禁止，仅允许查看详情', () => {
       const flags = getSalesReturnActionFlags('CANCELLED', 'CANCELLED')
+      expect(flags.canDetail).toBe(true)
       expect(flags.canEdit).toBe(false)
       expect(flags.canDelete).toBe(false)
       expect(flags.canPrint).toBe(false)

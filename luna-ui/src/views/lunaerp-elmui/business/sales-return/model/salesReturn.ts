@@ -23,6 +23,7 @@ export interface SalesReturnLineItem {
 }
 
 export interface SalesReturnActionFlags {
+  canDetail: boolean
   canEdit: boolean
   canDelete: boolean
   canSubmit: boolean
@@ -44,7 +45,8 @@ export function getSalesReturnActionFlags(
   approvalStatus?: string
 ): SalesReturnActionFlags {
   const isDraft = status === 'DRAFT'
-  const isPendingOrRejected = approvalStatus === 'PENDING' || approvalStatus === 'REJECTED'
+  const isPending = approvalStatus === 'PENDING'
+  const isRejected = approvalStatus === 'REJECTED'
   const isApproving = approvalStatus === 'APPROVING'
   const isApproved = status === 'APPROVED'
   const isReceived = status === 'RECEIVED'
@@ -52,13 +54,14 @@ export function getSalesReturnActionFlags(
   const isCancelled = status === 'CANCELLED'
 
   return {
-    canEdit: isDraft && isPendingOrRejected,
-    canDelete: isDraft && isPendingOrRejected,
-    canSubmit: isDraft && isPendingOrRejected,
+    canDetail: isCancelled || isApproved || isReceived || isPosted,
+    canEdit: isDraft && (isPending || isRejected),
+    canDelete: isDraft && isPending,
+    canSubmit: isDraft && (isPending || isRejected),
     canWithdraw: isDraft && isApproving,
     canReceive: isApproved,
     canPost: isReceived,
-    canCancel: (isDraft && isPendingOrRejected) || isApproved,
+    canCancel: (isDraft && (isPending || isRejected)) || isApproved,
     canPrint: !isCancelled && Boolean(status)
   }
 }

@@ -68,4 +68,26 @@ public interface SalesReturnService {
      */
     PageResult<SalesReturnRespVO> getSalesReturnPage(SalesReturnPageReqVO reqVO);
 
+    /**
+     * 提交销售退货单审批
+     *
+     * @param id 退货单ID
+     */
+    void submitSalesReturn(Long id);
+
+    /**
+     * 撤回销售退货单审批
+     *
+     * @param id 退货单ID
+     */
+    void withdrawSalesReturn(Long id);
+
+    /**
+     * 作废销售退货单（草稿分支）
+     *
+     * @param id 退货单ID
+     * @param cancelReason 作废原因
+     */
+    void cancelSalesReturn(Long id, String cancelReason);
+
 }

@@ -233,10 +233,37 @@ export const getSalesReturn = (id: number) => {
   })
 }
 
+// 销售退货单作废 VO
+export interface SalesReturnCancelReqVO {
+  cancelReason: string
+}
+
 // 获得销售退货单分页
 export const getSalesReturnPage = (params: SalesReturnPageParam) => {
   return request.get({
     url: '/lunaerp/business/sales-return/page',
     params
+  })
+}
+
+// 提交销售退货单审批
+export const submitSalesReturn = (id: number) => {
+  return request.post<boolean>({
+    url: `/lunaerp/business/sales-return/submit?id=${id}`
+  })
+}
+
+// 撤回销售退货单审批
+export const withdrawSalesReturn = (id: number) => {
+  return request.post<boolean>({
+    url: `/lunaerp/business/sales-return/withdraw?id=${id}`
+  })
+}
+
+// 作废销售退货单（草稿分支）
+export const cancelSalesReturn = (id: number, data: SalesReturnCancelReqVO) => {
+  return request.post<boolean>({
+    url: `/lunaerp/business/sales-return/cancel?id=${id}`,
+    data
   })
 }
