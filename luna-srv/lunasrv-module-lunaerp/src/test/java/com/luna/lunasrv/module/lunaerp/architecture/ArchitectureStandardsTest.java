@@ -11,9 +11,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.annotation.security.PermitAll;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import org.springframework.validation.annotation.Validated;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -341,6 +345,64 @@ public class ArchitectureStandardsTest {
 
         assertTrue(violations.isEmpty(),
                 "检测到 Controller 端点缺失权限控制注解:\n" + String.join("\n", violations));
+    }
+
+    @Test
+    @DisplayName("规约审查：Controller @RequestBody 请求体参数必须显式声明 @Valid 校验注解 (coding-standards.md §16)")
+    public void testControllerRequestBodyParametersMustHaveValidAnnotation() {
+        Set<Class<?>> controllerClasses = ClassUtil.scanPackage("com.luna.lunasrv.module.lunaerp.controller");
+        assertTrue(!controllerClasses.isEmpty(), "未扫描到 lunaerp 模块的 Controller 类");
+
+        List<String> violations = new ArrayList<>();
+        for (Class<?> clazz : controllerClasses) {
+            if (clazz.isInterface() || !clazz.isAnnotationPresent(RestController.class)) {
+                continue;
+            }
+            for (Method method : clazz.getDeclaredMethods()) {
+                for (Parameter param : method.getParameters()) {
+                    RequestBody requestBody = param.getAnnotation(RequestBody.class);
+                    if (requestBody != null && requestBody.required()) {
+                        boolean hasValid = param.isAnnotationPresent(Valid.class)
+                                || param.isAnnotationPresent(Validated.class);
+                        if (!hasValid) {
+                            violations.add(clazz.getSimpleName() + "." + method.getName() + "("
+                                    + param.getType().getSimpleName() + " " + param.getName()
+                                    + ") 声明了 @RequestBody 但缺失 @Valid 或 @Validated 注解");
+                        }
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到 Controller 端点接收必填 @RequestBody 参数却缺失 @Valid 注解，导致 DTO 校验被绕过:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    @DisplayName("规约审查：全域 CancelReqVO 必须包含 cancelReason 且必须标注 @NotBlank 注解 (coding-standards.md §16)")
+    public void testCancelReqVOsMustHaveValidatedCancelReason() {
+        Set<Class<?>> voClasses = ClassUtil.scanPackage("com.luna.lunasrv.module.lunaerp.controller");
+        assertTrue(!voClasses.isEmpty(), "未扫描到 lunaerp 模块的 Controller/VO 类");
+
+        List<String> violations = new ArrayList<>();
+        for (Class<?> clazz : voClasses) {
+            if (!clazz.getSimpleName().endsWith("CancelReqVO")) {
+                continue;
+            }
+            try {
+                Field cancelReasonField = clazz.getDeclaredField("cancelReason");
+                if (!cancelReasonField.isAnnotationPresent(NotBlank.class)) {
+                    violations.add(clazz.getSimpleName() + ".cancelReason 缺失 @NotBlank 注解");
+                }
+            } catch (NoSuchFieldException e) {
+                violations.add(clazz.getSimpleName() + " 缺失 cancelReason 字段");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到 CancelReqVO 缺失合规的 cancelReason 字段或未标注 @NotBlank:\n"
+                        + String.join("\n", violations));
     }
 
     private void collectJavaFiles(java.io.File dir, List<java.io.File> result) {

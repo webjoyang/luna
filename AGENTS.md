@@ -18,9 +18,11 @@
 
 开发规约与 Reviewer 审查基准（集合空安全、可空日期相交、防 N+1 批量快照、只读聚合、单测匹配、Wrapper 链式调用、前端权限与错误码）：见 `docs/agents/coding-standards.md`。
 
-### 异步任务与工具经济性 (Zero-Poll 纪律)
+### 异步任务与工具经济性 (Zero-Poll & Zero-Tool Yield 纪律)
 
-系统具备反应式自动唤醒（Reactive Wakeup）。派发后台耗时任务（如 Maven 测试、构建命令）或通过 `invoke_subagent` 派发并行 Reviewer 子代理后，**严禁在会话中使用 `manage_task(status)` 或 `manage_subagents(list)` 进行高频自旋轮询，亦严禁额外调用 `schedule` 挂载短时定时器**。派发后应立即停调工具并结束当前轮次，静待系统消息通知唤醒，消除无效 token 消耗与进程挂起。
+系统具备反应式自动唤醒（Reactive Wakeup）。派发后台耗时任务（如 Maven 测试、构建命令）或通过 `invoke_subagent` 派发并行 Reviewer 子代理后：
+1. **Zero-Tool Yield 轮次让渡**：派发后本轮次必须**仅输出纯文本确认或直接停止调用工具（不得附加任何辅助工具调用）以交出控制权**。会话中**严禁使用 `manage_task(status)` 或 `manage_subagents(list)` 自旋轮询，亦严禁额外调用 `schedule` 挂载短时定时器**。系统在子代理或任务结束时会自动注入消息唤醒，轮次内调工具会阻断系统的后台反应式睡眠并引发死循环。
+2. **只读审查工作区继承**：通过 `invoke_subagent` 派发 Standards / Spec 等只读性质的 Reviewer 子代理时，一律使用 `Workspace: "inherit"` 继承父工作区，严禁无故开启 `Workspace: "branch"` 产生额外分支与磁盘清理开销。
 
 ### 代码检索与命令行管道安全
 
@@ -48,4 +50,4 @@
 - 控制器与类文件定位：业务控制器统一位于 `com.luna.lunasrv.module.lunaerp.controller.<domain>`（无 `admin/` 中间层，区别于底座 yudao 系统管理模块的 `controller/admin/`）；定位 Controller/Service/VO/DTO 一律使用 `git ls-files "*<Keyword>*"`，严禁凭经验拼接类路径。
 - 单测执行：`mvn test "-Dtest=TargetTest"` 或指定模块 `mvn test -pl lunasrv-module-lunaerp "-Dtest=TargetTest"`（多类测试在 PowerShell 下务必使用双引号包裹 `"-Dtest=TestA,TestB"`）；凡涉及 `finance` 等域新增/修改 Controller/Mapper/DO 时，必须捆绑架构守护单测 `"-Dtest=ArchitectureStandardsTest,TargetTest"`，前置自动检验脱敏注解、可空更新策略与 Mapper 纯洁性（接口严禁 `default` 方法，区别于底座 yudao 习惯）。
 - 框架依赖刷新：修改或依赖刚刚调整过的 `lunasrv-framework` 基础组件时，需先执行 `mvn -pl lunasrv-framework/<module-name> install -DskipTests`（如 `lunasrv-spring-boot-starter-mybatis`）将最新 jar 安装至本地仓库，避免子模块 `-pl` 测试时读取 `~/.m2` 旧快照。
-- 数据库脚本与领域规约：36 个增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁、范围守卫、可空列清空与重构检索见 `docs/agents/coding-standards.md` 第 8~16 节。
+- 数据库脚本与领域规约：36 个增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁、范围守卫、可空列清空、重构检索与审批流回调单写见 `docs/agents/coding-standards.md` 第 8~20 节。

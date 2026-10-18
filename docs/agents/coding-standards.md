@@ -91,9 +91,11 @@
 - **分页数据服务端闭环与客户端展示规约 (Server-side Pagination Parity)**：
   - 凡调用服务端分页接口（`*Page`），前端表格数据必须且仅严格全量渲染服务端当前页返回的数据数组，**严禁在前端对 `res.list` 进行无脑 `filter` 裁剪**（极易引发单页记录不足甚至当前页全空、但分页器仍显示“共 N 条”的假分页坏味道与体验断裂）。
   - **强制规约**：对当前页中不满足业务操作前提的行（如“已核销完/已结清”），一律通过**行内状态 Tag（如【已结清】）+ 操作按钮禁用 / Checkbox 禁用（`:selectable="canSelectRow"`）** 在原位显化，坚决捍卫分页条总数、页码与表格物理行的严格一致性。
-- **状态机驱动交互动作单一来源指示器规约 (Action Flags Single Source of Truth)**：
-  - 由多状态流转或审批流驱动的单据视图（如付款申请、对账单工作台），其行内操作列（编辑、提交、撤回、删除、重提）可能随业务状态频繁演进。
-  - **强制规约**：操作栏按钮的显隐与禁用判定，**必须统一消费领域模型（`model/*.ts`）输出的 Action Flags（如 `getPaymentApplyActionFlags(status)`）**，严禁在 Vue SFC 模板中直接手写多层状态枚举（`v-if="status === 'A' || status === 'B'"`）的 switch 级联，避免新增或调整状态分支时漏改散落的模板分支。
+- **状态机驱动交互动作单一来源指示器规约 (Action Flags Single Source of Truth & Pure TS Matrix)**：
+  - 由多状态流转或审批流驱动的单据视图（如销售退货、付款申请、对账单工作台），其行内操作列（编辑、提交、撤回、删除、作废、重提、详情）必须随业务状态严格受控。
+  - **强制规约**：
+    1. 操作栏按钮的显隐与禁用判定，**必须统一消费领域模型（`model/*.ts`）输出的 Action Flags 或纯断言函数（如 `canEdit(row)`、`canSubmit(row)`、`canWithdraw(row)`、`canCancel(row)`、`canDelete(row)`、`canView(row)`）**，严禁在 Vue SFC 模板中直接手写多层状态枚举（`v-if="status === 'A' || status === 'B'"`）的 switch 级联，避免新增或调整状态分支时产生范围蔓延或模板分支遗漏。
+    2. 在 `__tests__/*.spec.ts` 中针对所有状态枚举值建立穷尽的断言矩阵单测（如覆盖 `DRAFT`、`APPROVING`、`REJECTED`、`CANCELED` 各状态下的按钮可用性），由纯 Node Vitest 毫秒级保障状态机契约不破损。
 - **复合主子单流水的展开行懒加载规约 (Master-Detail Expansion Lazy Load Parity)**：
   - 在分页列表需支持展示子明细流水（如付款单展开展示核销单号及各单分配金额）且后端分页列表接口未预热子集合时：
   - **强制规约**：前端主表格的子单展开（`<el-table-column type="expand">`）统一采用**行展开事件驱动懒加载（`@expand-change` + 响应式 Map 缓存 + `getDetail(row.id)`）**，并在主单对应列显化“展开查看明细”引导，兼顾后端防 N+1 批量快照性能与前端多单展开交互。
@@ -349,6 +351,22 @@
      - 上游档案在回收站中抛出 `RECYCLE_BIN_REFERENCE_IN_RECYCLE`；
      - 上游档案不存在抛出对应领域的 `XXX_NOT_EXISTS`；
   4. **非进站资格反向拒绝**：针对非草稿态（如已生效/过账）单据或不存在单据，SQL 过滤（如 `WHERE status = 'DRAFT'`）查得 `null`，执行 `restore(id)` / `purge(id)` 必须断言抛出 `RECYCLE_BIN_RECORD_NOT_EXISTS`。
+
+## 20. 审批流引擎集成与回调单写规约 (Approval Engine Integration & Callback Single-Writer Principle)
+
+- **场景**：业务单据（销售退货单 `SALES_RETURN`、付款申请 `PAYMENT_APPLY`、对账单等）接入 BPM 工作流审批引擎，支持提交审批（`submit`）、撤回（`withdraw`）、审核通过（`APPROVE`）、审核驳回（`REJECT`）等生命周期。
+- **状态流转回调单写原则 (Single-Writer Principle)**：
+  - 单据接入审批流时，审批状态（`approval_status`）与审核时间（`audit_time`）的更新归属权统一由对应域的 `ApprovalBizHandler`（如 `SalesReturnApprovalBizHandler`）回调独占写入（Single Source of Truth）。
+  - **严禁 Service 层冗余覆写与乐观锁冲突**：
+    业务 Service 在调用引擎方法（如 `approvalInstanceService.withdrawInstance(processInstanceId)` 或 `submitInstance`）后，**严禁再执行包含旧状态条件的重复更新**（如 `update.set(approvalStatus, PENDING).eq(approvalStatus, APPROVING)`）。
+    由于引擎内部执行过程已同步触发 `ApprovalBizHandler.updateApprovalStatus(...)` 完成状态落库，Service 本地带有旧状态前置条件的更新将因匹配 0 行而抛出更新异常或导致状态竞争。
+- **强制规约与单测范式**：
+  1. **状态字段职责单一划分**：
+     - `ApprovalBizHandler`：全权负责审批状态（`approval_status`）、审批实例 ID（`process_instance_id`）、审核时间（`audit_time`）与驳回原因（`audit_reason`）的原子更新；
+     - 业务 Service：负责流转前置业务校验（行级悲观锁锁定、状态准入校验、库存可用量/配额预检）、触发流程引擎操作、以及记录操作日志（`@LogRecord`）。
+  2. **Service 单元测试打桩规约**：
+     - 在 Service 层测试打桩 `approvalInstanceService` 时，必须断言 Service 专注于前置校验与引擎触发，不发起重复状态覆写；
+     - 涉及回调副作用的集成测试，必须通过真实注入或 `doAnswer` 模拟引擎触发 `ApprovalBizHandler` 的标准回调链路。
 
 
 

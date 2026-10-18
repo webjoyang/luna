@@ -29,4 +29,19 @@ for (const f of businessFiles) {
     }
   }
 }
+
+// 3. 工作台流转前置保存守卫：若工作台同时定义了 handleSave 与 handleSubmit，handleSubmit 必须调用 handleSave
+const workspaceFiles = allStaged.filter(f => f.startsWith('luna-ui/src/views/lunaerp-elmui/') && f.endsWith('/workspace/index.vue'));
+for (const f of workspaceFiles) {
+  if (fs.existsSync(f)) {
+    const content = fs.readFileSync(f, 'utf-8');
+    if (content.includes('handleSave') && /const\s+handleSubmit\s*=/.test(content)) {
+      const submitMatch = content.match(/const\s+handleSubmit\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{([\s\S]*?)\n\}/);
+      if (submitMatch && !submitMatch[1].includes('handleSave')) {
+        console.error('[pre-commit] Error: ' + f + ' 中的 handleSubmit 缺失 handleSave() 前置调用。根据 coding-standards.md §6，工作台执行状态流转操作前必须静默保存表单最新修改（如 await handleSave(true)），防止遗失脏数据。');
+        process.exit(1);
+      }
+    }
+  }
+}
 "
