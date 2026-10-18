@@ -84,6 +84,10 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
     private PaymentMapper paymentMapper;
 
     @Resource
+    private com.luna.lunasrv.module.lunaerp.common.notify.LunaNotifyHelper lunaNotifyHelper;
+
+
+    @Resource
     private com.luna.lunasrv.module.infra.api.config.ConfigApi configApi;
 
     @Override
@@ -640,7 +644,11 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         if (affected == 0) {
             throw exception(STATEMENT_STATUS_NOT_ALLOW);
         }
+
+        // 旁路消息通知：SENT -> REJECTED 时通知制单财务（失败不阻塞业务事务）
+        notifyStatementRejected(statement, reqVO.getRejectReason());
     }
+
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -900,9 +908,43 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         if (affected == 0) {
             throw exception(STATEMENT_STATUS_NOT_ALLOW);
         }
+
+        // 旁路消息通知：SENT -> REJECTED 时通知制单财务（失败不阻塞业务事务）
+        notifyStatementRejected(statement, reqVO.getRejectReason().trim());
     }
 
     // ==================== 私有辅助计算与防 N+1 批量快照方法 ====================
+
+    /**
+     * 发送对账单驳回通知给制单财务（旁路通知，失败仅记录日志，绝不阻塞主事务）
+     *
+     * @param statement 对账单主记录快照
+     * @param rejectReason 驳回原因
+     */
+    private void notifyStatementRejected(CustomerStatementDO statement, String rejectReason) {
+        if (statement == null) {
+            return;
+        }
+        try {
+            Long creatorUserId = null;
+            if (StrUtil.isNotBlank(statement.getCreator())) {
+                try {
+                    creatorUserId = Long.valueOf(statement.getCreator());
+                } catch (NumberFormatException ignored) {
+                    // creator 非纯数字（如测试默认 "admin"），安全跳过
+                }
+            }
+            if (creatorUserId != null && lunaNotifyHelper != null) {
+                lunaNotifyHelper.sendStatementRejected(creatorUserId, statement.getId(),
+                        statement.getStatementNo(), statement.getCustomerName(), rejectReason);
+            }
+        } catch (Throwable t) {
+            // 旁路通知容错守卫：发送失败仅记录日志，绝不回滚对账单业务事务
+            log.error("[notifyStatementRejected] 对账单驳回通知发送异常，已容错忽略并不阻塞事务: statementId={}",
+                    statement.getId(), t);
+        }
+    }
+
 
     private void populateReversalFlags(String status, List<CustomerStatementItemDO> items, List<CustomerStatementItemRespVO> itemVOs) {
         if (!CustomerStatementStatus.SENT.getValue().equals(status) || CollUtil.isEmpty(items)) {

@@ -876,3 +876,28 @@ BEGIN
         'SEQUENTIAL', 'ROLE', '2', 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0
     );
 END $$;
+
+-- =============================================================================
+-- 13. 站内信模板种子：对账单驳回通知（LUNA_STATEMENT_REJECTED）
+-- =============================================================================
+INSERT INTO system_notify_template (
+    id, name, code, nickname, content, type, params, status, remark,
+    creator, create_time, updater, update_time, deleted
+) VALUES (
+    2004, '对账单驳回通知', 'LUNA_STATEMENT_REJECTED', '财务系统',
+    '您的对账单被驳回：对账单号 {bizNo}，客户 {customerName}，驳回原因：{reason}',
+    2, '["bizNo", "customerName", "reason"]', 0, '对账单状态流转为REJECTED时通知制单财务',
+    'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0
+)
+ON CONFLICT (code) DO UPDATE SET
+    name = EXCLUDED.name,
+    nickname = EXCLUDED.nickname,
+    content = EXCLUDED.content,
+    type = EXCLUDED.type,
+    params = EXCLUDED.params,
+    status = EXCLUDED.status,
+    remark = EXCLUDED.remark,
+    updater = EXCLUDED.updater,
+    update_time = EXCLUDED.update_time,
+    deleted = 0;
+

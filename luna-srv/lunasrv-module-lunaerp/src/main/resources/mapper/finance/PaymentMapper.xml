@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentMapper">
+
+    <!-- 回收站分页查询已软删草稿收付款单（显式 WHERE deleted = 1 AND approval_status = 'PENDING' AND tenant_id = #{tenantId}） -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'PAYMENT' AS biz_type,
+            id AS biz_id,
+            payment_no AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_finance_payment
+        WHERE deleted = 1
+          AND approval_status = 'PENDING'
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删草稿收付款单记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.PaymentDO">
+        SELECT *
+        FROM lunaerp_finance_payment
+        WHERE id = #{id}
+          AND deleted = 1
+          AND approval_status = 'PENDING'
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复草稿收付款单（并发条件更新） -->
+    <update id="restorePayment">
+        UPDATE lunaerp_finance_payment
+        SET deleted = 0,
+            approval_status = 'PENDING',
+            updater = #{updater},
+            update_time = #{now}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND approval_status = 'PENDING'
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除草稿收付款单 -->
+    <delete id="purgePayment">
+        DELETE FROM lunaerp_finance_payment
+        WHERE id = #{id}
+          AND deleted = 1
+          AND approval_status = 'PENDING'
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查收付款单是否存在活跃业务引用（草稿无下游引用，恒为0） -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT 0
+    </select>
+
+</mapper>

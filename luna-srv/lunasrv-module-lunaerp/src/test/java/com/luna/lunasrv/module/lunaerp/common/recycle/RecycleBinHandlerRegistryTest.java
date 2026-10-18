@@ -92,8 +92,27 @@ public class RecycleBinHandlerRegistryTest {
     }
 
     @Test
+    public void testRegisterFinanceHandlers() {
+        RecycleBinHandler statement = mock(RecycleBinHandler.class);
+        when(statement.getBizType()).thenReturn("STATEMENT");
+        RecycleBinHandler payment = mock(RecycleBinHandler.class);
+        when(payment.getBizType()).thenReturn("PAYMENT");
+        RecycleBinHandler invoiceApp = mock(RecycleBinHandler.class);
+        when(invoiceApp.getBizType()).thenReturn("INVOICE_APPLICATION");
+
+        RecycleBinHandlerRegistry registry = new RecycleBinHandlerRegistry(
+                List.of(statement, payment, invoiceApp));
+
+        assertEquals(3, registry.getAllHandlers().size());
+        assertEquals("STATEMENT", registry.getHandler("STATEMENT").getBizType());
+        assertEquals("PAYMENT", registry.getHandler("PAYMENT").getBizType());
+        assertEquals("INVOICE_APPLICATION", registry.getHandler("INVOICE_APPLICATION").getBizType());
+    }
+
+    @Test
     public void testNullHandlersList() {
         RecycleBinHandlerRegistry registry = new RecycleBinHandlerRegistry(null);
         assertTrue(registry.getAllHandlers().isEmpty());
     }
 }
+

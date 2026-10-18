@@ -73,7 +73,11 @@ public class CustomerStatementServiceImplTest {
     @Mock
     private com.luna.lunasrv.module.infra.api.config.ConfigApi configApi;
 
+    @Mock
+    private com.luna.lunasrv.module.lunaerp.common.notify.LunaNotifyHelper lunaNotifyHelper;
+
     private MockedStatic<TenantContextHolder> tenantContextMock;
+
 
     @BeforeEach
     void setUp() {
@@ -973,7 +977,68 @@ public class CustomerStatementServiceImplTest {
     }
 
     @Test
+    @DisplayName("rejectCustomerStatement 消息通知：SENT 态驳回向制单财务发送驳回通知")
+    void testRejectCustomerStatement_sendsNotificationToCreator() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.SENT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        stmt.setCreator("2048");
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+        when(customerStatementMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+
+        CustomerStatementRejectReqVO req = new CustomerStatementRejectReqVO();
+        req.setId(id);
+        req.setRejectReason("运费分摊计算有异议");
+
+        customerStatementService.rejectCustomerStatement(req);
+
+        verify(lunaNotifyHelper).sendStatementRejected(2048L, id, "CS20260001", "测试客户1001", "运费分摊计算有异议");
+    }
+
+    @Test
+    @DisplayName("rejectCustomerStatement 容错：消息通知异常不阻塞主业务事务")
+    void testRejectCustomerStatement_notifyFailureDoesNotBlockTransaction() {
+        Long id = 100L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",
+                CustomerStatementStatus.SENT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        stmt.setCreator("2048");
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+        when(customerStatementMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+        when(lunaNotifyHelper.sendStatementRejected(any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("Notify service RPC timeout"));
+
+        CustomerStatementRejectReqVO req = new CustomerStatementRejectReqVO();
+        req.setId(id);
+        req.setRejectReason("运费分摊计算有异议");
+
+        assertDoesNotThrow(() -> customerStatementService.rejectCustomerStatement(req));
+        verify(customerStatementMapper).update(any(), any(Wrapper.class));
+    }
+
+    @Test
+    @DisplayName("rejectPortalCustomerStatement 消息通知：门户驳回向制单财务发送驳回通知")
+    void testRejectPortalCustomerStatement_sendsNotificationToCreator() {
+        Long id = 100L;
+        Long customerId = 1001L;
+        CustomerStatementDO stmt = mockStatement(id, "CS20260001", customerId, "RMB",
+                CustomerStatementStatus.SENT, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+        stmt.setCreator("2048");
+        when(customerStatementMapper.selectById(id)).thenReturn(stmt);
+        when(customerStatementMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+
+        CustomerStatementPortalRejectReqVO req = new CustomerStatementPortalRejectReqVO();
+        req.setId(id);
+        req.setCustomerId(customerId);
+        req.setRejectReason("门户在线驳回：品名规格与收货实际不符");
+
+        customerStatementService.rejectPortalCustomerStatement(req);
+
+        verify(lunaNotifyHelper).sendStatementRejected(2048L, id, "CS20260001", "测试客户1001", "门户在线驳回：品名规格与收货实际不符");
+    }
+
+    @Test
     @DisplayName("rejectCustomerStatement 异常：非 SENT 状态驳回抛出 STATEMENT_STATUS_NOT_ALLOW")
+
     void testRejectCustomerStatement_notSent_throwsException() {
         Long id = 100L;
         CustomerStatementDO stmt = mockStatement(id, "CS20260001", 1001L, "RMB",

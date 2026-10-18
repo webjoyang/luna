@@ -52,4 +52,55 @@ public interface PaymentMapper extends BaseMapperX<PaymentDO> {
             + "WHERE supplier_id = #{supplierId} AND direction = 'OUT' AND deleted = 0 AND tenant_id = #{tenantId}")
     BigDecimal selectSumPrepayUsedAmountBySupplier(@Param("supplierId") Long supplierId, @Param("tenantId") Long tenantId);
 
+    /**
+     * 回收站分页查询已软删草稿收付款单（手写 XML：WHERE deleted = 1 AND approval_status = 'PENDING' AND tenant_id = #{tenantId}）
+     *
+     * @param page 分页参数
+     * @param tenantId 租户编号
+     * @return 分页结果
+     */
+    com.baomidou.mybatisplus.core.metadata.IPage<com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO> selectRecyclePage(
+            com.baomidou.mybatisplus.core.metadata.IPage<com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO> page,
+            @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删草稿收付款单记录（approval_status = 'PENDING'）
+     *
+     * @param id 主键
+     * @param tenantId 租户编号
+     * @return 收付款单 DO
+     */
+    PaymentDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿收付款单（并发条件更新）
+     *
+     * @param id 主键
+     * @param tenantId 租户编号
+     * @param updater 更新人
+     * @param now 更新时间
+     * @return 影响行数
+     */
+    int restorePayment(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                       @Param("updater") String updater, @Param("now") java.time.LocalDateTime now);
+
+    /**
+     * 彻底物理删除草稿收付款单
+     *
+     * @param id 主键
+     * @param tenantId 租户编号
+     * @return 影响行数
+     */
+    int purgePayment(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 检查收付款单是否存在活跃业务引用
+     *
+     * @param id 主键
+     * @param tenantId 租户编号
+     * @return 活跃引用数
+     */
+    Long selectActiveReferenceCount(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
 }
+

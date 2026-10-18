@@ -207,19 +207,48 @@ public class LunaNotifyHelperTest {
     }
 
     @Test
+    @DisplayName("对账单驳回通知：参数与 bizJump 正确传递")
+    public void testSendStatementRejected() {
+        Long creatorUserId = 2048L;
+        Long statementId = 100L;
+        String statementNo = "CS20260001";
+        String customerName = "测试客户有限公司";
+        String reason = "明细金额有误";
+
+        when(notifyMessageSendApi.sendSingleMessageToAdmin(any())).thenReturn(7777L);
+
+        Long msgId = lunaNotifyHelper.sendStatementRejected(creatorUserId, statementId, statementNo, customerName, reason);
+        assertEquals(7777L, msgId);
+
+        ArgumentCaptor<NotifySendSingleToUserReqDTO> captor = ArgumentCaptor.forClass(NotifySendSingleToUserReqDTO.class);
+        verify(notifyMessageSendApi).sendSingleMessageToAdmin(captor.capture());
+        NotifySendSingleToUserReqDTO req = captor.getValue();
+        assertEquals(creatorUserId, req.getUserId());
+        assertEquals("LUNA_STATEMENT_REJECTED", req.getTemplateCode());
+        assertEquals(statementNo, req.getTemplateParams().get("bizNo"));
+        assertEquals(customerName, req.getTemplateParams().get("customerName"));
+        assertEquals(reason, req.getTemplateParams().get("reason"));
+        assertEquals("STATEMENT", req.getTemplateParams().get("bizType"));
+        assertEquals(statementId, req.getTemplateParams().get("bizId"));
+    }
+
+    @Test
     @DisplayName("模板枚举与冻结契约位校验")
     public void testTemplateEnumContracts() {
-        // 3 个 W0 实装模板
+        // 审批模板
         assertEquals("LUNA_APPROVAL_TODO", LunaNotifyTemplateEnum.LUNA_APPROVAL_TODO.getCode());
         assertEquals("LUNA_APPROVAL_APPROVED", LunaNotifyTemplateEnum.LUNA_APPROVAL_APPROVED.getCode());
         assertEquals("LUNA_APPROVAL_REJECTED", LunaNotifyTemplateEnum.LUNA_APPROVAL_REJECTED.getCode());
 
-        // 3 个冻结契约位（二期接线）
+        // 对账单驳回模板
+        assertEquals("LUNA_STATEMENT_REJECTED", LunaNotifyTemplateEnum.LUNA_STATEMENT_REJECTED.getCode());
+
+        // 冻结契约位（二期接线）
         assertEquals("LUNA_SALES_CONTRACT_ACTIVE", LunaNotifyTemplateEnum.LUNA_SALES_CONTRACT_ACTIVE.getCode());
         assertEquals("LUNA_SHIPMENT_SIGNED", LunaNotifyTemplateEnum.LUNA_SHIPMENT_SIGNED.getCode());
         assertEquals("LUNA_AR_PERIOD_WARNING", LunaNotifyTemplateEnum.LUNA_AR_PERIOD_WARNING.getCode());
 
-        // 校验全部 6 个模板均具备非空名称与占位内容
+        // 校验全部模板均具备非空名称与占位内容
         for (LunaNotifyTemplateEnum item : LunaNotifyTemplateEnum.values()) {
             assertNotNull(item.getCode());
             assertNotNull(item.getName());
@@ -230,3 +259,4 @@ public class LunaNotifyHelperTest {
         }
     }
 }
+

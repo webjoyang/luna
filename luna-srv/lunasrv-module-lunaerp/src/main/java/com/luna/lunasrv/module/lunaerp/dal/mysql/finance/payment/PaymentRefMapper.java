@@ -46,4 +46,26 @@ public interface PaymentRefMapper extends BaseMapperX<PaymentRefDO> {
             + "</script>")
     java.util.List<com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payment.EntryAllocatedSumDTO> selectSumAllocatedAmountByEntryIds(@Param("entryIds") java.util.Collection<Long> entryIds);
 
+    /**
+     * 级联恢复收付款核销分配明细
+     *
+     * @param paymentId 收付款单ID
+     * @param tenantId 租户编号
+     * @param updater 更新人
+     * @param now 更新时间
+     * @return 影响行数
+     */
+    int restoreByPaymentId(@Param("paymentId") Long paymentId, @Param("tenantId") Long tenantId,
+                          @Param("updater") String updater, @Param("now") java.time.LocalDateTime now);
+
+    /**
+     * 彻底物理删除收付款核销分配明细
+     *
+     * @param paymentId 收付款单ID
+     * @param tenantId 租户编号
+     * @return 影响行数
+     */
+    int purgeByPaymentId(@Param("paymentId") Long paymentId, @Param("tenantId") Long tenantId);
+
 }
+

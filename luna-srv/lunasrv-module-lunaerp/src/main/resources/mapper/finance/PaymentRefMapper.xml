@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payment.PaymentRefMapper">
+
+    <!-- 级联恢复收付款核销分配明细 -->
+    <update id="restoreByPaymentId">
+        UPDATE lunaerp_finance_payment_ref
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{now}
+        WHERE payment_id = #{paymentId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除收付款核销分配明细 -->
+    <delete id="purgeByPaymentId">
+        DELETE FROM lunaerp_finance_payment_ref
+        WHERE payment_id = #{paymentId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

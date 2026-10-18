@@ -43,6 +43,15 @@ public enum LunaNotifyTemplateEnum {
             "您的审批被驳回：{bizName} 单号 {bizNo}，驳回意见：{reason}"
     ),
 
+    /**
+     * 对账单驳回通知（对账单被客户或门户驳回，通知制单财务，内容带驳回原因）
+     */
+    LUNA_STATEMENT_REJECTED(
+            "LUNA_STATEMENT_REJECTED",
+            "对账单驳回通知",
+            "您的对账单被驳回：对账单号 {bizNo}，客户 {customerName}，驳回原因：{reason}"
+    ),
+
     // ========== 冻结契约位（一期不接线，模板文案保留待二期） ==========
 
     /**
