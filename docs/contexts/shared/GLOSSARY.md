@@ -296,7 +296,12 @@ lunaerp 错误码统一格式 `1-030-NNN-xxx`，段位（NNN）按业务模块�
 ## 站内消息与待办角标（横切）
 
 **站内消息 (Internal notification)**：
-基于系统底座 notify 体系（`system_notify_template` 与 `system_notify_message`）的异步业务触达通知。零新增 lunaerp 业务表，封装 `LunaNotifyHelper.send(...)` 统一调用底座 API。单据审批流转（任务到达/通过/驳回）、合同生效、发货签收等关键节点触发发送；通知携带参数与跳转上下文（`bizType` / `bizId` / `bizNo`），点击可在前端自动路由至对应工作台或单据详情；通知发送失败仅记 error 日志，不回滚主业务事务。
+基于系统底座 notify 体系（`system_notify_template` 与 `system_notify_message`）的异步业务触达通知。零新增 lunaerp 业务表，封装 `LunaNotifyHelper.send(...)` 统一调用底座 API。单据审批流转（任务到达/通过/驳回）、对账驳回（`LUNA_STATEMENT_REJECTED`）、合同生效、发货签收等关键节点触发发送；通知携带参数与跳转上下文（`bizType` / `bizId` / `bizNo`），点击可在前端自动路由至对应工作台或单据详情；通知发送失败仅记 error 日志，不回滚主业务事务。
+
+**站内信模板发号与落库契约**：
+- **代码侧枚举唯一真相源**：所有业务通知模板定义必须显式注册在 `LunaNotifyTemplateEnum` 枚举中（禁止硬编码模板 code 字符串）。
+- **模板 ID 与种子段位**：ID 段位划分 `2001~2999` 归属 LunaERP 业务消息（审批通知使用 2001~2003，对账单驳回使用 2004）；业务域 SQL 脚本中通过 `INSERT ... ON CONFLICT (code) DO UPDATE` 幂等写入 `system_notify_template`。
+- **跨模块 DDL 防越权守卫**：底座表唯一索引 `uk_system_notify_template_code` 已在 `lunaerp-common-foundation.sql` 中统一建档，业务域增量 SQL 严禁跨模块执行 `CREATE INDEX` 等 DDL，仅允许执行种子 DML。
 
 **待办角标 (Todo badge)**：
 系统全局顶部导航栏消息铃铛图标上的未读消息计数红点/角标。全系统保持**单个铃铛角标**统一收纳所有未读通知与待办提醒，不新建第二个角标或审批独立红点；审批待办数量仅在审批中心内部查询，保持系统交互一致与整洁。

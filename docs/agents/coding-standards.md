@@ -326,4 +326,24 @@
        `originalAmount（原始金额） - writtenOffAmount（已核销/冲减） == remainingAmount（未核销余额）`。
      - 当发生发货红冲时，`writtenOffAmount` 必须统合“发货红冲扣减额 + FIFO 核销消耗额”（列名定标为【已核销/冲减】），或在 VO 中独立声明并透传 `reversalAmount`（已红冲金额）列，严禁输出数学公式失衡的明细数据。
 
+## 19. 回收站业务处理器校验与单测覆盖规约 (RecycleBinHandler Validation & Unit Test Matrix)
+
+- **场景**：业务单据（客户对账单 `STATEMENT`、收付款单 `PAYMENT`、发票申请 `INVOICE_APPLICATION` 等）实现 `RecycleBinHandler` SPI 接口，支持草稿进入回收站、分页浏览、恢复（restore）与彻底物理删除（purge）。
+- **生命周期准入与恢复不补账守卫（ADR-0038）**：
+  - **仅初始草稿态允许进站**：进入回收站仅限未记账、未生效的初始草稿态（对账单仅 `status = 'DRAFT'`、收款单仅 `approval_status = 'PENDING'`、发票申请仅 `status = 'DRAFT'`）。已过账/生效终态（`CONFIRMED`/`COMPLETED`/`ISSUED`）严禁软删进回收站，逆向操作必须走财务冲减（如发货红冲、收款红冲、作废发票）。
+  - **恢复纯净不补账**：回收站恢复操作仅还原主表与明细行子表软删除标记（`deleted = 0`），并恢复至草稿态，**严禁触发任何分录记账、资金账户余额变动或凭证重新生成**。
+- **关联引用阻断与状态区分陷阱**：
+  - 在 `validateRestore(id)` 中执行前置引用校验时，必须**严格区分“主数据在回收站中”与“主数据彻底不存在”**：
+    - 查询已删除档案 `selectDeletedById(refId, tenantId) != null`：说明被引用对象处于回收站，抛出 `RECYCLE_BIN_REFERENCE_IN_RECYCLE(name)`，引导用户先去回收站恢复上游基础档案；
+    - 查询未删除档案 `selectById(refId) == null`（且不在回收站）：说明主数据不存在或已被物理清空，**必须抛出领域业务异常**（如 `CUSTOMER_NOT_EXISTS`、`SUPPLIER_NOT_EXISTS`），严禁泛化抛出“XX在回收站中”引发运维误判。
+- **强制规约与单测 4 维覆盖矩阵**：
+  每个实现的 `RecycleBinHandlerTest` 单元测试**必须**完整覆盖以下 4 维用例，缺失任何一项视为测试不完备：
+  1. **元数据正确性**：断言 `getBizType()` 与 `getName()` 契约与领域枚举对齐；
+  2. **草稿恢复与级联复活**：断言正常草稿态恢复成功，主表与明细行子表均被级联恢复（`restoreByXxx` 被调用），且无分录记账副作用；
+  3. **前置引用阻断两路校验**：
+     - 上游档案在回收站中抛出 `RECYCLE_BIN_REFERENCE_IN_RECYCLE`；
+     - 上游档案不存在抛出对应领域的 `XXX_NOT_EXISTS`；
+  4. **非进站资格反向拒绝**：针对非草稿态（如已生效/过账）单据或不存在单据，SQL 过滤（如 `WHERE status = 'DRAFT'`）查得 `null`，执行 `restore(id)` / `purge(id)` 必须断言抛出 `RECYCLE_BIN_RECORD_NOT_EXISTS`。
+
+
 

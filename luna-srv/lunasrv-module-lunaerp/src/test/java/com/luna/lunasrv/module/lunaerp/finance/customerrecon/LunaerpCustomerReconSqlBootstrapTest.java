@@ -12,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -395,5 +397,41 @@ public class LunaerpCustomerReconSqlBootstrapTest {
         // 确保没有裸的 CREATE INDEX (非 IF NOT EXISTS)
         assertFalse(sql.matches("(?s).*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+(?!IF\\s+NOT\\s+EXISTS).*"),
                 "所有 CREATE INDEX 必须携带 IF NOT EXISTS");
+    }
+
+    @Test
+    @DisplayName("验证领域 SQL 脚本严禁跨模块执行平台底座表 DDL (CREATE/ALTER/DROP 等)，仅允许操作 lunaerp_* 域表")
+    void testNoCrossDomainDdlOnPlatformTables() throws IOException {
+        String sql = loadSqlContent("lunaerp-finance-customer-recon.sql");
+        List<SQLStatement> statements = parseSql(sql);
+
+        for (SQLStatement stmt : statements) {
+            if (stmt instanceof com.alibaba.druid.sql.ast.statement.SQLCreateTableStatement createTable) {
+                String tableName = createTable.getTableName().toLowerCase().replace("\"", "");
+                assertTrue(tableName.startsWith("lunaerp_"),
+                        "领域增量脚本严禁创建非 lunaerp_ 前缀的表: " + tableName);
+            } else if (stmt instanceof com.alibaba.druid.sql.ast.statement.SQLCreateIndexStatement createIndex) {
+                String tableName = SQLUtils.toSQLString(createIndex.getTable()).toLowerCase().replace("\"", "");
+                assertTrue(tableName.startsWith("lunaerp_"),
+                        "领域增量脚本严禁在非 lunaerp_ 前缀的表上创建索引 (如底座 system_* 表): " + tableName);
+            } else if (stmt instanceof com.alibaba.druid.sql.ast.statement.SQLAlterTableStatement alterTable) {
+                String tableName = alterTable.getTableName().toLowerCase().replace("\"", "");
+                assertTrue(tableName.startsWith("lunaerp_"),
+                        "领域增量脚本严禁修改非 lunaerp_ 前缀的表: " + tableName);
+            } else if (stmt instanceof com.alibaba.druid.sql.ast.statement.SQLDropTableStatement dropTable) {
+                for (var tableSource : dropTable.getTableSources()) {
+                    String tableName = tableSource.getTableName().toLowerCase().replace("\"", "");
+                    assertTrue(tableName.startsWith("lunaerp_"),
+                            "领域增量脚本严禁删除非 lunaerp_ 前缀的表: " + tableName);
+                }
+            }
+        }
+
+        // 文本规则双重静态守卫：严格防范在 system_* 底座表上出现 CREATE INDEX / ALTER TABLE 等越权 DDL
+        Pattern bannedDdlPattern = Pattern.compile(
+                "(?i)(CREATE\\s+(?:UNIQUE\\s+)?INDEX[\\s\\S]*?ON\\s+system_\\w+|ALTER\\s+TABLE\\s+system_\\w+)"
+        );
+        Matcher matcher = bannedDdlPattern.matcher(sql);
+        assertFalse(matcher.find(), () -> "领域 SQL 脚本检测到对底座 system_* 表的越权 DDL 变更: " + matcher.group(1));
     }
 }
