@@ -111,7 +111,7 @@
   - **逆向依赖陷阱**：领域模型文件若为了复用类型或错误码常量而反向 `import` 视图层接口文件（`@/api/**`），会导致级联引入 `@/config/axios` 及其绑定的 Vue Router 实例。在纯 Node 单测环境执行时，任何未显式声明 Axios Mock 的单测都会因此触发 `createWebHistory` 抛出 `ReferenceError: window is not defined`。
   - **强制规约**：
     1. 领域模型文件必须保持为纯 TypeScript 逻辑与类型，**严禁反向 import 视图层 API 文件（`@/api/**`）或 Vue SFC 组件**。
-    2. 领域模型所需的错误码常量、枚举与 VO/DTO 类型定义，应收敛于 `model/` 或独立的 `types/` 声明文件中并向外暴露；由 API 层和 View 视图向内依赖 Model，严禁逆向倒置。
+    2. 领域模型所需的错误码常量、枚举与纯计算逻辑定义于 `model/` 内部供视图消费；严禁让 API 层反向引入 View/Model 层模块（受 `eslint.config.mjs` 强制拦截）；Model 层亦严禁直接引入 `@/api/**`（防 Axios/Router 污染 Node 单测）。若需多层共享，应定义于纯 `types/` 声明文件中。
 - **前端表单日期默认值初始化时区偏差防御 (Date Initialization Timezone Parity)**：
   - **场景**：表单生效日、操作日、筛选开始结束日等默认值初始化。
   - **UTC 跨日截断陷阱**：使用 `new Date().toISOString().slice(0, 10)` 会取标准 UTC 时间。在东八区（UTC+8）早晨（00:00–07:59）调用时，会错误回退至昨天的日期字符串，造成默认日期失真。
@@ -286,4 +286,24 @@
   1. **重构前全量符号定标**：重命名或变更方法签名之前，**必须先在文件内全局检索目标符号**（或在模块级使用跨平台 `git grep "<symbol>" <dir>`），锁定全量调用点清单。
   2. **原子性全量替换**：依据清单一次性完成全部调用点与方法签名的替换，避免凭记忆散落修改。
   3. **前置语法轻量自检**：在发起 Maven 测试等后台构建前，确保所有声明与调用均已收敛闭环，杜绝将简单语法与编译符号错误转嫁给耗时的构建任务。
+
+## 17. 财务经营账对账单余额守恒与跨期分录追加规约 (Balance Conservation Invariant & Historical Entry Parity)
+
+- **场景**：客户对账单（`CustomerStatement`）与供应商对账单（`SupplierRecon`）等期间经营账对账单的生成、重新计算与草稿手工追加/移除明细分录。
+- **对账单余额守恒定律 (Balance Conservation Invariant)**：
+  - **守恒公式**：`期末应收/应付余额 = 期初未核销余额 + 本期借方发生合计 − 本期贷方核销合计`。
+  - **期初余额口径**：期初余额是**对账起始日（`periodStart`）之前**全量未核销/未冲减分录的净值聚合快照。
+- **历史分录追加防双计陷阱 (Historical Entry Double-Counting Trap)**：
+  - 当在草稿态允许手工向对账单追加业务日期早于对账单起始日（`bizDate < periodStart`）的往期历史漏记分录时：
+  - 该分录的原发生金额**早已隐式沉淀于期初未核销余额 `openingBalance` 中**。
+  - 若直接将该分录插入对账单明细并仅累加至 `periodDebit` 或 `periodCredit`，会导致该笔金额在计算 `closingBalance = openingBalance + periodDebit - periodCredit` 时**被重复计算两次**，严重破坏账实守恒与客户对账权威性。
+- **强制规约**：
+  1. **期初余额同步逆向剥离**：
+     手工向对账单追加 `bizDate < periodStart` 的历史分录时，必须在增加本期发生额的同时，**同步逆向调整对账单的 `openingBalance`**：
+     - 若追加的是借方分录（应收增加）：`newOpening = statement.getOpeningBalance().subtract(newItem.getDebitAmount())`；
+     - 若追加的是贷方分录（核销/冲减）：`newOpening = statement.getOpeningBalance().add(newItem.getCreditAmount())`；
+     - 确保 `closingBalance` 账实守恒不变，同时分录在明细行中被显式化。
+  2. **跨期红冲分录承接规约**：
+     发货红冲分录（`AR_INC_REVERSAL`）若发生在当期，但其被冲减的原发货分录（`reversalOfId`）发生于前期（不在当期候选列表中）：
+     严禁直接跳过该红冲分录；必须将其作为当期贷方冲减分录独立入单，确保前期已计入期初的发货金额在当期得到准确扣减。
 

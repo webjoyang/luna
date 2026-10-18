@@ -25,6 +25,17 @@
 **冻结的借贷会计脚手架 `views/fms/`**：
 `luna-ui/src/views/fms/`（凭证/账簿/三大报表/期末结转/账套科目）是无后端对应的纯前端脚手架，按 ADR-0037 **不迁后端、不挂菜单、不复活静态路由、代码原样保留**，不属于 finance 域；任何财务新功能进 `finance/` 目录，禁止挂接或改造 fms。
 
+## 常用主数据与基础档案选择器快速索引 (Master Data Selectors Index)
+
+跨业务单据在前端进行客户、供应商、产品、账户选择时，统一采用以下标准接口，避免反复探查：
+
+| 实体 | 前端标准引入路径 | 调用签名与入参 | 说明 |
+|---|---|---|---|
+| **客户** | `@/api/lunaerp-elmui/baseinfo/customer` | `getCustomerPage({ pageNo: 1, pageSize: 30, search: keyword })` | 远程关键字搜索 `companyName` |
+| **供应商** | `@/api/lunaerp-elmui/baseinfo/supplier` | `getSupplierPage({ pageNo: 1, pageSize: 30, search: keyword })` | 远程关键字搜索 `companyName` |
+| **资金账户** | `@/api/lunaerp-elmui/finance/payment` | `getFinanceAccountPage({ pageNo: 1, pageSize: 100 })` | 财务收付款账户下拉 |
+| **币种支持** | 本地静态枚举 | `['CNY', 'USD', 'EUR', 'HKD']` | 常用货币标准三位代码 |
+
 ## 错误码段位分配总表
 
 lunaerp 错误码统一格式 `1-030-NNN-xxx`，段位（NNN）按业务模块全局分配、不可重号。新增模块取段前先查本表避让：

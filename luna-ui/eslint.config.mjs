@@ -59,6 +59,24 @@ export default tseslint.config(
     }
   },
 
+  // 纯领域模型架构边界守护：严禁直接依赖 API 层、Axios 或 Router，确保纯 Node 单测环境无污染
+  {
+    files: ['src/views/**/model/**/*.{ts,js,mts,cts}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/api/**', '**/api/**', '@/config/**', '@/router/**'],
+              message: '纯领域模型（model/*.ts）严禁直接依赖 API 层、Axios 或 Router，确保纯 Node 单测环境无污染'
+            }
+          ]
+        }
+      ]
+    }
+  },
+
   // Main rules config
   {
     languageOptions: {

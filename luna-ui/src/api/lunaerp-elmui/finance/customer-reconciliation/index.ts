@@ -1,7 +1,4 @@
 import request from '@/config/axios'
-import { CUSTOMER_STATEMENT_ERROR_CODES } from '@/views/lunaerp-elmui/finance/customer-reconciliation/model/customerStatement'
-
-export { CUSTOMER_STATEMENT_ERROR_CODES }
 
 /**
  * 客户对账单状态枚举

@@ -17,7 +17,8 @@ import {
   formatMoney,
   formatSignStatusTag,
   formatStatementStatusTag,
-  parseCustomerStatementError
+  parseCustomerStatementError,
+  CUSTOMER_STATEMENT_ERROR_CODES
 } from '../model/customerStatement'
 import * as CustomerStatementApi from '@/api/lunaerp-elmui/finance/customer-reconciliation'
 import request from '@/config/axios'
@@ -138,17 +139,17 @@ describe('Customer Statement Domain Model & Pure Functions (Node Test)', () => {
     it('parseCustomerStatementError should map code to message', () => {
       expect(
         parseCustomerStatementError(
-          CustomerStatementApi.CUSTOMER_STATEMENT_ERROR_CODES.STATUS_NOT_DRAFT
+          CUSTOMER_STATEMENT_ERROR_CODES.STATUS_NOT_DRAFT
         )
       ).toContain('草稿（DRAFT）')
       expect(
         parseCustomerStatementError(
-          CustomerStatementApi.CUSTOMER_STATEMENT_ERROR_CODES.CURRENCY_MIXED
+          CUSTOMER_STATEMENT_ERROR_CODES.CURRENCY_MIXED
         )
       ).toContain('多币种')
       expect(
         parseCustomerStatementError(
-          CustomerStatementApi.CUSTOMER_STATEMENT_ERROR_CODES.ENTRY_OCCUPIED
+          CUSTOMER_STATEMENT_ERROR_CODES.ENTRY_OCCUPIED
         )
       ).toContain('占用')
       expect(parseCustomerStatementError(999999)).toBe('对账单操作失败，请重试')
