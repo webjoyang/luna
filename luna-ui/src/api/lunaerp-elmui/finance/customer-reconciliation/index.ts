@@ -347,3 +347,86 @@ export const getCustomerStatementPrintData = (id: number) => {
     params: { id }
   })
 }
+
+/**
+ * 客户账龄汇总 Request VO
+ */
+export interface CustomerAgingSummaryReqVO {
+  agingDate?: string
+  customerIds?: number[]
+  salesmanId?: number
+}
+
+/**
+ * 客户账龄汇总一行 Response VO
+ */
+export interface CustomerAgingSummaryRespVO {
+  customerId: number
+  customerName: string
+  creditDays?: number
+  salespersonUserId?: number
+  salespersonName?: string
+  currency?: string
+  totalArBalance: number
+  bucket0To30: number
+  bucket31To60: number
+  bucket61To90: number
+  bucket91To180: number
+  bucket181Plus: number
+  advanceBalance: number
+  overdueAmount: number
+  agingDate?: string
+}
+
+/**
+ * 客户账龄下钻明细 Request VO
+ */
+export interface CustomerAgingDetailReqVO {
+  customerId: number
+  agingDate?: string
+}
+
+/**
+ * 客户未核销明细分录下钻 Response VO
+ */
+export interface CustomerAgingDetailRespVO {
+  ledgerEntryId: number
+  bizDate: string
+  refType?: string
+  refId?: number
+  refItemId?: number
+  refNo?: string
+  contractNo?: string
+  productName?: string
+  currency?: string
+  originalAmount: number
+  writtenOffAmount: number
+  remainingAmount: number
+  agingDays: number
+  bucket: string
+  creditDays?: number
+  dueDate?: string
+  isOverdue: boolean
+  overdueDays: number
+}
+
+/**
+ * 获得客户账龄汇总列表（按客户一行）
+ */
+export const getCustomerAgingSummary = (params?: CustomerAgingSummaryReqVO) => {
+  return request.get<CustomerAgingSummaryRespVO[]>({
+    url: '/lunaerp/finance/customerrecon/aging/summary',
+    params
+  })
+}
+
+/**
+ * 获得客户未核销明细分录（下钻）
+ */
+export const getCustomerAgingDetail = (params: CustomerAgingDetailReqVO) => {
+  return request.get<CustomerAgingDetailRespVO[]>({
+    url: '/lunaerp/finance/customerrecon/aging/detail',
+    params
+  })
+}
+
