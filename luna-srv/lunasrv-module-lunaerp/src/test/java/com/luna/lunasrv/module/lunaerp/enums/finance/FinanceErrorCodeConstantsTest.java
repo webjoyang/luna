@@ -90,6 +90,24 @@ public class FinanceErrorCodeConstantsTest {
         assertEquals(1_030_020_103, FinanceErrorCodeConstants.ACCOUNT_HAS_ENTRIES_DELETE_FORBIDDEN.getCode());
         assertEquals(1_030_020_104, FinanceErrorCodeConstants.ACCOUNT_OPENING_BALANCE_IMMUTABLE.getCode());
 
+        assertEquals(1_030_020_105, FinanceErrorCodeConstants.ACCOUNT_NO_REQUIRED.getCode());
+        assertEquals("该类型账户必须填写账号/标识", FinanceErrorCodeConstants.ACCOUNT_NO_REQUIRED.getMsg());
+
+        assertEquals(1_030_020_106, FinanceErrorCodeConstants.ACCOUNT_CURRENCY_MISMATCH.getCode());
+        assertEquals("账户币种不一致，跨币种操作不支持", FinanceErrorCodeConstants.ACCOUNT_CURRENCY_MISMATCH.getMsg());
+
+        assertEquals(1_030_020_107, FinanceErrorCodeConstants.TRANSFER_ACCOUNT_SAME.getCode());
+        assertEquals("转出转入账户不能相同", FinanceErrorCodeConstants.TRANSFER_ACCOUNT_SAME.getMsg());
+
+        assertEquals(1_030_020_108, FinanceErrorCodeConstants.TRANSFER_NOT_EXISTS.getCode());
+        assertEquals("转账单不存在", FinanceErrorCodeConstants.TRANSFER_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_020_109, FinanceErrorCodeConstants.OTHER_TXN_NOT_EXISTS.getCode());
+        assertEquals("其他收支单不存在", FinanceErrorCodeConstants.OTHER_TXN_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_020_110, FinanceErrorCodeConstants.OTHER_TXN_CATEGORY_DIRECTION_MISMATCH.getCode());
+        assertEquals("收支类别与方向不一致", FinanceErrorCodeConstants.OTHER_TXN_CATEGORY_DIRECTION_MISMATCH.getMsg());
+
         assertEquals(1_030_020_200, FinanceErrorCodeConstants.EXCHANGE_RATE_NOT_FOUND.getCode());
         assertEquals(1_030_020_201, FinanceErrorCodeConstants.EXCHANGE_RATE_NO_DUPLICATE.getCode());
         assertEquals(1_030_020_202, FinanceErrorCodeConstants.EXCHANGE_RATE_BASE_CURRENCY_FORBIDDEN.getCode());
@@ -134,5 +152,77 @@ public class FinanceErrorCodeConstantsTest {
         assertEquals(1_030_026_006, FinanceErrorCodeConstants.INVOICE_OFFICIAL_NO_DUPLICATE.getCode());
         assertEquals(1_030_026_007, FinanceErrorCodeConstants.INVOICE_TAX_RATE_INVALID.getCode());
         assertEquals(1_030_026_008, FinanceErrorCodeConstants.INVOICE_NO_EXHAUSTED.getCode());
+    }
+
+    @Test
+    @DisplayName("验证费用报销错误码 1-030-024-000 ~ 007")
+    void testExpenseErrorCodes() {
+        assertEquals(1_030_024_000, FinanceErrorCodeConstants.EXPENSE_NOT_EXISTS.getCode());
+        assertEquals("报销单不存在", FinanceErrorCodeConstants.EXPENSE_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_024_001, FinanceErrorCodeConstants.EXPENSE_STATUS_NOT_ALLOWED.getCode());
+        assertEquals("报销单当前状态不允许该操作", FinanceErrorCodeConstants.EXPENSE_STATUS_NOT_ALLOWED.getMsg());
+
+        assertEquals(1_030_024_002, FinanceErrorCodeConstants.EXPENSE_ITEM_REQUIRED.getCode());
+        assertEquals("报销明细行至少需要一行", FinanceErrorCodeConstants.EXPENSE_ITEM_REQUIRED.getMsg());
+
+        assertEquals(1_030_024_003, FinanceErrorCodeConstants.EXPENSE_ACCOUNT_INVALID.getCode());
+        assertEquals("付款账户不存在或已停用", FinanceErrorCodeConstants.EXPENSE_ACCOUNT_INVALID.getMsg());
+
+        assertEquals(1_030_024_004, FinanceErrorCodeConstants.EXPENSE_AMOUNT_INVALID.getCode());
+        assertEquals("报销金额必须大于0", FinanceErrorCodeConstants.EXPENSE_AMOUNT_INVALID.getMsg());
+
+        assertEquals(1_030_024_005, FinanceErrorCodeConstants.EXPENSE_ATTACHMENT_LIMIT.getCode());
+        assertEquals("报销附件最多上传10个", FinanceErrorCodeConstants.EXPENSE_ATTACHMENT_LIMIT.getMsg());
+
+        assertEquals(1_030_024_006, FinanceErrorCodeConstants.EXPENSE_USER_NOT_EXISTS.getCode());
+        assertEquals("报销人不存在", FinanceErrorCodeConstants.EXPENSE_USER_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_024_007, FinanceErrorCodeConstants.EXPENSE_OCCUR_DATE_INVALID.getCode());
+        assertEquals("费用发生日期不合法", FinanceErrorCodeConstants.EXPENSE_OCCUR_DATE_INVALID.getMsg());
+    }
+
+    @Test
+    @DisplayName("验证工资核算错误码 1-030-025-000 ~ 012")
+    void testPayrollErrorCodes() {
+        assertEquals(1_030_025_000, FinanceErrorCodeConstants.PAYROLL_NOT_EXISTS.getCode());
+        assertEquals("工资单不存在", FinanceErrorCodeConstants.PAYROLL_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_025_001, FinanceErrorCodeConstants.PAYROLL_STATUS_NOT_ALLOWED.getCode());
+        assertEquals("工资单当前状态不允许该操作", FinanceErrorCodeConstants.PAYROLL_STATUS_NOT_ALLOWED.getMsg());
+
+        assertEquals(1_030_025_002, FinanceErrorCodeConstants.PAYROLL_PERIOD_DUPLICATE.getCode());
+        assertEquals("同期间有效工资单已存在", FinanceErrorCodeConstants.PAYROLL_PERIOD_DUPLICATE.getMsg());
+
+        assertEquals(1_030_025_003, FinanceErrorCodeConstants.PAYROLL_EMPLOYEE_DUPLICATE.getCode());
+        assertEquals("工资单中员工不能重复", FinanceErrorCodeConstants.PAYROLL_EMPLOYEE_DUPLICATE.getMsg());
+
+        assertEquals(1_030_025_004, FinanceErrorCodeConstants.PAYROLL_LINE_AMOUNT_INVALID.getCode());
+        assertEquals("工资款项金额必须大于0", FinanceErrorCodeConstants.PAYROLL_LINE_AMOUNT_INVALID.getMsg());
+
+        assertEquals(1_030_025_005, FinanceErrorCodeConstants.PAYROLL_DEFECT_ALREADY_REFERENCED.getCode());
+        assertEquals("次品记录【{}】已被工资单【{}】引用或已失效", FinanceErrorCodeConstants.PAYROLL_DEFECT_ALREADY_REFERENCED.getMsg());
+        assertTrue(FinanceErrorCodeConstants.PAYROLL_DEFECT_ALREADY_REFERENCED.getMsg().contains("【{}】"));
+
+        assertEquals(1_030_025_006, FinanceErrorCodeConstants.PAYROLL_HAS_PAYMENT_NO_CANCEL.getCode());
+        assertEquals("工资单已存在发放记录，禁止作废", FinanceErrorCodeConstants.PAYROLL_HAS_PAYMENT_NO_CANCEL.getMsg());
+
+        assertEquals(1_030_025_007, FinanceErrorCodeConstants.PAYROLL_PAYMENT_AMOUNT_EXCEED.getCode());
+        assertEquals("本次发放金额超出剩余应发金额", FinanceErrorCodeConstants.PAYROLL_PAYMENT_AMOUNT_EXCEED.getMsg());
+
+        assertEquals(1_030_025_008, FinanceErrorCodeConstants.PAYROLL_PAYMENT_NOT_EXISTS.getCode());
+        assertEquals("工资发放批次不存在", FinanceErrorCodeConstants.PAYROLL_PAYMENT_NOT_EXISTS.getMsg());
+
+        assertEquals(1_030_025_009, FinanceErrorCodeConstants.PAYROLL_EMPTY.getCode());
+        assertEquals("工资单员工明细至少需要一人", FinanceErrorCodeConstants.PAYROLL_EMPTY.getMsg());
+
+        assertEquals(1_030_025_010, FinanceErrorCodeConstants.PAYROLL_DEFECT_PRICE_REQUIRED.getCode());
+        assertEquals("次品扣款单价必填且必须大于0", FinanceErrorCodeConstants.PAYROLL_DEFECT_PRICE_REQUIRED.getMsg());
+
+        assertEquals(1_030_025_011, FinanceErrorCodeConstants.PAYROLL_NET_AMOUNT_NEGATIVE.getCode());
+        assertEquals("员工实发工资不能为负数", FinanceErrorCodeConstants.PAYROLL_NET_AMOUNT_NEGATIVE.getMsg());
+
+        assertEquals(1_030_025_012, FinanceErrorCodeConstants.PAYROLL_USER_NOT_EXISTS.getCode());
+        assertEquals("员工不存在", FinanceErrorCodeConstants.PAYROLL_USER_NOT_EXISTS.getMsg());
     }
 }

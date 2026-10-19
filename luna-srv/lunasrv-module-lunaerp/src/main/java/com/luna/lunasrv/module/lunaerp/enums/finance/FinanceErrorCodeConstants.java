@@ -22,6 +22,13 @@ public interface FinanceErrorCodeConstants {
     ErrorCode ACCOUNT_NAME_DUPLICATE = new ErrorCode(1_030_020_102, "资金账户名称已存在");
     ErrorCode ACCOUNT_HAS_ENTRIES_DELETE_FORBIDDEN = new ErrorCode(1_030_020_103, "资金账户存在分录引用，禁止删除");
     ErrorCode ACCOUNT_OPENING_BALANCE_IMMUTABLE = new ErrorCode(1_030_020_104, "资金账户期初余额仅创建可录入，禁止修改");
+    // 105~110 资金账户增量与转账/其他收支
+    ErrorCode ACCOUNT_NO_REQUIRED = new ErrorCode(1_030_020_105, "该类型账户必须填写账号/标识");
+    ErrorCode ACCOUNT_CURRENCY_MISMATCH = new ErrorCode(1_030_020_106, "账户币种不一致，跨币种操作不支持");
+    ErrorCode TRANSFER_ACCOUNT_SAME = new ErrorCode(1_030_020_107, "转出转入账户不能相同");
+    ErrorCode TRANSFER_NOT_EXISTS = new ErrorCode(1_030_020_108, "转账单不存在");
+    ErrorCode OTHER_TXN_NOT_EXISTS = new ErrorCode(1_030_020_109, "其他收支单不存在");
+    ErrorCode OTHER_TXN_CATEGORY_DIRECTION_MISMATCH = new ErrorCode(1_030_020_110, "收支类别与方向不一致");
     // 200~202 汇率
     ErrorCode EXCHANGE_RATE_NOT_FOUND = new ErrorCode(1_030_020_200, "未找到生效汇率");
     ErrorCode EXCHANGE_RATE_NO_DUPLICATE = new ErrorCode(1_030_020_201, "同币种同生效日汇率已存在");
@@ -81,4 +88,29 @@ public interface FinanceErrorCodeConstants {
     ErrorCode INVOICE_OFFICIAL_NO_DUPLICATE = new ErrorCode(1_030_026_006, "发票号码已存在");
     ErrorCode INVOICE_TAX_RATE_INVALID = new ErrorCode(1_030_026_007, "开票税率不合法");
     ErrorCode INVOICE_NO_EXHAUSTED = new ErrorCode(1_030_026_008, "发票申请单号生成重试耗尽");
+
+    // ========== 报销 1-030-024-000 ~ 099 ==========
+    ErrorCode EXPENSE_NOT_EXISTS = new ErrorCode(1_030_024_000, "报销单不存在");
+    ErrorCode EXPENSE_STATUS_NOT_ALLOWED = new ErrorCode(1_030_024_001, "报销单当前状态不允许该操作");
+    ErrorCode EXPENSE_ITEM_REQUIRED = new ErrorCode(1_030_024_002, "报销明细行至少需要一行");
+    ErrorCode EXPENSE_ACCOUNT_INVALID = new ErrorCode(1_030_024_003, "付款账户不存在或已停用");
+    ErrorCode EXPENSE_AMOUNT_INVALID = new ErrorCode(1_030_024_004, "报销金额必须大于0");
+    ErrorCode EXPENSE_ATTACHMENT_LIMIT = new ErrorCode(1_030_024_005, "报销附件最多上传10个");
+    ErrorCode EXPENSE_USER_NOT_EXISTS = new ErrorCode(1_030_024_006, "报销人不存在");
+    ErrorCode EXPENSE_OCCUR_DATE_INVALID = new ErrorCode(1_030_024_007, "费用发生日期不合法");
+
+    // ========== 工资 1-030-025-000 ~ 099 ==========
+    ErrorCode PAYROLL_NOT_EXISTS = new ErrorCode(1_030_025_000, "工资单不存在");
+    ErrorCode PAYROLL_STATUS_NOT_ALLOWED = new ErrorCode(1_030_025_001, "工资单当前状态不允许该操作");
+    ErrorCode PAYROLL_PERIOD_DUPLICATE = new ErrorCode(1_030_025_002, "同期间有效工资单已存在");
+    ErrorCode PAYROLL_EMPLOYEE_DUPLICATE = new ErrorCode(1_030_025_003, "工资单中员工不能重复");
+    ErrorCode PAYROLL_LINE_AMOUNT_INVALID = new ErrorCode(1_030_025_004, "工资款项金额必须大于0");
+    ErrorCode PAYROLL_DEFECT_ALREADY_REFERENCED = new ErrorCode(1_030_025_005, "次品记录【{}】已被工资单【{}】引用或已失效");
+    ErrorCode PAYROLL_HAS_PAYMENT_NO_CANCEL = new ErrorCode(1_030_025_006, "工资单已存在发放记录，禁止作废");
+    ErrorCode PAYROLL_PAYMENT_AMOUNT_EXCEED = new ErrorCode(1_030_025_007, "本次发放金额超出剩余应发金额");
+    ErrorCode PAYROLL_PAYMENT_NOT_EXISTS = new ErrorCode(1_030_025_008, "工资发放批次不存在");
+    ErrorCode PAYROLL_EMPTY = new ErrorCode(1_030_025_009, "工资单员工明细至少需要一人");
+    ErrorCode PAYROLL_DEFECT_PRICE_REQUIRED = new ErrorCode(1_030_025_010, "次品扣款单价必填且必须大于0");
+    ErrorCode PAYROLL_NET_AMOUNT_NEGATIVE = new ErrorCode(1_030_025_011, "员工实发工资不能为负数");
+    ErrorCode PAYROLL_USER_NOT_EXISTS = new ErrorCode(1_030_025_012, "员工不存在");
 }

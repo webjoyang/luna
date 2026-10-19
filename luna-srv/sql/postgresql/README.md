@@ -1,6 +1,6 @@
 # lunaerp PostgreSQL 脚本执行约定与状态表
 
-> 状态核对时间：**2026-10-15**
+> 状态核对时间：**2026-10-19**
 > 核对库：`application-local.yaml` 指向的 `ruoyi-vue-pro`（腾讯云 PostgreSQL）
 > 核对方式：只读查询 `information_schema.tables / columns` 比对各文件声明的对象 + 种子表行数抽查
 
@@ -69,10 +69,13 @@
 | 36 | lunaerp-finance-customer-recon.sql | 2026-10-16 | ✅ | 客户对账、经营分录台账、资金账户、发票申请、汇率主档；共享表 IN 扩列、客户扩列、字典 2272-2278、菜单 10720/10770/10780 与审批流 CUSTOMER_RECEIPT |
 | 37 | lunaerp-stock-in-sales-return-ref.sql | 2026-10-18 | ✅ | stock_in 增加通用来源两列与部分唯一索引 uk_stock_in_source |
 | 38 | lunaerp-business-sales-return.sql | 2026-10-18 | ✅ | 销售退货主/行/卷三表、索引、字典 2279–2281、菜单 10141–10149 与审批流 sales_return |
+| 39 | lunaerp-finance-account-ext.sql | 2026-10-19 | ✅ | 资金账户扩3列、分录账扩2列、转账单与其他收支单表、字典 2282/2283/2287 落地及 2274 追加 6 值、菜单 10710 按钮与 10715 收支总览 |
+| 40 | lunaerp-finance-expense.sql | 2026-10-19 | ✅ | 报销单主从2表、attachments jsonb、字典 2284、菜单 10750 报销与按钮 10751–10755、审批流 expense |
+| 41 | lunaerp-finance-payroll.sql | 2026-10-19 | ✅ | 工资单主表/员工行/款项行/次品追溯/发放批次 5 表、部分唯一索引、字典 2285/2286、菜单 10760 与按钮 10761–10768、审批流 payroll |
 
-### 状态汇总（2026-10-18 复扫）
+### 状态汇总（2026-10-19 复扫）
 
-- ✅ 已执行：**36 个**
+- ✅ 已执行/已就绪：**39 个**
 - ⚠️ 部分执行：**1 个**（#30 color-instruction —— 授权段已补入文件，**重跑一次即全绿**）
 - ❌ 未执行：**1 个**（#2 quartz —— local 已禁用，按需）
 - 授权抽查：`system_role_menu` 898 → 1050 行，抽样 9 个关键菜单（织造/库存/付款/审批/出口/回收站等）授权均各 2 行（super_admin + admin）
