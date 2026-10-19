@@ -29,6 +29,8 @@ public interface FinanceErrorCodeConstants {
     ErrorCode TRANSFER_NOT_EXISTS = new ErrorCode(1_030_020_108, "转账单不存在");
     ErrorCode OTHER_TXN_NOT_EXISTS = new ErrorCode(1_030_020_109, "其他收支单不存在");
     ErrorCode OTHER_TXN_CATEGORY_DIRECTION_MISMATCH = new ErrorCode(1_030_020_110, "收支类别与方向不一致");
+    ErrorCode TRANSFER_NO_EXHAUSTED = new ErrorCode(1_030_020_111, "转账单号生成重试耗尽");
+    ErrorCode OTHER_TXN_NO_EXHAUSTED = new ErrorCode(1_030_020_112, "其他收支单号生成重试耗尽");
     // 200~202 汇率
     ErrorCode EXCHANGE_RATE_NOT_FOUND = new ErrorCode(1_030_020_200, "未找到生效汇率");
     ErrorCode EXCHANGE_RATE_NO_DUPLICATE = new ErrorCode(1_030_020_201, "同币种同生效日汇率已存在");

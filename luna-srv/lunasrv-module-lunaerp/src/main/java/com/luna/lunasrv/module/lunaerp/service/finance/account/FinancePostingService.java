@@ -15,6 +15,10 @@ import jakarta.validation.constraints.NotNull;
  */
 public interface FinancePostingService {
 
+    String DIRECTION_DEBIT = "DEBIT";
+    String DIRECTION_CREDIT = "CREDIT";
+    String CURRENCY_RMB = "RMB";
+
     /**
      * 资金过账统一入口（条件更新 current_balance + INSERT 经营分录，同事务）
      *
