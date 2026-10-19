@@ -140,4 +140,73 @@ public class SalesReturnControllerTest {
         assertTrue(printAuth.value().contains("lunaerp:business:sales-return:print"));
     }
 
+    @Test
+    @DisplayName("所有端点权限注解全覆盖：增删改查、审批、到货、过账、作废、打印")
+    void testAllEndpointsPermissionsComplete() throws NoSuchMethodException {
+        // 1. candidates
+        Method candidatesMethod = SalesReturnController.class.getMethod("getShipmentCandidates", Long.class, String.class);
+        PreAuthorize candidatesAuth = candidatesMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(candidatesAuth);
+        assertTrue(candidatesAuth.value().contains("lunaerp:business:sales-return:query"));
+        assertTrue(candidatesAuth.value().contains("lunaerp:business:sales-return:create"));
+
+        // 2. detail
+        Method detailMethod = SalesReturnController.class.getMethod("getShipmentDetail", Long.class);
+        PreAuthorize detailAuth = detailMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(detailAuth);
+        assertTrue(detailAuth.value().contains("lunaerp:business:sales-return:query"));
+        assertTrue(detailAuth.value().contains("lunaerp:business:sales-return:create"));
+
+        // 3. create
+        Method createMethod = SalesReturnController.class.getMethod("createSalesReturn",
+                com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.SalesReturnCreateReqVO.class);
+        PreAuthorize createAuth = createMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(createAuth);
+        assertTrue(createAuth.value().contains("lunaerp:business:sales-return:create"));
+
+        // 4. update
+        Method updateMethod = SalesReturnController.class.getMethod("updateSalesReturn",
+                com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.SalesReturnUpdateReqVO.class);
+        PreAuthorize updateAuth = updateMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(updateAuth);
+        assertTrue(updateAuth.value().contains("lunaerp:business:sales-return:update"));
+
+        // 5. delete
+        Method deleteMethod = SalesReturnController.class.getMethod("deleteSalesReturn", Long.class);
+        PreAuthorize deleteAuth = deleteMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(deleteAuth);
+        assertTrue(deleteAuth.value().contains("lunaerp:business:sales-return:delete"));
+
+        // 6. get
+        Method getMethod = SalesReturnController.class.getMethod("getSalesReturn", Long.class);
+        PreAuthorize getAuth = getMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(getAuth);
+        assertTrue(getAuth.value().contains("lunaerp:business:sales-return:query"));
+
+        // 7. page
+        Method pageMethod = SalesReturnController.class.getMethod("getSalesReturnPage",
+                com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.SalesReturnPageReqVO.class);
+        PreAuthorize pageAuth = pageMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(pageAuth);
+        assertTrue(pageAuth.value().contains("lunaerp:business:sales-return:query"));
+    }
+
+    @Test
+    @DisplayName("纵向越权防御：断言 receive 与 post 等关键写操作必须受到 PreAuthorize 保护，杜绝无权调用")
+    void testVerticalPrivilegeEscalationGuards() throws NoSuchMethodException {
+        // 无 :receive 权限的用户不能调用 receive 接口
+        Method receiveMethod = SalesReturnController.class.getMethod("receiveSalesReturn",
+                com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.SalesReturnReceiveReqVO.class);
+        PreAuthorize receiveAuth = receiveMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(receiveAuth, "receiveSalesReturn 必须标注 @PreAuthorize 防纵向越权");
+        assertEquals("@ss.hasPermission('lunaerp:business:sales-return:receive')", receiveAuth.value());
+
+        // 无 :post 权限的用户不能调用 post 接口
+        Method postMethod = SalesReturnController.class.getMethod("postSalesReturn", Long.class);
+        PreAuthorize postAuth = postMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(postAuth, "postSalesReturn 必须标注 @PreAuthorize 防纵向越权");
+        assertEquals("@ss.hasPermission('lunaerp:business:sales-return:post')", postAuth.value());
+    }
+
 }
+

@@ -252,4 +252,40 @@ class SalesReturnApprovalHandlerTest {
         assertEquals(BigDecimal.ZERO, createdItem.getAmount());
     }
 
+    @Test
+    @DisplayName("onApproved：当入库单生成服务抛出异常时，直接向外抛出以触发审批事务回滚")
+    void testOnApproved_StockInServiceThrows_PropagatesExceptionForTransactionRollback() {
+        Long returnId = 30L;
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(returnId);
+        salesReturn.setReturnNo("RT-20261018-003");
+        salesReturn.setStatus("DRAFT");
+        salesReturn.setApprovalStatus("APPROVING");
+        salesReturn.setWarehouseId(100L);
+
+        when(salesReturnMapper.selectOneForUpdate(any(), eq(returnId))).thenReturn(salesReturn);
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        // 模拟 stockInService 抛出运行时异常
+        when(stockInService.createStockIn(any(StockInSaveReqVO.class)))
+                .thenThrow(new RuntimeException("底层库存服务不可用"));
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> handler.onApproved(returnId));
+        assertEquals("底层库存服务不可用", ex.getMessage());
+
+        // 验证退货单主表状态绝不会被推进为 APPROVED
+        verify(salesReturnMapper, never()).updateById(any(SalesReturnDO.class));
+    }
+
+
+    @Test
+    @DisplayName("onApproved：bizId 为 null 时安全退出，不发起任何数据库或入库单调用")
+    void testOnApproved_NullBizId_SafeReturn() {
+        assertDoesNotThrow(() -> handler.onApproved(null));
+        verifyNoInteractions(salesReturnMapper);
+        verifyNoInteractions(stockInService);
+    }
+
 }
+

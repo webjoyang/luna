@@ -95,6 +95,10 @@ public class SalesReturnApprovalBizHandlerTest {
 
         handler.updateApprovalStatus(10L, "APPROVING");
         verify(salesReturnMapper, times(2)).update(any(), any(LambdaUpdateWrapper.class));
+
+        handler.updateApprovalStatus(10L, "REJECTED");
+        verify(salesReturnMapper, times(3)).update(any(), any(LambdaUpdateWrapper.class));
     }
+
 
 }

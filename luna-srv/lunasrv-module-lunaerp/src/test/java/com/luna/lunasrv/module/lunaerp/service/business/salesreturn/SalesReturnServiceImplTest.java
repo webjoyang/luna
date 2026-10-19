@@ -236,7 +236,13 @@ public class SalesReturnServiceImplTest {
         when(shipmentMapper.selectById(100L)).thenReturn(draftShipment);
         ServiceException ex2 = assertThrows(ServiceException.class, () -> salesReturnService.getShipmentDetail(100L));
         assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_SHIPMENT_NOT_COMPLETED.getCode(), ex2.getCode());
+
+        // 场景 3: 他租户发货单（MyBatis-Plus 租户隔离查询返回 null）报 003
+        when(shipmentMapper.selectById(8888L)).thenReturn(null);
+        ServiceException ex3 = assertThrows(ServiceException.class, () -> salesReturnService.getShipmentDetail(8888L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_SHIPMENT_NOT_COMPLETED.getCode(), ex3.getCode());
     }
+
 
     @Test
     @DisplayName("取发货详情：正确返回头单快照、明细行带可退量及卷清单")
@@ -374,6 +380,143 @@ public class SalesReturnServiceImplTest {
         ServiceException ex2 = assertThrows(ServiceException.class, () -> salesReturnService.createSalesReturn(req1));
         assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_ROLL_INVALID.getCode(), ex2.getCode());
     }
+
+    @Test
+    @DisplayName("创建退货草稿：他租户发货单（查询返回 null）报 003")
+    void testCreateSalesReturn_otherTenantShipment_throws003() {
+        SalesReturnCreateReqVO req = new SalesReturnCreateReqVO();
+        req.setShipmentId(8888L);
+        when(shipmentMapper.selectById(8888L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.createSalesReturn(req));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_SHIPMENT_NOT_COMPLETED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("创建退货草稿：卷血缘不属于该发货明细行（shipmentRollId 属于其他行）报 007")
+    void testCreateSalesReturn_rollLineageMismatch_throws007() {
+        Long shipmentId = 100L;
+        ShipmentDO shipment = mockShipment(shipmentId, "COMPLETED");
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(shipment);
+        when(warehouseMapper.selectById(301L)).thenReturn(mockWarehouse(301L, "成品仓"));
+
+        ShipmentItemDO itemReal = mockShipmentItem(201L, shipmentId, new BigDecimal("100.00"), new BigDecimal("25.00"));
+        when(shipmentItemMapper.selectList(any())).thenReturn(List.of(itemReal));
+
+        // 模拟发货卷 901L 实际属于发货行 202L，而不是 201L
+        ShipmentRollDO sRoll = mockShipmentRoll(901L, shipmentId, 202L, "ROLL-901", new BigDecimal("10.00"), null);
+        when(shipmentRollMapper.selectList(any())).thenReturn(List.of(sRoll));
+
+        SalesReturnRollSaveReqVO rollReq = new SalesReturnRollSaveReqVO(null, 901L, "ROLL-901", new BigDecimal("10.00"), null, null);
+        SalesReturnItemSaveReqVO itemReq = new SalesReturnItemSaveReqVO();
+        itemReq.setShipmentItemId(201L);
+        itemReq.setReturnQty(new BigDecimal("10.00"));
+        itemReq.setReturnReason("QUALITY");
+        itemReq.setRolls(List.of(rollReq));
+
+        SalesReturnCreateReqVO req = new SalesReturnCreateReqVO();
+        req.setShipmentId(shipmentId);
+        req.setWarehouseId(301L);
+        req.setItems(List.of(itemReq));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.createSalesReturn(req));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_ROLL_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("创建退货草稿：金额服务端权威重算覆盖前端入参，行金额与整单金额均以服务端为准")
+    void testCreateSalesReturn_serverAuthoritativeRecalculation_overwritesFrontEndAmount() {
+        Long shipmentId = 100L;
+        ShipmentDO shipment = mockShipment(shipmentId, "COMPLETED");
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(shipment);
+        when(warehouseMapper.selectById(301L)).thenReturn(mockWarehouse(301L, "成品仓"));
+
+        // 发货明细原单价 25.00
+        ShipmentItemDO itemReal = mockShipmentItem(201L, shipmentId, new BigDecimal("100.00"), new BigDecimal("25.00"));
+        when(shipmentItemMapper.selectList(any())).thenReturn(List.of(itemReal));
+
+        SalesReturnRollSaveReqVO rollReq = new SalesReturnRollSaveReqVO(null, null, "ROLL-1", new BigDecimal("10.00"), null, null);
+        SalesReturnItemSaveReqVO itemReq = new SalesReturnItemSaveReqVO();
+        itemReq.setShipmentItemId(201L);
+        itemReq.setReturnQty(new BigDecimal("10.00"));
+        itemReq.setUnitPrice(new BigDecimal("20.00")); // 折让单价 20.00
+        itemReq.setReturnReason("QUALITY");
+        itemReq.setRolls(List.of(rollReq));
+
+        SalesReturnCreateReqVO req = new SalesReturnCreateReqVO();
+        req.setShipmentId(shipmentId);
+        req.setWarehouseId(301L);
+        req.setReturnDate(LocalDate.of(2026, 10, 18));
+        req.setItems(List.of(itemReq));
+
+        when(salesReturnMapper.selectListByReturnNoPrefixIncludingDeleted(eq(TENANT_ID), anyString()))
+                .thenReturn(Collections.emptyList());
+        when(salesReturnMapper.selectByReturnNoIncludingDeleted(eq(TENANT_ID), anyString()))
+                .thenReturn(null);
+
+        doAnswer(inv -> {
+            SalesReturnDO created = inv.getArgument(0);
+            created.setId(999L);
+            return 1;
+        }).when(salesReturnMapper).insert(any(SalesReturnDO.class));
+
+        salesReturnService.createSalesReturn(req);
+
+        // 验证主表总金额服务端权威重算为 10.00 * 20.00 = 200.00
+        ArgumentCaptor<SalesReturnDO> returnCaptor = ArgumentCaptor.forClass(SalesReturnDO.class);
+        verify(salesReturnMapper).insert(returnCaptor.capture());
+        assertEquals(new BigDecimal("200.00"), returnCaptor.getValue().getTotalAmount());
+
+        // 验证行表金额服务端权威重算为 200.00
+        ArgumentCaptor<SalesReturnItemDO> itemCaptor = ArgumentCaptor.forClass(SalesReturnItemDO.class);
+        verify(salesReturnItemMapper).insert(itemCaptor.capture());
+        assertEquals(new BigDecimal("200.00"), itemCaptor.getValue().getAmount());
+    }
+
+    @Test
+    @DisplayName("创建退货草稿：行数量与卷重量总和存在差异时不强行拦截（软齐套先例，行费卷量差异不拦截）")
+    void testCreateSalesReturn_rollQtyDiffersFromItemQty_doesNotBlock() {
+        Long shipmentId = 100L;
+        ShipmentDO shipment = mockShipment(shipmentId, "COMPLETED");
+        when(shipmentMapper.selectById(shipmentId)).thenReturn(shipment);
+        when(warehouseMapper.selectById(301L)).thenReturn(mockWarehouse(301L, "成品仓"));
+
+        ShipmentItemDO itemReal = mockShipmentItem(201L, shipmentId, new BigDecimal("100.00"), new BigDecimal("25.00"));
+        when(shipmentItemMapper.selectList(any())).thenReturn(List.of(itemReal));
+
+        // 行申请退 50 KG，但卷实称称重合计 48.50 KG（差异 1.5 KG）
+        SalesReturnRollSaveReqVO rollReq = new SalesReturnRollSaveReqVO(null, null, "ROLL-1", new BigDecimal("48.50"), null, null);
+        SalesReturnItemSaveReqVO itemReq = new SalesReturnItemSaveReqVO();
+        itemReq.setShipmentItemId(201L);
+        itemReq.setReturnQty(new BigDecimal("50.00"));
+        itemReq.setUnitPrice(new BigDecimal("25.00"));
+        itemReq.setReturnReason("QUALITY");
+        itemReq.setRolls(List.of(rollReq));
+
+        SalesReturnCreateReqVO req = new SalesReturnCreateReqVO();
+        req.setShipmentId(shipmentId);
+        req.setWarehouseId(301L);
+        req.setReturnDate(LocalDate.of(2026, 10, 18));
+        req.setItems(List.of(itemReq));
+
+        when(salesReturnMapper.selectListByReturnNoPrefixIncludingDeleted(eq(TENANT_ID), anyString()))
+                .thenReturn(Collections.emptyList());
+        when(salesReturnMapper.selectByReturnNoIncludingDeleted(eq(TENANT_ID), anyString()))
+                .thenReturn(null);
+
+        doAnswer(inv -> {
+            SalesReturnDO created = inv.getArgument(0);
+            created.setId(777L);
+            return 1;
+        }).when(salesReturnMapper).insert(any(SalesReturnDO.class));
+
+        // 断言保存成功，不抛出异常
+        assertDoesNotThrow(() -> salesReturnService.createSalesReturn(req));
+        verify(salesReturnMapper).insert(any(SalesReturnDO.class));
+        verify(salesReturnItemMapper).insert(any(SalesReturnItemDO.class));
+        verify(salesReturnRollMapper).insert(any(SalesReturnRollDO.class));
+    }
+
 
     @Test
     @DisplayName("创建退货草稿：单号查重与按天自动取号（RT-YYYYMMDD-001）服务端权威重算成功")
@@ -1605,6 +1748,80 @@ public class SalesReturnServiceImplTest {
         verify(salesReturnMapper).update(isNull(), any());
     }
 
+    @Test
+    @DisplayName("到货质检：米数（M）单位退货行，restock_qty/scrap_qty 及入库单明细均基于 lengthM 正确重算")
+    void receiveSalesReturn_success_meterUnit_restockAndScrapRecalculation() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(20L);
+        salesReturn.setReturnNo("RT-20261019-003");
+        salesReturn.setStatus(SalesReturnStatusEnum.APPROVED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        salesReturn.setStockInId(600L);
+        salesReturn.setWarehouseId(301L);
+        salesReturn.setWarehouseName("柯桥一号仓");
+        when(salesReturnMapper.selectById(20L)).thenReturn(salesReturn);
+
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(600L);
+        stockIn.setInNo("IN-20261019-003");
+        stockIn.setStatus("DRAFT");
+        stockIn.setWarehouseId(301L);
+        stockIn.setInDate(LocalDate.now());
+        when(stockInService.getStockIn(600L)).thenReturn(stockIn);
+
+        // 米数单位退货行：unit = M
+        SalesReturnItemDO itemM = createSalesReturnItem(20L, 201L, 301L, "M", new BigDecimal("100.00"), new BigDecimal("500.00"), "QUALITY");
+        itemM.setProductId(1L);
+        itemM.setVatNo("LOT-02");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.singletonList(itemM));
+
+        // 2 卷：roll1 (60M / 18KG), roll2 (40M / 12KG)
+        SalesReturnRollDO roll1 = createSalesReturnRoll(20L, 201L, null, "R-M-01", new BigDecimal("18.00"), new BigDecimal("60.00"));
+        roll1.setId(2001L);
+        SalesReturnRollDO roll2 = createSalesReturnRoll(20L, 201L, null, "R-M-02", new BigDecimal("12.00"), new BigDecimal("40.00"));
+        roll2.setId(2002L);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Arrays.asList(roll1, roll2));
+
+        WarehouseLocationDO loc = new WarehouseLocationDO();
+        loc.setId(601L);
+        loc.setWarehouseId(301L);
+        loc.setCode("A-01-01");
+        when(warehouseLocationMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(loc));
+
+        when(salesReturnMapper.update(isNull(), any())).thenReturn(1);
+
+        SalesReturnReceiveReqVO reqVO = SalesReturnReceiveReqVO.builder()
+                .id(20L)
+                .rolls(Arrays.asList(
+                        SalesReturnReceiveRollReqVO.builder().id(2001L).qcResult("RESTOCK").locationId(601L).qcRemark("米数合格入库").build(),
+                        SalesReturnReceiveRollReqVO.builder().id(2002L).qcResult("SCRAP").qcRemark("瑕疵严重报废").build()
+                ))
+                .build();
+
+        salesReturnService.receiveSalesReturn(reqVO);
+
+        // 1. 验证基于米数 lengthM 重算 restock_qty=60.00, scrap_qty=40.00（而非重量 18/12）
+        ArgumentCaptor<SalesReturnItemDO> itemCaptor = ArgumentCaptor.forClass(SalesReturnItemDO.class);
+        verify(salesReturnItemMapper).updateById(itemCaptor.capture());
+        SalesReturnItemDO updatedItem = itemCaptor.getValue();
+        assertEquals(new BigDecimal("60.00"), updatedItem.getRestockQty());
+        assertEquals(new BigDecimal("40.00"), updatedItem.getScrapQty());
+
+        // 2. 验证入库明细数量为米数 60.00，单位为 M
+        ArgumentCaptor<StockInSaveReqVO> stockInCaptor = ArgumentCaptor.forClass(StockInSaveReqVO.class);
+        verify(stockInService).updateStockIn(stockInCaptor.capture());
+        StockInSaveReqVO updateReq = stockInCaptor.getValue();
+        assertEquals(1, updateReq.getItems().size());
+        StockInItemSaveReqVO stockInItem = updateReq.getItems().get(0);
+        assertEquals("M", stockInItem.getUnit());
+        assertEquals(new BigDecimal("60.00"), stockInItem.getQuantity());
+        assertEquals(BigDecimal.ZERO, stockInItem.getUnitPrice());
+        assertEquals(BigDecimal.ZERO, stockInItem.getAmount());
+
+        verify(stockInService).auditStockIn(600L);
+    }
+
+
     // ==================== Issue 06: 财务确认过账 + 应收冲减事件 ====================
 
     @Test
@@ -1914,5 +2131,69 @@ public class SalesReturnServiceImplTest {
         assertNotNull(printVO.getPrintTime());
     }
 
+    // ==================== Issue 08: 租户隔离与横向越权守卫 ====================
+
+    @Test
+    @DisplayName("横向越权防御：试图访问或操作他租户单据（查询结果为 null），所有写/读接口均抛出 000 报不存在")
+    void testCrossTenantHorizontalPrivilegeEscalation_allEndpointsThrowNotExists() {
+        Long otherTenantReturnId = 9999L;
+        when(salesReturnMapper.selectById(otherTenantReturnId)).thenReturn(null);
+
+        // 1. 详情查询横向越权
+        ServiceException exGet = assertThrows(ServiceException.class,
+                () -> salesReturnService.getSalesReturn(otherTenantReturnId));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), exGet.getCode());
+
+        // 2. 修改横向越权
+        SalesReturnUpdateReqVO updateReq = new SalesReturnUpdateReqVO();
+        updateReq.setId(otherTenantReturnId);
+        ServiceException exUpdate = assertThrows(ServiceException.class,
+                () -> salesReturnService.updateSalesReturn(updateReq));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), exUpdate.getCode());
+
+        // 3. 删除横向越权
+        ServiceException exDelete = assertThrows(ServiceException.class,
+                () -> salesReturnService.deleteSalesReturn(otherTenantReturnId));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), exDelete.getCode());
+
+        // 4. 提交审批横向越权
+        ServiceException exSubmit = assertThrows(ServiceException.class,
+                () -> salesReturnService.submitSalesReturn(otherTenantReturnId));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), exSubmit.getCode());
+
+        // 5. 撤回审批横向越权
+        ServiceException exWithdraw = assertThrows(ServiceException.class,
+                () -> salesReturnService.withdrawSalesReturn(otherTenantReturnId));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), exWithdraw.getCode());
+
+        // 6. 作废单据横向越权
+        ServiceException exCancel = assertThrows(ServiceException.class,
+                () -> salesReturnService.cancelSalesReturn(otherTenantReturnId, "跨租户作废攻击"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), exCancel.getCode());
+
+        // 7. 到货质检横向越权
+        SalesReturnReceiveReqVO receiveReq = SalesReturnReceiveReqVO.builder().id(otherTenantReturnId).build();
+        ServiceException exReceive = assertThrows(ServiceException.class,
+                () -> salesReturnService.receiveSalesReturn(receiveReq));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), exReceive.getCode());
+
+        // 8. 财务过账横向越权
+        ServiceException exPost = assertThrows(ServiceException.class,
+                () -> salesReturnService.postSalesReturn(otherTenantReturnId));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), exPost.getCode());
+
+        // 9. 打印取数横向越权
+        ServiceException exPrint = assertThrows(ServiceException.class,
+                () -> salesReturnService.getSalesReturnPrintData(otherTenantReturnId));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), exPrint.getCode());
+
+        // 10. 候选列表显式传他租户发货单号横向越权
+        when(shipmentMapper.selectOne(any(SFunction.class), any())).thenReturn(null);
+        ServiceException exCandidate = assertThrows(ServiceException.class,
+                () -> salesReturnService.getShipmentCandidates(null, "SH-OTHER-TENANT"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_SHIPMENT_NOT_COMPLETED.getCode(), exCandidate.getCode());
+    }
+
 }
+
 

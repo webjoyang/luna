@@ -195,4 +195,43 @@ public class SalesReturnLedgerListenerTest {
         verify(ledgerService, never()).recordArReturnReversal(any(), any(), any(), any(), any(), any(), any());
     }
 
+    @Test
+    @DisplayName("onSalesReturnPosted: ledgerService 记账抛出异常时不捕获，向外传播以触发退货过账事务回滚")
+    void testOnSalesReturnPosted_ledgerServiceThrows_propagatesExceptionForTransactionRollback() {
+        SalesReturnPostedItemDTO item = SalesReturnPostedItemDTO.builder()
+                .returnItemId(201L)
+                .shipmentItemId(1001L)
+                .returnQty(new BigDecimal("50.00"))
+                .amount(new BigDecimal("1200.00"))
+                .build();
+
+        SalesReturnPostedEvent event = SalesReturnPostedEvent.builder()
+                .returnId(10L)
+                .returnNo("RT-20261019-001")
+                .shipmentId(88L)
+                .customerId(501L)
+                .currency("USD")
+                .items(Collections.singletonList(item))
+                .build();
+
+        LedgerEntryDO origEntry = new LedgerEntryDO();
+        origEntry.setId(101L);
+        origEntry.setCategory("AR_INC");
+        origEntry.setRefType("SHIPMENT_ITEM");
+        origEntry.setRefId(88L);
+        origEntry.setRefItemId(1001L);
+        origEntry.setExchangeRate(new BigDecimal("7.15000000"));
+
+        when(ledgerService.getEntriesByRef("SHIPMENT_ITEM", 88L))
+                .thenReturn(Collections.singletonList(origEntry));
+
+        // 模拟记账服务发生异常
+        doThrow(new RuntimeException("财务分录表死锁异常"))
+                .when(ledgerService).recordArReturnReversal(any(), any(), any(), any(), any(), any(), any());
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> listener.onSalesReturnPosted(event));
+        assertEquals("财务分录表死锁异常", ex.getMessage());
+    }
+
 }
+

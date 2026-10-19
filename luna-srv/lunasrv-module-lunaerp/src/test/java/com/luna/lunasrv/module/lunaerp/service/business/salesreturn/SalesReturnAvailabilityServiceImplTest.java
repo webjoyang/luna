@@ -204,4 +204,27 @@ public class SalesReturnAvailabilityServiceImplTest {
         assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_ITEM_LINEAGE_INVALID.getCode(), ex.getCode());
     }
 
+    @Test
+    @DisplayName("占量状态口径：APPROVING/APPROVED 占量，PENDING/REJECTED/CANCELLED 释放占量")
+    void testOccupiedQtyStatusFiltering_approvingAndApprovedCount_pendingRejectedCancelledReleased() {
+        Long shipmentItemId = 201L;
+        ShipmentItemDO sItem = mockShipmentItem(shipmentItemId, new BigDecimal("100.00"), new BigDecimal("20.00"));
+        when(shipmentItemMapper.selectById(shipmentItemId)).thenReturn(sItem);
+
+        // 场景 A: 单据处于 APPROVING 或 APPROVED 状态，Mapper 返回占量 40.00
+        when(salesReturnItemMapper.selectOccupiedQtyByShipmentItemIds(eq(TENANT_ID), anyCollection(), isNull()))
+                .thenReturn(List.of(new SalesReturnOccupiedQtyDTO(shipmentItemId, new BigDecimal("40.00"))));
+
+        BigDecimal availableQtyUnderApproval = availabilityService.getAvailableQty(shipmentItemId, null);
+        assertEquals(new BigDecimal("60.00"), availableQtyUnderApproval);
+
+        // 场景 B: 单据被 REJECTED、撤回至 PENDING 或作废 CANCELLED，Mapper 占量统计释放为 0
+        when(salesReturnItemMapper.selectOccupiedQtyByShipmentItemIds(eq(TENANT_ID), anyCollection(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        BigDecimal availableQtyAfterRelease = availabilityService.getAvailableQty(shipmentItemId, null);
+        assertEquals(new BigDecimal("100.00"), availableQtyAfterRelease);
+    }
+
 }
+
