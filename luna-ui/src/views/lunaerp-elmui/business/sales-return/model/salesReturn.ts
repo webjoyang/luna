@@ -56,7 +56,7 @@ export function getSalesReturnActionFlags(
   return {
     canDetail: isCancelled || isApproved || isReceived || isPosted,
     canEdit: isDraft && (isPending || isRejected),
-    canDelete: isDraft && isPending,
+    canDelete: isDraft && (isPending || isRejected),
     canSubmit: isDraft && (isPending || isRejected),
     canWithdraw: isDraft && isApproving,
     canReceive: isApproved,
@@ -202,4 +202,24 @@ export function validateQcDecision(rolls?: QcRollItem[]): {
     }
   }
   return { valid: true }
+}
+
+/**
+ * 格式化金额（千分位，2位小数），安全兼容脱敏星号字符串（如 '****'）与空值
+ *
+ * @param val 金额数值或脱敏字符串
+ * @param currency 可选币种前缀（如 'RMB', 'USD'）
+ */
+export function formatAmount(val?: number | string | null, currency?: string): string {
+  if (val === undefined || val === null || val === '') return '0.00'
+  if (typeof val === 'string' && val.includes('*')) {
+    return currency ? `${currency} ${val}` : val
+  }
+  const num = Number(val)
+  if (isNaN(num)) return typeof val === 'string' ? val : '0.00'
+  const formatted = num.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+  return currency ? `${currency} ${formatted}` : formatted
 }

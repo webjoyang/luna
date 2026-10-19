@@ -18,6 +18,7 @@ import ColorInstructionSheet from '@/views/lunaerp-elmui/production/color-instru
 import { colorInstructionPrintCss } from '@/views/lunaerp-elmui/production/color-instruction/components/print/print-styles'
 import { supplierReconPrintCss } from '@/views/lunaerp-elmui/finance/supplier-recon/components/print/print-styles'
 import { customerStatementPrintCss } from '@/views/lunaerp-elmui/finance/customer-reconciliation/components/print/print-styles'
+import { salesReturnPrintCss } from '@/views/lunaerp-elmui/business/sales-return/components/print/print-styles'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -163,6 +164,23 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
       ),
     customCss: customerStatementPrintCss,
     getDocNo: (data: any) => data?.statementNo || ''
+  },
+  {
+    bizType: 'SALES_RETURN',
+    templateCode: 'SALES_RETURN_DOC',
+    name: '销售退货单',
+    paper: 'A4',
+    permission: 'lunaerp:business:sales-return:print',
+    component: defineAsyncComponent(
+      () =>
+        import('@/views/lunaerp-elmui/business/sales-return/components/print/SalesReturnDoc.vue')
+    ),
+    fetchApi: (bizId: string | number) =>
+      import('@/api/lunaerp-elmui/business/sales-return').then((m) =>
+        m.getSalesReturnPrintData(Number(bizId))
+      ),
+    customCss: salesReturnPrintCss,
+    getDocNo: (data: any) => data?.returnNo || ''
   }
 ]
 

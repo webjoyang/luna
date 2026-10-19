@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
@@ -49,5 +50,21 @@ public interface SalesReturnItemMapper extends BaseMapperX<SalesReturnItemDO> {
             @Param("tenantId") Long tenantId,
             @Param("shipmentItemIds") Collection<Long> shipmentItemIds,
             @Param("excludeReturnId") Long excludeReturnId);
+
+    /**
+     * 查询已删除销售退货单下的明细（用于回收站恢复前引用校验）
+     */
+    List<SalesReturnItemDO> selectDeletedListByReturnId(@Param("returnId") Long returnId, @Param("tenantId") Long tenantId);
+
+    /**
+     * 级联恢复销售退货明细（显式 SET deleted=0 WHERE return_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByReturnId(@Param("returnId") Long returnId, @Param("tenantId") Long tenantId,
+                          @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除销售退货明细（显式 DELETE WHERE return_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByReturnId(@Param("returnId") Long returnId, @Param("tenantId") Long tenantId);
 
 }

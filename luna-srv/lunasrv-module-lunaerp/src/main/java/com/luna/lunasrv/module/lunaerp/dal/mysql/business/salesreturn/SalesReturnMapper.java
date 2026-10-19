@@ -1,12 +1,15 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
+import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salesreturn.SalesReturnDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -46,5 +49,26 @@ public interface SalesReturnMapper extends BaseMapperX<SalesReturnDO> {
             + "return_date, remark, creator, create_time, updater, update_time, deleted, tenant_id "
             + "FROM lunaerp_business_sales_return WHERE tenant_id = #{tenantId} AND return_no LIKE CONCAT(#{prefix}, '%')")
     List<SalesReturnDO> selectListByReturnNoPrefixIncludingDeleted(@Param("tenantId") Long tenantId, @Param("prefix") String prefix);
+
+    /**
+     * 回收站分页查询已软删草稿销售退货单（手写 XML：显式 WHERE deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}）
+     */
+    IPage<RecycleItemRespVO> selectRecyclePage(IPage<RecycleItemRespVO> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的草稿销售退货单
+     */
+    SalesReturnDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿销售退货单（并发条件更新带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int restoreSalesReturn(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                           @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底删除草稿销售退货单（物理删除带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int purgeSalesReturn(@Param("id") Long id, @Param("tenantId") Long tenantId);
 
 }

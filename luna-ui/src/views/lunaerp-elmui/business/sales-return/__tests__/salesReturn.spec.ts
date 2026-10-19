@@ -5,6 +5,7 @@ import {
   calculateQcRestockAndScrapQty,
   getLineRollQty,
   getSalesReturnActionFlags,
+  formatAmount,
   isQtyRollMismatch,
   validateQcDecision,
   validateSalesReturnLine
@@ -25,11 +26,11 @@ describe('SalesReturn Domain Model Tests', () => {
       expect(flags.canPrint).toBe(true)
     })
 
-    it('草稿被驳回（DRAFT + REJECTED）按规范仅允许编辑与提交，禁止删除', () => {
+    it('草稿被驳回（DRAFT + REJECTED）按规范允许编辑、提交与删除（回收站）', () => {
       const flags = getSalesReturnActionFlags('DRAFT', 'REJECTED')
       expect(flags.canDetail).toBe(false)
       expect(flags.canEdit).toBe(true)
-      expect(flags.canDelete).toBe(false)
+      expect(flags.canDelete).toBe(true)
       expect(flags.canSubmit).toBe(true)
       expect(flags.canWithdraw).toBe(false)
     })
@@ -214,6 +215,31 @@ describe('SalesReturn Domain Model Tests', () => {
       const result = validateQcDecision(rolls)
       expect(result.valid).toBe(false)
       expect(result.message).toContain('未完成质检判定')
+    })
+  })
+
+  describe('formatAmount', () => {
+    it('正常数值按千分位保留两位小数', () => {
+      expect(formatAmount(1234.56)).toBe('1,234.56')
+      expect(formatAmount(1000000)).toBe('1,000,000.00')
+      expect(formatAmount(0)).toBe('0.00')
+    })
+
+    it('支持传递币种前缀', () => {
+      expect(formatAmount(1234.56, 'RMB')).toBe('RMB 1,234.56')
+      expect(formatAmount(88.9, 'USD')).toBe('USD 88.90')
+    })
+
+    it('脱敏星号字符串（如 ****）安全透传不转为 NaN', () => {
+      expect(formatAmount('****')).toBe('****')
+      expect(formatAmount('***', 'RMB')).toBe('RMB ***')
+      expect(formatAmount('****', 'USD')).toBe('USD ****')
+    })
+
+    it('空值与非合法输入安全兜底', () => {
+      expect(formatAmount(null)).toBe('0.00')
+      expect(formatAmount(undefined)).toBe('0.00')
+      expect(formatAmount('')).toBe('0.00')
     })
   })
 })

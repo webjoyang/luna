@@ -125,14 +125,10 @@
       <el-table-column label="客户名称" prop="customerName" min-width="160" show-overflow-tooltip />
       <el-table-column label="退货仓库" prop="warehouseName" width="130" show-overflow-tooltip />
       <el-table-column label="币种" prop="currency" width="70" align="center" />
-      <el-table-column label="退货总金额" prop="totalAmount" width="120" align="right">
+      <el-table-column label="退货总金额" prop="totalAmount" width="130" align="right">
         <template #default="{ row }">
           <span class="font-bold text-primary font-mono">
-            {{
-              row.totalAmount !== undefined && row.totalAmount !== null
-                ? Number(row.totalAmount).toFixed(2)
-                : '-'
-            }}
+            {{ formatAmount(row.totalAmount, row.currency) }}
           </span>
         </template>
       </el-table-column>
@@ -153,7 +149,7 @@
           <span>{{ row.createTime ? parseTime(row.createTime) : '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right" align="center">
+      <el-table-column label="操作" width="260" fixed="right" align="center">
         <template #default="{ row }">
           <div class="flex items-center justify-center gap-6px">
             <el-button
@@ -216,6 +212,24 @@
             >
               财务确认
             </el-button>
+            <PrintDispatcher
+              v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canPrint"
+              biz-type="SALES_RETURN"
+              :biz-id="row.id"
+              class="inline-block"
+            >
+              <template #default="{ open }">
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  @click="open()"
+                  v-hasPermi="['lunaerp:business:sales-return:print']"
+                >
+                  打印
+                </el-button>
+              </template>
+            </PrintDispatcher>
             <el-button
               v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canDelete"
               type="danger"
@@ -260,7 +274,8 @@ import {
   type SalesReturnPageParam
 } from '@/api/lunaerp-elmui/business/sales-return'
 import { getCustomerPage, type CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
-import { getSalesReturnActionFlags } from './model/salesReturn'
+import { getSalesReturnActionFlags, formatAmount } from './model/salesReturn'
+import { PrintDispatcher } from '@/components/Print'
 import ReceiveDialog from './components/ReceiveDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiBusinessSalesReturn' })

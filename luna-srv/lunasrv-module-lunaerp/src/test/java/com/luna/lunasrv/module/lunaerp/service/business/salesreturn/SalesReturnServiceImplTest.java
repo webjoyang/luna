@@ -12,6 +12,7 @@ import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceSubm
 import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceWithdrawReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customercontact.CustomerContactDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salesreturn.SalesReturnDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salesreturn.SalesReturnItemDO;
@@ -22,6 +23,8 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.Shipment
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouse.WarehouseDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouselocation.WarehouseLocationDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customercontact.CustomerContactMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnRollMapper;
@@ -102,6 +105,12 @@ public class SalesReturnServiceImplTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private CustomerMapper customerMapper;
+
+    @Mock
+    private CustomerContactMapper customerContactMapper;
+
     @InjectMocks
     private SalesReturnServiceImpl salesReturnService;
 
@@ -120,6 +129,7 @@ public class SalesReturnServiceImplTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), WarehouseDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), WarehouseLocationDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), StockInDO.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), CustomerContactDO.class);
     }
 
     @AfterEach
@@ -1817,6 +1827,91 @@ public class SalesReturnServiceImplTest {
 
         ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(10L, "原因"));
         assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    // ==================== Issue 07: 打印数据查询单测 ====================
+
+    @Test
+    @DisplayName("打印数据：单据不存在抛 000")
+    void getSalesReturnPrintData_notExists_throwsException() {
+        when(salesReturnMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.getSalesReturnPrintData(999L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("打印数据：CANCELLED 单据拒绝打印抛 002")
+    void getSalesReturnPrintData_cancelled_throwsException() {
+        SalesReturnDO cancelled = new SalesReturnDO();
+        cancelled.setId(10L);
+        cancelled.setStatus(SalesReturnStatusEnum.CANCELLED.getValue());
+        when(salesReturnMapper.selectById(10L)).thenReturn(cancelled);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.getSalesReturnPrintData(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("打印数据：正常组装客户联系人、入库单、明细及卷清单")
+    void getSalesReturnPrintData_success() {
+        SalesReturnDO salesReturn = createDraftSalesReturn(10L, 88L);
+        salesReturn.setStatus("APPROVED");
+        salesReturn.setApprovalStatus("APPROVED");
+        salesReturn.setCustomerId(501L);
+        salesReturn.setStockInId(601L);
+        salesReturn.setTotalAmount(new BigDecimal("2000.00"));
+        salesReturn.setTotalPieces(2);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        // 客户档案
+        CustomerDO customer = new CustomerDO();
+        customer.setId(501L);
+        customer.setCompanyName("测试客户");
+        customer.setPhone("0575-88888888");
+        customer.setAddress("浙江省绍兴市柯桥区轻纺城大道1号");
+        when(customerMapper.selectById(501L)).thenReturn(customer);
+
+        // 客户联系人
+        CustomerContactDO contact = new CustomerContactDO();
+        contact.setId(1L);
+        contact.setCustomerId(501L);
+        contact.setName("张三");
+        contact.setPhone("13800000000");
+        contact.setIsPrimary(1);
+        when(customerContactMapper.selectList(any())).thenReturn(Collections.singletonList(contact));
+
+        // 入库单
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(601L);
+        stockIn.setInNo("IN-20261019-001");
+        stockIn.setStatus("DRAFT");
+        when(stockInService.getStockIn(601L)).thenReturn(stockIn);
+
+        // 退货明细与卷
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 201L, "KG", new BigDecimal("50.00"), new BigDecimal("100.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+
+        SalesReturnRollDO roll = createSalesReturnRoll(10L, 101L, null, "R01", new BigDecimal("50.00"), null);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.singletonList(roll));
+
+        SalesReturnPrintRespVO printVO = salesReturnService.getSalesReturnPrintData(10L);
+
+        assertNotNull(printVO);
+        assertEquals(10L, printVO.getId());
+        assertEquals("RT-20261018-001", printVO.getReturnNo());
+        assertEquals("APPROVED", printVO.getStatus());
+        assertEquals("测试客户", printVO.getCustomerName());
+        assertEquals("张三", printVO.getContactName());
+        assertEquals("13800000000", printVO.getContactPhone());
+        assertEquals("浙江省绍兴市柯桥区轻纺城大道1号", printVO.getCustomerAddress());
+        assertEquals("IN-20261019-001", printVO.getStockInNo());
+        assertEquals("DRAFT", printVO.getStockInStatus());
+        assertEquals(1, printVO.getItems().size());
+        assertEquals(1, printVO.getItems().get(0).getRolls().size());
+        assertEquals("R01", printVO.getItems().get(0).getRolls().get(0).getRollNo());
+        assertEquals(new BigDecimal("100.00"), printVO.getItems().get(0).getAmount());
+        assertNotNull(printVO.getPrintTime());
     }
 
 }

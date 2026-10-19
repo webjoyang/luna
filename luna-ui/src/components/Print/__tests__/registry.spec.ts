@@ -170,6 +170,20 @@ describe('Print Template Registry', () => {
     expect(tpl.getDocNo?.({ reconNo: 'SR20261015001' })).toBe('SR20261015001')
   })
 
+  it('should have SALES_RETURN_DOC statically registered for SALES_RETURN', () => {
+    const returnTemplates = getTemplatesByBizType('SALES_RETURN')
+    expect(returnTemplates).toHaveLength(1)
+
+    const tpl = returnTemplates[0]
+    expect(tpl.templateCode).toBe('SALES_RETURN_DOC')
+    expect(tpl.name).toBe('销售退货单')
+    expect(tpl.paper).toBe('A4')
+    expect(tpl.permission).toBe('lunaerp:business:sales-return:print')
+    expect(typeof tpl.fetchApi).toBe('function')
+    expect(typeof tpl.getDocNo).toBe('function')
+    expect(tpl.getDocNo?.({ returnNo: 'RT-20261019-001' })).toBe('RT-20261019-001')
+  })
+
   it('getTemplate should return default or specific template', () => {
     const defaultTpl = getTemplate('WEAVING_TICKET')
     expect(defaultTpl).toBeDefined()

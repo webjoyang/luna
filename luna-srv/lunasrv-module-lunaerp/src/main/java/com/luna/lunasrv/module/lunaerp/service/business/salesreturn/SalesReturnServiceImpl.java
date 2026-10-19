@@ -46,6 +46,11 @@ import com.luna.lunasrv.module.lunaerp.service.business.salesreturn.event.SalesR
 import com.luna.lunasrv.module.lunaerp.service.business.salesreturn.event.SalesReturnPostedItemDTO;
 import org.springframework.context.ApplicationEventPublisher;
 import com.mzt.logapi.starter.annotation.LogRecord;
+import com.mzt.logapi.context.LogRecordContext;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customercontact.CustomerContactDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customercontact.CustomerContactMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -99,6 +104,12 @@ public class SalesReturnServiceImpl implements SalesReturnService {
 
     @Resource
     private ShipmentRollMapper shipmentRollMapper;
+
+    @Resource
+    private CustomerMapper customerMapper;
+
+    @Resource
+    private CustomerContactMapper customerContactMapper;
 
     @Resource
     private WarehouseMapper warehouseMapper;
@@ -1278,6 +1289,151 @@ public class SalesReturnServiceImpl implements SalesReturnService {
         boolean isMeter = "M".equals(unit) || "METER".equals(unit);
         BigDecimal qty = isMeter ? rollDO.getLengthM() : rollDO.getWeight();
         return qty != null ? qty : BigDecimal.ZERO;
+    }
+
+    @Override
+    @LogRecord(type = "打印", subType = "销售退货单", bizNo = "{{#id}}", success = "打印了销售退货单 {{#returnNo}}")
+    public SalesReturnPrintRespVO getSalesReturnPrintData(Long id) {
+        // 1. 校验单据存在
+        SalesReturnDO salesReturn = validateSalesReturnExists(id);
+
+        // 2. 打印范围守卫：非 CANCELLED 均可打印（草稿水印由模板呈现）
+        if (SalesReturnStatusEnum.CANCELLED.getValue().equals(salesReturn.getStatus())) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 留痕上下文
+        LogRecordContext.putVariable("returnNo", salesReturn.getReturnNo());
+        LogRecordContext.putVariable("id", salesReturn.getId());
+
+        // 4. 客户档案与联系人信息
+        String contactName = null;
+        String contactPhone = null;
+        String customerAddress = null;
+        if (salesReturn.getCustomerId() != null) {
+            CustomerDO customer = customerMapper.selectById(salesReturn.getCustomerId());
+            if (customer != null) {
+                contactPhone = customer.getPhone();
+                customerAddress = customer.getAddress();
+            }
+            List<CustomerContactDO> contacts = customerContactMapper.selectList(new LambdaQueryWrapperX<CustomerContactDO>()
+                    .eq(CustomerContactDO::getCustomerId, salesReturn.getCustomerId()));
+            if (CollUtil.isNotEmpty(contacts)) {
+                CustomerContactDO primary = contacts.stream()
+                        .filter(c -> Integer.valueOf(1).equals(c.getIsPrimary()))
+                        .findFirst()
+                        .orElse(contacts.get(0));
+                contactName = primary.getName();
+                if (StrUtil.isNotBlank(primary.getPhone())) {
+                    contactPhone = primary.getPhone();
+                }
+            }
+        }
+
+        // 5. 关联入库单信息
+        String stockInNo = null;
+        String stockInStatus = null;
+        if (salesReturn.getStockInId() != null) {
+            StockInRespVO stockIn = stockInService.getStockIn(salesReturn.getStockInId());
+            if (stockIn != null) {
+                stockInNo = stockIn.getInNo();
+                stockInStatus = stockIn.getStatus();
+            }
+        }
+
+        // 6. 退货明细与卷清单（独立 VO 豁免脱敏）
+        List<SalesReturnItemDO> itemDOList = salesReturnItemMapper.selectList(new LambdaQueryWrapperX<SalesReturnItemDO>()
+                .eq(SalesReturnItemDO::getReturnId, id));
+        List<SalesReturnPrintRespVO.ItemVO> printItems = new ArrayList<>();
+
+        if (CollUtil.isNotEmpty(itemDOList)) {
+            List<SalesReturnRollDO> rollDOList = salesReturnRollMapper.selectList(new LambdaQueryWrapperX<SalesReturnRollDO>()
+                    .eq(SalesReturnRollDO::getReturnId, id));
+            Map<Long, List<SalesReturnRollDO>> rollsByItemId = CollUtil.isEmpty(rollDOList)
+                    ? Collections.emptyMap()
+                    : rollDOList.stream().collect(Collectors.groupingBy(SalesReturnRollDO::getReturnItemId));
+
+            for (SalesReturnItemDO itemDO : itemDOList) {
+                List<SalesReturnRollDO> itemRolls = rollsByItemId.getOrDefault(itemDO.getId(), Collections.emptyList());
+                List<SalesReturnPrintRespVO.RollVO> printRolls = new ArrayList<>();
+                for (SalesReturnRollDO rollDO : itemRolls) {
+                    printRolls.add(SalesReturnPrintRespVO.RollVO.builder()
+                            .id(rollDO.getId())
+                            .returnId(rollDO.getReturnId())
+                            .returnItemId(rollDO.getReturnItemId())
+                            .shipmentRollId(rollDO.getShipmentRollId())
+                            .rollNo(rollDO.getRollNo())
+                            .weight(rollDO.getWeight())
+                            .lengthM(rollDO.getLengthM())
+                            .qcResult(rollDO.getQcResult())
+                            .qcRemark(rollDO.getQcRemark())
+                            .locationId(rollDO.getLocationId())
+                            .locationCode(rollDO.getLocationCode())
+                            .remark(rollDO.getRemark())
+                            .build());
+                }
+
+                printItems.add(SalesReturnPrintRespVO.ItemVO.builder()
+                        .id(itemDO.getId())
+                        .returnId(itemDO.getReturnId())
+                        .shipmentItemId(itemDO.getShipmentItemId())
+                        .productId(itemDO.getProductId())
+                        .productCode(itemDO.getProductCode())
+                        .productName(itemDO.getProductName())
+                        .customerColorNo(itemDO.getCustomerColorNo())
+                        .colorName(itemDO.getColorName())
+                        .vatNo(itemDO.getVatNo())
+                        .returnQty(itemDO.getReturnQty())
+                        .pieces(itemDO.getPieces())
+                        .unit(itemDO.getUnit())
+                        .unitPrice(itemDO.getUnitPrice())
+                        .amount(itemDO.getAmount())
+                        .returnReason(itemDO.getReturnReason())
+                        .restockQty(itemDO.getRestockQty())
+                        .scrapQty(itemDO.getScrapQty())
+                        .remark(itemDO.getRemark())
+                        .rolls(printRolls)
+                        .build());
+            }
+        }
+
+        // 7. 组装打印 VO
+        return SalesReturnPrintRespVO.builder()
+                .id(salesReturn.getId())
+                .returnNo(salesReturn.getReturnNo())
+                .status(salesReturn.getStatus())
+                .approvalStatus(salesReturn.getApprovalStatus())
+                .shipmentId(salesReturn.getShipmentId())
+                .shipmentNo(salesReturn.getShipmentNo())
+                .customerId(salesReturn.getCustomerId())
+                .customerName(salesReturn.getCustomerName())
+                .contactName(contactName)
+                .contactPhone(contactPhone)
+                .customerAddress(customerAddress)
+                .salesContractId(salesReturn.getSalesContractId())
+                .contractNo(salesReturn.getContractNo())
+                .warehouseId(salesReturn.getWarehouseId())
+                .warehouseName(salesReturn.getWarehouseName())
+                .currency(salesReturn.getCurrency())
+                .totalAmount(salesReturn.getTotalAmount())
+                .totalPieces(salesReturn.getTotalPieces())
+                .stockInId(salesReturn.getStockInId())
+                .stockInNo(stockInNo)
+                .stockInStatus(stockInStatus)
+                .arrivedBy(salesReturn.getArrivedBy())
+                .arrivedAt(salesReturn.getArrivedAt())
+                .postedBy(salesReturn.getPostedBy())
+                .postedAt(salesReturn.getPostedAt())
+                .cancelledBy(salesReturn.getCancelledBy())
+                .cancelledAt(salesReturn.getCancelledAt())
+                .cancelReason(salesReturn.getCancelReason())
+                .returnDate(salesReturn.getReturnDate())
+                .remark(salesReturn.getRemark())
+                .creator(salesReturn.getCreator())
+                .createTime(salesReturn.getCreateTime())
+                .printTime(LocalDateTime.now())
+                .items(printItems)
+                .build();
     }
 
 }

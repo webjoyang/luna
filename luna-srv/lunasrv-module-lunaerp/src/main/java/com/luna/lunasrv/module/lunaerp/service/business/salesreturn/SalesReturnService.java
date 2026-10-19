@@ -104,4 +104,12 @@ public interface SalesReturnService {
      */
     void postSalesReturn(Long id);
 
+    /**
+     * 获得销售退货单打印数据（豁免金额脱敏，非作废单据可打印）
+     *
+     * @param id 退货单ID
+     * @return 打印数据
+     */
+    SalesReturnPrintRespVO getSalesReturnPrintData(Long id);
+
 }

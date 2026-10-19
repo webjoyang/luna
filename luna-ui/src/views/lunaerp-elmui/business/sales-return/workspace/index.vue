@@ -83,6 +83,23 @@
           >
             <Icon icon="ep:check" class="mr-2px" /> 财务确认
           </el-button>
+          <PrintDispatcher
+            v-if="!isNew && actionFlags.canPrint"
+            biz-type="SALES_RETURN"
+            :biz-id="formData.id!"
+            class="inline-block"
+          >
+            <template #default="{ open }">
+              <el-button
+                type="primary"
+                plain
+                @click="open()"
+                v-hasPermi="['lunaerp:business:sales-return:print']"
+              >
+                <Icon icon="ep:printer" class="mr-2px" /> 打印
+              </el-button>
+            </template>
+          </PrintDispatcher>
           <el-button
             v-if="!isNew && actionFlags.canCancel"
             type="danger"
@@ -243,9 +260,9 @@
             共 <span class="font-bold text-primary">{{ items.length }}</span> 行， 总退货量
             <span class="font-bold text-primary">{{ summaryQty.toFixed(2) }}</span
             >， 总金额
-            <span class="font-bold text-primary"
-              >{{ summaryAmount.toFixed(2) }} {{ formData.currency }}</span
-            >
+            <span class="font-bold text-primary">{{
+              formatAmount(summaryAmount, formData.currency)
+            }}</span>
           </div>
         </div>
 
@@ -487,7 +504,7 @@
           <el-table-column label="行金额" width="120" align="right">
             <template #default="{ row }">
               <span class="font-bold text-primary font-mono">
-                {{ (row.amount || 0).toFixed(2) }}
+                {{ formatAmount(row.amount) }}
               </span>
             </template>
           </el-table-column>
@@ -569,6 +586,105 @@
           </el-table-column>
         </el-table>
       </ContentWrap>
+
+      <!-- 单据生命周期留痕与时间线 -->
+      <ContentWrap v-if="!isNew">
+        <div
+          class="font-bold text-15px mb-15px pb-8px border-b border-gray-100 flex items-center gap-6px"
+        >
+          <Icon icon="ep:clock" /> 单据生命周期时间线
+        </div>
+        <el-timeline class="pl-10px pt-5px">
+          <!-- 1. 制单 -->
+          <el-timeline-item timestamp="制单登记" placement="top" type="primary" size="large">
+            <div class="text-13px">
+              <span class="text-gray-500">制单人：</span>
+              <span class="font-medium mr-16px">{{ formData.creator || '-' }}</span>
+              <span class="text-gray-500">创建时间：</span>
+              <span>{{ formData.createTime ? parseTime(formData.createTime) : '-' }}</span>
+            </div>
+          </el-timeline-item>
+
+          <!-- 2. 审批环节 -->
+          <el-timeline-item
+            v-if="formData.approvalStatus && formData.approvalStatus !== 'PENDING'"
+            timestamp="审批流状态"
+            placement="top"
+            :type="
+              formData.approvalStatus === 'APPROVED'
+                ? 'success'
+                : formData.approvalStatus === 'REJECTED'
+                  ? 'danger'
+                  : 'warning'
+            "
+          >
+            <div class="text-13px flex items-center gap-8px">
+              <span class="text-gray-500">审批状态：</span>
+              <dict-tag
+                :type="DICT_TYPE.LUNAERP_APPROVAL_STATUS"
+                :value="formData.approvalStatus"
+              />
+            </div>
+          </el-timeline-item>
+
+          <!-- 3. 到货质检 -->
+          <el-timeline-item
+            v-if="
+              formData.arrivedAt || formData.status === 'RECEIVED' || formData.status === 'POSTED'
+            "
+            timestamp="到货质检"
+            placement="top"
+            :type="formData.arrivedAt ? 'success' : 'info'"
+          >
+            <div class="text-13px">
+              <span class="text-gray-500">质检到货人：</span>
+              <span class="font-medium mr-16px">{{
+                formData.arrivedBy ? `UID:${formData.arrivedBy}` : '-'
+              }}</span>
+              <span class="text-gray-500">到货时间：</span>
+              <span>{{ formData.arrivedAt ? parseTime(formData.arrivedAt) : '-' }}</span>
+            </div>
+          </el-timeline-item>
+
+          <!-- 4. 财务确认过账 -->
+          <el-timeline-item
+            v-if="formData.postedAt || formData.status === 'POSTED'"
+            timestamp="财务确认过账"
+            placement="top"
+            :type="formData.postedAt ? 'success' : 'info'"
+          >
+            <div class="text-13px">
+              <span class="text-gray-500">过账人：</span>
+              <span class="font-medium mr-16px">{{
+                formData.postedBy ? `UID:${formData.postedBy}` : '-'
+              }}</span>
+              <span class="text-gray-500">过账时间：</span>
+              <span>{{ formData.postedAt ? parseTime(formData.postedAt) : '-' }}</span>
+            </div>
+          </el-timeline-item>
+
+          <!-- 5. 作废（若有） -->
+          <el-timeline-item
+            v-if="formData.status === 'CANCELLED' || formData.cancelledAt"
+            timestamp="单据作废"
+            placement="top"
+            type="danger"
+          >
+            <div class="text-13px">
+              <span class="text-gray-500">作废人：</span>
+              <span class="font-medium mr-16px">{{
+                formData.cancelledBy ? `UID:${formData.cancelledBy}` : '-'
+              }}</span>
+              <span class="text-gray-500">作废时间：</span>
+              <span class="mr-16px">{{
+                formData.cancelledAt ? parseTime(formData.cancelledAt) : '-'
+              }}</span>
+              <span class="text-gray-500">作废原因：</span>
+              <span class="text-danger font-medium">{{ formData.cancelReason || '-' }}</span>
+            </div>
+          </el-timeline-item>
+        </el-timeline>
+      </ContentWrap>
     </template>
 
     <!-- 发货单选择弹窗 -->
@@ -605,8 +721,10 @@ import {
   isQtyRollMismatch,
   validateSalesReturnLine,
   getSalesReturnActionFlags,
+  formatAmount,
   type SalesReturnRollItem
 } from '../model/salesReturn'
+import { PrintDispatcher } from '@/components/Print'
 import ShipmentSelectDialog from '../components/ShipmentSelectDialog.vue'
 import ReceiveDialog from '../components/ReceiveDialog.vue'
 
@@ -678,7 +796,14 @@ const formData = reactive({
   stockInNo: '',
   stockInStatus: '',
   postedBy: undefined as number | undefined,
-  postedAt: ''
+  postedAt: '',
+  creator: '',
+  createTime: '',
+  arrivedBy: undefined as number | undefined,
+  arrivedAt: '',
+  cancelledBy: undefined as number | undefined,
+  cancelledAt: '',
+  cancelReason: ''
 })
 
 const items = ref<EditableLineItem[]>([])
@@ -687,7 +812,10 @@ const actionFlags = computed(() =>
   getSalesReturnActionFlags(formData.status, formData.approvalStatus)
 )
 
+const isDetailMode = computed(() => route.query.mode === 'detail')
+
 const isEditable = computed(() => {
+  if (isDetailMode.value) return false
   if (isNew.value) return true
   return actionFlags.value.canEdit
 })
@@ -702,7 +830,7 @@ const summaryAmount = computed(() => {
 
 const handleJumpStockIn = () => {
   if (formData.stockInId) {
-    router.push(`/stock/stock-in/workspace/${formData.stockInId}`)
+    router.push(`/stock/stock-in/workspace/${formData.stockInId}?mode=detail`)
   }
 }
 
@@ -1014,6 +1142,13 @@ const loadSalesReturn = async (id: number) => {
     formData.stockInStatus = res.stockInStatus || ''
     formData.postedBy = res.postedBy
     formData.postedAt = res.postedAt || ''
+    formData.creator = res.creator || ''
+    formData.createTime = res.createTime || ''
+    formData.arrivedBy = res.arrivedBy
+    formData.arrivedAt = res.arrivedAt || ''
+    formData.cancelledBy = res.cancelledBy
+    formData.cancelledAt = res.cancelledAt || ''
+    formData.cancelReason = res.cancelReason || ''
 
     // 查询对应发货单的实时可退量
     const shipmentDetail = await getShipmentDetail(res.shipmentId)

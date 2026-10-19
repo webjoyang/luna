@@ -296,3 +296,87 @@ export const postSalesReturn = (id: number) => {
     url: `/lunaerp/business/sales-return/post?id=${id}`
   })
 }
+
+// 销售退货打印卷 VO
+export interface SalesReturnPrintRollVO {
+  id?: number
+  returnId?: number
+  returnItemId?: number
+  shipmentRollId?: number
+  rollNo: string
+  weight?: number
+  lengthM?: number
+  qcResult?: string
+  qcRemark?: string
+  locationId?: number
+  locationCode?: string
+  remark?: string
+}
+
+// 销售退货打印明细行 VO
+export interface SalesReturnPrintItemVO {
+  id?: number
+  returnId?: number
+  shipmentItemId: number
+  productId: number
+  productCode: string
+  productName: string
+  customerColorNo?: string
+  colorName?: string
+  vatNo?: string
+  returnQty: number
+  pieces?: number
+  unit: string
+  unitPrice?: number
+  amount?: number
+  returnReason: string
+  restockQty?: number
+  scrapQty?: number
+  remark?: string
+  rolls?: SalesReturnPrintRollVO[]
+}
+
+// 销售退货打印全量数据 VO
+export interface SalesReturnPrintVO {
+  id: number
+  returnNo: string
+  status: string
+  approvalStatus?: string
+  shipmentId: number
+  shipmentNo: string
+  customerId: number
+  customerName: string
+  contactName?: string
+  contactPhone?: string
+  customerAddress?: string
+  salesContractId?: number
+  contractNo?: string
+  warehouseId: number
+  warehouseName?: string
+  currency: string
+  totalAmount?: number
+  totalPieces?: number
+  stockInId?: number
+  stockInNo?: string
+  stockInStatus?: string
+  arrivedBy?: number
+  arrivedAt?: string
+  postedBy?: number
+  postedAt?: string
+  cancelledBy?: number
+  cancelledAt?: string
+  cancelReason?: string
+  returnDate?: string
+  remark?: string
+  creator?: string
+  createTime?: string
+  printTime?: string
+  items: SalesReturnPrintItemVO[]
+}
+
+// 获取销售退货打印数据
+export const getSalesReturnPrintData = (id: number) => {
+  return request.get<SalesReturnPrintVO>({
+    url: `/lunaerp/business/sales-return/print-data?id=${id}`
+  })
+}
