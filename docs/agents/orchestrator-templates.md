@@ -17,6 +17,7 @@ Context pointers:
 - Integration Branch: feat/{feature}
 - Worktree Branch: ticket-{NN}
 - Exploration Notes: .scratch/{feature}/exploration.md (if exists)
+Rule: If .codegraph exists, explore symbols using `codegraph explore "<symbol>"` FIRST. Avoid blind grep loops.
 Execute /tdd in your isolated worktree, commit with standard message "feat({feature}): ... (Issue {NN})", merge integration branch tip, and report single-line summary when done.
 ```
 
@@ -33,6 +34,7 @@ Context pointers:
 - Failure Log / Review Points: {log_file_path_or_review_report_pointer}
 - Spec: .scratch/{feature}/spec.md
 - Ticket: .scratch/{feature}/issues/{NN}-{slug}.md
+Rule: Use `codegraph explore "<symbol>"` to inspect call sites and blast radius if modifying shared code.
 Fix the issue in your isolated worktree, verify tests pass silently, commit with "fix({feature}): ...", and report single-line summary.
 ```
 
@@ -61,7 +63,7 @@ Task:
 ```markdown
 You are Exploration Agent for feature {feature}.
 Task:
-1. Explore existing codebase related to {module/feature}.
+1. Explore existing codebase related to {module/feature} (use `codegraph explore "<symbol>"` FIRST if .codegraph exists).
 2. Summarize findings, existing APIs, service patterns, and relevant files into `.scratch/{feature}/exploration.md`.
 3. Report only the saved file path and a 2-line summary. Do not output raw code files in your report.
 ```

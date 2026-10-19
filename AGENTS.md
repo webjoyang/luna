@@ -33,7 +33,10 @@
 ### 代码检索与命令行管道安全
 
 - 混合工作区文件定标优先使用 `git ls-files "*<keyword>*"`，严禁未排除 `node_modules` / `target` 进行递归深搜。
-- 内容/代码符号检索一律使用跨平台原生的 `git grep "<pattern>"`，严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；混合工作区根目录无 `src/`，检索时必须显式指定子项目路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`）；特性开发中检索可能包含刚创建未暂存的文件时，必须附加 `--untracked`（如 `git grep --untracked "<pattern>"`），防止漏检。
+- **CodeGraph 符号检索与调用链优先（根目录存在 `.codegraph/` 时）**：
+  - 类、接口、方法、实体属性、调用上下游与架构摸底（如 `RecycleBinHandler`、`Approval*`、领域模型等），**必须优先使用 `codegraph explore "<symbol>"`（或 MCP 工具 `codegraph_explore`）**，单次调用即可获取完整符号实现与调用路径，杜绝盲目多次 grep + view_file 循环；
+  - 纯文本常量（如错误码前缀 `025_`）、Markdown 需求/Spec 文档、配置文件或刚创建未暂存文件（`--untracked`），使用跨平台原生的 `git grep "<pattern>"`；
+  - 严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；混合工作区根目录无 `src/`，grep 时必须显式指定子项目路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`）。
 - 严禁在 PowerShell 下将 `vue-tsc`、`mvn` 等长生命周期或海量输出的命令挂接管道传递给 `Select-String`（子进程标准流缓冲会导致进程假死 hang 住）。
 - Windows PowerShell 5.1 语法守卫：命令串联必须使用分号 `;` 分隔或分步独立执行，严禁使用 Bash/PowerShell 7 的 `&&` 连接符（会抛出 InvalidEndOfLine 语法解析错误）。
 - 复杂文本与日志过滤：在 Windows PowerShell 5.1 下，针对长日志或 JSON 结构的流式过滤与统计，避免编写含复杂引号转义（如 `$_`）的脆弱命令行管道，优先使用 `node -e "..."` 或在会话 `scratch/` 目录编写一次性 Node.js 脚本。
