@@ -30,16 +30,16 @@
 1. **Zero-Tool Yield 轮次让渡**：派发后本轮次必须**仅输出纯文本确认或直接停止调用工具（不得附加任何辅助工具调用）以交出控制权**。会话中**严禁使用 `manage_task(status)` 或 `manage_subagents(list)` 自旋轮询，亦严禁额外调用 `schedule` 挂载短时定时器**。系统在子代理或任务结束时会自动注入消息唤醒，轮次内调工具会阻断系统的后台反应式睡眠并引发死循环。
 2. **只读审查工作区继承**：通过 `invoke_subagent` 派发 Standards / Spec 等只读性质的 Reviewer 子代理时，一律使用 `Workspace: "inherit"` 继承父工作区，严禁无故开启 `Workspace: "branch"` 产生额外分支与磁盘清理开销。
 
-### 代码检索与命令行管道安全
+### 代码检索与第一击门禁（CodeGraph 优先 + git grep 边界白名单）
 
 - 混合工作区文件定标优先使用 `git ls-files "*<keyword>*"`，严禁未排除 `node_modules` / `target` 进行递归深搜。
-- **代码与符号检索双梯队策略（CodeGraph 优先 + git grep 兜底与文本基准）**：
-  1. **第一梯队（CodeGraph 语法与调用链优先，根目录存在 `.codegraph/` 时）**：
-     - 类、接口、方法、实体属性、调用上下游与架构摸底（如 `RecycleBinHandler`、`Approval*`、领域模型等），**优先推荐使用 `codegraph explore "<symbol>"`（或 MCP 工具 `codegraph_explore`）**，单次调用即可获取完整符号实现与调用路径，大幅减少盲目的 grep + view_file 往返；若检索结果不理想、索引未覆盖或涉及动态调用，平滑退回基础梯队补充检索。
-  2. **基础梯队（git grep 全局兜底与文本/动态检索，无 `.codegraph/` 或第一梯队未达预期时）**：
-     - 在未建立 `.codegraph/` 索引、或第一梯队探索效果不理想时，代码与符号检索以跨平台原生的 `git grep "<pattern>"` 作为坚实兜底；
-     - 在存在 `.codegraph/` 时，检索纯文本常量（如错误码前缀 `025_`）、Markdown 需求/Spec 文档、配置文件或刚创建未暂存文件，一律使用 `git grep`；
-     - **执行安全禁令**：严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；混合工作区根目录无 `src/`，必须显式指定子项目路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`）；特性开发中检索可能包含刚创建未暂存的文件时，必须附加 `--untracked`（如 `git grep --untracked "<pattern>"`），防止漏检。
+- **Java 符号检索第一击门禁（First-Strike Gate）**：
+  - 凡是查询 Java 类名（大驼峰）、方法名（小驼峰）、接口、DO 实体字段属性、或分析上下游调用链路（如 `RecycleBinHandler`、`InspectionConfirmation`、`getPayrollSummary` 等），**第一击必须且只能使用 `codegraph explore "<symbol>"`（或 MCP 工具 `codegraph_explore`）**。单次调用即可获取完整符号实现、行号及调用拓扑，严禁用 `git grep` 盲目试探代码符号。
+- **git grep 仅限以下非代码文本白名单**：
+  1. Markdown 需求文档与 Spec 文本检索（如 `.scratch/`、`docs/`）；
+  2. 纯非符号文本常量（如错误码前缀 `025_`、权限标识字符串 `lunaerp:finance:...`、SQL 物理列名）；
+  3. 特性开发中刚创建未暂存、尚未被 CodeGraph 索引的新建文件（附加 `--untracked`，如 `git grep --untracked "<pattern>"`）。
+  - **执行安全禁令**：严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；混合工作区根目录无 `src/`，必须显式指定子项目路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`）。
 - 严禁在 PowerShell 下将 `vue-tsc`、`mvn` 等长生命周期或海量输出的命令挂接管道传递给 `Select-String`（子进程标准流缓冲会导致进程假死 hang 住）。
 - Windows PowerShell 5.1 语法守卫：多命令串联统一使用分号 `;` 分隔连接（例如 `cmd1; cmd2`）或拆解为独立执行步骤，严格保持与 Windows PowerShell 5.1 脚本引擎语法兼容。
 - 复杂文本与日志过滤：在 Windows PowerShell 5.1 下，针对长日志或 JSON 结构的流式过滤与统计，避免编写含复杂引号转义（如 `$_`）的脆弱命令行管道，优先使用 `node -e "..."` 或在会话 `scratch/` 目录编写一次性 Node.js 脚本。
@@ -88,6 +88,7 @@
 - **3 文件深度通读红线：** 主会话仅允许使用 `view_file` 全量通读与当前修改直接相关的核心目标文件（单次任务在主会话直接通读的源码文件累积不得超过 3 个）。
 - **只读参考行号切片（Slice Read）：** 查阅架构守护测试用例、DDL 物理列定义或现有参考接口/方法签名时，**必须指定 `StartLine` 与 `EndLine` 精确切片查看（单次切片建议 <= 60 行）**。此类精准切片不计入通读红线；**严禁为规避阅读红线而反复执行 `git grep -n -A 20/30` 充当伪 `view_file`**（会导致大量碎片探针、高频交互与上下文污染）。
 - **Research 只读代理与前置摸底：** 凡需查阅超过 3 个文件以摸底系统架构、跨模块调用链路或排查第三方库机制时，主会话严禁亲自大面积探索；必须调用 `invoke_subagent` 派发只读 `research` 子代理。对于涉及多领域模型、复杂 DDL 与多表聚合的工单，在进入编码前派发 1 轮轻量 `research` 子代理提取符号表与契约边界，主会话仅接收 200 字以内的核心结论与文件指针。
+- **前置符号锚定（Symbol Anchoring）：** 特性开发进入编码前，必须先从 Spec 提取 1~2 个核心上下游实体/接口符号（如 `InspectionConfirmation`），执行一次 `codegraph explore "<symbol>"` 锚定契约边界与行号，严禁在未建立符号全景前发起连续碎片化 grep。
 
 ### 3. 子代理派发强制指针化（Context Pointer 协议）
 主会话调用 `invoke_subagent`（无论是派发开发、排错还是调研）时，**Prompt 严格限制在 15 行以内**，严禁在 Prompt 中内联粘贴长篇历史对话、完整需求文档、DDL、VO 实体或长报错日志。必须且仅传递以下四要素指针，由子代理自行读取：
