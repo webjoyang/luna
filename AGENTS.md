@@ -64,20 +64,39 @@
 
 
 
-&nbsp;
-
 ## 上下文与终端防膨胀纪律（Context Hygiene）
 
-1. **大命令下沉**：编译打包（如 `pnpm build`）、跑完整单测（如 `mvn test`）等长输出任务，一律由 Implementer 子 Agent  中执行并自闭环，主会话只接收单行成功/失败摘要，严禁在主会话直接运行重型构建与测试命令。
-2. **无错即静默**：需要捕获结果的命令优先遵循“成功静默、失败截取”范式（通过输出重定向至临时文件并结合退出码，执行成功仅输出单行 `✓ OK`，失败时才提取末尾 30 行错误堆栈）。
-3. **CLI 紧凑开关**：主会话与 Agent 运行日常命令强制启用紧凑/静默参数，杜绝冗长文本刷屏：
-   - Git 命令必加紧凑参数：`git status -s`、`git log --oneline -n <N>`、`git diff --stat`。
-   - Maven 命令启用静默选项：`mvn test -q`。
-   - 前端命令启用静默模式：`pnpm <cmd> --silent`，Vitest 采用 `--reporter=basic`。
-4. **调用 skill 工具 "implement" 期间**，为防止主会话超出 150k 聪明区与触发有损自动压缩，强制执行以下派发与熔断规则：
-   - **两遍试错熔断（Rule of Two Failures）**：单测红灯或编译报错时，在主会话最多只允许尝试修改 1 次；若第 2 次执行依然报错，**严禁在主会话继续盲目试错**，必须立即调用 `invoke_subagent` 派发专职诊断子代理（`diagnosing-bugs` 或 `self`）。主会话仅向子代理传入最小复现单测命令与错误调用栈指针，子代理在独立上下文定位根因并输出精简 Diff 建议后返回，主会话直接应用该方案，杜绝主会话因长日志与重复试错撑爆 150k 上下文聪明区。
-   - **跨域探索隔离（Read-Heavy Exploration）**：凡需查阅 &gt;3 个非直接关联文件以探查系统架构/模式，或排查第三方库及未知深层链路时，严禁在主会话直接进行大批量文件阅读；必须派发 `research` 只读子代理（`Workspace: "inherit"`），由其查阅并仅带回关键结论（&lt;200字）或保存至 `.scratch/` 笔记中。
-   - **轻量契约派发（Context Pointer 协议）**：派发排错或调研子代理时，严禁在 Prompt 中倾倒整段主会话历史或长日志，严格遵守四要素契约：① 目标问题简述、② 核心源码及异常行号指针（`file:///...`）、③ 唯一确定性复现指令（单测/脚本）、④ 期望输出契约（严格限制输出字数或代码块，禁止擅自修改非目标文件）。
-5. **探索与调研下沉**：主会话严禁直接调用 `view_file` 大面积通读业务代码（单会话累积阅读代码不得超过 3 个文件）。需要摸底架构与接口时，必须派发只读 `research` 子 Agent 沉淀到外部 Markdown 文件，主会话只读其摘要或保留路径指针。
-6. **派发强制指针化（Context Pointers Only）**：主会话在 `/implement-spec，`主会话派发子 Agent（`invoke_subagent`）时，Prompt 长度严格限制在 15 行以内，严禁在 Prompt 中内联粘贴长篇需求、DDL、VO 实体或测试要求。必须且仅传递文件指针（Spec 路径、Ticket 路径、Base Commit、分支名，见 `docs/agents/orchestrator-templates.md`），由子 Agent 自行读取。
-7. **调度官绝对零代码（Zero Direct Code Editing）**：主会话在 `/implement-spec` 阶段严格定位为纯调度与门禁把关者，严禁使用 `write_to_file` 或 `replace_file_content` 编写或修补业务代码。遇到编译报错、测试失败或 Review 问题时，一律派发 Fixer 子 Agent 在独立分支自闭环修复，绝不亲自下场改代码。
+> **作用域与防套娃声明：**
+> 1. **主会话（Main / Orchestrator）：** 严格受限于下述所有阅读上限、重型命令禁令与熔断派发规则，核心目标是确保主上下文始终保持在 150k Token 聪明区以内，绝不触发有损自动压缩。
+> 2. **子代理（Sub-agent：Implementer / Fixer / Research / Diagnosing）：** 在各自独立上下文中负责具体闭环，**不受“阅读 3 个文件上限”及“零代码编辑”限制**，但必须严格遵守【终端与 CLI 降噪规范】，且**严禁子代理再次嵌套调用 `invoke_subagent`**。
+
+### 1. 终端与 CLI 降噪规范（主会话与子代理通用）
+- **无错即静默（Silent on Success）：** 任何可能产生长输出的构建、测试或脚本命令，严禁直接裸跑刷屏。必须确保 `.scratch/logs/` 目录存在并将输出重定向至 `.scratch/logs/<name>.log`，同时保留真实退出码：
+  * **执行准则：** 成功仅输出单行 `✓ OK`；失败仅输出 `单行摘要 + 日志路径 + 末尾 30 行`，并确保返回非零退出码（参考范式：`mkdir -p .scratch/logs && cmd > .scratch/logs/<name>.log 2>&1 && echo "✓ OK" || { rc=$?; echo "✗ FAILED (exit $rc) - log: .scratch/logs/<name>.log"; tail -n 30 .scratch/logs/<name>.log; exit $rc; }`）。
+  * **Git 隔离：** `.scratch/` 目录仅作临时工作区，严禁提交至版本库（执行 `git add` 时严禁包含 `.scratch/`）。
+- **CLI 强制紧凑参数：**
+  * **Git：** 查状态必用 `git status -s`；查历史必用 `git log --oneline -n 10`；查全局变更概览必用 `git diff --stat`（仅在需要审查具体代码行差异时，才允许针对单一文件执行 `git diff -- <file_path>`，严禁裸跑全量 `git diff`）。
+  * **Maven：** 强制追加静默参数 `mvn <goal> -q`；调试单测时必须精确到单类或单方法（`mvn test -q -Dtest=ClassName#methodName`），严禁在调试期反复跑全量 `mvn test`。
+  * **前端（pnpm / Vitest）：** 运行脚本必加 `pnpm <cmd> --silent`；运行 Vitest 单测强制使用 `pnpm vitest run --reporter=dot --bail=1`（遇首个错误即停，杜绝连环报错刷屏）。
+  * **调试例外原则：** 仅日常命令强制启用紧凑参数；深度调试需要完整上下文时允许去掉 `-q` / `--silent`，但**详细输出必须重定向至 `.scratch/logs/<name>.log` 按需检索，严禁直接打印到终端刷屏**。
+
+### 2. 跨域探索下沉（Read-Heavy Isolation）
+- **3 文件阅读红线：** 主会话仅允许使用 `view_file` 读取与当前修改直接相关的核心目标文件（单次任务在主会话直接阅读的源码文件累积不得超过 3 个）。
+- **Research 只读代理：** 凡需查阅超过 3 个文件以摸底系统架构、跨模块调用链路或排查第三方库机制时，主会话严禁亲自大面积通读代码；必须调用 `invoke_subagent` 派发只读 `research` 子代理。子代理将调研明细沉淀至外部文件（如 `.scratch/` 或 `docs/`），向主会话仅返回 200 字以内的核心结论与文件指针。
+
+### 3. 子代理派发强制指针化（Context Pointer 协议）
+主会话调用 `invoke_subagent`（无论是派发开发、排错还是调研）时，**Prompt 严格限制在 15 行以内**，严禁在 Prompt 中内联粘贴长篇历史对话、完整需求文档、DDL、VO 实体或长报错日志。必须且仅传递以下四要素指针，由子代理自行读取：
+1. **目标简述：** 一句话说明子任务边界（如 Ticket ID 或待定位的异常现象）。
+2. **上下文指针：** Spec 路径、Ticket 路径、核心源码及异常行号指针（`file:///...`）、报错日志路径（`.scratch/logs/...`）、Git Base Commit 与工作分支名（参见 `docs/agents/orchestrator-templates.md`）。
+3. **确定性验证指令：** 唯一用于复现问题或验收通过的最小化单测/构建命令。
+4. **返回契约：** 明确要求子代理仅返回单行执行结果摘要、精简根因说明或文件变更统计（严禁子代理在返回结果中倾倒大段源码或全量日志）。
+
+### 4. 分模式执行与熔断纪律（Mode-Specific Execution）
+
+#### 模式 A：`/implement-spec` 多工单编排阶段（主会话 = 纯调度官）
+- **绝对零代码（Zero Direct Code Editing）：** 主会话严格定位为纯调度与门禁把关者，**严禁**使用 `write_to_file` 或 `replace_file_content` 编写或修补任何业务代码。
+- **大命令与修复全下沉：** 编译打包（如 `pnpm build`）、完整单测（如 `mvn test`）及代码实现一律由 `Implementer` 子代理在独立上下文与对应分支中执行并自闭环；遇到编译报错、测试红灯或 Review 问题时，主会话一律派发 `Fixer` 子代理闭环修复，主会话仅接收单行成功/失败摘要与 Commit Hash。
+
+#### 模式 B：`/implement` 或日常单点任务（主会话 = 受限执行者）
+- **重型命令下沉：** 主会话仅允许运行针对单个测试类的轻量验证命令；全量编译打包与全量测试套件必须委派子代理执行。
+- **两遍试错熔断（Rule of Two Failures）：** 当编译报错或单测红灯时，主会话最多只允许尝试修改 **1 次**。若第 **2 次**执行验证依然报错，严禁在主会话继续盲目试错！必须立即触发熔断，调用 `invoke_subagent` 派发专职诊断/修复子代理（`diagnosing-bugs` 或 `Fixer`），按【Context Pointer 协议】传入最小复现指令与 `.scratch/logs/` 错误日志指针，由子代理在独立上下文中定位根因并完成修复（或返回最小 Diff 供主会话直接应用）。
