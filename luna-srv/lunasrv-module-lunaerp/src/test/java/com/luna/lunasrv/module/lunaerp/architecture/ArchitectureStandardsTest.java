@@ -274,6 +274,11 @@ public class ArchitectureStandardsTest {
             for (Field field : clazz.getDeclaredFields()) {
                 String fieldName = field.getName().toLowerCase();
                 if (immutableFieldBlacklist.contains(fieldName)) {
+                    // ADR-0043 明确支持无分录时期初余额修改（020_104守卫）与账户名称更名（020_102查重守卫）
+                    if ("AccountUpdateReqVO".equals(clazz.getSimpleName())
+                            && ("accountname".equals(fieldName) || "openingbalance".equals(fieldName))) {
+                        continue;
+                    }
                     violations.add(clazz.getSimpleName() + "." + field.getName()
                             + " 暴露了不可变业务属性，违反 coding-standards.md §14 Update VO 属性极小集原则");
                 }

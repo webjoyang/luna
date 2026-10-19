@@ -39,6 +39,17 @@ public class AccountDO extends TenantBaseDO {
     private String accountType;
 
     /**
+     * 账号/微信标识/支付宝标识（BANK/WECHAT/ALIPAY 必填，CASH 可空，@Sensitive(CONTACT)）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String accountNo;
+
+    /**
+     * 账户性质（字典 lunaerp_finance_account_nature：PUBLIC 公户 / PRIVATE 私户，缺省 PUBLIC）
+     */
+    private String accountNature;
+
+    /**
      * 账户币种（默认 RMB）
      */
     private String currency;

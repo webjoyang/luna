@@ -32,6 +32,17 @@ public class AccountRespVO {
     private String accountType;
 
     /**
+     * 账号/微信标识/支付宝标识（@Sensitive(CONTACT)）
+     */
+    @Sensitive(seePermission = SensitiveConstants.PERMISSION_CONTACT, type = SensitiveType.BANK_CARD)
+    private String accountNo;
+
+    /**
+     * 账户性质（PUBLIC 公户 / PRIVATE 私户）
+     */
+    private String accountNature;
+
+    /**
      * 账户币种
      */
     private String currency;

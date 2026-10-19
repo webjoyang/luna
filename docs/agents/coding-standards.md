@@ -270,7 +270,7 @@
 - **Update VO 属性极小集原则 (Update VO Minimal Field Set Guard)**：
   - 更新接口 Request VO 严禁默认全盘拷贝 Create VO 字段；必须严格依照 Spec 声明的可编辑列集合（如仅允许修改状态/备注的账户、仅允许变更特定配置的单据）。
   - **强制规约**：严禁投机性放开未在 Spec 声明的关键标识、名称、金额等敏感维度的更新入口；只读不可变字段（如银行账户名、期初余额、分录编号等）在 Update VO 中坚决不暴露，从契约根源杜绝越权或非法覆写。
-  - **自动化守护保障**：全域由 `ArchitectureStandardsTest.testUpdateVOsFollowMinimalFieldSetConvention()` 自动反射检验所有 `*UpdateReqVO`，对黑名单不可变字段（`effectiveDate`, `accountName`, `currency`, `tenantId`, `openingBalance`, `applyNo`, `reconNo`, `statementNo`, `partyType`, `partyId`, `shipmentId`, `returnNo`, `sourceId`, `sourceNo`, `sourceDocType`, `sourceDocId` 等）进行前置物理拦截。
+  - **自动化守护保障**：全域由 `ArchitectureStandardsTest.testUpdateVOsFollowMinimalFieldSetConvention()` 自动反射检验所有 `*UpdateReqVO`，对黑名单不可变字段（`effectiveDate`, `accountName`, `currency`, `tenantId`, `openingBalance`, `applyNo`, `reconNo`, `statementNo`, `partyType`, `partyId`, `shipmentId`, `returnNo`, `sourceId`, `sourceNo`, `sourceDocType`, `sourceDocId` 等）进行前置物理拦截（注：资金账户 `AccountUpdateReqVO` 依 ADR-0043 / Issue 02 契约，支持更名 020_102 与无分录时期初调整 020_104，由业务服务层实施防篡改守卫，架构测试给予显式白名单豁免）。
 - **工单错误码声明与常量命名对齐规约 (Error Code Citation Hygiene)**：
   - 特性工单在描述业务校验要求时，若引用业务错误码，必须以常量标识符或对照 `docs/contexts/<domain>/GLOSSARY.md` 段位总表引用，严禁凭直觉或假设裸写未在基建工单确认的数字代号（如臆测数字），避免导致实现方与 Reviewer 因字面错位产生伪需求冲突；在常量已落库时优先写出明确常量名（如 `SALES_RETURN_REASON_EMPTY`）。
 - **详情页与工作台留痕严格归位 (Workspace Audit Trail Isolation)**：

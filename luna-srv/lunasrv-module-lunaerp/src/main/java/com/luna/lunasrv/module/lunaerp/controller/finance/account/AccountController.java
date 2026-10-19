@@ -1,23 +1,24 @@
 package com.luna.lunasrv.module.lunaerp.controller.finance.account;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
-import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.FinanceAccountSimpleRespVO;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.*;
 import com.luna.lunasrv.module.lunaerp.service.finance.account.AccountService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
 /**
- * 财务管理 - 资金账户控制器（一期提供下拉选择端点，完整管理页归 12 号）
+ * 财务管理 - 资金账户控制器（ADR-0043 / Issue 02）
  *
  * @author luna
  */
@@ -30,9 +31,27 @@ public class AccountController {
     @Resource
     private AccountService accountService;
 
+    @PutMapping("/update")
+    @Operation(summary = "修改资金账户")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:account:update')")
+    public CommonResult<Boolean> updateAccount(@Valid @RequestBody AccountUpdateReqVO updateReqVO) {
+        accountService.updateAccount(updateReqVO);
+        return success(true);
+    }
+
+    @DeleteMapping("/delete")
+    @Operation(summary = "删除资金账户（进入回收站）")
+    @Parameter(name = "id", description = "账户编号", required = true)
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:account:delete')")
+    public CommonResult<Boolean> deleteAccount(@RequestParam("id") Long id) {
+        accountService.deleteAccount(id);
+        return success(true);
+    }
+
+
     @GetMapping("/simple-list")
     @Operation(summary = "获得资金账户精简下拉列表（仅 ENABLE 状态）")
-    @PreAuthorize("@ss.hasPermission('lunaerp:finance:payment:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:finance:account:query', 'lunaerp:finance:payment:query', 'lunaerp:finance:expense:query', 'lunaerp:finance:payroll:query')")
     public CommonResult<List<FinanceAccountSimpleRespVO>> getSimpleAccountList() {
         return success(accountService.getSimpleAccountList());
     }

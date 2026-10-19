@@ -43,6 +43,11 @@ public class LedgerEntryDO extends TenantBaseDO {
     private Long partyId;
 
     /**
+     * 往来主体名称快照（EMPLOYEE 员工昵称/NONE 时空，免 join system_users）
+     */
+    private String partyName;
+
+    /**
      * 资金账户ID（非空表示资金流水视图行，空表示往来分录行）
      */
     private Long accountId;
@@ -91,6 +96,11 @@ public class LedgerEntryDO extends TenantBaseDO {
      * 业务回指明细ID
      */
     private Long refItemId;
+
+    /**
+     * 业务来源单号快照（BX/GZ/GF/ZZ/QT 等，流水页免跳查）
+     */
+    private String refNo;
 
     /**
      * 红冲回指原分录ID

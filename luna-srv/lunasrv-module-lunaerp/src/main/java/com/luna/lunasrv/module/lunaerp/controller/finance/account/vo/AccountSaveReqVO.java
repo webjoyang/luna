@@ -27,6 +27,16 @@ public class AccountSaveReqVO {
     private String accountType;
 
     /**
+     * 账号/微信标识/支付宝标识（BANK/WECHAT/ALIPAY 必填，CASH 可空）
+     */
+    private String accountNo;
+
+    /**
+     * 账户性质（PUBLIC 公户 / PRIVATE 私户，默认 PUBLIC）
+     */
+    private String accountNature;
+
+    /**
      * 账户币种（默认 RMB）
      */
     private String currency;
