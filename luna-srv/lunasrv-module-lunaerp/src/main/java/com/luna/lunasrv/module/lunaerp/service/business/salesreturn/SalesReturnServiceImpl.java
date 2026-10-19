@@ -25,7 +25,11 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.Shipment
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
 import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInItemPlacementSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouse.WarehouseDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouselocation.WarehouseLocationDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnRollMapper;
@@ -33,7 +37,9 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemM
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouselocation.WarehouseLocationMapper;
 import com.luna.lunasrv.module.lunaerp.service.stock.stockin.StockInService;
+import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnQcResultEnum;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnReasonEnum;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnStatusEnum;
 import com.mzt.logapi.starter.annotation.LogRecord;
@@ -93,6 +99,9 @@ public class SalesReturnServiceImpl implements SalesReturnService {
 
     @Resource
     private WarehouseMapper warehouseMapper;
+
+    @Resource
+    private WarehouseLocationMapper warehouseLocationMapper;
 
     @Resource
     private SalesReturnAvailabilityService availabilityService;
@@ -642,6 +651,230 @@ public class SalesReturnServiceImpl implements SalesReturnService {
         }
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "SALES_RETURN", subType = "RECEIVE", bizNo = "{{#reqVO.id}}",
+            success = "到货质检销售退货单【{{#reqVO.id}}】")
+    public void receiveSalesReturn(SalesReturnReceiveReqVO reqVO) {
+        // 1. 校验单据存在
+        SalesReturnDO existing = validateSalesReturnExists(reqVO.getId());
+
+        // 2. 状态机守卫：仅 status=APPROVED 可进行到货质检（008）
+        if (!SalesReturnStatusEnum.APPROVED.getValue().equals(existing.getStatus())
+                || !"APPROVED".equalsIgnoreCase(existing.getApprovalStatus())) {
+            throw exception(SALES_RETURN_APPROVAL_NOT_APPROVED);
+        }
+
+        // 3. 入库单状态守卫：入库单必须存在且仍为 DRAFT 状态（若被人工提前审核/取消则报 009）
+        if (existing.getStockInId() == null) {
+            throw exception(SALES_RETURN_STOCK_IN_STATUS_INVALID);
+        }
+        StockInRespVO stockIn = stockInService.getStockIn(existing.getStockInId());
+        if (stockIn == null || !"DRAFT".equalsIgnoreCase(stockIn.getStatus())) {
+            throw exception(SALES_RETURN_STOCK_IN_STATUS_INVALID);
+        }
+
+        // 4. 加载退货行与卷清单
+        List<SalesReturnItemDO> items = salesReturnItemMapper.selectList(new LambdaQueryWrapperX<SalesReturnItemDO>()
+                .eq(SalesReturnItemDO::getReturnId, existing.getId()));
+        if (CollUtil.isEmpty(items)) {
+            throw invalidParamException("退货明细行不能为空");
+        }
+        Map<Long, SalesReturnItemDO> itemMap = items.stream()
+                .collect(Collectors.toMap(SalesReturnItemDO::getId, Function.identity()));
+
+        List<SalesReturnRollDO> dbRolls = salesReturnRollMapper.selectList(new LambdaQueryWrapperX<SalesReturnRollDO>()
+                .eq(SalesReturnRollDO::getReturnId, existing.getId()));
+        if (CollUtil.isEmpty(dbRolls)) {
+            throw invalidParamException("退货卷清单不能为空");
+        }
+        Map<Long, SalesReturnRollDO> dbRollMap = dbRolls.stream()
+                .collect(Collectors.toMap(SalesReturnRollDO::getId, Function.identity()));
+
+        // 5. 逐卷质检判定完整性与合法性守卫（010）
+        if (CollUtil.isEmpty(reqVO.getRolls())) {
+            throw exception(SALES_RETURN_ROLL_QC_UNRESOLVED);
+        }
+        Map<Long, SalesReturnReceiveRollReqVO> reqRollMap = new HashMap<>(reqVO.getRolls().size());
+        for (SalesReturnReceiveRollReqVO r : reqVO.getRolls()) {
+            if (r.getId() == null || !dbRollMap.containsKey(r.getId())) {
+                throw invalidParamException("退货卷 ID【{}】不属于当前退货单", r.getId());
+            }
+            if (StrUtil.isBlank(r.getQcResult()) || !SalesReturnQcResultEnum.isValid(r.getQcResult())) {
+                throw exception(SALES_RETURN_ROLL_QC_UNRESOLVED);
+            }
+            reqRollMap.put(r.getId(), r);
+        }
+        // 必须所有 DB 卷均有质检判定，不得遗漏
+        for (SalesReturnRollDO rollDO : dbRolls) {
+            if (!reqRollMap.containsKey(rollDO.getId())) {
+                throw exception(SALES_RETURN_ROLL_QC_UNRESOLVED);
+            }
+        }
+
+        // 6. 校验 RESTOCK 卷库位归属（批量预查询防 N+1，可空，若填则须属于退货仓库）及行单位对应量非空（011）
+        Set<Long> reqLocationIds = reqVO.getRolls().stream()
+                .filter(r -> SalesReturnQcResultEnum.RESTOCK.getValue().equals(r.getQcResult()))
+                .map(SalesReturnReceiveRollReqVO::getLocationId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, WarehouseLocationDO> verifiedLocationMap = reqLocationIds.isEmpty() ? Collections.emptyMap()
+                : warehouseLocationMapper.selectBatchIds(reqLocationIds).stream()
+                        .collect(Collectors.toMap(WarehouseLocationDO::getId, Function.identity(), (a, b) -> a));
+
+        for (SalesReturnRollDO rollDO : dbRolls) {
+            SalesReturnReceiveRollReqVO rollReq = reqRollMap.get(rollDO.getId());
+            SalesReturnItemDO itemDO = itemMap.get(rollDO.getReturnItemId());
+            if (itemDO == null) {
+                throw invalidParamException("退货卷【{}】所属明细行缺失", rollDO.getRollNo());
+            }
+
+            if (SalesReturnQcResultEnum.RESTOCK.getValue().equals(rollReq.getQcResult())) {
+                // 6.1 库位校验
+                if (rollReq.getLocationId() != null) {
+                    WarehouseLocationDO l = verifiedLocationMap.get(rollReq.getLocationId());
+                    if (l == null || !existing.getWarehouseId().equals(l.getWarehouseId())) {
+                        throw invalidParamException("库位不存在或不属于退货仓库【{}】", existing.getWarehouseName());
+                    }
+                }
+
+                // 6.2 行单位（KG/M）对应量非空校验 (011)
+                BigDecimal rollQty = getRollQuantityByUnit(itemDO, rollDO);
+                if (rollQty.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw exception(SALES_RETURN_RESTOCK_QTY_MISMATCH);
+                }
+            }
+        }
+
+        // 7. 按行重算 restock_qty 与 scrap_qty 并更新明细表
+        Map<Long, List<SalesReturnRollDO>> rollsByItem = dbRolls.stream()
+                .collect(Collectors.groupingBy(SalesReturnRollDO::getReturnItemId));
+
+        for (SalesReturnItemDO itemDO : items) {
+            List<SalesReturnRollDO> itemRolls = rollsByItem.getOrDefault(itemDO.getId(), Collections.emptyList());
+
+            BigDecimal lineRestockQty = BigDecimal.ZERO;
+            BigDecimal lineTotalRollQty = BigDecimal.ZERO;
+
+            for (SalesReturnRollDO rollDO : itemRolls) {
+                SalesReturnReceiveRollReqVO rollReq = reqRollMap.get(rollDO.getId());
+                BigDecimal rollQty = getRollQuantityByUnit(itemDO, rollDO);
+                lineTotalRollQty = lineTotalRollQty.add(rollQty);
+
+                if (SalesReturnQcResultEnum.RESTOCK.getValue().equals(rollReq.getQcResult())) {
+                    lineRestockQty = lineRestockQty.add(rollQty);
+                }
+            }
+
+            BigDecimal lineScrapQty = lineTotalRollQty.subtract(lineRestockQty);
+            if (lineScrapQty.compareTo(BigDecimal.ZERO) < 0) {
+                lineScrapQty = BigDecimal.ZERO;
+            }
+
+            itemDO.setRestockQty(lineRestockQty);
+            itemDO.setScrapQty(lineScrapQty);
+            salesReturnItemMapper.updateById(itemDO);
+        }
+
+        // 8. 组装入库单内容：每个 RESTOCK 卷一条入库明细（itemType=PRODUCT、rollNo、quantity=行单位对应量、pieceCount=1、unit_price/amount=0）+ placement；SCRAP 卷不产生入库明细
+        List<StockInItemSaveReqVO> inItems = new ArrayList<>();
+        for (SalesReturnItemDO itemDO : items) {
+            List<SalesReturnRollDO> itemRolls = rollsByItem.getOrDefault(itemDO.getId(), Collections.emptyList());
+
+            for (SalesReturnRollDO rollDO : itemRolls) {
+                SalesReturnReceiveRollReqVO rollReq = reqRollMap.get(rollDO.getId());
+                if (SalesReturnQcResultEnum.RESTOCK.getValue().equals(rollReq.getQcResult())) {
+                    BigDecimal rollQty = getRollQuantityByUnit(itemDO, rollDO);
+
+                    StockInItemSaveReqVO inItem = new StockInItemSaveReqVO();
+                    inItem.setItemType("PRODUCT");
+                    inItem.setProductId(itemDO.getProductId());
+                    inItem.setBatchNo(itemDO.getVatNo());
+                    inItem.setRollNo(rollDO.getRollNo());
+                    inItem.setPieceCount(1);
+                    inItem.setQuantity(rollQty);
+                    inItem.setUnit(StrUtil.isNotBlank(itemDO.getUnit()) ? itemDO.getUnit() : "KG");
+                    inItem.setUnitPrice(BigDecimal.ZERO);
+                    inItem.setAmount(BigDecimal.ZERO);
+                    inItem.setRemark(StrUtil.isNotBlank(rollReq.getQcRemark()) ? rollReq.getQcRemark() : rollDO.getRemark());
+
+                    if (rollReq.getLocationId() != null) {
+                        StockInItemPlacementSaveReqVO placement = new StockInItemPlacementSaveReqVO();
+                        placement.setLocationId(rollReq.getLocationId());
+                        placement.setPieceCount(1);
+                        placement.setQuantity(rollQty);
+                        placement.setUnit(inItem.getUnit());
+                        placement.setRemark(inItem.getRemark());
+                        inItem.setPlacements(Collections.singletonList(placement));
+                    }
+
+                    inItems.add(inItem);
+                }
+            }
+        }
+
+        // 9. 入库单重写与状态驱动
+        Long stockInId = existing.getStockInId();
+        StockInSaveReqVO stockInSaveReq = new StockInSaveReqVO();
+        stockInSaveReq.setId(stockInId);
+        stockInSaveReq.setInNo(stockIn.getInNo());
+        stockInSaveReq.setInType("RETURN");
+        stockInSaveReq.setWarehouseId(existing.getWarehouseId());
+        stockInSaveReq.setSalesContractId(existing.getSalesContractId());
+        stockInSaveReq.setInDate(stockIn.getInDate() != null ? stockIn.getInDate() : LocalDate.now());
+        stockInSaveReq.setSourceDocType("SALES_RETURN");
+        stockInSaveReq.setSourceDocId(existing.getId());
+        stockInSaveReq.setRemark(StrUtil.isNotBlank(existing.getRemark())
+                ? existing.getRemark().trim()
+                : ("由销售退货单 " + existing.getReturnNo() + " 自动生成"));
+        stockInSaveReq.setItems(inItems);
+
+        if (CollUtil.isEmpty(inItems)) {
+            // 9.1 全废分支：入库单明细为空 -> 调 stock-in DRAFT 取消（置 CANCELLED，无流水）
+            stockInService.updateStockIn(stockInSaveReq);
+            boolean cancelled = stockInService.cancelDraftStockIn(stockInId);
+            if (!cancelled) {
+                throw exception(SALES_RETURN_STOCK_IN_STATUS_INVALID);
+            }
+        } else {
+            // 9.2 部分/全可入分支：整单替换明细后调 stock-in 审核（写 STOCK_IN 正流水，非 RETURN_IN）
+            stockInService.updateStockIn(stockInSaveReq);
+            stockInService.auditStockIn(stockInId);
+        }
+
+        // 10. 落每卷 qc_by/qc_at/qc_remark/location 快照
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (SalesReturnRollDO rollDO : dbRolls) {
+            SalesReturnReceiveRollReqVO rollReq = reqRollMap.get(rollDO.getId());
+            rollDO.setQcResult(rollReq.getQcResult());
+            rollDO.setQcBy(loginUserId);
+            rollDO.setQcAt(now);
+            rollDO.setQcRemark(rollReq.getQcRemark());
+            if (SalesReturnQcResultEnum.RESTOCK.getValue().equals(rollReq.getQcResult()) && rollReq.getLocationId() != null) {
+                WarehouseLocationDO loc = verifiedLocationMap.get(rollReq.getLocationId());
+                rollDO.setLocationId(rollReq.getLocationId());
+                rollDO.setLocationCode(loc != null ? loc.getCode() : null);
+            } else {
+                rollDO.setLocationId(null);
+                rollDO.setLocationCode(null);
+            }
+            salesReturnRollMapper.updateById(rollDO);
+        }
+
+        // 11. 退货单主表状态流转：APPROVED -> RECEIVED、落 arrived_by/at
+        int rows = salesReturnMapper.update(null, new LambdaUpdateWrapper<SalesReturnDO>()
+                .eq(SalesReturnDO::getId, existing.getId())
+                .eq(SalesReturnDO::getStatus, SalesReturnStatusEnum.APPROVED.getValue())
+                .set(SalesReturnDO::getStatus, SalesReturnStatusEnum.RECEIVED.getValue())
+                .set(SalesReturnDO::getArrivedBy, loginUserId)
+                .set(SalesReturnDO::getArrivedAt, now));
+        if (rows == 0) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+    }
+
     // ==================== 私有辅助方法 ====================
 
     private ShipmentDO validateCompletedShipment(Long shipmentId) {
@@ -962,6 +1195,13 @@ public class SalesReturnServiceImpl implements SalesReturnService {
             }
             throw exception(SALES_RETURN_NO_DUPLICATE, prefix + String.format("%0" + maxDigits + "d", maxNum + 1));
         });
+    }
+
+    private BigDecimal getRollQuantityByUnit(SalesReturnItemDO itemDO, SalesReturnRollDO rollDO) {
+        String unit = StrUtil.isNotBlank(itemDO.getUnit()) ? itemDO.getUnit().trim().toUpperCase() : "KG";
+        boolean isMeter = "M".equals(unit) || "METER".equals(unit);
+        BigDecimal qty = isMeter ? rollDO.getLengthM() : rollDO.getWeight();
+        return qty != null ? qty : BigDecimal.ZERO;
     }
 
 }

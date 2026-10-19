@@ -111,4 +111,12 @@ public class SalesReturnController {
         return success(true);
     }
 
+    @PostMapping("/receive")
+    @Operation(summary = "到货质检（逐卷判定 RESTOCK/SCRAP 并入库/审核/全废取消）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:sales-return:receive')")
+    public CommonResult<Boolean> receiveSalesReturn(@Valid @RequestBody SalesReturnReceiveReqVO reqVO) {
+        salesReturnService.receiveSalesReturn(reqVO);
+        return success(true);
+    }
+
 }

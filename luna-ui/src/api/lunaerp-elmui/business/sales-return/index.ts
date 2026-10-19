@@ -267,3 +267,25 @@ export const cancelSalesReturn = (id: number, data: SalesReturnCancelReqVO) => {
     data
   })
 }
+
+// 销售退货质检卷参数 VO
+export interface SalesReturnReceiveRollReqVO {
+  id: number
+  qcResult: string
+  locationId?: number
+  qcRemark?: string
+}
+
+// 销售退货到货质检参数 VO
+export interface SalesReturnReceiveReqVO {
+  id: number
+  rolls: SalesReturnReceiveRollReqVO[]
+}
+
+// 到货质检
+export const receiveSalesReturn = (data: SalesReturnReceiveReqVO) => {
+  return request.post<boolean>({
+    url: '/lunaerp/business/sales-return/receive',
+    data
+  })
+}

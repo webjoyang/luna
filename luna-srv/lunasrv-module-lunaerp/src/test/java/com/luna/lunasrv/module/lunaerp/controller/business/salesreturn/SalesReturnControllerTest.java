@@ -75,6 +75,25 @@ public class SalesReturnControllerTest {
         PreAuthorize cancelAuth = cancelMethod.getAnnotation(PreAuthorize.class);
         assertNotNull(cancelAuth);
         assertTrue(cancelAuth.value().contains("lunaerp:business:sales-return:cancel"));
+
+        Method receiveMethod = SalesReturnController.class.getMethod("receiveSalesReturn", com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.SalesReturnReceiveReqVO.class);
+        PreAuthorize receiveAuth = receiveMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(receiveAuth);
+        assertTrue(receiveAuth.value().contains("lunaerp:business:sales-return:receive"));
+    }
+
+    @Test
+    @DisplayName("receive 接口：正确委托 service 并返回成功")
+    void testReceiveSalesReturn() {
+        com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.SalesReturnReceiveReqVO reqVO =
+                com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.SalesReturnReceiveReqVO.builder()
+                        .id(10L)
+                        .rolls(java.util.Collections.emptyList())
+                        .build();
+        CommonResult<Boolean> result = controller.receiveSalesReturn(reqVO);
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(salesReturnService).receiveSalesReturn(reqVO);
     }
 
 }

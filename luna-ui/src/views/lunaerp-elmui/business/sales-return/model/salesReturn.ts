@@ -144,3 +144,62 @@ export function validateSalesReturnLine(item: SalesReturnLineItem): {
   }
   return { valid: true }
 }
+
+export interface QcRollItem {
+  id?: number
+  rollNo?: string
+  weight?: number
+  lengthM?: number
+  qcResult?: string
+  locationId?: number
+  qcRemark?: string
+}
+
+/**
+ * 按行单位重算 RESTOCK 卷的 restockQty 与 SCRAP 卷的 scrapQty
+ */
+export function calculateQcRestockAndScrapQty(
+  unit: string,
+  rolls?: QcRollItem[]
+): { restockQty: number; scrapQty: number } {
+  if (!rolls || rolls.length === 0) {
+    return { restockQty: 0, scrapQty: 0 }
+  }
+  const isMeter =
+    (unit || '').trim().toUpperCase() === 'M' || (unit || '').trim().toUpperCase() === 'METER'
+  let totalQty = 0
+  let restockQty = 0
+
+  for (const r of rolls) {
+    const qty = isMeter ? Number(r.lengthM) || 0 : Number(r.weight) || 0
+    totalQty += qty
+    if (r.qcResult === 'RESTOCK') {
+      restockQty += qty
+    }
+  }
+
+  const scrapQty = Math.max(0, totalQty - restockQty)
+  return {
+    restockQty: Number(restockQty.toFixed(2)),
+    scrapQty: Number(scrapQty.toFixed(2))
+  }
+}
+
+/**
+ * 校验到货质检提交数据：所有卷必须均有判定 (RESTOCK / SCRAP)
+ */
+export function validateQcDecision(rolls?: QcRollItem[]): {
+  valid: boolean
+  message?: string
+} {
+  if (!rolls || rolls.length === 0) {
+    return { valid: false, message: '卷质检清单不能为空' }
+  }
+  for (let i = 0; i < rolls.length; i++) {
+    const r = rolls[i]
+    if (!r.qcResult || (r.qcResult !== 'RESTOCK' && r.qcResult !== 'SCRAP')) {
+      return { valid: false, message: `第 ${i + 1} 卷（${r.rollNo || ''}）未完成质检判定` }
+    }
+  }
+  return { valid: true }
+}

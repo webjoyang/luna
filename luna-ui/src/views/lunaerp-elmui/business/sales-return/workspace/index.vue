@@ -67,6 +67,14 @@
             <Icon icon="ep:back" class="mr-2px" /> 撤回审批
           </el-button>
           <el-button
+            v-if="!isNew && actionFlags.canReceive"
+            type="warning"
+            @click="handleReceive"
+            v-hasPermi="['lunaerp:business:sales-return:receive']"
+          >
+            <Icon icon="ep:van" class="mr-2px" /> 到货质检
+          </el-button>
+          <el-button
             v-if="!isNew && actionFlags.canCancel"
             type="danger"
             :loading="cancelling"
@@ -174,14 +182,24 @@
                   @click="handleJumpStockIn"
                 >
                   <Icon icon="ep:link" class="mr-1" />
-                  {{ formData.stockInNo || ('ID: ' + formData.stockInId) }}
+                  {{ formData.stockInNo || 'ID: ' + formData.stockInId }}
                 </el-link>
-                <el-tag v-else type="info" class="font-mono font-bold">{{ formData.stockInNo }}</el-tag>
+                <el-tag v-else type="info" class="font-mono font-bold">{{
+                  formData.stockInNo
+                }}</el-tag>
               </el-form-item>
             </el-col>
             <el-col :span="6">
               <el-form-item label="入库单状态">
-                <el-tag :type="formData.stockInStatus === 'COMPLETED' ? 'success' : (formData.stockInStatus === 'CANCELLED' ? 'danger' : 'warning')">
+                <el-tag
+                  :type="
+                    formData.stockInStatus === 'COMPLETED'
+                      ? 'success'
+                      : formData.stockInStatus === 'CANCELLED'
+                        ? 'danger'
+                        : 'warning'
+                  "
+                >
                   {{ formData.stockInStatus || 'DRAFT' }}
                 </el-tag>
               </el-form-item>
@@ -313,6 +331,51 @@
                       />
                     </template>
                   </el-table-column>
+                  <el-table-column
+                    v-if="
+                      !isEditable &&
+                      (formData.status === 'RECEIVED' || formData.status === 'POSTED')
+                    "
+                    label="质检判定"
+                    width="110"
+                    align="center"
+                  >
+                    <template #default="{ row: roll }">
+                      <el-tag v-if="roll.qcResult === 'RESTOCK'" size="small" type="success">
+                        可二次入库
+                      </el-tag>
+                      <el-tag v-else-if="roll.qcResult === 'SCRAP'" size="small" type="danger">
+                        废品
+                      </el-tag>
+                      <span v-else class="text-gray-400">-</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column
+                    v-if="
+                      !isEditable &&
+                      (formData.status === 'RECEIVED' || formData.status === 'POSTED')
+                    "
+                    label="入库库位"
+                    width="120"
+                    align="center"
+                  >
+                    <template #default="{ row: roll }">
+                      <span class="font-mono">{{ roll.locationCode || '（未分配）' }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column
+                    v-if="
+                      !isEditable &&
+                      (formData.status === 'RECEIVED' || formData.status === 'POSTED')
+                    "
+                    label="质检处置说明"
+                    min-width="130"
+                    show-overflow-tooltip
+                  >
+                    <template #default="{ row: roll }">
+                      <span>{{ roll.qcRemark || '-' }}</span>
+                    </template>
+                  </el-table-column>
                   <el-table-column v-if="isEditable" label="操作" width="70" align="center">
                     <template #default="{ $index }">
                       <el-button
@@ -406,6 +469,34 @@
             </template>
           </el-table-column>
 
+          <el-table-column
+            v-if="!isEditable && (formData.status === 'RECEIVED' || formData.status === 'POSTED')"
+            label="可入库量"
+            width="110"
+            align="right"
+          >
+            <template #default="{ row }">
+              <span class="font-bold text-success font-mono">{{
+                (row.restockQty || 0).toFixed(2)
+              }}</span>
+              {{ row.unit }}
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            v-if="!isEditable && (formData.status === 'RECEIVED' || formData.status === 'POSTED')"
+            label="废品量"
+            width="110"
+            align="right"
+          >
+            <template #default="{ row }">
+              <span class="font-bold text-danger font-mono">{{
+                (row.scrapQty || 0).toFixed(2)
+              }}</span>
+              {{ row.unit }}
+            </template>
+          </el-table-column>
+
           <el-table-column label="退货原因" width="160" align="center">
             <template #default="{ row }">
               <el-select
@@ -459,6 +550,9 @@
 
     <!-- 发货单选择弹窗 -->
     <ShipmentSelectDialog ref="shipmentSelectDialogRef" @select="handleShipmentSelected" />
+
+    <!-- 到货质检弹窗 -->
+    <ReceiveDialog ref="receiveDialogRef" @success="handleReceiveSuccess" />
   </div>
 </template>
 
@@ -489,9 +583,14 @@ import {
   type SalesReturnRollItem
 } from '../model/salesReturn'
 import ShipmentSelectDialog from '../components/ShipmentSelectDialog.vue'
+import ReceiveDialog from '../components/ReceiveDialog.vue'
 
 interface EditableRollItem extends SalesReturnRollItem {
   _uid?: string
+  qcResult?: string
+  locationId?: number
+  locationCode?: string
+  qcRemark?: string
 }
 
 interface EditableLineItem {
@@ -512,6 +611,8 @@ interface EditableLineItem {
   unitPrice: number
   amount: number
   returnReason: string
+  restockQty?: number
+  scrapQty?: number
   remark?: string
   rolls: EditableRollItem[]
   originalShipmentRolls?: EditableRollItem[]
@@ -528,6 +629,7 @@ const withdrawing = ref(false)
 const cancelling = ref(false)
 
 const shipmentSelectDialogRef = ref<InstanceType<typeof ShipmentSelectDialog> | null>(null)
+const receiveDialogRef = ref<InstanceType<typeof ReceiveDialog> | null>(null)
 const warehouseOptions = ref<WarehouseVO[]>([])
 
 const formData = reactive({
@@ -911,6 +1013,8 @@ const loadSalesReturn = async (id: number) => {
         unitPrice: i.unitPrice || origPrice,
         amount: i.amount || Number((i.returnQty * (i.unitPrice || origPrice)).toFixed(2)),
         returnReason: i.returnReason,
+        restockQty: i.restockQty,
+        scrapQty: i.scrapQty,
         remark: i.remark,
         rolls: (i.rolls || []).map((r) => ({
           id: r.id,
@@ -918,6 +1022,10 @@ const loadSalesReturn = async (id: number) => {
           rollNo: r.rollNo,
           weight: r.weight,
           lengthM: r.lengthM,
+          qcResult: r.qcResult,
+          qcRemark: r.qcRemark,
+          locationId: r.locationId,
+          locationCode: r.locationCode,
           remark: r.remark
         })),
         originalShipmentRolls: sItem ? sItem.rolls : []
@@ -925,6 +1033,18 @@ const loadSalesReturn = async (id: number) => {
     })
   } catch (err: any) {
     ElMessage.error(err.message || '加载退货单详情失败')
+  }
+}
+
+const handleReceive = () => {
+  if (formData.id) {
+    receiveDialogRef.value?.open(formData.id)
+  }
+}
+
+const handleReceiveSuccess = async () => {
+  if (formData.id) {
+    await loadSalesReturn(formData.id)
   }
 }
 

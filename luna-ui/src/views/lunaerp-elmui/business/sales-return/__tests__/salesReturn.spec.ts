@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   calculateRollTotalLength,
   calculateRollTotalWeight,
+  calculateQcRestockAndScrapQty,
   getLineRollQty,
   getSalesReturnActionFlags,
   isQtyRollMismatch,
+  validateQcDecision,
   validateSalesReturnLine
 } from '../model/salesReturn'
 
@@ -159,6 +161,59 @@ describe('SalesReturn Domain Model Tests', () => {
       })
       expect(result.valid).toBe(false)
       expect(result.message).toContain('重量与米数至少需填写一项')
+    })
+  })
+
+  describe('calculateQcRestockAndScrapQty', () => {
+    it('KG 单位：正确汇总 RESTOCK 卷重量与 SCRAP 卷重量', () => {
+      const rolls = [
+        { rollNo: 'R1', weight: 30.5, qcResult: 'RESTOCK' },
+        { rollNo: 'R2', weight: 20.0, qcResult: 'SCRAP' },
+        { rollNo: 'R3', weight: 15.2, qcResult: 'RESTOCK' }
+      ]
+      const { restockQty, scrapQty } = calculateQcRestockAndScrapQty('KG', rolls)
+      expect(restockQty).toBe(45.7)
+      expect(scrapQty).toBe(20.0)
+    })
+
+    it('M 单位：正确汇总 RESTOCK 卷米数与 SCRAP 卷米数', () => {
+      const rolls = [
+        { rollNo: 'R1', lengthM: 100.0, qcResult: 'RESTOCK' },
+        { rollNo: 'R2', lengthM: 50.0, qcResult: 'SCRAP' }
+      ]
+      const { restockQty, scrapQty } = calculateQcRestockAndScrapQty('M', rolls)
+      expect(restockQty).toBe(100.0)
+      expect(scrapQty).toBe(50.0)
+    })
+
+    it('全废分支：restockQty 为 0，scrapQty 等于总数量', () => {
+      const rolls = [
+        { rollNo: 'R1', weight: 25.0, qcResult: 'SCRAP' },
+        { rollNo: 'R2', weight: 35.0, qcResult: 'SCRAP' }
+      ]
+      const { restockQty, scrapQty } = calculateQcRestockAndScrapQty('KG', rolls)
+      expect(restockQty).toBe(0)
+      expect(scrapQty).toBe(60.0)
+    })
+  })
+
+  describe('validateQcDecision', () => {
+    it('全部卷已判定且合法时返回 valid: true', () => {
+      const rolls = [
+        { rollNo: 'R1', qcResult: 'RESTOCK' },
+        { rollNo: 'R2', qcResult: 'SCRAP' }
+      ]
+      expect(validateQcDecision(rolls).valid).toBe(true)
+    })
+
+    it('存在未判定或非法判定时返回 valid: false 并提示', () => {
+      const rolls = [
+        { rollNo: 'R1', qcResult: 'RESTOCK' },
+        { rollNo: 'R2', qcResult: '' }
+      ]
+      const result = validateQcDecision(rolls)
+      expect(result.valid).toBe(false)
+      expect(result.message).toContain('未完成质检判定')
     })
   })
 })

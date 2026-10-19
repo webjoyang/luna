@@ -21,15 +21,20 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.Shipment
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentRollDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouse.WarehouseDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.warehouselocation.WarehouseLocationDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnRollMapper;
 import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.stock.stockin.vo.StockInItemPlacementSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.stock.stockin.StockInService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouselocation.WarehouseLocationMapper;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnErrorCodeConstants;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnReasonEnum;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnStatusEnum;
@@ -81,6 +86,9 @@ public class SalesReturnServiceImplTest {
     private WarehouseMapper warehouseMapper;
 
     @Mock
+    private WarehouseLocationMapper warehouseLocationMapper;
+
+    @Mock
     private StockInService stockInService;
 
     @Mock
@@ -105,6 +113,7 @@ public class SalesReturnServiceImplTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), ShipmentItemDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), ShipmentRollDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), WarehouseDO.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), WarehouseLocationDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), StockInDO.class);
     }
 
@@ -1255,6 +1264,330 @@ public class SalesReturnServiceImplTest {
         roll.setWeight(weight);
         roll.setLengthM(lengthM);
         return roll;
+    }
+
+    // ==================== Issue 05: 到货质检事务单测 ====================
+
+    @Test
+    @DisplayName("到货质检：单据不存在时抛异常")
+    void receiveSalesReturn_notExists_throwsException() {
+        when(salesReturnMapper.selectById(999L)).thenReturn(null);
+
+        SalesReturnReceiveReqVO reqVO = SalesReturnReceiveReqVO.builder()
+                .id(999L)
+                .rolls(Collections.singletonList(
+                        SalesReturnReceiveRollReqVO.builder().id(1001L).qcResult("RESTOCK").build()
+                ))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.receiveSalesReturn(reqVO));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("到货质检：单据非 APPROVED 状态拒绝质检")
+    void receiveSalesReturn_statusNotApproved_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.DRAFT.getValue());
+        salesReturn.setApprovalStatus("PENDING");
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        SalesReturnReceiveReqVO reqVO = SalesReturnReceiveReqVO.builder()
+                .id(10L)
+                .rolls(Collections.singletonList(
+                        SalesReturnReceiveRollReqVO.builder().id(1001L).qcResult("RESTOCK").build()
+                ))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.receiveSalesReturn(reqVO));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_APPROVAL_NOT_APPROVED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("到货质检：入库单缺失或非 DRAFT 状态抛 009")
+    void receiveSalesReturn_stockInMissingOrNotDraft_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.APPROVED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        salesReturn.setStockInId(500L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        // 场景 1：入库单已被人工提前审核为 COMPLETED
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(500L);
+        stockIn.setStatus("COMPLETED");
+        when(stockInService.getStockIn(500L)).thenReturn(stockIn);
+
+        SalesReturnReceiveReqVO reqVO = SalesReturnReceiveReqVO.builder()
+                .id(10L)
+                .rolls(Collections.singletonList(
+                        SalesReturnReceiveRollReqVO.builder().id(1001L).qcResult("RESTOCK").build()
+                ))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.receiveSalesReturn(reqVO));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STOCK_IN_STATUS_INVALID.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("到货质检：存在未质检判定的退货卷抛 010")
+    void receiveSalesReturn_unresolvedQcRoll_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.APPROVED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        salesReturn.setStockInId(500L);
+        salesReturn.setWarehouseId(301L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(500L);
+        stockIn.setStatus("DRAFT");
+        when(stockInService.getStockIn(500L)).thenReturn(stockIn);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 201L, "KG", new BigDecimal("100.00"), new BigDecimal("200.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+
+        // 退货单 DB 中有两卷
+        SalesReturnRollDO roll1 = createSalesReturnRoll(10L, 101L, null, "R01", new BigDecimal("50.00"), null);
+        roll1.setId(1001L);
+        SalesReturnRollDO roll2 = createSalesReturnRoll(10L, 101L, null, "R02", new BigDecimal("50.00"), null);
+        roll2.setId(1002L);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Arrays.asList(roll1, roll2));
+
+        // 请求中缺少 roll2，或 roll2 的 qcResult 为空
+        SalesReturnReceiveReqVO reqVO = SalesReturnReceiveReqVO.builder()
+                .id(10L)
+                .rolls(Collections.singletonList(
+                        SalesReturnReceiveRollReqVO.builder().id(1001L).qcResult("RESTOCK").build()
+                ))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.receiveSalesReturn(reqVO));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_ROLL_QC_UNRESOLVED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("到货质检：RESTOCK 卷对应行单位（KG/M）对应量非空校验（011）")
+    void receiveSalesReturn_restockRollMissingUnitQuantity_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.APPROVED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        salesReturn.setStockInId(500L);
+        salesReturn.setWarehouseId(301L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(500L);
+        stockIn.setStatus("DRAFT");
+        when(stockInService.getStockIn(500L)).thenReturn(stockIn);
+
+        // KG 行
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 201L, "KG", new BigDecimal("50.00"), new BigDecimal("100.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+
+        // 卷 weight 为空（只有米数）
+        SalesReturnRollDO roll = createSalesReturnRoll(10L, 101L, null, "R01", null, new BigDecimal("100.00"));
+        roll.setId(1001L);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.singletonList(roll));
+
+        SalesReturnReceiveReqVO reqVO = SalesReturnReceiveReqVO.builder()
+                .id(10L)
+                .rolls(Collections.singletonList(
+                        SalesReturnReceiveRollReqVO.builder().id(1001L).qcResult("RESTOCK").build()
+                ))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.receiveSalesReturn(reqVO));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_RESTOCK_QTY_MISMATCH.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("到货质检：RESTOCK 卷库位不属于退货仓库时校验拦截")
+    void receiveSalesReturn_restockRollLocationNotInWarehouse_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.APPROVED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        salesReturn.setStockInId(500L);
+        salesReturn.setWarehouseId(301L);
+        salesReturn.setWarehouseName("柯桥一号仓");
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(500L);
+        stockIn.setStatus("DRAFT");
+        when(stockInService.getStockIn(500L)).thenReturn(stockIn);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 201L, "KG", new BigDecimal("50.00"), new BigDecimal("100.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+
+        SalesReturnRollDO roll = createSalesReturnRoll(10L, 101L, null, "R01", new BigDecimal("50.00"), null);
+        roll.setId(1001L);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.singletonList(roll));
+
+        // 库位属于仓库 302，而非 301
+        WarehouseLocationDO loc = new WarehouseLocationDO();
+        loc.setId(601L);
+        loc.setWarehouseId(302L);
+        loc.setCode("B-01-01");
+        when(warehouseLocationMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(loc));
+
+        SalesReturnReceiveReqVO reqVO = SalesReturnReceiveReqVO.builder()
+                .id(10L)
+                .rolls(Collections.singletonList(
+                        SalesReturnReceiveRollReqVO.builder().id(1001L).qcResult("RESTOCK").locationId(601L).build()
+                ))
+                .build();
+
+        assertThrows(ServiceException.class, () -> salesReturnService.receiveSalesReturn(reqVO));
+    }
+
+    @Test
+    @DisplayName("到货质检：部分可入库部分废品，重写入库单仅留 RESTOCK 卷并审核写 STOCK_IN 正流水")
+    void receiveSalesReturn_success_partialRestockAndScrap() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setReturnNo("RT-20261019-001");
+        salesReturn.setStatus(SalesReturnStatusEnum.APPROVED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        salesReturn.setStockInId(500L);
+        salesReturn.setWarehouseId(301L);
+        salesReturn.setWarehouseName("柯桥一号仓");
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(500L);
+        stockIn.setInNo("IN-20261019-001");
+        stockIn.setStatus("DRAFT");
+        stockIn.setWarehouseId(301L);
+        stockIn.setInDate(LocalDate.now());
+        when(stockInService.getStockIn(500L)).thenReturn(stockIn);
+
+        // 退货行：KG 单位，returnQty=70.00
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 201L, "KG", new BigDecimal("70.00"), new BigDecimal("140.00"), "QUALITY");
+        item.setProductId(1L);
+        item.setVatNo("LOT-01");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+
+        // 2 卷：roll1=50KG, roll2=20KG
+        SalesReturnRollDO roll1 = createSalesReturnRoll(10L, 101L, null, "R01", new BigDecimal("50.00"), null);
+        roll1.setId(1001L);
+        SalesReturnRollDO roll2 = createSalesReturnRoll(10L, 101L, null, "R02", new BigDecimal("20.00"), null);
+        roll2.setId(1002L);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Arrays.asList(roll1, roll2));
+
+        // 库位 601 属于 301 仓
+        WarehouseLocationDO loc = new WarehouseLocationDO();
+        loc.setId(601L);
+        loc.setWarehouseId(301L);
+        loc.setCode("A-01-01");
+        when(warehouseLocationMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(loc));
+
+        // 条件更新退货单成功
+        when(salesReturnMapper.update(isNull(), any())).thenReturn(1);
+
+        SalesReturnReceiveReqVO reqVO = SalesReturnReceiveReqVO.builder()
+                .id(10L)
+                .rolls(Arrays.asList(
+                        SalesReturnReceiveRollReqVO.builder().id(1001L).qcResult("RESTOCK").locationId(601L).qcRemark("轻微瑕疵二次入库").build(),
+                        SalesReturnReceiveRollReqVO.builder().id(1002L).qcResult("SCRAP").qcRemark("严重破洞报废").build()
+                ))
+                .build();
+
+        salesReturnService.receiveSalesReturn(reqVO);
+
+        // 1. 验证各行 restock_qty 与 scrap_qty 重算
+        ArgumentCaptor<SalesReturnItemDO> itemCaptor = ArgumentCaptor.forClass(SalesReturnItemDO.class);
+        verify(salesReturnItemMapper).updateById(itemCaptor.capture());
+        SalesReturnItemDO updatedItem = itemCaptor.getValue();
+        assertEquals(new BigDecimal("50.00"), updatedItem.getRestockQty());
+        assertEquals(new BigDecimal("20.00"), updatedItem.getScrapQty());
+
+        // 2. 验证卷快照更新
+        verify(salesReturnRollMapper, times(2)).updateById(any(SalesReturnRollDO.class));
+
+        // 3. 验证入库单重写：仅留 RESTOCK 卷（roll1），且单价与金额恒为 0，带 placement
+        ArgumentCaptor<StockInSaveReqVO> stockInCaptor = ArgumentCaptor.forClass(StockInSaveReqVO.class);
+        verify(stockInService).updateStockIn(stockInCaptor.capture());
+        StockInSaveReqVO updateStockInReq = stockInCaptor.getValue();
+        assertEquals(500L, updateStockInReq.getId());
+        assertEquals(1, updateStockInReq.getItems().size());
+        StockInItemSaveReqVO inItem = updateStockInReq.getItems().get(0);
+        assertEquals("PRODUCT", inItem.getItemType());
+        assertEquals("R01", inItem.getRollNo());
+        assertEquals(new BigDecimal("50.00"), inItem.getQuantity());
+        assertEquals("KG", inItem.getUnit());
+        assertEquals(BigDecimal.ZERO, inItem.getUnitPrice());
+        assertEquals(BigDecimal.ZERO, inItem.getAmount());
+        assertNotNull(inItem.getPlacements());
+        assertEquals(1, inItem.getPlacements().size());
+        assertEquals(601L, inItem.getPlacements().get(0).getLocationId());
+
+        // 4. 验证调 stock-in 审核（写 STOCK_IN 正流水，非 RETURN_IN）
+        verify(stockInService).auditStockIn(500L);
+        verify(stockInService, never()).cancelDraftStockIn(any());
+    }
+
+    @Test
+    @DisplayName("到货质检：全废分支，自动取消入库单，退货单仍进入 RECEIVED")
+    void receiveSalesReturn_success_allScrap_cancelsStockInAndMarksReceived() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setReturnNo("RT-20261019-002");
+        salesReturn.setStatus(SalesReturnStatusEnum.APPROVED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        salesReturn.setStockInId(500L);
+        salesReturn.setWarehouseId(301L);
+        salesReturn.setWarehouseName("柯桥一号仓");
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(500L);
+        stockIn.setInNo("IN-20261019-002");
+        stockIn.setStatus("DRAFT");
+        stockIn.setWarehouseId(301L);
+        when(stockInService.getStockIn(500L)).thenReturn(stockIn);
+
+        SalesReturnItemDO item = createSalesReturnItem(10L, 101L, 201L, "KG", new BigDecimal("70.00"), new BigDecimal("140.00"), "QUALITY");
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+
+        SalesReturnRollDO roll1 = createSalesReturnRoll(10L, 101L, null, "R01", new BigDecimal("50.00"), null);
+        roll1.setId(1001L);
+        SalesReturnRollDO roll2 = createSalesReturnRoll(10L, 101L, null, "R02", new BigDecimal("20.00"), null);
+        roll2.setId(1002L);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Arrays.asList(roll1, roll2));
+
+        when(salesReturnMapper.update(isNull(), any())).thenReturn(1);
+        when(stockInService.cancelDraftStockIn(500L)).thenReturn(true);
+
+        // 两卷均判 SCRAP
+        SalesReturnReceiveReqVO reqVO = SalesReturnReceiveReqVO.builder()
+                .id(10L)
+                .rolls(Arrays.asList(
+                        SalesReturnReceiveRollReqVO.builder().id(1001L).qcResult("SCRAP").qcRemark("报废1").build(),
+                        SalesReturnReceiveRollReqVO.builder().id(1002L).qcResult("SCRAP").qcRemark("报废2").build()
+                ))
+                .build();
+
+        salesReturnService.receiveSalesReturn(reqVO);
+
+        // 1. 验证重算 restock_qty 为 0，scrap_qty 为 70.00
+        ArgumentCaptor<SalesReturnItemDO> itemCaptor = ArgumentCaptor.forClass(SalesReturnItemDO.class);
+        verify(salesReturnItemMapper).updateById(itemCaptor.capture());
+        SalesReturnItemDO updatedItem = itemCaptor.getValue();
+        assertEquals(BigDecimal.ZERO, updatedItem.getRestockQty());
+        assertEquals(new BigDecimal("70.00"), updatedItem.getScrapQty());
+
+        // 2. 验证全废分支：取消 DRAFT 入库单，严禁审核入库单
+        verify(stockInService).cancelDraftStockIn(500L);
+        verify(stockInService, never()).auditStockIn(any());
+
+        // 3. 验证退货单状态依然进入 RECEIVED
+        verify(salesReturnMapper).update(isNull(), any());
     }
 
 }

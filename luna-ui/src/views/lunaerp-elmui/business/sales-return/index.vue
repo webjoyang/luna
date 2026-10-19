@@ -197,6 +197,16 @@
               撤回
             </el-button>
             <el-button
+              v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canReceive"
+              type="warning"
+              link
+              size="small"
+              @click="handleReceive(row)"
+              v-hasPermi="['lunaerp:business:sales-return:receive']"
+            >
+              到货质检
+            </el-button>
+            <el-button
               v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canDelete"
               type="danger"
               link
@@ -218,6 +228,9 @@
       v-model:limit="queryParams.pageSize"
       @pagination="getList"
     />
+
+    <!-- 到货质检弹窗 -->
+    <ReceiveDialog ref="receiveDialogRef" @success="getList" />
   </ContentWrap>
 </template>
 
@@ -237,6 +250,7 @@ import {
 } from '@/api/lunaerp-elmui/business/sales-return'
 import { getCustomerPage, type CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import { getSalesReturnActionFlags } from './model/salesReturn'
+import ReceiveDialog from './components/ReceiveDialog.vue'
 
 defineOptions({ name: 'LunaerpElmuiBusinessSalesReturn' })
 
@@ -362,6 +376,12 @@ const handleWithdraw = async (row: SalesReturnVO) => {
       ElMessage.error(err.message || '撤回审批失败')
     }
   }
+}
+
+const receiveDialogRef = ref<InstanceType<typeof ReceiveDialog> | null>(null)
+
+const handleReceive = (row: SalesReturnVO) => {
+  receiveDialogRef.value?.open(row.id!)
 }
 
 onMounted(() => {

@@ -90,4 +90,11 @@ public interface SalesReturnService {
      */
     void cancelSalesReturn(Long id, String cancelReason);
 
+    /**
+     * 到货质检事务（逐卷判定 RESTOCK/SCRAP，重写入库单并审核或全废取消）
+     *
+     * @param reqVO 到货质检请求信息
+     */
+    void receiveSalesReturn(@Valid SalesReturnReceiveReqVO reqVO);
+
 }
