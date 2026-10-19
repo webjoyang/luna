@@ -1,10 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.overview;
 
-import com.baomidou.mybatisplus.core.MybatisConfiguration;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.luna.lunasrv.module.lunaerp.support.TableInfoTestHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
-import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import com.luna.lunasrv.module.lunaerp.controller.finance.overview.vo.AccountSummaryRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.overview.vo.CategorySummaryRespVO;
@@ -63,7 +61,7 @@ public class FinanceOverviewServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), AccountDO.class);
+        TableInfoTestHelper.initTableInfo(AccountDO.class);
     }
 
     @Test

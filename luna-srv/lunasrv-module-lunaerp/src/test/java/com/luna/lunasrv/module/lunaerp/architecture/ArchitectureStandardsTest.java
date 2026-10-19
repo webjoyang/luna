@@ -508,6 +508,72 @@ public class ArchitectureStandardsTest {
                 "检测到 Listener 注入了外部域的 Mapper 接口:\n" + String.join("\n", violations));
     }
 
+    @Test
+    @DisplayName("规约审查：源码文件严禁包含重复 import 语句或类声明下方的错位 import (coding-standards.md §2)")
+    public void testNoDuplicateImportsOrMisplacedImports() {
+        List<java.io.File> baseDirs = new ArrayList<>();
+        String[] candidatePrefixes = {"", "luna-srv/lunasrv-module-lunaerp/", "lunasrv-module-lunaerp/"};
+        for (String prefix : candidatePrefixes) {
+            java.io.File mainDir = new java.io.File(prefix + "src/main/java/com/luna/lunasrv/module/lunaerp");
+            java.io.File testDir = new java.io.File(prefix + "src/test/java/com/luna/lunasrv/module/lunaerp");
+            if (mainDir.exists() && testDir.exists()) {
+                baseDirs.add(mainDir);
+                baseDirs.add(testDir);
+                break;
+            }
+        }
+        if (baseDirs.isEmpty()) {
+            return;
+        }
+
+        List<java.io.File> javaFiles = new ArrayList<>();
+        for (java.io.File baseDir : baseDirs) {
+            collectJavaFiles(baseDir, javaFiles);
+        }
+
+        java.util.regex.Pattern typeDeclPattern = java.util.regex.Pattern.compile(
+                "^(public|protected|private)?\\s*(abstract\\s+|final\\s+|static\\s+)*(class|interface|enum|record)\\s+\\w+");
+
+        List<String> violations = new ArrayList<>();
+        for (java.io.File file : javaFiles) {
+            List<String> lines;
+            try {
+                lines = java.nio.file.Files.readAllLines(file.toPath());
+            } catch (Exception e) {
+                continue;
+            }
+
+            java.util.Map<String, Integer> seenImports = new java.util.HashMap<>();
+            int firstTypeLine = -1;
+
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i).trim();
+                if (firstTypeLine == -1 && typeDeclPattern.matcher(line).find()) {
+                    firstTypeLine = i + 1;
+                }
+
+                if (line.startsWith("import ") && line.endsWith(";")) {
+                    String importStatement = line.substring(7, line.length() - 1).trim();
+                    if (seenImports.containsKey(importStatement)) {
+                        violations.add(file.getName() + ":" + (i + 1) + " 重复导入 `" + importStatement
+                                + "` (首次导入在第 " + seenImports.get(importStatement) + " 行)");
+                    } else {
+                        seenImports.put(importStatement, i + 1);
+                    }
+
+                    if (firstTypeLine != -1) {
+                        violations.add(file.getName() + ":" + (i + 1) + " import 语句位于类型声明下方 (类型定义在第 "
+                                + firstTypeLine + " 行): `" + importStatement + "`");
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到源码文件存在重复 import 或位于类声明下方的错位 import（违反 coding-standards.md §2 机械导入规约）:\n"
+                        + String.join("\n", violations));
+    }
+
     private void collectJavaFiles(java.io.File dir, List<java.io.File> result) {
         java.io.File[] files = dir.listFiles();
         if (files == null) {

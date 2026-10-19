@@ -38,8 +38,6 @@
 - Windows PowerShell 5.1 语法守卫：命令串联必须使用分号 `;` 分隔或分步独立执行，严禁使用 Bash/PowerShell 7 的 `&&` 连接符（会抛出 InvalidEndOfLine 语法解析错误）。
 - 复杂文本与日志过滤：在 Windows PowerShell 5.1 下，针对长日志或 JSON 结构的流式过滤与统计，避免编写含复杂引号转义（如 `$_`）的脆弱命令行管道，优先使用 `node -e "..."` 或在会话 `scratch/` 目录编写一次性 Node.js 脚本。
 
-### 以上文档请尽量用中文编写
-
 ## 前端项目
 
 - 在luna-ui项目中
@@ -59,8 +57,8 @@
 - 控制器与类文件定位：业务控制器统一位于 `com.luna.lunasrv.module.lunaerp.controller.<domain>`（无 `admin/` 中间层，区别于底座 yudao 系统管理模块的 `controller/admin/`）；定位 Controller/Service/VO/DTO 一律使用 `git ls-files "*<Keyword>*"`，严禁凭经验拼接类路径。
 - 单测执行：`Cwd` 切换至 `luna-srv` 目录，执行 `mvn test "-Dtest=TargetTest"` 或指定模块 `mvn test -pl lunasrv-module-lunaerp "-Dtest=TargetTest"`（多类测试在 PowerShell 下务必使用双引号包裹 `"-Dtest=TestA,TestB"`）；凡涉及 `finance`、`business` 等域新增/修改 Controller/Mapper/DO/Handler 时，必须捆绑架构守护单测 `"-Dtest=ArchitectureStandardsTest,TargetTest"`，前置自动检验脱敏注解、可空更新策略、跨域 Mapper 直写拦截与 Mapper 纯洁性（接口严禁 `default` 方法，区别于底座 yudao 习惯）。
 - 框架依赖刷新：修改或依赖刚刚调整过的 `lunasrv-framework` 基础组件时，需先执行 `mvn -pl lunasrv-framework/<module-name> install -DskipTests`（如 `lunasrv-spring-boot-starter-mybatis`）将最新 jar 安装至本地仓库，避免子模块 `-pl` 测试时读取 `~/.m2` 旧快照。
-- 编码安全与实体层级核验：Java/TS 修改 import 严禁大块框选临近 import 粗暴替换，必须单行精细追加/替换；涉及头-行-卷或主子表跨层数据映射时，编码前必须先执行 `view_file` 查阅 DO/VO 物理属性定义，严禁凭经验臆测字段挂载层级（如缸号/匹号/卷号归属）。
-- 数据库脚本与领域规约：增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁、范围守卫、可空列清空、重构检索、审批流回调单写、伴生单据协同作废、质检中立初始态、跨单位物理量、入库 placement 与跨域记账监听器 Fail-Fast 规约见 `docs/agents/coding-standards.md` 第 8~25 节。
+- 编码安全与 import 维护：使用 `replace_file_content` 增删 import 时，`TargetContent` 必须仅定位纯 ASCII 单行 import 语句，严禁跨越 package、Javadoc、类注释或非 ASCII 文本行；超过 3 行的大批量 import 整理优先编写 Node.js 脚本或单行增删。涉及头-行-卷或主子表跨层数据映射时，编码前必须通过 `view_file` 切片查阅 DO/VO 物理属性定义，严禁凭经验臆测字段挂载层级（如缸号/匹号/卷号归属）。
+- 数据库脚本与领域规约：增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁、范围守卫、可空列清空、重构检索、审批流回调单写、伴生单据协同作废、质检中立初始态、跨单位物理量、入库 placement、跨域记账监听器 Fail-Fast 与源码 import 纯洁性规约见 `docs/agents/coding-standards.md` 第 8~26 节。
 
 
 
@@ -80,9 +78,10 @@
   * **前端（pnpm / Vitest）：** 运行脚本必加 `pnpm <cmd> --silent`；运行 Vitest 单测强制使用 `pnpm vitest run --reporter=dot --bail=1`（遇首个错误即停，杜绝连环报错刷屏）。
   * **调试例外原则：** 仅日常命令强制启用紧凑参数；深度调试需要完整上下文时允许去掉 `-q` / `--silent`，但**详细输出必须重定向至 `.scratch/logs/<name>.log` 按需检索，严禁直接打印到终端刷屏**。
 
-### 2. 跨域探索下沉（Read-Heavy Isolation）
-- **3 文件阅读红线：** 主会话仅允许使用 `view_file` 读取与当前修改直接相关的核心目标文件（单次任务在主会话直接阅读的源码文件累积不得超过 3 个）。
-- **Research 只读代理：** 凡需查阅超过 3 个文件以摸底系统架构、跨模块调用链路或排查第三方库机制时，主会话严禁亲自大面积通读代码；必须调用 `invoke_subagent` 派发只读 `research` 子代理。子代理将调研明细沉淀至外部文件（如 `.scratch/` 或 `docs/`），向主会话仅返回 200 字以内的核心结论与文件指针。
+### 2. 跨域探索下沉与行号切片（Read-Heavy Isolation & Slice Read）
+- **3 文件深度通读红线：** 主会话仅允许使用 `view_file` 全量通读与当前修改直接相关的核心目标文件（单次任务在主会话直接通读的源码文件累积不得超过 3 个）。
+- **只读参考行号切片（Slice Read）：** 查阅架构守护测试用例、DDL 物理列定义或现有参考接口/方法签名时，**必须指定 `StartLine` 与 `EndLine` 精确切片查看（单次切片建议 <= 60 行）**。此类精准切片不计入通读红线；**严禁为规避阅读红线而反复执行 `git grep -n -A 20/30` 充当伪 `view_file`**（会导致大量碎片探针、高频交互与上下文污染）。
+- **Research 只读代理与前置摸底：** 凡需查阅超过 3 个文件以摸底系统架构、跨模块调用链路或排查第三方库机制时，主会话严禁亲自大面积探索；必须调用 `invoke_subagent` 派发只读 `research` 子代理。对于涉及多领域模型、复杂 DDL 与多表聚合的工单，在进入编码前派发 1 轮轻量 `research` 子代理提取符号表与契约边界，主会话仅接收 200 字以内的核心结论与文件指针。
 
 ### 3. 子代理派发强制指针化（Context Pointer 协议）
 主会话调用 `invoke_subagent`（无论是派发开发、排错还是调研）时，**Prompt 严格限制在 15 行以内**，严禁在 Prompt 中内联粘贴长篇历史对话、完整需求文档、DDL、VO 实体或长报错日志。必须且仅传递以下四要素指针，由子代理自行读取：

@@ -227,6 +227,33 @@ _避免_：台账重建、recalculate、第二本流水表。
 | `1_030_026_007` | `INVOICE_TAX_RATE_INVALID` | 开票税率不合法 | 税率校验 (000–099) |
 | `1_030_026_008` | `INVOICE_NO_EXHAUSTED` | 发票申请单号生成重试耗尽 | 发号守卫 (000–099) |
 
+## 接口与开发规范速查卡（Finance Engineering Standards）
+
+### 1. 契约与注解标配
+- **Controller 路径**：必须使用单一路径 `@RequestMapping("/lunaerp/finance/<submodule>")`，严禁多重别名数组（`ArchitectureStandardsTest` 强约束）。
+- **权限码规范**：统一为 `lunaerp:finance:<submodule>:<action>`（如 `lunaerp:finance:overview:query`、`lunaerp:finance:account:query`）。
+- **金额脱敏注解**：所有 Response VO 中的金额/单价/成本/余额（BigDecimal 字段）必须统一标注：
+  ```java
+  @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
+  ```
+- **分录只读不改**：`LedgerService` 严禁提供任何带有 `update`、`delete`、`modify`、`remove` 前缀的方法（保证 ADR-0043 append-only 不可变分录）。
+- **纯 Mockito 单元测试预热**：被测 Service 构造 `LambdaQueryWrapperX` 时，在 `@BeforeEach setUp()` 中使用统一工具：
+  ```java
+  TableInfoTestHelper.initTableInfo(AccountDO.class, ...);
+  ```
+
+### 2. 业务单据来源类型 (`ref_type`) 与前端路由字典 (`sourceRoute`)
+分录流水中的 `ref_type` 映射到前端路由：
+| 业务来源类型 (`ref_type`) | 业务单据说明 | 前端路由跳转目标 (`sourceRoute`) |
+|---|---|---|
+| `SALE_RECON` | 客户销售对账单 | `/finance/customer-recon` |
+| `PURCHASE_RECON` | 供应商采购对账单 | `/finance/supplier-recon` |
+| `RECEIVABLE` | 客户应收单 | `/finance/receivable` |
+| `PAYABLE` | 供应商付款申请/应付单 | `/finance/payment-apply` |
+| `EXPENSE` | 报销申请单 | `/finance/expense` |
+| `PAYROLL` | 工资单/工资发放 | `/finance/payroll` |
+| `TRANSFER` | 资金账户转账单 | `/finance/transfer` |
+
 ## 非目标（一期）
 
 - 借贷会计全套：凭证、科目、期初/试算平衡、期末结转、三大报表、账套（`views/fms` 对应能力）；

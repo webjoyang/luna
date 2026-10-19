@@ -185,11 +185,14 @@
   - **场景**：在采用 `@ExtendWith(MockitoExtension.class)` 的纯单元测试中，被测 Service 内部构建了 `new LambdaQueryWrapper<DO>()` 或 `new LambdaQueryWrapperX<DO>()`（如用于悲观锁条件构造、批量核销查询或分页筛选）。
   - **缓存缺失陷阱**：纯 Mockito 环境不加载 Spring Boot 容器与 MyBatis-Plus 实体自动扫描器，首次执行 Lambda 条件提取时抛出 `com.baomidou.mybatisplus.core.exceptions.MybatisPlusException: can not find lambda cache for this entity [com.luna...DO]`。该未捕获异常不仅中断测试，还会因提前跳出方法体导致后续打桩未被执行，级联触发 Mockito 5 的 `UnnecessaryStubbingException`。
   - **强制规约**：
-    1. 凡涉及 Lambda 条件包装器的纯 Mockito 单元测试，必须在 `@BeforeEach void setUp()` 中为被引用的实体显式预热注入 TableInfo 缓存：
+    1. 凡涉及 Lambda 条件包装器的纯 Mockito 单元测试，必须在 `@BeforeEach void setUp()` 中为被引用的实体显式预热注入 TableInfo 缓存（推荐使用 `com.luna.lunasrv.module.lunaerp.support.TableInfoTestHelper` 预热工具，支持可变参数且线程安全）：
        ```java
-       TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TargetDO.class);
+       // 推荐：统一使用预热工具类
+       TableInfoTestHelper.initTableInfo(TargetDO.class, RelatedDO.class);
+       // 底层原生写法：
+       // TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TargetDO.class);
        ```
-    2. 若被测方法级联涉及多个实体（如主表实体、明细实体及关联来源单实体），所有在 LambdaWrapper 泛型或方法引用中出现的实体类必须在 `setUp()` 中一并预热，杜绝运行时缓存缺失与误导性测试失败。
+    2. 若被测方法级联涉及多个实体（如主表实体、明细实体及关联来源单实体），所有在 LambdaWrapper 泛型或方法引用中出现的实体类必须在 `setUp()` 中一并预热（直接传入 `TableInfoTestHelper.initTableInfo(MainDO.class, ItemDO.class)`），杜绝运行时缓存缺失与误导性测试失败。
     3. **适用边界与防过度预热**：`TableInfoHelper.initTableInfo(...)` **仅当**被测类实现中直接构造了 `new LambdaQueryWrapper<DO>()` / `new LambdaQueryWrapperX<DO>()` 或动态提取实体字段方法引用时才需要；对于纯依赖打桩 Service/SPI、仅通过 Mockito 验证方法交互的上层监听器（如 `SalesReturnLedgerListenerTest`）或业务编排单测，严禁无差别拷贝 `TableInfoHelper` 与 MyBatis 配置代码，杜绝引入无用依赖与测试样板膨胀。
 - **单测基础实体 Mock 辅助工厂方法规约 (Test Fixture & Mock Factory Pattern)**：
   - 在大型领域 Service 单测中（如涉及仓库、供应商、产品、客户、采购单等多实体引用），测试类应集中定义私有基础实体构建工厂方法（如 `mockWarehouse(id, name, status)`、`mockProduct(id, name, code)`、`mockYarnOrder(id, orderNo)`），避免在单测用例内分散重复手写零碎的 `new EntityDO()` 样板代码，杜绝 TDD 红灯编译期因推测缺失 helper 方法导致的编译中断与往返构建损耗。
@@ -449,7 +452,13 @@
   3. **幂等 CAS 状态前置条件与终态全写阻断 (Idempotent CAS & Write Protection)**：
      - 发布过账/出库事件的业务 Service 必须先通过 CAS 条件更新（如 `WHERE id = ? AND status = 'RECEIVED'`）保证防并发双过账；
      - 一旦置为终态（`POSTED`），业务端的所有修改、删除、作废、流转接口（`update/delete/cancel/receive`）必须前置阻断并抛出不可操作异常。
+## 26. Java 源码 Import 机械纯洁性规约 (Import Statement Hygiene)
 
-
-
-
+- **场景**：Java 源码与单测编写过程中的依赖导入管理。
+- **机械破坏陷阱**：
+  - 自动导入或批量替换时在文件不同段落重复引入相同类（Duplicate Imports）；
+  - 将 import 语句插在类声明、注解或 Javadoc 下方（Misplaced Imports），破坏代码结构。
+- **强制规约**：
+  1. **零重复导入 (Zero Duplicate Imports)**：同一 Java 源文件内严禁出现两条及以上相同的 `import` 语句。
+  2. **声明位置顶置 (Strict Head Imports)**：所有 `import` 语句必须紧随 `package` 语句之后，且必须严格位于任何类级 Javadoc、类级注解（`@ExtendWith`、`@RestController` 等）或类型声明（`class/interface/enum/record`）之前，严禁插在类型声明内部或下方。
+  3. **自动化守护门禁**：该规约由 `ArchitectureStandardsTest.testNoDuplicateImportsOrMisplacedImports` 执行全工程自动化红灯拦截，严禁转嫁给 Reviewer 人工审查。
