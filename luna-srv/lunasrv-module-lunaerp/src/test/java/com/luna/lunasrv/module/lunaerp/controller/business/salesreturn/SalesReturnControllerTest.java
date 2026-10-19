@@ -96,4 +96,22 @@ public class SalesReturnControllerTest {
         verify(salesReturnService).receiveSalesReturn(reqVO);
     }
 
+    @Test
+    @DisplayName("post 接口：正确委托 service 并返回成功")
+    void testPostSalesReturn() {
+        CommonResult<Boolean> result = controller.postSalesReturn(10L);
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(salesReturnService).postSalesReturn(10L);
+    }
+
+    @Test
+    @DisplayName("post 权限注解校验：必须配置 @PreAuthorize 包含 lunaerp:business:sales-return:post")
+    void testPostPermission() throws NoSuchMethodException {
+        Method postMethod = SalesReturnController.class.getMethod("postSalesReturn", Long.class);
+        PreAuthorize postAuth = postMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(postAuth);
+        assertTrue(postAuth.value().contains("lunaerp:business:sales-return:post"));
+    }
+
 }

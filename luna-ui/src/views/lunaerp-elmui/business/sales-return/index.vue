@@ -207,6 +207,16 @@
               到货质检
             </el-button>
             <el-button
+              v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canPost"
+              type="success"
+              link
+              size="small"
+              @click="handlePost(row)"
+              v-hasPermi="['lunaerp:business:sales-return:post']"
+            >
+              财务确认
+            </el-button>
+            <el-button
               v-if="getSalesReturnActionFlags(row.status, row.approvalStatus).canDelete"
               type="danger"
               link
@@ -245,6 +255,7 @@ import {
   deleteSalesReturn,
   submitSalesReturn,
   withdrawSalesReturn,
+  postSalesReturn,
   type SalesReturnVO,
   type SalesReturnPageParam
 } from '@/api/lunaerp-elmui/business/sales-return'
@@ -382,6 +393,27 @@ const receiveDialogRef = ref<InstanceType<typeof ReceiveDialog> | null>(null)
 
 const handleReceive = (row: SalesReturnVO) => {
   receiveDialogRef.value?.open(row.id!)
+}
+
+const handlePost = async (row: SalesReturnVO) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认对销售退货单【${row.returnNo}】进行财务确认过账？过账后将冲减客户应收账款且单据不可撤销与修改。`,
+      '财务确认',
+      {
+        confirmButtonText: '确定过账',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    await postSalesReturn(row.id!)
+    ElMessage.success('财务确认过账成功')
+    await getList()
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '财务确认过账失败')
+    }
+  }
 }
 
 onMounted(() => {

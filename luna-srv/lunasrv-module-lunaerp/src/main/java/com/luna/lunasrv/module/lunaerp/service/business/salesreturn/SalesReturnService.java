@@ -97,4 +97,11 @@ public interface SalesReturnService {
      */
     void receiveSalesReturn(@Valid SalesReturnReceiveReqVO reqVO);
 
+    /**
+     * 财务确认过账事务（RECEIVED -> POSTED，校验入库单状态，同事务发布 SalesReturnPostedEvent）
+     *
+     * @param id 退货单ID
+     */
+    void postSalesReturn(Long id);
+
 }

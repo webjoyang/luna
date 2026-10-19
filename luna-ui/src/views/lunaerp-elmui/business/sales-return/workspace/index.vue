@@ -75,6 +75,15 @@
             <Icon icon="ep:van" class="mr-2px" /> 到货质检
           </el-button>
           <el-button
+            v-if="!isNew && actionFlags.canPost"
+            type="success"
+            :loading="posting"
+            @click="handlePost"
+            v-hasPermi="['lunaerp:business:sales-return:post']"
+          >
+            <Icon icon="ep:check" class="mr-2px" /> 财务确认
+          </el-button>
+          <el-button
             v-if="!isNew && actionFlags.canCancel"
             type="danger"
             :loading="cancelling"
@@ -202,6 +211,20 @@
                 >
                   {{ formData.stockInStatus || 'DRAFT' }}
                 </el-tag>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row
+            v-if="formData.postedAt"
+            :gutter="20"
+            class="pt-10px border-t border-gray-100 mt-10px"
+          >
+            <el-col :span="8">
+              <el-form-item label="财务过账留痕">
+                <span class="text-13px text-success font-bold">
+                  过账人 ID: {{ formData.postedBy || '-' }} / 时间:
+                  {{ parseTime(formData.postedAt) }}
+                </span>
               </el-form-item>
             </el-col>
           </el-row>
@@ -560,6 +583,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { parseTime } from '@/utils/formatTime'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { getWarehouseListAll, type WarehouseVO } from '@/api/lunaerp-elmui/stock/warehouse'
 import {
@@ -570,6 +594,7 @@ import {
   submitSalesReturn,
   withdrawSalesReturn,
   cancelSalesReturn,
+  postSalesReturn,
   type SalesReturnCandidateVO,
   type SalesReturnShipmentDetailVO,
   type SalesReturnCreateReqVO,
@@ -627,6 +652,7 @@ const saving = ref(false)
 const submitting = ref(false)
 const withdrawing = ref(false)
 const cancelling = ref(false)
+const posting = ref(false)
 
 const shipmentSelectDialogRef = ref<InstanceType<typeof ShipmentSelectDialog> | null>(null)
 const receiveDialogRef = ref<InstanceType<typeof ReceiveDialog> | null>(null)
@@ -650,7 +676,9 @@ const formData = reactive({
   remark: '',
   stockInId: undefined as number | undefined,
   stockInNo: '',
-  stockInStatus: ''
+  stockInStatus: '',
+  postedBy: undefined as number | undefined,
+  postedAt: ''
 })
 
 const items = ref<EditableLineItem[]>([])
@@ -984,6 +1012,8 @@ const loadSalesReturn = async (id: number) => {
     formData.stockInId = res.stockInId
     formData.stockInNo = res.stockInNo || ''
     formData.stockInStatus = res.stockInStatus || ''
+    formData.postedBy = res.postedBy
+    formData.postedAt = res.postedAt || ''
 
     // 查询对应发货单的实时可退量
     const shipmentDetail = await getShipmentDetail(res.shipmentId)
@@ -1045,6 +1075,31 @@ const handleReceive = () => {
 const handleReceiveSuccess = async () => {
   if (formData.id) {
     await loadSalesReturn(formData.id)
+  }
+}
+
+const handlePost = async () => {
+  if (!formData.id) return
+  try {
+    await ElMessageBox.confirm(
+      `确认对销售退货单【${formData.returnNo}】进行财务确认过账？过账后将冲减客户应收账款且单据不可撤销与修改。`,
+      '财务确认',
+      {
+        confirmButtonText: '确定过账',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    posting.value = true
+    await postSalesReturn(formData.id)
+    ElMessage.success('财务确认过账成功')
+    await loadSalesReturn(formData.id)
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '财务确认过账失败')
+    }
+  } finally {
+    posting.value = false
   }
 }
 

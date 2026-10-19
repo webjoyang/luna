@@ -119,4 +119,13 @@ public class SalesReturnController {
         return success(true);
     }
 
+    @PostMapping("/post")
+    @Operation(summary = "财务确认过账（RECEIVED -> POSTED 终态，冲减应收）")
+    @Parameter(name = "id", description = "退货单ID", required = true, example = "10")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:sales-return:post')")
+    public CommonResult<Boolean> postSalesReturn(@RequestParam("id") Long id) {
+        salesReturnService.postSalesReturn(id);
+        return success(true);
+    }
+
 }

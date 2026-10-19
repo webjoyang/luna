@@ -42,6 +42,9 @@ import com.luna.lunasrv.module.lunaerp.service.stock.stockin.StockInService;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnQcResultEnum;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnReasonEnum;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnStatusEnum;
+import com.luna.lunasrv.module.lunaerp.service.business.salesreturn.event.SalesReturnPostedEvent;
+import com.luna.lunasrv.module.lunaerp.service.business.salesreturn.event.SalesReturnPostedItemDTO;
+import org.springframework.context.ApplicationEventPublisher;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -111,6 +114,9 @@ public class SalesReturnServiceImpl implements SalesReturnService {
 
     @Resource
     private StockInService stockInService;
+
+    @Resource
+    private ApplicationEventPublisher eventPublisher;
 
     @Override
     public List<SalesReturnCandidateRespVO> getShipmentCandidates(Long customerId, String shipmentNo) {
@@ -873,6 +879,76 @@ public class SalesReturnServiceImpl implements SalesReturnService {
         if (rows == 0) {
             throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "SALES_RETURN", subType = "POST", bizNo = "{{#id}}",
+            success = "财务确认销售退货单【{{#id}}】过账")
+    public void postSalesReturn(Long id) {
+        // 1. 校验单据存在
+        SalesReturnDO existing = validateSalesReturnExists(id);
+
+        // 2. 状态机守卫：仅 status=RECEIVED 可进行财务确认过账（002）
+        if (!SalesReturnStatusEnum.RECEIVED.getValue().equals(existing.getStatus())) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 入库单状态守卫：
+        //    存在 RESTOCK 卷时入库单必须 COMPLETED（否则 012/009）；全废单（无 RESTOCK 卷）豁免
+        List<SalesReturnRollDO> rolls = salesReturnRollMapper.selectList(new LambdaQueryWrapperX<SalesReturnRollDO>()
+                .eq(SalesReturnRollDO::getReturnId, id));
+        boolean hasRestockRoll = rolls.stream()
+                .anyMatch(r -> SalesReturnQcResultEnum.RESTOCK.getValue().equals(r.getQcResult()));
+
+        if (hasRestockRoll) {
+            if (existing.getStockInId() == null) {
+                throw exception(SALES_RETURN_STOCK_IN_NOT_COMPLETED);
+            }
+            StockInRespVO stockIn = stockInService.getStockIn(existing.getStockInId());
+            if (stockIn == null || !"COMPLETED".equalsIgnoreCase(stockIn.getStatus())) {
+                throw exception(SALES_RETURN_STOCK_IN_NOT_COMPLETED);
+            }
+        }
+
+        // 4. 并发双过账守卫：条件更新 WHERE status='RECEIVED'
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        LocalDateTime now = LocalDateTime.now();
+        int rows = salesReturnMapper.update(null, new LambdaUpdateWrapper<SalesReturnDO>()
+                .eq(SalesReturnDO::getId, id)
+                .eq(SalesReturnDO::getStatus, SalesReturnStatusEnum.RECEIVED.getValue())
+                .set(SalesReturnDO::getStatus, SalesReturnStatusEnum.POSTED.getValue())
+                .set(SalesReturnDO::getPostedBy, loginUserId)
+                .set(SalesReturnDO::getPostedAt, now));
+        if (rows == 0) {
+            throw exception(SALES_RETURN_STATUS_NOT_ALLOWED);
+        }
+
+        // 5. 加载退货明细行，组装并同事务发布 SalesReturnPostedEvent (BEFORE_COMMIT)
+        List<SalesReturnItemDO> items = salesReturnItemMapper.selectList(new LambdaQueryWrapperX<SalesReturnItemDO>()
+                .eq(SalesReturnItemDO::getReturnId, id));
+        List<SalesReturnPostedItemDTO> itemDTOList = CollUtil.isEmpty(items) ? Collections.emptyList()
+                : items.stream()
+                        .map(item -> SalesReturnPostedItemDTO.builder()
+                                .returnItemId(item.getId())
+                                .shipmentItemId(item.getShipmentItemId())
+                                .returnQty(item.getReturnQty())
+                                .amount(item.getAmount())
+                                .build())
+                        .collect(Collectors.toList());
+
+        SalesReturnPostedEvent event = SalesReturnPostedEvent.builder()
+                .returnId(existing.getId())
+                .returnNo(existing.getReturnNo())
+                .shipmentId(existing.getShipmentId())
+                .shipmentNo(existing.getShipmentNo())
+                .customerId(existing.getCustomerId())
+                .currency(existing.getCurrency())
+                .returnDate(existing.getReturnDate())
+                .items(itemDTOList)
+                .build();
+
+        eventPublisher.publishEvent(event);
     }
 
     // ==================== 私有辅助方法 ====================

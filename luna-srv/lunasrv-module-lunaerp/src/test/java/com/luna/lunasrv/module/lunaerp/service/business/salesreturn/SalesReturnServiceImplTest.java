@@ -38,6 +38,8 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouselocation.Warehou
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnErrorCodeConstants;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnReasonEnum;
 import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnStatusEnum;
+import com.luna.lunasrv.module.lunaerp.service.business.salesreturn.event.SalesReturnPostedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,6 +98,9 @@ public class SalesReturnServiceImplTest {
 
     @Mock
     private ApprovalInstanceService approvalInstanceService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private SalesReturnServiceImpl salesReturnService;
@@ -1590,4 +1595,229 @@ public class SalesReturnServiceImplTest {
         verify(salesReturnMapper).update(isNull(), any());
     }
 
+    // ==================== Issue 06: 财务确认过账 + 应收冲减事件 ====================
+
+    @Test
+    @DisplayName("财务确认过账：退货单不存在抛出 000")
+    void postSalesReturn_notExists_throwsException() {
+        when(salesReturnMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.postSalesReturn(999L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("财务确认过账：非 RECEIVED 状态（如 APPROVED）拒绝过账抛出 002")
+    void postSalesReturn_statusNotReceived_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.APPROVED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.postSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("财务确认过账：存在可入库卷但入库单未 COMPLETED 抛出 012")
+    void postSalesReturn_hasRestockRoll_stockInNotCompleted_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.RECEIVED.getValue());
+        salesReturn.setStockInId(500L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        SalesReturnRollDO restockRoll = new SalesReturnRollDO();
+        restockRoll.setId(1001L);
+        restockRoll.setQcResult("RESTOCK");
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.singletonList(restockRoll));
+
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(500L);
+        stockIn.setStatus("DRAFT"); // 未完成
+        when(stockInService.getStockIn(500L)).thenReturn(stockIn);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.postSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STOCK_IN_NOT_COMPLETED.getCode(), ex.getCode());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("财务确认过账：存在可入库卷但入库单缺失抛出 009")
+    void postSalesReturn_hasRestockRoll_stockInMissing_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.RECEIVED.getValue());
+        salesReturn.setStockInId(null);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        SalesReturnRollDO restockRoll = new SalesReturnRollDO();
+        restockRoll.setId(1001L);
+        restockRoll.setQcResult("RESTOCK");
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.singletonList(restockRoll));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.postSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STOCK_IN_NOT_COMPLETED.getCode(), ex.getCode());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("财务确认过账：存在可入库卷且入库单已 COMPLETED，条件更新成功并发布 SalesReturnPostedEvent")
+    void postSalesReturn_hasRestockRoll_stockInCompleted_success() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setReturnNo("RT-20261019-001");
+        salesReturn.setShipmentId(88L);
+        salesReturn.setShipmentNo("SH-20261016-001");
+        salesReturn.setCustomerId(501L);
+        salesReturn.setCurrency("USD");
+        salesReturn.setReturnDate(LocalDate.of(2026, 10, 19));
+        salesReturn.setStatus(SalesReturnStatusEnum.RECEIVED.getValue());
+        salesReturn.setStockInId(500L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        SalesReturnRollDO restockRoll = new SalesReturnRollDO();
+        restockRoll.setId(1001L);
+        restockRoll.setQcResult("RESTOCK");
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.singletonList(restockRoll));
+
+        StockInRespVO stockIn = new StockInRespVO();
+        stockIn.setId(500L);
+        stockIn.setStatus("COMPLETED");
+        when(stockInService.getStockIn(500L)).thenReturn(stockIn);
+
+        SalesReturnItemDO item1 = new SalesReturnItemDO();
+        item1.setId(201L);
+        item1.setReturnId(10L);
+        item1.setShipmentItemId(1001L);
+        item1.setReturnQty(new BigDecimal("50.00"));
+        item1.setAmount(new BigDecimal("1200.00"));
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.singletonList(item1));
+
+        when(salesReturnMapper.update(isNull(), any())).thenReturn(1);
+
+        // Act
+        salesReturnService.postSalesReturn(10L);
+
+        // Assert
+        verify(salesReturnMapper).update(isNull(), any());
+
+        ArgumentCaptor<SalesReturnPostedEvent> eventCaptor = ArgumentCaptor.forClass(SalesReturnPostedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        SalesReturnPostedEvent publishedEvent = eventCaptor.getValue();
+        assertEquals(10L, publishedEvent.getReturnId());
+        assertEquals("RT-20261019-001", publishedEvent.getReturnNo());
+        assertEquals(88L, publishedEvent.getShipmentId());
+        assertEquals("SH-20261016-001", publishedEvent.getShipmentNo());
+        assertEquals(501L, publishedEvent.getCustomerId());
+        assertEquals("USD", publishedEvent.getCurrency());
+        assertEquals(LocalDate.of(2026, 10, 19), publishedEvent.getReturnDate());
+        assertEquals(1, publishedEvent.getItems().size());
+        assertEquals(1001L, publishedEvent.getItems().get(0).getShipmentItemId());
+        assertEquals(new BigDecimal("50.00"), publishedEvent.getItems().get(0).getReturnQty());
+        assertEquals(new BigDecimal("1200.00"), publishedEvent.getItems().get(0).getAmount());
+    }
+
+    @Test
+    @DisplayName("财务确认过账：全废单（无 RESTOCK 卷）豁免入库单 COMPLETED 守卫，可正常过账")
+    void postSalesReturn_allScrap_stockInCancelled_success() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setReturnNo("RT-20261019-002");
+        salesReturn.setShipmentId(88L);
+        salesReturn.setShipmentNo("SH-20261016-001");
+        salesReturn.setCustomerId(501L);
+        salesReturn.setCurrency("RMB");
+        salesReturn.setReturnDate(LocalDate.of(2026, 10, 19));
+        salesReturn.setStatus(SalesReturnStatusEnum.RECEIVED.getValue());
+        salesReturn.setStockInId(500L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        // 全部卷均为 SCRAP
+        SalesReturnRollDO scrapRoll = new SalesReturnRollDO();
+        scrapRoll.setId(1002L);
+        scrapRoll.setQcResult("SCRAP");
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.singletonList(scrapRoll));
+
+        SalesReturnItemDO item1 = new SalesReturnItemDO();
+        item1.setId(202L);
+        item1.setReturnId(10L);
+        item1.setShipmentItemId(1002L);
+        item1.setReturnQty(new BigDecimal("30.00"));
+        item1.setAmount(new BigDecimal("600.00"));
+        when(salesReturnItemMapper.selectList(any())).thenReturn(Collections.singletonList(item1));
+
+        when(salesReturnMapper.update(isNull(), any())).thenReturn(1);
+
+        // Act
+        salesReturnService.postSalesReturn(10L);
+
+        // Assert - 不需要查询 stockIn 或断言其 COMPLETED
+        verify(stockInService, never()).getStockIn(any());
+        verify(eventPublisher).publishEvent(any(SalesReturnPostedEvent.class));
+    }
+
+    @Test
+    @DisplayName("财务确认过账：并发双过账条件更新返回 0 行，抛出 002 拒绝")
+    void postSalesReturn_concurrencyDoublePost_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.RECEIVED.getValue());
+        salesReturn.setStockInId(500L);
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+        when(salesReturnRollMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        // 模拟并发更新失败（已被其他事务过账）
+        when(salesReturnMapper.update(isNull(), any())).thenReturn(0);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.postSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("POSTED 终态保护：已过账单据拒绝 update 操作")
+    void updateSalesReturn_postedStatus_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.POSTED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        SalesReturnUpdateReqVO updateReqVO = new SalesReturnUpdateReqVO();
+        updateReqVO.setId(10L);
+        updateReqVO.setWarehouseId(301L);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.updateSalesReturn(updateReqVO));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("POSTED 终态保护：已过账单据拒绝 delete 操作")
+    void deleteSalesReturn_postedStatus_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.POSTED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.deleteSalesReturn(10L));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("POSTED 终态保护：已过账单据拒绝 cancel 操作")
+    void cancelSalesReturn_postedStatus_throwsException() {
+        SalesReturnDO salesReturn = new SalesReturnDO();
+        salesReturn.setId(10L);
+        salesReturn.setStatus(SalesReturnStatusEnum.POSTED.getValue());
+        salesReturn.setApprovalStatus("APPROVED");
+        when(salesReturnMapper.selectById(10L)).thenReturn(salesReturn);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> salesReturnService.cancelSalesReturn(10L, "原因"));
+        assertEquals(SalesReturnErrorCodeConstants.SALES_RETURN_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
 }
+

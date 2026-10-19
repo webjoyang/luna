@@ -289,3 +289,10 @@ export const receiveSalesReturn = (data: SalesReturnReceiveReqVO) => {
     data
   })
 }
+
+// 财务确认（过账终态）
+export const postSalesReturn = (id: number) => {
+  return request.post<boolean>({
+    url: `/lunaerp/business/sales-return/post?id=${id}`
+  })
+}
