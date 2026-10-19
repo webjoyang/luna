@@ -11,6 +11,13 @@ import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceWith
 import com.luna.lunasrv.module.lunaerp.controller.finance.payroll.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payroll.*;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.*;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.account.AccountMapper;
+import com.luna.lunasrv.module.lunaerp.service.finance.account.AccountServiceImpl;
+import com.luna.lunasrv.module.lunaerp.service.finance.account.FinancePostingService;
+import com.luna.lunasrv.module.lunaerp.service.finance.account.dto.PostingReq;
+import com.luna.lunasrv.module.lunaerp.service.finance.exchangerate.ExchangeRateService;
+import java.time.LocalDate;
 import com.luna.lunasrv.module.lunaerp.enums.finance.ApplyStatus;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
 import com.luna.lunasrv.module.lunaerp.enums.finance.PayrollPaymentStatusEnum;
@@ -84,6 +91,15 @@ public class PayrollServiceImplTest {
 
     @Mock
     private PayrollDefectService payrollDefectService;
+
+    @Mock
+    private AccountMapper accountMapper;
+
+    @Mock
+    private FinancePostingService financePostingService;
+
+    @Mock
+    private ExchangeRateService exchangeRateService;
 
     private static final Long TENANT_ID = 1L;
 
@@ -827,4 +843,391 @@ public class PayrollServiceImplTest {
         verify(payrollMapper).deleteById(1001L);
     }
 
+
+    // =========================================================================
+    // Issue 08: 工资发放登记（GF 批次 + OUT_SALARY 过账）单元测试
+    // =========================================================================
+
+    @Test
+    @DisplayName("registerPayrollPayment：工资单不存在抛 025_000 PAYROLL_NOT_EXISTS")
+    void testRegisterPayrollPayment_PayrollNotExists_Throws025_000() {
+        when(payrollMapper.selectOneForUpdate(any(), eq(1001L))).thenReturn(null);
+
+        PayrollPaymentRegisterReqVO reqVO = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2001L)
+                .amount(new BigDecimal("5000.00"))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> payrollService.registerPayrollPayment(reqVO));
+        assertEquals(FinanceErrorCodeConstants.PAYROLL_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("registerPayrollPayment：横向越权防御（租户不匹配）抛 025_000")
+    void testRegisterPayrollPayment_CrossTenant_Throws025_000() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setTenantId(999L);
+        when(payrollMapper.selectOneForUpdate(any(), eq(1001L))).thenReturn(payroll);
+
+        PayrollPaymentRegisterReqVO reqVO = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2001L)
+                .amount(new BigDecimal("5000.00"))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> payrollService.registerPayrollPayment(reqVO));
+        assertEquals(FinanceErrorCodeConstants.PAYROLL_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("registerPayrollPayment：非 APPROVED 状态禁止发放登记抛 025_001")
+    void testRegisterPayrollPayment_NotApproved_Throws025_001() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.APPROVING.getValue());
+        when(payrollMapper.selectOneForUpdate(any(), eq(1001L))).thenReturn(payroll);
+
+        PayrollPaymentRegisterReqVO reqVO = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2001L)
+                .amount(new BigDecimal("5000.00"))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> payrollService.registerPayrollPayment(reqVO));
+        assertEquals(FinanceErrorCodeConstants.PAYROLL_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("registerPayrollPayment：金额<=0 或累计超出实发合计抛 025_007 PAYROLL_PAYMENT_AMOUNT_EXCEED")
+    void testRegisterPayrollPayment_AmountExceed_Throws025_007() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.APPROVED.getValue());
+        payroll.setNetAmount(new BigDecimal("10000.00"));
+        when(payrollMapper.selectOneForUpdate(any(), eq(1001L))).thenReturn(payroll);
+
+        // 已存在一笔 8000 的批次
+        PayrollPaymentDO existing = new PayrollPaymentDO();
+        existing.setId(1L);
+        existing.setPayrollId(1001L);
+        existing.setOriginalAmount(new BigDecimal("8000.00"));
+        when(payrollPaymentMapper.selectList(any())).thenReturn(List.of(existing));
+
+        // 1. 本次填 3000 -> 8000+3000 > 10000 超额
+        PayrollPaymentRegisterReqVO exceedReq = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2001L)
+                .amount(new BigDecimal("3000.00"))
+                .build();
+        ServiceException ex1 = assertThrows(ServiceException.class, () -> payrollService.registerPayrollPayment(exceedReq));
+        assertEquals(FinanceErrorCodeConstants.PAYROLL_PAYMENT_AMOUNT_EXCEED.getCode(), ex1.getCode());
+
+        // 2. 本次填 0 或负数 -> 抛 025_007
+        PayrollPaymentRegisterReqVO zeroReq = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2001L)
+                .amount(BigDecimal.ZERO)
+                .build();
+        ServiceException ex2 = assertThrows(ServiceException.class, () -> payrollService.registerPayrollPayment(zeroReq));
+        assertEquals(FinanceErrorCodeConstants.PAYROLL_PAYMENT_AMOUNT_EXCEED.getCode(), ex2.getCode());
+    }
+
+    @Test
+    @DisplayName("registerPayrollPayment：账户停用抛 020_101 ACCOUNT_DISABLED")
+    void testRegisterPayrollPayment_AccountDisabled_Throws020_101() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.APPROVED.getValue());
+        payroll.setNetAmount(new BigDecimal("10000.00"));
+        when(payrollMapper.selectOneForUpdate(any(), eq(1001L))).thenReturn(payroll);
+        when(payrollPaymentMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        AccountDO account = new AccountDO();
+        account.setId(2001L);
+        account.setAccountName("基本户");
+        account.setStatus("DISABLE");
+        when(accountMapper.selectById(2001L)).thenReturn(account);
+
+        PayrollPaymentRegisterReqVO reqVO = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2001L)
+                .amount(new BigDecimal("5000.00"))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> payrollService.registerPayrollPayment(reqVO));
+        assertEquals(FinanceErrorCodeConstants.ACCOUNT_DISABLED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("registerPayrollPayment：余额不足 023_004 走统一通道拦截并回滚")
+    void testRegisterPayrollPayment_BalanceNotEnough_Throws023_004() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setPayrollNo("GZ202610001");
+        payroll.setPeriod("2026-10");
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.APPROVED.getValue());
+        payroll.setNetAmount(new BigDecimal("10000.00"));
+        when(payrollMapper.selectOneForUpdate(any(), eq(1001L))).thenReturn(payroll);
+        when(payrollPaymentMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        AccountDO account = new AccountDO();
+        account.setId(2001L);
+        account.setAccountName("基本户");
+        account.setCurrency("RMB");
+        account.setStatus(AccountServiceImpl.STATUS_ENABLE);
+        when(accountMapper.selectById(2001L)).thenReturn(account);
+
+        doThrow(new ServiceException(FinanceErrorCodeConstants.PAYMENT_ACCOUNT_BALANCE_NOT_ENOUGH))
+                .when(financePostingService).post(any(PostingReq.class));
+
+        PayrollPaymentRegisterReqVO reqVO = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2001L)
+                .amount(new BigDecimal("5000.00"))
+                .build();
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> payrollService.registerPayrollPayment(reqVO));
+        assertEquals(FinanceErrorCodeConstants.PAYMENT_ACCOUNT_BALANCE_NOT_ENOUGH.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("registerPayrollPayment：成功写 GF 批次快照 + 经统一过账服务扣款写 OUT_SALARY 分录（party=NONE，备注含单号+批次序号）")
+    void testRegisterPayrollPayment_Success_SnapshotAndPostingPartyNone() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setPayrollNo("GZ202610001");
+        payroll.setPeriod("2026-10");
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.APPROVED.getValue());
+        payroll.setNetAmount(new BigDecimal("10000.00"));
+        when(payrollMapper.selectOneForUpdate(any(), eq(1001L))).thenReturn(payroll);
+        when(payrollPaymentMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        AccountDO account = new AccountDO();
+        account.setId(2001L);
+        account.setAccountName("基本户");
+        account.setCurrency("RMB");
+        account.setStatus(AccountServiceImpl.STATUS_ENABLE);
+        when(accountMapper.selectById(2001L)).thenReturn(account);
+
+        PayrollPaymentRegisterReqVO reqVO = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2001L)
+                .amount(new BigDecimal("4000.00"))
+                .payDate(LocalDate.of(2026, 10, 19))
+                .remark("银行批量代发首批")
+                .build();
+
+        Long paymentId = payrollService.registerPayrollPayment(reqVO);
+
+        // 1. 验证批次表写入快照
+        ArgumentCaptor<PayrollPaymentDO> paymentCaptor = ArgumentCaptor.forClass(PayrollPaymentDO.class);
+        verify(payrollPaymentMapper).insert(paymentCaptor.capture());
+        PayrollPaymentDO savedPayment = paymentCaptor.getValue();
+        assertNotNull(savedPayment);
+        assertTrue(savedPayment.getPaymentNo().startsWith("GF20261019"));
+        assertEquals(1001L, savedPayment.getPayrollId());
+        assertEquals("GZ202610001", savedPayment.getPayrollNo());
+        assertEquals("2026-10", savedPayment.getPeriod());
+        assertEquals(2001L, savedPayment.getAccountId());
+        assertEquals("基本户", savedPayment.getAccountName());
+        assertEquals("RMB", savedPayment.getCurrency());
+        assertEquals(new BigDecimal("4000.00"), savedPayment.getOriginalAmount());
+        assertEquals(new BigDecimal("1.00000000"), savedPayment.getExchangeRate());
+        assertEquals(new BigDecimal("4000.00"), savedPayment.getBaseAmount());
+        assertEquals(LocalDate.of(2026, 10, 19), savedPayment.getPayDate());
+        assertEquals("银行批量代发首批", savedPayment.getRemark());
+
+        // 2. 验证过账请求：CREDIT / OUT_SALARY / party=NONE / refType=PAYROLL_PAYMENT / 备注含单号与批次1
+        ArgumentCaptor<PostingReq> postingCaptor = ArgumentCaptor.forClass(PostingReq.class);
+        verify(financePostingService).post(postingCaptor.capture());
+        PostingReq capturedReq = postingCaptor.getValue();
+        assertEquals(2001L, capturedReq.getAccountId());
+        assertEquals(FinancePostingService.DIRECTION_CREDIT, capturedReq.getDirection());
+        assertEquals("OUT_SALARY", capturedReq.getCategory());
+        assertEquals("NONE", capturedReq.getPartyType());
+        assertNull(capturedReq.getPartyId());
+        assertEquals("RMB", capturedReq.getCurrency());
+        assertEquals(new BigDecimal("4000.00"), capturedReq.getOriginalAmount());
+        assertEquals("PAYROLL_PAYMENT", capturedReq.getRefType());
+        assertEquals(savedPayment.getPaymentNo(), capturedReq.getRefNo());
+        assertTrue(capturedReq.getRemark().contains("GZ202610001"));
+        assertTrue(capturedReq.getRemark().contains("1"));
+        assertTrue(capturedReq.getRemark().contains("银行批量代发首批"));
+    }
+
+    @Test
+    @DisplayName("registerPayrollPayment：未填金额缺省自动填未发余额")
+    void testRegisterPayrollPayment_DefaultUnpaidBalance_Success() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setPayrollNo("GZ202610001");
+        payroll.setPeriod("2026-10");
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.APPROVED.getValue());
+        payroll.setNetAmount(new BigDecimal("10000.00"));
+        when(payrollMapper.selectOneForUpdate(any(), eq(1001L))).thenReturn(payroll);
+
+        // 已有一笔 6000
+        PayrollPaymentDO payment1 = new PayrollPaymentDO();
+        payment1.setId(10L);
+        payment1.setOriginalAmount(new BigDecimal("6000.00"));
+        when(payrollPaymentMapper.selectList(any())).thenReturn(List.of(payment1));
+
+        AccountDO account = new AccountDO();
+        account.setId(2002L);
+        account.setAccountName("现金户");
+        account.setCurrency("RMB");
+        account.setStatus(AccountServiceImpl.STATUS_ENABLE);
+        when(accountMapper.selectById(2002L)).thenReturn(account);
+
+        // amount 为 null，缺省填未发余额 4000
+        PayrollPaymentRegisterReqVO reqVO = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2002L)
+                .amount(null)
+                .build();
+
+        payrollService.registerPayrollPayment(reqVO);
+
+        ArgumentCaptor<PayrollPaymentDO> paymentCaptor = ArgumentCaptor.forClass(PayrollPaymentDO.class);
+        verify(payrollPaymentMapper).insert(paymentCaptor.capture());
+        assertEquals(new BigDecimal("4000.00"), paymentCaptor.getValue().getOriginalAmount());
+
+        ArgumentCaptor<PostingReq> postingCaptor = ArgumentCaptor.forClass(PostingReq.class);
+        verify(financePostingService).post(postingCaptor.capture());
+        assertEquals(new BigDecimal("4000.00"), postingCaptor.getValue().getOriginalAmount());
+        // 批次序号为 2
+        assertTrue(postingCaptor.getValue().getRemark().contains("2"));
+    }
+
+    @Test
+    @DisplayName("registerPayrollPayment：多次登记跨账户（银行批量+现金尾款）累计正确")
+    void testRegisterPayrollPayment_MultiBatches_AccumulateCorrectly() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setPayrollNo("GZ202610001");
+        payroll.setPeriod("2026-10");
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.APPROVED.getValue());
+        payroll.setNetAmount(new BigDecimal("10000.00"));
+        when(payrollMapper.selectOneForUpdate(any(), eq(1001L))).thenReturn(payroll);
+
+        AccountDO bankAccount = new AccountDO();
+        bankAccount.setId(2001L);
+        bankAccount.setAccountName("基本户");
+        bankAccount.setStatus(AccountServiceImpl.STATUS_ENABLE);
+
+        AccountDO cashAccount = new AccountDO();
+        cashAccount.setId(2002L);
+        cashAccount.setAccountName("现金户");
+        cashAccount.setStatus(AccountServiceImpl.STATUS_ENABLE);
+
+        when(accountMapper.selectById(2001L)).thenReturn(bankAccount);
+        when(accountMapper.selectById(2002L)).thenReturn(cashAccount);
+
+        // 第一次发放：4000
+        when(payrollPaymentMapper.selectList(any())).thenReturn(Collections.emptyList());
+        PayrollPaymentRegisterReqVO req1 = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2001L)
+                .amount(new BigDecimal("4000.00"))
+                .build();
+        payrollService.registerPayrollPayment(req1);
+
+        // 第二次发放：6000
+        PayrollPaymentDO existing1 = new PayrollPaymentDO();
+        existing1.setId(101L);
+        existing1.setOriginalAmount(new BigDecimal("4000.00"));
+        when(payrollPaymentMapper.selectList(any())).thenReturn(List.of(existing1));
+
+        PayrollPaymentRegisterReqVO req2 = PayrollPaymentRegisterReqVO.builder()
+                .payrollId(1001L)
+                .accountId(2002L)
+                .amount(new BigDecimal("6000.00"))
+                .build();
+        payrollService.registerPayrollPayment(req2);
+
+        verify(payrollPaymentMapper, times(2)).insert(any(PayrollPaymentDO.class));
+        verify(financePostingService, times(2)).post(any(PostingReq.class));
+    }
+
+    @Test
+    @DisplayName("getPayrollPaymentPage：横向越权防御与分页查询")
+    void testGetPayrollPaymentPage_SuccessAndCrossTenant() {
+        // 1. 横向越权防范
+        PayrollDO otherTenantPayroll = new PayrollDO();
+        otherTenantPayroll.setId(1001L);
+        otherTenantPayroll.setTenantId(888L);
+        when(payrollMapper.selectById(1001L)).thenReturn(otherTenantPayroll);
+
+        PayrollPaymentPageReqVO pageReqVO = new PayrollPaymentPageReqVO(1001L);
+        ServiceException ex = assertThrows(ServiceException.class, () -> payrollService.getPayrollPaymentPage(pageReqVO));
+        assertEquals(FinanceErrorCodeConstants.PAYROLL_NOT_EXISTS.getCode(), ex.getCode());
+
+        // 2. 本租户正常分页
+        PayrollDO myPayroll = new PayrollDO();
+        myPayroll.setId(1001L);
+        myPayroll.setTenantId(TENANT_ID);
+        when(payrollMapper.selectById(1001L)).thenReturn(myPayroll);
+
+        PayrollPaymentDO payment = new PayrollPaymentDO();
+        payment.setId(501L);
+        payment.setPayrollId(1001L);
+        payment.setPaymentNo("GF20261019001");
+        payment.setOriginalAmount(new BigDecimal("4000.00"));
+        PageResult<PayrollPaymentDO> pageResult = new PageResult<>(List.of(payment), 1L);
+        when(payrollPaymentMapper.selectPage(eq(pageReqVO), any())).thenReturn(pageResult);
+
+        PageResult<PayrollPaymentRespVO> result = payrollService.getPayrollPaymentPage(pageReqVO);
+        assertNotNull(result);
+        assertEquals(1L, result.getTotal());
+        assertEquals("GF20261019001", result.getList().get(0).getPaymentNo());
+    }
+
+    @Test
+    @DisplayName("派生态三态翻转：未发放 -> 部分发放 -> 已发清")
+    void testPayrollPayment_DerivedStatus_ThreeStateTransitions() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setPayrollNo("GZ202610001");
+        payroll.setPeriod("2026-10");
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.APPROVED.getValue());
+        payroll.setNetAmount(new BigDecimal("10000.00"));
+        when(payrollMapper.selectById(1001L)).thenReturn(payroll);
+        when(payrollEmployeeMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        // 态 1：0批次 -> UNPAID
+        when(payrollPaymentMapper.selectList(any())).thenReturn(Collections.emptyList());
+        PayrollRespVO resp1 = payrollService.getPayroll(1001L);
+        assertEquals(PayrollPaymentStatusEnum.UNPAID.getValue(), resp1.getPaymentStatus());
+        assertEquals(new BigDecimal("0.00"), resp1.getPaidAmount());
+
+        // 态 2：1批次4000元 -> PARTIAL
+        PayrollPaymentDO p1 = new PayrollPaymentDO();
+        p1.setId(1L);
+        p1.setPayrollId(1001L);
+        p1.setOriginalAmount(new BigDecimal("4000.00"));
+        when(payrollPaymentMapper.selectList(any())).thenReturn(List.of(p1));
+        PayrollRespVO resp2 = payrollService.getPayroll(1001L);
+        assertEquals(PayrollPaymentStatusEnum.PARTIAL.getValue(), resp2.getPaymentStatus());
+        assertEquals(new BigDecimal("4000.00"), resp2.getPaidAmount());
+
+        // 态 3：累计满10000元 -> PAID
+        PayrollPaymentDO p2 = new PayrollPaymentDO();
+        p2.setId(2L);
+        p2.setPayrollId(1001L);
+        p2.setOriginalAmount(new BigDecimal("6000.00"));
+        when(payrollPaymentMapper.selectList(any())).thenReturn(List.of(p1, p2));
+        PayrollRespVO resp3 = payrollService.getPayroll(1001L);
+        assertEquals(PayrollPaymentStatusEnum.PAID.getValue(), resp3.getPaymentStatus());
+        assertEquals(new BigDecimal("10000.00"), resp3.getPaidAmount());
+    }
 }

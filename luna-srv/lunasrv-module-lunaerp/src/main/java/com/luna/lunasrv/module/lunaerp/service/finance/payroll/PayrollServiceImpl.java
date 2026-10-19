@@ -16,6 +16,15 @@ import com.luna.lunasrv.module.lunaerp.approval.instance.vo.ApprovalInstanceWith
 import com.luna.lunasrv.module.lunaerp.controller.finance.payroll.vo.*;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payroll.*;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.*;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.account.AccountMapper;
+import com.luna.lunasrv.module.lunaerp.service.finance.account.AccountServiceImpl;
+import com.luna.lunasrv.module.lunaerp.service.finance.account.FinancePostingService;
+import com.luna.lunasrv.module.lunaerp.service.finance.account.dto.PostingReq;
+import com.luna.lunasrv.module.lunaerp.service.finance.exchangerate.ExchangeRateService;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.regex.Matcher;
 import com.luna.lunasrv.module.lunaerp.enums.finance.ApplyStatus;
 import com.luna.lunasrv.module.lunaerp.enums.finance.PayrollItemKindEnum;
 import com.luna.lunasrv.module.lunaerp.enums.finance.PayrollPaymentStatusEnum;
@@ -77,6 +86,20 @@ public class PayrollServiceImpl implements PayrollService {
 
     @Resource
     private PayrollDefectService payrollDefectService;
+
+    @Resource
+    private AccountMapper accountMapper;
+
+    @Resource
+    private FinancePostingService financePostingService;
+
+    @Resource
+    private ExchangeRateService exchangeRateService;
+
+    public static final String PAYROLL_PAYMENT_NO_PREFIX = "GF";
+    public static final String REF_TYPE_PAYROLL_PAYMENT = "PAYROLL_PAYMENT";
+    public static final String PARTY_TYPE_NONE = "NONE";
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -860,4 +883,182 @@ public class PayrollServiceImpl implements PayrollService {
         }
     }
 
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "PAYROLL", subType = "PAY", bizNo = "{{#reqVO.payrollId}}",
+            success = "登记工资单【{{#reqVO.payrollId}}】发放批次【{{#result}}】，金额【{{#reqVO.amount}}】")
+    public Long registerPayrollPayment(PayrollPaymentRegisterReqVO reqVO) {
+        if (reqVO == null || reqVO.getPayrollId() == null) {
+            throw exception(PAYROLL_NOT_EXISTS);
+        }
+        // 1. 查验工资单存在、加行级悲观锁防并发超发与租户隔离（coding-standards.md §13，横向越权防御 025_000）
+        PayrollDO payroll = payrollMapper.selectOneForUpdate(PayrollDO::getId, reqVO.getPayrollId());
+        if (payroll == null) {
+            throw exception(PAYROLL_NOT_EXISTS);
+        }
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (tenantId != null && payroll.getTenantId() != null && !tenantId.equals(payroll.getTenantId())) {
+            throw exception(PAYROLL_NOT_EXISTS);
+        }
+
+        // 2. 状态守卫：仅 APPROVED 可做发放登记（025_001）
+        if (!ApplyStatus.APPROVED.getValue().equalsIgnoreCase(payroll.getApprovalStatus())) {
+            throw exception(PAYROLL_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 查验已有发放批次，计算已发金额与未发余额
+        List<PayrollPaymentDO> existingPayments = payrollPaymentMapper.selectList(new LambdaQueryWrapperX<PayrollPaymentDO>()
+                .eq(PayrollPaymentDO::getPayrollId, payroll.getId())
+                .orderByAsc(PayrollPaymentDO::getId));
+        BigDecimal currentPaidAmount = existingPayments.stream()
+                .map(PayrollPaymentDO::getOriginalAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal netAmount = payroll.getNetAmount() != null
+                ? payroll.getNetAmount().setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal unpaidBalance = netAmount.subtract(currentPaidAmount);
+
+        // 本次金额处理：缺省填未发余额
+        BigDecimal amount = reqVO.getAmount();
+        if (amount == null) {
+            amount = unpaidBalance;
+        }
+
+        // 本次金额校验：本次金额 > 0 且 Σ已有批次 + 本次 ≤ net_amount（025_007）
+        if (amount.compareTo(BigDecimal.ZERO) <= 0 || currentPaidAmount.add(amount).compareTo(netAmount) > 0) {
+            throw exception(PAYROLL_PAYMENT_AMOUNT_EXCEED);
+        }
+
+        // 4. 查验付款资金账户：存在性（020_100）、启用态（020_101）
+        if (reqVO.getAccountId() == null) {
+            throw exception(ACCOUNT_NOT_EXISTS);
+        }
+        AccountDO account = accountMapper.selectById(reqVO.getAccountId());
+        if (account == null) {
+            throw exception(ACCOUNT_NOT_EXISTS);
+        }
+        if (!AccountServiceImpl.STATUS_ENABLE.equals(account.getStatus())) {
+            throw exception(ACCOUNT_DISABLED);
+        }
+
+        // 5. 币种与汇率计算（RMB恒为1.00000000，外币按指定日汇率）
+        LocalDate payDate = reqVO.getPayDate() != null ? reqVO.getPayDate() : LocalDate.now();
+        String currency = StrUtil.isNotBlank(account.getCurrency()) ? account.getCurrency().trim() : "RMB";
+        BigDecimal exchangeRate;
+        if ("RMB".equalsIgnoreCase(currency)) {
+            exchangeRate = BigDecimal.ONE.setScale(8, RoundingMode.HALF_UP);
+        } else {
+            exchangeRate = exchangeRateService.getRate(currency, payDate);
+        }
+        BigDecimal baseAmount = amount.multiply(exchangeRate).setScale(2, RoundingMode.HALF_UP);
+
+        // 6. 生成发放流水号（GF+YYYYMMDD+3位流水，全量唯一含软删行）
+        String paymentNo = generatePaymentNoWithRetry(payDate);
+
+        // 7. 写入工资发放批次表
+        PayrollPaymentDO payment = new PayrollPaymentDO();
+        payment.setPaymentNo(paymentNo);
+        payment.setPayrollId(payroll.getId());
+        payment.setPayrollNo(payroll.getPayrollNo());
+        payment.setPeriod(payroll.getPeriod());
+        payment.setAccountId(account.getId());
+        payment.setAccountName(account.getAccountName());
+        payment.setCurrency(currency);
+        payment.setOriginalAmount(amount);
+        payment.setExchangeRate(exchangeRate);
+        payment.setBaseAmount(baseAmount);
+        payment.setPayDate(payDate);
+        payment.setRemark(reqVO.getRemark());
+        payrollPaymentMapper.insert(payment);
+
+        // 8. 经统一过账服务扣款并写 CREDIT/OUT_SALARY 分录（同事务）
+        // 批次序号：已有批次数量 + 1
+        int batchSeq = existingPayments.size() + 1;
+        String entryRemark = StrUtil.isNotBlank(reqVO.getRemark())
+                ? String.format("工资单%s第%d批发放: %s", payroll.getPayrollNo(), batchSeq, reqVO.getRemark())
+                : String.format("工资单%s第%d批发放", payroll.getPayrollNo(), batchSeq);
+
+        PostingReq postingReq = new PostingReq()
+                .setAccountId(account.getId())
+                .setDirection(FinancePostingService.DIRECTION_CREDIT)
+                .setCategory("OUT_SALARY")
+                .setPartyType(PARTY_TYPE_NONE)
+                .setPartyId(null)
+                .setPartyName(null)
+                .setCurrency(currency)
+                .setOriginalAmount(amount)
+                .setExchangeRate(exchangeRate)
+                .setBizDate(payDate)
+                .setRefType(REF_TYPE_PAYROLL_PAYMENT)
+                .setRefId(payment.getId())
+                .setRefNo(payment.getPaymentNo())
+                .setRemark(entryRemark);
+
+        financePostingService.post(postingReq);
+
+        log.info("[registerPayrollPayment] 工资单发放登记成功: payrollId={}, paymentId={}, paymentNo={}, amount={}, batchSeq={}",
+                payroll.getId(), payment.getId(), payment.getPaymentNo(), amount, batchSeq);
+        return payment.getId();
+    }
+
+    @Override
+    public PageResult<PayrollPaymentRespVO> getPayrollPaymentPage(PayrollPaymentPageReqVO pageReqVO) {
+        if (pageReqVO == null || pageReqVO.getPayrollId() == null) {
+            return PageResult.empty();
+        }
+        // 横向越权防御：验证工资单存在且属于当前租户
+        validatePayrollExistsAndTenant(pageReqVO.getPayrollId());
+
+        PageResult<PayrollPaymentDO> pageResult = payrollPaymentMapper.selectPage(pageReqVO,
+                new LambdaQueryWrapperX<PayrollPaymentDO>()
+                        .eq(PayrollPaymentDO::getPayrollId, pageReqVO.getPayrollId())
+                        .orderByDesc(PayrollPaymentDO::getId));
+        return BeanUtils.toBean(pageResult, PayrollPaymentRespVO.class);
+    }
+
+    private String generatePaymentNoWithRetry(LocalDate date) {
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        String prefix = PAYROLL_PAYMENT_NO_PREFIX + DATE_FORMATTER.format(targetDate);
+        List<PayrollPaymentDO> candidates = payrollPaymentMapper.selectListByPaymentNoPrefixIncludingDeleted(prefix);
+        long maxNum = 0L;
+        int maxDigits = NO_MIN_DIGITS;
+
+        if (CollUtil.isNotEmpty(candidates)) {
+            for (PayrollPaymentDO candidate : candidates) {
+                String no = candidate.getPaymentNo();
+                if (no == null || no.length() <= prefix.length()) {
+                    continue;
+                }
+                String suffix = no.substring(prefix.length());
+                Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
+                if (!matcher.find()) {
+                    continue;
+                }
+                String digits = matcher.group();
+                try {
+                    long num = Long.parseLong(digits);
+                    if (num > maxNum) {
+                        maxNum = num;
+                        maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
+                    }
+                } catch (NumberFormatException ignore) {
+                    // 忽略格式异常单号
+                }
+            }
+        }
+
+        for (int i = 1; i <= MAX_GENERATE_RETRY; i++) {
+            long seq = maxNum + i;
+            String candidateNo = prefix + String.format("%0" + maxDigits + "d", seq);
+            if (payrollPaymentMapper.selectByPaymentNoIncludingDeleted(candidateNo) == null) {
+                return candidateNo;
+            }
+        }
+        log.error("[generatePaymentNoWithRetry] 工资发放单号生成重试耗尽: prefix={}, maxNum={}", prefix, maxNum);
+        throw exception(PAYROLL_STATUS_NOT_ALLOWED);
+    }
 }

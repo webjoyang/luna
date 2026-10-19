@@ -78,4 +78,20 @@ public interface PayrollService {
      */
     PayrollPrintRespVO getPayrollPrintData(Long id);
 
+    /**
+     * 登记工资单发放批次（出纳执行·扣款并过账）
+     *
+     * @param reqVO 发放登记请求
+     * @return 发放批次ID
+     */
+    Long registerPayrollPayment(PayrollPaymentRegisterReqVO reqVO);
+
+    /**
+     * 分页查询工资单发放批次列表
+     *
+     * @param pageReqVO 批次分页查询请求
+     * @return 发放批次分页
+     */
+    PageResult<PayrollPaymentRespVO> getPayrollPaymentPage(PayrollPaymentPageReqVO pageReqVO);
+
 }

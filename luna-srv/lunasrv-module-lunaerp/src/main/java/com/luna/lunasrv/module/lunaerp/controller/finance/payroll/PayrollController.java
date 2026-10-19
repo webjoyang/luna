@@ -120,4 +120,18 @@ public class PayrollController {
         return success(payrollDefectService.getDefectPreview(period, payrollId));
     }
 
+    @PostMapping("/payment/register")
+    @Operation(summary = "登记工资单发放批次（出纳执行·扣款并过账）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:payroll:pay')")
+    public CommonResult<Long> registerPayrollPayment(@Valid @RequestBody PayrollPaymentRegisterReqVO reqVO) {
+        return success(payrollService.registerPayrollPayment(reqVO));
+    }
+
+    @GetMapping("/payment/page")
+    @Operation(summary = "分页查询工资单发放批次列表")
+    @PreAuthorize("@ss.hasAnyPermissions('lunaerp:finance:payroll:query', 'lunaerp:finance:payroll:pay')")
+    public CommonResult<PageResult<PayrollPaymentRespVO>> getPayrollPaymentPage(@Valid PayrollPaymentPageReqVO pageReqVO) {
+        return success(payrollService.getPayrollPaymentPage(pageReqVO));
+    }
+
 }
