@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.controller.finance.payroll.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -8,6 +9,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Schema(description = "管理后台 - 工资单款项明细行保存 Request VO")
 @Data
@@ -35,5 +37,9 @@ public class PayrollLineItemSaveReqVO {
 
     @Schema(description = "款项说明", example = "10月基本工资")
     private String remark;
+
+    @Schema(description = "次品引用追溯明细列表（仅 DEFECT 次品扣款行适用）")
+    @Valid
+    private List<PayrollDefectRefSaveReqVO> defectRefs;
 
 }

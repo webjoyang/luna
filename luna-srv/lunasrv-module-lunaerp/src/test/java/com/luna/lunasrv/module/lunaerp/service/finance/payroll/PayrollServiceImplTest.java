@@ -82,6 +82,9 @@ public class PayrollServiceImplTest {
     @Mock
     private ApprovalInstanceService approvalInstanceService;
 
+    @Mock
+    private PayrollDefectService payrollDefectService;
+
     private static final Long TENANT_ID = 1L;
 
     @BeforeEach
@@ -685,6 +688,143 @@ public class PayrollServiceImplTest {
         PayrollRespVO resp3 = payrollService.getPayroll(1001L);
         assertEquals(PayrollPaymentStatusEnum.PAID.getValue(), resp3.getPaymentStatus());
         assertEquals(new BigDecimal("10000.00"), resp3.getPaidAmount());
+    }
+
+    @Test
+    @DisplayName("updatePayroll：包含次品扣款行与逐卷快照，单价×卷数与金额重算成功，持久化 refs")
+    void testUpdatePayroll_WithDefectRefs_Success() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.PENDING.getValue());
+        when(payrollMapper.selectById(1001L)).thenReturn(payroll);
+
+        AdminUserRespDTO user = new AdminUserRespDTO();
+        user.setId(101L);
+        user.setNickname("张三");
+        when(adminUserApi.getUserMap(anySet())).thenReturn(Map.of(101L, user));
+
+        PayrollDefectRefSaveReqVO ref1 = PayrollDefectRefSaveReqVO.builder()
+                .confirmationId(801L)
+                .confirmationNo("INS-001")
+                .rollNo("P01")
+                .grade("C")
+                .confirmedAt(LocalDateTime.of(2026, 10, 5, 10, 0))
+                .deductPrice(new BigDecimal("50.00"))
+                .build();
+        PayrollDefectRefSaveReqVO ref2 = PayrollDefectRefSaveReqVO.builder()
+                .confirmationId(802L)
+                .confirmationNo("INS-002")
+                .rollNo("P02")
+                .grade("B")
+                .confirmedAt(LocalDateTime.of(2026, 10, 8, 14, 0))
+                .deductPrice(new BigDecimal("50.00"))
+                .build();
+
+        // 收入行 5000，次品扣款行（2卷 × 50元 = 100元）
+        PayrollLineItemSaveReqVO earning = PayrollLineItemSaveReqVO.builder()
+                .itemKind("EARNING")
+                .itemType("BASE")
+                .amount(new BigDecimal("5000.00"))
+                .build();
+        PayrollLineItemSaveReqVO defect = PayrollLineItemSaveReqVO.builder()
+                .itemKind("DEDUCTION")
+                .itemType("DEFECT")
+                .defectRefs(List.of(ref1, ref2))
+                .build();
+
+        PayrollEmployeeSaveReqVO emp = PayrollEmployeeSaveReqVO.builder()
+                .userId(101L)
+                .items(List.of(earning, defect))
+                .build();
+
+        PayrollUpdateReqVO req = PayrollUpdateReqVO.builder()
+                .id(1001L)
+                .employees(List.of(emp))
+                .build();
+
+        payrollService.updatePayroll(req);
+
+        // 验证调用了次品校验
+        verify(payrollDefectService).validateDefectRefsForSave(eq(1001L), any());
+        // 验证插入了 2 条次品快照
+        verify(payrollDefectRefMapper, times(2)).insert(any(PayrollDefectRefDO.class));
+        // 验证主表 netAmount = 5000 - 100 = 4900.00
+        assertEquals(new BigDecimal("4900.00"), payroll.getNetAmount());
+    }
+
+    @Test
+    @DisplayName("updatePayroll：次品扣款行金额可手工改额（改额后尊重手工金额）")
+    void testUpdatePayroll_WithDefectRefs_CustomAmount() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.PENDING.getValue());
+        when(payrollMapper.selectById(1001L)).thenReturn(payroll);
+
+        AdminUserRespDTO user = new AdminUserRespDTO();
+        user.setId(101L);
+        user.setNickname("张三");
+        when(adminUserApi.getUserMap(anySet())).thenReturn(Map.of(101L, user));
+
+        PayrollDefectRefSaveReqVO ref1 = PayrollDefectRefSaveReqVO.builder()
+                .confirmationId(801L)
+                .confirmationNo("INS-001")
+                .rollNo("P01")
+                .grade("C")
+                .confirmedAt(LocalDateTime.of(2026, 10, 5, 10, 0))
+                .deductPrice(new BigDecimal("50.00"))
+                .build();
+
+        // 收入行 5000，次品扣款手工改额为 80.00（非 50.00）
+        PayrollLineItemSaveReqVO earning = PayrollLineItemSaveReqVO.builder()
+                .itemKind("EARNING")
+                .itemType("BASE")
+                .amount(new BigDecimal("5000.00"))
+                .build();
+        PayrollLineItemSaveReqVO defect = PayrollLineItemSaveReqVO.builder()
+                .itemKind("DEDUCTION")
+                .itemType("DEFECT")
+                .amount(new BigDecimal("80.00"))
+                .defectRefs(List.of(ref1))
+                .build();
+
+        PayrollEmployeeSaveReqVO emp = PayrollEmployeeSaveReqVO.builder()
+                .userId(101L)
+                .items(List.of(earning, defect))
+                .build();
+
+        PayrollUpdateReqVO req = PayrollUpdateReqVO.builder()
+                .id(1001L)
+                .employees(List.of(emp))
+                .build();
+
+        payrollService.updatePayroll(req);
+
+        // 验证主表 netAmount = 5000 - 80 = 4920.00
+        assertEquals(new BigDecimal("4920.00"), payroll.getNetAmount());
+    }
+
+    @Test
+    @DisplayName("deletePayroll：删除草稿工资单时连带软删其下属次品引用")
+    void testDeletePayroll_DeletesDefectRefs() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        payroll.setTenantId(TENANT_ID);
+        payroll.setApprovalStatus(ApplyStatus.PENDING.getValue());
+        when(payrollMapper.selectById(1001L)).thenReturn(payroll);
+
+        PayrollLineItemDO item = new PayrollLineItemDO();
+        item.setId(2001L);
+        item.setPayrollId(1001L);
+        when(payrollLineItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        payrollService.deletePayroll(1001L);
+
+        verify(payrollDefectRefMapper).delete(any());
+        verify(payrollLineItemMapper).delete(any());
+        verify(payrollEmployeeMapper).delete(any());
+        verify(payrollMapper).deleteById(1001L);
     }
 
 }

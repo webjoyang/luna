@@ -75,6 +75,9 @@ public class PayrollServiceImpl implements PayrollService {
     @Resource
     private ApprovalInstanceService approvalInstanceService;
 
+    @Resource
+    private PayrollDefectService payrollDefectService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     @LogRecord(type = "PAYROLL", subType = "CREATE", bizNo = "{{#result}}",
@@ -109,6 +112,12 @@ public class PayrollServiceImpl implements PayrollService {
         if (CollUtil.isNotEmpty(employees)) {
             calculatedEmployees = validateAndCalculateEmployees(employees);
             recalculatePayrollTotals(payroll, calculatedEmployees);
+
+            // 4.1 次品引用指纹与状态前置校验
+            List<PayrollDefectRefSaveReqVO> allDefectRefs = extractDefectRefs(calculatedEmployees);
+            if (CollUtil.isNotEmpty(allDefectRefs)) {
+                payrollDefectService.validateDefectRefsForSave(null, allDefectRefs);
+            }
         }
 
         // 5. 生成单号并持久化（支持数据库部分唯一索引兜底防并发）
@@ -151,6 +160,12 @@ public class PayrollServiceImpl implements PayrollService {
         List<CalculatedEmployeeData> calculatedEmployees = validateAndCalculateEmployees(employees);
         recalculatePayrollTotals(payroll, calculatedEmployees);
 
+        // 4.1 校验次品引用指纹与状态（并发重查候选）
+        List<PayrollDefectRefSaveReqVO> allDefectRefs = extractDefectRefs(calculatedEmployees);
+        if (CollUtil.isNotEmpty(allDefectRefs)) {
+            payrollDefectService.validateDefectRefsForSave(payroll.getId(), allDefectRefs);
+        }
+
         // 5. 更新标题与备注
         if (StrUtil.isNotBlank(updateReqVO.getTitle())) {
             payroll.setTitle(updateReqVO.getTitle().trim());
@@ -158,7 +173,14 @@ public class PayrollServiceImpl implements PayrollService {
         payroll.setRemark(updateReqVO.getRemark());
         payrollMapper.updateById(payroll);
 
-        // 6. 整体替换员工行与款项行（删除旧行，插入新行）
+        // 6. 整体替换员工行与款项行（同时清理旧次品引用，连 refs 删后立即释放）
+        List<PayrollLineItemDO> oldLineItems = payrollLineItemMapper.selectList(new LambdaQueryWrapperX<PayrollLineItemDO>()
+                .eq(PayrollLineItemDO::getPayrollId, payroll.getId()));
+        if (CollUtil.isNotEmpty(oldLineItems)) {
+            List<Long> oldLineItemIds = oldLineItems.stream().map(PayrollLineItemDO::getId).collect(Collectors.toList());
+            payrollDefectRefMapper.delete(new LambdaQueryWrapperX<PayrollDefectRefDO>()
+                    .inOrEmpty(PayrollDefectRefDO::getLineItemId, oldLineItemIds));
+        }
         payrollLineItemMapper.delete(new LambdaQueryWrapperX<PayrollLineItemDO>()
                 .eq(PayrollLineItemDO::getPayrollId, payroll.getId()));
         payrollEmployeeMapper.delete(new LambdaQueryWrapperX<PayrollEmployeeDO>()
@@ -185,7 +207,14 @@ public class PayrollServiceImpl implements PayrollService {
             throw exception(PAYROLL_STATUS_NOT_ALLOWED);
         }
 
-        // 软删除主表及下属子表
+        // 软删除主表及下属子表（含次品引用）
+        List<PayrollLineItemDO> lineItems = payrollLineItemMapper.selectList(new LambdaQueryWrapperX<PayrollLineItemDO>()
+                .eq(PayrollLineItemDO::getPayrollId, id));
+        if (CollUtil.isNotEmpty(lineItems)) {
+            List<Long> lineItemIds = lineItems.stream().map(PayrollLineItemDO::getId).collect(Collectors.toList());
+            payrollDefectRefMapper.delete(new LambdaQueryWrapperX<PayrollDefectRefDO>()
+                    .inOrEmpty(PayrollDefectRefDO::getLineItemId, lineItemIds));
+        }
         payrollLineItemMapper.delete(new LambdaQueryWrapperX<PayrollLineItemDO>()
                 .eq(PayrollLineItemDO::getPayrollId, id));
         payrollEmployeeMapper.delete(new LambdaQueryWrapperX<PayrollEmployeeDO>()
@@ -503,7 +532,7 @@ public class PayrollServiceImpl implements PayrollService {
     }
 
     private void validateDefectRefs(Long payrollId) {
-        // 次品引用重验（07 票展开逻辑，本票空集合天然通过）
+        payrollDefectService.validateDefectRefsForSubmit(payrollId);
         log.debug("[validateDefectRefs] 工资单 refs 校验通过: payrollId={}", payrollId);
     }
 
@@ -568,7 +597,9 @@ public class PayrollServiceImpl implements PayrollService {
             BigDecimal empEarningTotal = BigDecimal.ZERO;
             BigDecimal empDeductionTotal = BigDecimal.ZERO;
 
-            List<PayrollLineItemDO> calculatedItems = new ArrayList<>();
+            List<CalculatedItemData> calculatedItems = new ArrayList<>();
+            boolean hasDefectLine = false;
+
             if (CollUtil.isNotEmpty(empReq.getItems())) {
                 for (PayrollLineItemSaveReqVO itemReq : empReq.getItems()) {
                     String itemKind = itemReq.getItemKind() != null ? itemReq.getItemKind().trim().toUpperCase() : "";
@@ -577,6 +608,22 @@ public class PayrollServiceImpl implements PayrollService {
                     BigDecimal amount;
                     if (itemReq.getQty() != null && itemReq.getUnitPrice() != null) {
                         amount = itemReq.getQty().multiply(itemReq.getUnitPrice()).setScale(2, RoundingMode.HALF_UP);
+                    } else if ("DEFECT".equals(itemType) && CollUtil.isNotEmpty(itemReq.getDefectRefs())
+                            && itemReq.getAmount() == null && itemReq.getUnitPrice() == null) {
+                        // 统一扣款单价 × 卷数
+                        BigDecimal price = itemReq.getDefectRefs().get(0).getDeductPrice();
+                        if (price != null) {
+                            BigDecimal qty = itemReq.getQty() != null ? itemReq.getQty() : new BigDecimal(itemReq.getDefectRefs().size());
+                            amount = price.multiply(qty).setScale(2, RoundingMode.HALF_UP);
+                            if (itemReq.getQty() == null) {
+                                itemReq.setQty(qty);
+                            }
+                            if (itemReq.getUnitPrice() == null) {
+                                itemReq.setUnitPrice(price);
+                            }
+                        } else {
+                            amount = null;
+                        }
                     } else {
                         amount = itemReq.getAmount() != null
                                 ? itemReq.getAmount().setScale(2, RoundingMode.HALF_UP)
@@ -591,13 +638,38 @@ public class PayrollServiceImpl implements PayrollService {
                         if (!PayrollItemKindEnum.VALID_EARNING_TYPES.contains(itemType)) {
                             throw exception(PAYROLL_LINE_AMOUNT_INVALID);
                         }
-                        empEarningTotal = empEarningTotal.add(amount);
-                    } else if (PayrollItemKindEnum.DEDUCTION.getValue().equals(itemKind)) {
-                        // 手工录入行严禁 DEFECT（次品行仅导入生成，07 票）
-                        if (!PayrollItemKindEnum.VALID_MANUAL_DEDUCTION_TYPES.contains(itemType)) {
+                        if (CollUtil.isNotEmpty(itemReq.getDefectRefs())) {
                             throw exception(PAYROLL_LINE_AMOUNT_INVALID);
                         }
-                        empDeductionTotal = empDeductionTotal.add(amount);
+                        empEarningTotal = empEarningTotal.add(amount);
+                    } else if (PayrollItemKindEnum.DEDUCTION.getValue().equals(itemKind)) {
+                        if ("DEFECT".equals(itemType)) {
+                            // 手工录入行严禁 DEFECT（次品行仅导入生成，07 票）；每员工一条 DEDUCTION/DEFECT 款项行
+                            if (hasDefectLine || CollUtil.isEmpty(itemReq.getDefectRefs())) {
+                                throw exception(PAYROLL_LINE_AMOUNT_INVALID);
+                            }
+                            hasDefectLine = true;
+
+                            for (PayrollDefectRefSaveReqVO ref : itemReq.getDefectRefs()) {
+                                if (ref.getDeductPrice() == null || ref.getDeductPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                                    throw exception(PAYROLL_DEFECT_PRICE_REQUIRED);
+                                }
+                                if (ref.getUserId() == null) {
+                                    ref.setUserId(empReq.getUserId());
+                                }
+                                if (StrUtil.isBlank(ref.getNickname())) {
+                                    ref.setNickname(user.getNickname());
+                                }
+                            }
+                            empDeductionTotal = empDeductionTotal.add(amount);
+                        } else if (PayrollItemKindEnum.VALID_MANUAL_DEDUCTION_TYPES.contains(itemType)) {
+                            if (CollUtil.isNotEmpty(itemReq.getDefectRefs())) {
+                                throw exception(PAYROLL_LINE_AMOUNT_INVALID);
+                            }
+                            empDeductionTotal = empDeductionTotal.add(amount);
+                        } else {
+                            throw exception(PAYROLL_LINE_AMOUNT_INVALID);
+                        }
                     } else {
                         throw exception(PAYROLL_LINE_AMOUNT_INVALID);
                     }
@@ -609,7 +681,8 @@ public class PayrollServiceImpl implements PayrollService {
                     itemDO.setUnitPrice(itemReq.getUnitPrice());
                     itemDO.setAmount(amount);
                     itemDO.setRemark(itemReq.getRemark());
-                    calculatedItems.add(itemDO);
+
+                    calculatedItems.add(new CalculatedItemData(itemDO, itemReq.getDefectRefs()));
                 }
             }
 
@@ -658,12 +731,47 @@ public class PayrollServiceImpl implements PayrollService {
             empDO.setPayrollId(payrollId);
             payrollEmployeeMapper.insert(empDO);
 
-            for (PayrollLineItemDO itemDO : data.getItems()) {
+            for (CalculatedItemData itemData : data.getItems()) {
+                PayrollLineItemDO itemDO = itemData.getItem();
                 itemDO.setPayrollId(payrollId);
                 itemDO.setEmployeeRowId(empDO.getId());
                 payrollLineItemMapper.insert(itemDO);
+
+                // 保存次品引用快照
+                if (CollUtil.isNotEmpty(itemData.getDefectRefs())) {
+                    for (PayrollDefectRefSaveReqVO refReq : itemData.getDefectRefs()) {
+                        PayrollDefectRefDO refDO = new PayrollDefectRefDO();
+                        refDO.setLineItemId(itemDO.getId());
+                        refDO.setUserId(empDO.getUserId());
+                        refDO.setNickname(StrUtil.isNotBlank(refReq.getNickname()) ? refReq.getNickname() : empDO.getNickname());
+                        refDO.setConfirmationId(refReq.getConfirmationId());
+                        refDO.setConfirmationNo(StrUtil.isNotBlank(refReq.getConfirmationNo())
+                                ? refReq.getConfirmationNo()
+                                : String.valueOf(refReq.getConfirmationId()));
+                        refDO.setRollNo(refReq.getRollNo());
+                        refDO.setGrade(refReq.getGrade());
+                        refDO.setConfirmedAt(refReq.getConfirmedAt());
+                        refDO.setDeductPrice(refReq.getDeductPrice());
+                        payrollDefectRefMapper.insert(refDO);
+                    }
+                }
             }
         }
+    }
+
+    private List<PayrollDefectRefSaveReqVO> extractDefectRefs(List<CalculatedEmployeeData> calculatedEmployees) {
+        if (CollUtil.isEmpty(calculatedEmployees)) {
+            return Collections.emptyList();
+        }
+        List<PayrollDefectRefSaveReqVO> list = new ArrayList<>();
+        for (CalculatedEmployeeData emp : calculatedEmployees) {
+            for (CalculatedItemData item : emp.getItems()) {
+                if (CollUtil.isNotEmpty(item.getDefectRefs())) {
+                    list.addAll(item.getDefectRefs());
+                }
+            }
+        }
+        return list;
     }
 
     private void saveWithGeneratedNo(PayrollDO payroll) {
@@ -716,11 +824,29 @@ public class PayrollServiceImpl implements PayrollService {
         return nextNo;
     }
 
+    private static class CalculatedItemData {
+        private final PayrollLineItemDO item;
+        private final List<PayrollDefectRefSaveReqVO> defectRefs;
+
+        public CalculatedItemData(PayrollLineItemDO item, List<PayrollDefectRefSaveReqVO> defectRefs) {
+            this.item = item;
+            this.defectRefs = defectRefs;
+        }
+
+        public PayrollLineItemDO getItem() {
+            return item;
+        }
+
+        public List<PayrollDefectRefSaveReqVO> getDefectRefs() {
+            return defectRefs;
+        }
+    }
+
     private static class CalculatedEmployeeData {
         private final PayrollEmployeeDO employee;
-        private final List<PayrollLineItemDO> items;
+        private final List<CalculatedItemData> items;
 
-        public CalculatedEmployeeData(PayrollEmployeeDO employee, List<PayrollLineItemDO> items) {
+        public CalculatedEmployeeData(PayrollEmployeeDO employee, List<CalculatedItemData> items) {
             this.employee = employee;
             this.items = items;
         }
@@ -729,7 +855,7 @@ public class PayrollServiceImpl implements PayrollService {
             return employee;
         }
 
-        public List<PayrollLineItemDO> getItems() {
+        public List<CalculatedItemData> getItems() {
             return items;
         }
     }

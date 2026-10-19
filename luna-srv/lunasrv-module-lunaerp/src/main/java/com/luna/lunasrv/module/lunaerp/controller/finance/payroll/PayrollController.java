@@ -3,6 +3,7 @@ package com.luna.lunasrv.module.lunaerp.controller.finance.payroll;
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.finance.payroll.vo.*;
+import com.luna.lunasrv.module.lunaerp.service.finance.payroll.PayrollDefectService;
 import com.luna.lunasrv.module.lunaerp.service.finance.payroll.PayrollService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -28,6 +29,9 @@ public class PayrollController {
 
     @Resource
     private PayrollService payrollService;
+
+    @Resource
+    private PayrollDefectService payrollDefectService;
 
     @PostMapping("/create")
     @Operation(summary = "创建员工工资单草稿")
@@ -103,6 +107,17 @@ public class PayrollController {
     @PreAuthorize("@ss.hasPermission('lunaerp:finance:payroll:print')")
     public CommonResult<PayrollPrintRespVO> getPayrollPrintData(@RequestParam("id") Long id) {
         return success(payrollService.getPayrollPrintData(id));
+    }
+
+    @GetMapping("/defect-preview")
+    @Operation(summary = "获得工资单次品扣款预览数据")
+    @Parameter(name = "period", description = "工资期间（YYYY-MM）", required = true, example = "2026-10")
+    @Parameter(name = "payrollId", description = "当前工资单ID（可选，排除自身占用的指纹）", example = "100")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:payroll:import-defect')")
+    public CommonResult<PayrollDefectPreviewRespVO> getDefectPreview(
+            @RequestParam("period") String period,
+            @RequestParam(value = "payrollId", required = false) Long payrollId) {
+        return success(payrollDefectService.getDefectPreview(period, payrollId));
     }
 
 }

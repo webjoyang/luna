@@ -1,5 +1,6 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.payroll;
 
+import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
@@ -10,6 +11,8 @@ import com.luna.lunasrv.module.lunaerp.common.recycle.RecycleBinHandler;
 import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecyclePageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payroll.PayrollDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payroll.PayrollDefectRefDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.PayrollDefectRefMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.PayrollEmployeeMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.PayrollLineItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.PayrollMapper;
@@ -21,6 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.CommonErrorCodeConstants.RECYCLE_BIN_RECORD_NOT_EXISTS;
@@ -49,6 +55,12 @@ public class PayrollRecycleBinHandler implements RecycleBinHandler {
     @Resource
     private PayrollLineItemMapper payrollLineItemMapper;
 
+    @Resource
+    private PayrollDefectRefMapper payrollDefectRefMapper;
+
+    @Resource
+    private PayrollDefectService payrollDefectService;
+
     @Override
     public String getBizType() {
         return BIZ_TYPE;
@@ -73,6 +85,15 @@ public class PayrollRecycleBinHandler implements RecycleBinHandler {
         PayrollDO payroll = payrollMapper.selectDeletedById(id, tenantId);
         if (payroll == null) {
             throw exception(RECYCLE_BIN_RECORD_NOT_EXISTS);
+        }
+
+        // 恢复随之恢复次品指纹占用——07 票语义：校验次品指纹是否已被其它有效单据抢占
+        List<PayrollDefectRefDO> deletedRefs = payrollDefectRefMapper.selectAllByPayrollIdIncludingDeleted(id, tenantId);
+        if (CollUtil.isNotEmpty(deletedRefs)) {
+            Set<Long> confirmationIds = deletedRefs.stream()
+                    .map(PayrollDefectRefDO::getConfirmationId)
+                    .collect(Collectors.toSet());
+            payrollDefectService.validateDefectRefsAvailability(id, confirmationIds);
         }
     }
 
@@ -100,6 +121,7 @@ public class PayrollRecycleBinHandler implements RecycleBinHandler {
         }
         payrollEmployeeMapper.restorePayrollEmployees(id, tenantId, updater, now);
         payrollLineItemMapper.restorePayrollLineItems(id, tenantId, updater, now);
+        payrollDefectRefMapper.restoreDefectRefsByPayrollId(id, tenantId, updater, now);
 
         log.info("[PayrollRecycleBinHandler] 草稿工资单已恢复: id={}, tenantId={}", id, tenantId);
     }
@@ -118,6 +140,7 @@ public class PayrollRecycleBinHandler implements RecycleBinHandler {
         validatePurge(id);
 
         // 2. 物理删除明细与主表
+        payrollDefectRefMapper.purgeDefectRefsByPayrollId(id, tenantId);
         payrollLineItemMapper.purgePayrollLineItems(id, tenantId);
         payrollEmployeeMapper.purgePayrollEmployees(id, tenantId);
         int affected = payrollMapper.purgePayroll(id, tenantId);

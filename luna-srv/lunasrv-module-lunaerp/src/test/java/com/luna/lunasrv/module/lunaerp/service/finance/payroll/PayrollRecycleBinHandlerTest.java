@@ -7,9 +7,11 @@ import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
 import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecyclePageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payroll.PayrollDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.payroll.PayrollDefectRefDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.PayrollEmployeeMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.PayrollLineItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.PayrollMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.payroll.PayrollDefectRefMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +46,12 @@ public class PayrollRecycleBinHandlerTest {
 
     @Mock
     private PayrollLineItemMapper payrollLineItemMapper;
+
+    @Mock
+    private PayrollDefectRefMapper payrollDefectRefMapper;
+
+    @Mock
+    private PayrollDefectService payrollDefectService;
 
     @InjectMocks
     private PayrollRecycleBinHandler handler;
@@ -101,7 +109,23 @@ public class PayrollRecycleBinHandlerTest {
     }
 
     @Test
-    @DisplayName("restore：恢复主表及员工行、款项行，状态置 PENDING")
+    @DisplayName("validateRestore：若存在次品引用，委托 payrollDefectService.validateDefectRefsAvailability 校验指纹可用性")
+    void testValidateRestore_ValidatesDefectRefsAvailability() {
+        PayrollDO payroll = new PayrollDO();
+        payroll.setId(1001L);
+        when(payrollMapper.selectDeletedById(1001L, TENANT_ID)).thenReturn(payroll);
+
+        PayrollDefectRefDO ref = new PayrollDefectRefDO();
+        ref.setConfirmationId(8801L);
+        when(payrollDefectRefMapper.selectAllByPayrollIdIncludingDeleted(1001L, TENANT_ID))
+                .thenReturn(List.of(ref));
+
+        assertDoesNotThrow(() -> handler.validateRestore(1001L));
+        verify(payrollDefectService).validateDefectRefsAvailability(eq(1001L), any());
+    }
+
+    @Test
+    @DisplayName("restore：恢复主表及员工行、款项行、次品引用行，状态置 PENDING")
     void testRestore_Success() {
         PayrollDO payroll = new PayrollDO();
         payroll.setId(1001L);
@@ -113,6 +137,7 @@ public class PayrollRecycleBinHandlerTest {
         verify(payrollMapper).restorePayroll(eq(1001L), eq(TENANT_ID), any(), any());
         verify(payrollEmployeeMapper).restorePayrollEmployees(eq(1001L), eq(TENANT_ID), any(), any());
         verify(payrollLineItemMapper).restorePayrollLineItems(eq(1001L), eq(TENANT_ID), any(), any());
+        verify(payrollDefectRefMapper).restoreDefectRefsByPayrollId(eq(1001L), eq(TENANT_ID), any(), any());
     }
 
     @Test
@@ -125,7 +150,7 @@ public class PayrollRecycleBinHandlerTest {
     }
 
     @Test
-    @DisplayName("purge：彻底物理删除款项明细、员工汇总及主表")
+    @DisplayName("purge：彻底物理删除款项明细、次品引用、员工汇总及主表")
     void testPurge_Success() {
         PayrollDO payroll = new PayrollDO();
         payroll.setId(1001L);
@@ -134,6 +159,7 @@ public class PayrollRecycleBinHandlerTest {
 
         assertDoesNotThrow(() -> handler.purge(1001L));
 
+        verify(payrollDefectRefMapper).purgeDefectRefsByPayrollId(1001L, TENANT_ID);
         verify(payrollLineItemMapper).purgePayrollLineItems(1001L, TENANT_ID);
         verify(payrollEmployeeMapper).purgePayrollEmployees(1001L, TENANT_ID);
         verify(payrollMapper).purgePayroll(1001L, TENANT_ID);

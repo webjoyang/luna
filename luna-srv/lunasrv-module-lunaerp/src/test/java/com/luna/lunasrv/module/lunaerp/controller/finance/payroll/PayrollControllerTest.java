@@ -3,6 +3,7 @@ package com.luna.lunasrv.module.lunaerp.controller.finance.payroll;
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.finance.payroll.vo.*;
+import com.luna.lunasrv.module.lunaerp.service.finance.payroll.PayrollDefectService;
 import com.luna.lunasrv.module.lunaerp.service.finance.payroll.PayrollService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,9 @@ public class PayrollControllerTest {
 
     @Mock
     private PayrollService payrollService;
+
+    @Mock
+    private PayrollDefectService payrollDefectService;
 
     @Test
     @DisplayName("端点委托：增删改查、提交、撤回、作废、套打均正确委托 Service")
@@ -98,6 +102,17 @@ public class PayrollControllerTest {
         assertEquals(0, printRes.getCode());
         assertEquals(1001L, printRes.getData().getId());
         verify(payrollService).getPayrollPrintData(1001L);
+
+        // 10. 次品扣款预览
+        PayrollDefectPreviewRespVO previewResp = PayrollDefectPreviewRespVO.builder()
+                .period("2026-10")
+                .groups(Collections.emptyList())
+                .build();
+        when(payrollDefectService.getDefectPreview("2026-10", 1001L)).thenReturn(previewResp);
+        CommonResult<PayrollDefectPreviewRespVO> previewRes = payrollController.getDefectPreview("2026-10", 1001L);
+        assertEquals(0, previewRes.getCode());
+        assertEquals("2026-10", previewRes.getData().getPeriod());
+        verify(payrollDefectService).getDefectPreview("2026-10", 1001L);
     }
 
 }
