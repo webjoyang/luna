@@ -17,7 +17,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
+
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.account.AccountMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,6 +44,9 @@ public class LedgerServiceImplTest {
 
     @Mock
     private LedgerEntryMapper ledgerEntryMapper;
+
+    @Mock
+    private AccountMapper accountMapper;
 
     @BeforeEach
     void setUp() {
@@ -143,6 +154,100 @@ public class LedgerServiceImplTest {
         assertEquals("SALES_RETURN", saved.getRefType());
         assertEquals(returnOrderId, saved.getRefId());
         assertEquals(shipmentItemId, saved.getRefItemId());
+    }
+
+    @Test
+    @DisplayName("getLedgerPage: 账户不存在时抛出 1_030_020_100 ACCOUNT_NOT_EXISTS (横向越权防御)")
+    void testGetLedgerPage_accountNotExists_throwsException() {
+        LedgerPageReqVO reqVO = new LedgerPageReqVO();
+        reqVO.setAccountId(9999L);
+        when(accountMapper.selectById(9999L)).thenReturn(null);
+
+        ServiceException ex = org.junit.jupiter.api.Assertions.assertThrows(ServiceException.class,
+                () -> ledgerService.getLedgerPage(reqVO));
+        assertEquals(FinanceErrorCodeConstants.ACCOUNT_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("getLedgerPage: 正常分页查询，包含筛选透传与来源单号跳转路由解析")
+    void testGetLedgerPage_success() {
+        LedgerPageReqVO reqVO = new LedgerPageReqVO();
+        reqVO.setAccountId(10L);
+        reqVO.setCategory("OUT_EXPENSE");
+        reqVO.setDirection("CREDIT");
+        reqVO.setPartyName("张三");
+        reqVO.setKeyword("BX");
+
+        AccountDO account = new AccountDO();
+        account.setId(10L);
+        account.setAccountName("基本户");
+        when(accountMapper.selectById(10L)).thenReturn(account);
+
+        LedgerEntryDO entry1 = new LedgerEntryDO();
+        entry1.setId(101L);
+        entry1.setBizDate(LocalDate.of(2026, 10, 19));
+        entry1.setCategory("OUT_EXPENSE");
+        entry1.setDirection("CREDIT");
+        entry1.setPartyType("EMPLOYEE");
+        entry1.setPartyName("张三");
+        entry1.setAccountId(10L);
+        entry1.setCurrency("RMB");
+        entry1.setExchangeRate(BigDecimal.ONE);
+        entry1.setOriginalAmount(new BigDecimal("500.00"));
+        entry1.setBaseAmount(new BigDecimal("500.00"));
+        entry1.setRefType("EXPENSE");
+        entry1.setRefId(201L);
+        entry1.setRefNo("BX202610190001");
+        entry1.setRemark("市内交通");
+
+        LedgerEntryDO entry2 = new LedgerEntryDO();
+        entry2.setId(102L);
+        entry2.setBizDate(LocalDate.of(2026, 10, 18));
+        entry2.setCategory("TRANSFER_OUT");
+        entry2.setDirection("CREDIT");
+        entry2.setAccountId(10L);
+        entry2.setCurrency("RMB");
+        entry2.setOriginalAmount(new BigDecimal("1000.00"));
+        entry2.setBaseAmount(new BigDecimal("1000.00"));
+        entry2.setRefType("TRANSFER");
+        entry2.setRefId(301L);
+        entry2.setRefNo("ZZ202610180001");
+
+        PageResult<LedgerEntryDO> pageResult = new PageResult<>(List.of(entry1, entry2), 2L);
+        when(ledgerEntryMapper.selectPage(eq(reqVO), any(LambdaQueryWrapperX.class))).thenReturn(pageResult);
+
+        PageResult<LedgerRespVO> result = ledgerService.getLedgerPage(reqVO);
+
+        assertNotNull(result);
+        assertEquals(2L, result.getTotal());
+        assertEquals(2, result.getList().size());
+
+        LedgerRespVO vo1 = result.getList().get(0);
+        assertEquals(101L, vo1.getId());
+        assertEquals("OUT_EXPENSE", vo1.getCategory());
+        assertEquals("张三", vo1.getPartyName());
+        assertEquals(new BigDecimal("500.00"), vo1.getOriginalAmount());
+        assertEquals("/finance/expense?id=201", vo1.getSourceRoute());
+
+        LedgerRespVO vo2 = result.getList().get(1);
+        assertEquals(102L, vo2.getId());
+        assertEquals("/finance/account?tab=transfer", vo2.getSourceRoute());
+    }
+
+    @Test
+    @DisplayName("getLedgerPage: 未指定 accountId 时默认资金流水视图，约束 account_id IS NOT NULL")
+    void testGetLedgerPage_withoutAccountId_appliesNotNull() {
+        LedgerPageReqVO reqVO = new LedgerPageReqVO();
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(10);
+
+        PageResult<LedgerEntryDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(ledgerEntryMapper.selectPage(eq(reqVO), any(LambdaQueryWrapperX.class))).thenReturn(pageResult);
+
+        PageResult<LedgerRespVO> result = ledgerService.getLedgerPage(reqVO);
+        assertNotNull(result);
+        assertEquals(0L, result.getTotal());
+        verify(accountMapper, never()).selectById(any());
     }
 
 }

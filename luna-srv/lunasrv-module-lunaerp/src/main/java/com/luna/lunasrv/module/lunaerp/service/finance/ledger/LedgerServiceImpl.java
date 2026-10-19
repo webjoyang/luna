@@ -2,9 +2,17 @@ package com.luna.lunasrv.module.lunaerp.service.finance.ledger;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.framework.common.util.object.BeanUtils;
+import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.account.AccountDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.account.AccountMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.finance.ledger.LedgerEntryMapper;
 import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
+import com.luna.lunasrv.module.lunaerp.enums.finance.LedgerCategory;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,7 +26,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-import com.luna.lunasrv.module.lunaerp.enums.finance.LedgerCategory;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 
@@ -34,6 +41,9 @@ public class LedgerServiceImpl implements LedgerService {
 
     @Resource
     private LedgerEntryMapper ledgerEntryMapper;
+
+    @Resource
+    private AccountMapper accountMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -129,6 +139,49 @@ public class LedgerServiceImpl implements LedgerService {
         entry.setRemark("销售退货应收冲减");
 
         return append(entry);
+    }
+
+    @Override
+    public PageResult<LedgerRespVO> getLedgerPage(LedgerPageReqVO reqVO) {
+        if (reqVO.getAccountId() != null) {
+            AccountDO account = accountMapper.selectById(reqVO.getAccountId());
+            if (account == null) {
+                throw exception(FinanceErrorCodeConstants.ACCOUNT_NOT_EXISTS);
+            }
+        }
+
+        LambdaQueryWrapperX<LedgerEntryDO> queryWrapper = new LambdaQueryWrapperX<LedgerEntryDO>()
+                .eqIfPresent(LedgerEntryDO::getAccountId, reqVO.getAccountId())
+                .eqIfPresent(LedgerEntryDO::getCategory, reqVO.getCategory())
+                .eqIfPresent(LedgerEntryDO::getDirection, reqVO.getDirection())
+                .eqIfPresent(LedgerEntryDO::getPartyType, reqVO.getPartyType())
+                .eqIfPresent(LedgerEntryDO::getPartyId, reqVO.getPartyId())
+                .likeIfPresent(LedgerEntryDO::getPartyName, reqVO.getPartyName())
+                .likeIfPresent(LedgerEntryDO::getRefNo, reqVO.getRefNo())
+                .geIfPresent(LedgerEntryDO::getBizDate, reqVO.getPeriodStart())
+                .leIfPresent(LedgerEntryDO::getBizDate, reqVO.getPeriodEnd());
+
+        if (reqVO.getAccountId() == null) {
+            queryWrapper.isNotNull(LedgerEntryDO::getAccountId);
+        }
+
+        if (StrUtil.isNotBlank(reqVO.getKeyword())) {
+            String kw = reqVO.getKeyword().trim();
+            queryWrapper.and(w -> w.like(LedgerEntryDO::getRefNo, kw)
+                    .or().like(LedgerEntryDO::getPartyName, kw));
+        }
+
+        queryWrapper.orderByDesc(LedgerEntryDO::getBizDate)
+                .orderByDesc(LedgerEntryDO::getId);
+
+        PageResult<LedgerEntryDO> pageResult = ledgerEntryMapper.selectPage(reqVO, queryWrapper);
+        List<LedgerRespVO> list = pageResult.getList().stream().map(entry -> {
+            LedgerRespVO vo = BeanUtils.toBean(entry, LedgerRespVO.class);
+            vo.setSourceRoute(LedgerRespVO.resolveSourceRoute(entry.getRefType(), entry.getRefId()));
+            return vo;
+        }).toList();
+
+        return new PageResult<>(list, pageResult.getTotal());
     }
 
 }

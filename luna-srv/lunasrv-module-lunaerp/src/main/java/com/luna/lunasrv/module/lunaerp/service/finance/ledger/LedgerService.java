@@ -1,5 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.ledger;
 
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.finance.ledger.vo.LedgerRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.finance.ledger.LedgerEntryDO;
 
 import java.util.Collection;
@@ -79,5 +82,12 @@ public interface LedgerService {
                                 java.math.BigDecimal origAmount, String currency,
                                 java.math.BigDecimal exchangeRate, Long returnOrderId);
 
-}
+    /**
+     * 资金流水视图参数化分页查询
+     *
+     * @param reqVO 分页查询参数
+     * @return 资金流水分页结果
+     */
+    PageResult<LedgerRespVO> getLedgerPage(LedgerPageReqVO reqVO);
 
+}

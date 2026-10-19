@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -90,5 +91,21 @@ public interface SupplierReconMapper extends BaseMapperX<SupplierReconDO> {
      * @return 活跃引用数量
      */
     Long selectActiveReferenceCount(@Param("reconId") Long reconId, @Param("tenantId") Long tenantId);
+
+    /**
+     * 统计指定确认时间区间内 CONFIRMED 供应商对账单总金额（用于毛利成本计算）
+     *
+     * @param startTime 开始时间
+     * @param endTime 结束时间
+     * @return 确认对账单总金额
+     */
+    @Select("<script>"
+            + "SELECT COALESCE(SUM(total_amount), 0) FROM lunaerp_finance_supplier_recon "
+            + "WHERE status = 'CONFIRMED' AND deleted = 0 "
+            + "<if test='startTime != null'> AND confirmed_at &gt;= #{startTime} </if>"
+            + "<if test='endTime != null'> AND confirmed_at &lt;= #{endTime} </if>"
+            + "</script>")
+    BigDecimal selectSumConfirmedTotalAmount(@Param("startTime") LocalDateTime startTime,
+                                             @Param("endTime") LocalDateTime endTime);
 
 }
