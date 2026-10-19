@@ -662,27 +662,6 @@
               <span>{{ formData.postedAt ? parseTime(formData.postedAt) : '-' }}</span>
             </div>
           </el-timeline-item>
-
-          <!-- 5. 作废（若有） -->
-          <el-timeline-item
-            v-if="formData.status === 'CANCELLED' || formData.cancelledAt"
-            timestamp="单据作废"
-            placement="top"
-            type="danger"
-          >
-            <div class="text-13px">
-              <span class="text-gray-500">作废人：</span>
-              <span class="font-medium mr-16px">{{
-                formData.cancelledBy ? `UID:${formData.cancelledBy}` : '-'
-              }}</span>
-              <span class="text-gray-500">作废时间：</span>
-              <span class="mr-16px">{{
-                formData.cancelledAt ? parseTime(formData.cancelledAt) : '-'
-              }}</span>
-              <span class="text-gray-500">作废原因：</span>
-              <span class="text-danger font-medium">{{ formData.cancelReason || '-' }}</span>
-            </div>
-          </el-timeline-item>
         </el-timeline>
       </ContentWrap>
     </template>
@@ -830,7 +809,7 @@ const summaryAmount = computed(() => {
 
 const handleJumpStockIn = () => {
   if (formData.stockInId) {
-    router.push(`/stock/stock-in/workspace/${formData.stockInId}?mode=detail`)
+    router.push(`/stock/stock-in/workspace/${formData.stockInId}?mode=view`)
   }
 }
 

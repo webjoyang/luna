@@ -13,9 +13,9 @@ import {
 
 describe('SalesReturn Domain Model Tests', () => {
   describe('getSalesReturnActionFlags', () => {
-    it('草稿态且未提交（DRAFT + PENDING）允许编辑、删除、提交审批，不显示详情', () => {
+    it('草稿态且未提交（DRAFT + PENDING）允许查看详情、编辑、删除、提交审批', () => {
       const flags = getSalesReturnActionFlags('DRAFT', 'PENDING')
-      expect(flags.canDetail).toBe(false)
+      expect(flags.canDetail).toBe(true)
       expect(flags.canEdit).toBe(true)
       expect(flags.canDelete).toBe(true)
       expect(flags.canSubmit).toBe(true)
@@ -26,18 +26,18 @@ describe('SalesReturn Domain Model Tests', () => {
       expect(flags.canPrint).toBe(true)
     })
 
-    it('草稿被驳回（DRAFT + REJECTED）按规范允许编辑、提交与删除（回收站）', () => {
+    it('草稿被驳回（DRAFT + REJECTED）按规范允许查看详情、编辑、提交与删除（回收站）', () => {
       const flags = getSalesReturnActionFlags('DRAFT', 'REJECTED')
-      expect(flags.canDetail).toBe(false)
+      expect(flags.canDetail).toBe(true)
       expect(flags.canEdit).toBe(true)
       expect(flags.canDelete).toBe(true)
       expect(flags.canSubmit).toBe(true)
       expect(flags.canWithdraw).toBe(false)
     })
 
-    it('审批中（DRAFT + APPROVING）仅允许撤回，禁止编辑和删除', () => {
+    it('审批中（DRAFT + APPROVING）允许查看详情、仅允许撤回，禁止编辑和删除', () => {
       const flags = getSalesReturnActionFlags('DRAFT', 'APPROVING')
-      expect(flags.canDetail).toBe(false)
+      expect(flags.canDetail).toBe(true)
       expect(flags.canEdit).toBe(false)
       expect(flags.canDelete).toBe(false)
       expect(flags.canSubmit).toBe(false)

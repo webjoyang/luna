@@ -363,9 +363,6 @@ export interface SalesReturnPrintVO {
   arrivedAt?: string
   postedBy?: number
   postedAt?: string
-  cancelledBy?: number
-  cancelledAt?: string
-  cancelReason?: string
   returnDate?: string
   remark?: string
   creator?: string

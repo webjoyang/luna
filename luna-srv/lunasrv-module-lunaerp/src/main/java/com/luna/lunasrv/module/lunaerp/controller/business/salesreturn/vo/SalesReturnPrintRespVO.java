@@ -93,14 +93,6 @@ public class SalesReturnPrintRespVO {
     @Schema(description = "财务过账确认时间")
     private LocalDateTime postedAt;
 
-    @Schema(description = "作废人ID", example = "1")
-    private Long cancelledBy;
-
-    @Schema(description = "作废时间")
-    private LocalDateTime cancelledAt;
-
-    @Schema(description = "作废原因", example = "客户取消")
-    private String cancelReason;
 
     @Schema(description = "退货单据日期", example = "2026-10-18")
     private LocalDate returnDate;

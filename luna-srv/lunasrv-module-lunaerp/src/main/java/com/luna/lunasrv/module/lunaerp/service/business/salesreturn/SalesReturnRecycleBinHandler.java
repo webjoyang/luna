@@ -37,6 +37,9 @@ import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionU
 import static com.luna.lunasrv.module.lunaerp.enums.CommonErrorCodeConstants.RECYCLE_BIN_HAS_ACTIVE_REFERENCE;
 import static com.luna.lunasrv.module.lunaerp.enums.CommonErrorCodeConstants.RECYCLE_BIN_RECORD_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.CommonErrorCodeConstants.RECYCLE_BIN_REFERENCE_IN_RECYCLE;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.WAREHOUSE_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnErrorCodeConstants.SALES_RETURN_SHIPMENT_NOT_COMPLETED;
 
 /**
@@ -111,7 +114,7 @@ public class SalesReturnRecycleBinHandler implements RecycleBinHandler {
             }
             CustomerDO activeCustomer = customerMapper.selectById(customerId);
             if (activeCustomer == null) {
-                throw exception(RECYCLE_BIN_REFERENCE_IN_RECYCLE, "客户档案");
+                throw exception(CUSTOMER_NOT_EXISTS);
             }
         }
 
@@ -120,7 +123,7 @@ public class SalesReturnRecycleBinHandler implements RecycleBinHandler {
         if (warehouseId != null) {
             WarehouseDO warehouse = warehouseMapper.selectById(warehouseId);
             if (warehouse == null) {
-                throw exception(RECYCLE_BIN_REFERENCE_IN_RECYCLE, "退货仓库档案");
+                throw exception(WAREHOUSE_NOT_EXISTS);
             }
         }
 
@@ -149,7 +152,7 @@ public class SalesReturnRecycleBinHandler implements RecycleBinHandler {
                     }
                     ProductDO activeProduct = productMapper.selectById(productId);
                     if (activeProduct == null) {
-                        throw exception(RECYCLE_BIN_REFERENCE_IN_RECYCLE, "产品档案");
+                        throw exception(PRODUCT_NOT_EXISTS);
                     }
                 }
             }

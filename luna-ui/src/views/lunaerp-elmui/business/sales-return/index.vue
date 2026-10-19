@@ -104,7 +104,7 @@
           <el-link
             type="primary"
             :underline="false"
-            @click="openWorkspace(row.id)"
+            @click="openWorkspace(row.id, 'detail')"
             v-hasPermi="['lunaerp:business:sales-return:query']"
           >
             {{ row.returnNo }}
@@ -157,7 +157,7 @@
               type="primary"
               link
               size="small"
-              @click="openWorkspace(row.id)"
+              @click="openWorkspace(row.id, 'detail')"
               v-hasPermi="['lunaerp:business:sales-return:query']"
             >
               详情
@@ -339,9 +339,12 @@ const resetQuery = () => {
   handleQuery()
 }
 
-const openWorkspace = (id?: number) => {
+const openWorkspace = (id?: number, mode?: string) => {
   if (id) {
-    router.push(`/business/sales-return/workspace/${id}`)
+    router.push({
+      path: `/business/sales-return/workspace/${id}`,
+      query: mode ? { mode } : undefined
+    })
   } else {
     router.push('/business/sales-return/workspace')
   }

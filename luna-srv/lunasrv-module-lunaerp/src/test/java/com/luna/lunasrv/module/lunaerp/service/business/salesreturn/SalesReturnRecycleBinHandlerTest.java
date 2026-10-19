@@ -33,6 +33,9 @@ import java.util.List;
 
 import static com.luna.lunasrv.module.lunaerp.enums.CommonErrorCodeConstants.RECYCLE_BIN_RECORD_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.CommonErrorCodeConstants.RECYCLE_BIN_REFERENCE_IN_RECYCLE;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
+import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.WAREHOUSE_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnErrorCodeConstants.SALES_RETURN_SHIPMENT_NOT_COMPLETED;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -161,7 +164,7 @@ public class SalesReturnRecycleBinHandlerTest {
         when(customerMapper.selectById(CUSTOMER_ID)).thenReturn(null);
 
         ServiceException ex = assertThrows(ServiceException.class, () -> handler.validateRestore(RETURN_ID));
-        assertEquals(RECYCLE_BIN_REFERENCE_IN_RECYCLE.getCode(), ex.getCode());
+        assertEquals(CUSTOMER_NOT_EXISTS.getCode(), ex.getCode());
     }
 
     @Test
@@ -178,7 +181,7 @@ public class SalesReturnRecycleBinHandlerTest {
         when(warehouseMapper.selectById(WAREHOUSE_ID)).thenReturn(null);
 
         ServiceException ex = assertThrows(ServiceException.class, () -> handler.validateRestore(RETURN_ID));
-        assertEquals(RECYCLE_BIN_REFERENCE_IN_RECYCLE.getCode(), ex.getCode());
+        assertEquals(WAREHOUSE_NOT_EXISTS.getCode(), ex.getCode());
     }
 
     @Test
@@ -258,6 +261,38 @@ public class SalesReturnRecycleBinHandlerTest {
 
         ServiceException ex = assertThrows(ServiceException.class, () -> handler.validateRestore(RETURN_ID));
         assertEquals(RECYCLE_BIN_REFERENCE_IN_RECYCLE.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("validateRestore: 明细中产品已不存在阻断恢复")
+    void testValidateRestore_productNotFound() {
+        SalesReturnDO ret = new SalesReturnDO();
+        ret.setId(RETURN_ID);
+        ret.setCustomerId(CUSTOMER_ID);
+        ret.setWarehouseId(WAREHOUSE_ID);
+        ret.setShipmentId(SHIPMENT_ID);
+        when(salesReturnMapper.selectDeletedById(RETURN_ID, TENANT_ID_1)).thenReturn(ret);
+        when(customerMapper.selectDeletedById(CUSTOMER_ID, TENANT_ID_1)).thenReturn(null);
+        when(customerMapper.selectById(CUSTOMER_ID)).thenReturn(new CustomerDO());
+        when(warehouseMapper.selectById(WAREHOUSE_ID)).thenReturn(new WarehouseDO());
+
+        when(shipmentMapper.selectDeletedById(SHIPMENT_ID, TENANT_ID_1)).thenReturn(null);
+        ShipmentDO activeShipment = new ShipmentDO();
+        activeShipment.setId(SHIPMENT_ID);
+        activeShipment.setStatus("COMPLETED");
+        when(shipmentMapper.selectById(SHIPMENT_ID)).thenReturn(activeShipment);
+
+        SalesReturnItemDO item = new SalesReturnItemDO();
+        item.setId(101L);
+        item.setProductId(PRODUCT_ID);
+        when(salesReturnItemMapper.selectDeletedListByReturnId(RETURN_ID, TENANT_ID_1))
+                .thenReturn(Collections.singletonList(item));
+
+        when(productMapper.selectDeletedById(PRODUCT_ID, TENANT_ID_1)).thenReturn(null);
+        when(productMapper.selectById(PRODUCT_ID)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> handler.validateRestore(RETURN_ID));
+        assertEquals(PRODUCT_NOT_EXISTS.getCode(), ex.getCode());
     }
 
     @Test

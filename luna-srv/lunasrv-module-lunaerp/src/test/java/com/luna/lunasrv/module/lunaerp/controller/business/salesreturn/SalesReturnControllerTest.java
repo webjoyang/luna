@@ -125,7 +125,7 @@ public class SalesReturnControllerTest {
         when(salesReturnService.getSalesReturnPrintData(10L)).thenReturn(mockPrintVO);
 
         CommonResult<com.luna.lunasrv.module.lunaerp.controller.business.salesreturn.vo.SalesReturnPrintRespVO> result =
-                controller.getSalesReturnPrintData(10L, null);
+                controller.getSalesReturnPrintData(10L);
         assertTrue(result.isSuccess());
         assertEquals("RT-20261018-001", result.getData().getReturnNo());
         verify(salesReturnService).getSalesReturnPrintData(10L);
@@ -134,7 +134,7 @@ public class SalesReturnControllerTest {
     @Test
     @DisplayName("print 权限注解校验：必须配置 @PreAuthorize 包含 lunaerp:business:sales-return:print")
     void testPrintPermission() throws NoSuchMethodException {
-        Method printMethod = SalesReturnController.class.getMethod("getSalesReturnPrintData", Long.class, Long.class);
+        Method printMethod = SalesReturnController.class.getMethod("getSalesReturnPrintData", Long.class);
         PreAuthorize printAuth = printMethod.getAnnotation(PreAuthorize.class);
         assertNotNull(printAuth);
         assertTrue(printAuth.value().contains("lunaerp:business:sales-return:print"));

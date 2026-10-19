@@ -159,8 +159,9 @@
         <tfoot>
           <tr class="bg-gray-50 font-bold border-t-2 border-gray-800">
             <td colspan="5" class="text-center">合计</td>
-            <td class="text-right font-mono">{{ calcTotalQty(sheet.items) }}</td>
-            <td></td>
+            <td colspan="2" class="text-right font-mono">{{
+              computeSalesReturnTotalQtyText(sheet.items)
+            }}</td>
             <td class="text-right font-mono">{{
               sheet.totalPieces ?? calcTotalPieces(sheet.items)
             }}</td>
@@ -178,6 +179,10 @@
       <div class="summary-box border border-gray-800 p-8px mb-14px text-11px bg-gray-50">
         <div class="flex justify-between items-center mb-4px">
           <div>
+            <span class="text-gray-600">总退货量：</span>
+            <span class="font-bold mr-16px font-mono">{{
+              computeSalesReturnTotalQtyText(sheet.items)
+            }}</span>
             <span class="text-gray-600">总匹数：</span>
             <span class="font-bold mr-16px"
               >{{ sheet.totalPieces ?? calcTotalPieces(sheet.items) }} 匹</span
@@ -223,11 +228,18 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 import type { PropType } from 'vue'
-import type {
-  SalesReturnPrintVO,
-  SalesReturnPrintItemVO,
-  SalesReturnPrintRollVO
-} from '@/api/lunaerp-elmui/business/sales-return'
+import type { SalesReturnPrintVO } from '@/api/lunaerp-elmui/business/sales-return'
+import {
+  formatStatusText,
+  formatApprovalStatusText,
+  formatReasonText,
+  formatRollQty,
+  formatPrintTime,
+  computeSalesReturnTotalQtyText,
+  calcTotalPieces,
+  calcTotalAmount,
+  formatChineseAmount
+} from './utils'
 
 defineOptions({ name: 'SalesReturnDoc' })
 
@@ -248,143 +260,4 @@ const sheetList = computed<SalesReturnPrintVO[]>(() => {
   }
   return props.list || []
 })
-
-const formatStatusText = (status?: string) => {
-  switch (status) {
-    case 'DRAFT':
-      return '草稿'
-    case 'APPROVED':
-      return '已审批'
-    case 'RECEIVED':
-      return '已收货'
-    case 'POSTED':
-      return '已过账'
-    case 'CANCELLED':
-      return '已作废'
-    default:
-      return status || '—'
-  }
-}
-
-const formatApprovalStatusText = (approvalStatus?: string) => {
-  switch (approvalStatus) {
-    case 'PENDING':
-      return '待提交'
-    case 'APPROVING':
-      return '审批中'
-    case 'APPROVED':
-      return '已通过'
-    case 'REJECTED':
-      return '已驳回'
-    case 'CANCELLED':
-      return '已撤回'
-    default:
-      return approvalStatus || ''
-  }
-}
-
-const formatReasonText = (reason?: string) => {
-  switch (reason) {
-    case 'QUALITY':
-      return '质量问题'
-    case 'WRONG_GOODS':
-      return '发错货'
-    case 'CUSTOMER_CANCEL':
-      return '客户取消'
-    case 'EXCESS':
-      return '多发退回'
-    case 'OTHER':
-      return '其他原因'
-    default:
-      return reason || '—'
-  }
-}
-
-const formatRollQty = (unit?: string, roll?: SalesReturnPrintRollVO) => {
-  if (!roll) return '0'
-  const u = (unit || '').trim().toUpperCase()
-  if (u === 'M' || u === 'METER') {
-    return `${roll.lengthM ?? 0}m`
-  }
-  return `${roll.weight ?? 0}kg`
-}
-
-const formatPrintTime = (time?: string) => {
-  if (!time) {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  }
-  return time.replace('T', ' ').substring(0, 16)
-}
-
-const calcTotalQty = (items?: SalesReturnPrintItemVO[]) => {
-  if (!items || items.length === 0) return '0.00'
-  const sum = items.reduce((acc, it) => acc + (Number(it.returnQty) || 0), 0)
-  return sum.toFixed(2)
-}
-
-const calcTotalPieces = (items?: SalesReturnPrintItemVO[]) => {
-  if (!items || items.length === 0) return 0
-  return items.reduce((acc, it) => acc + (Number(it.pieces) || 1), 0)
-}
-
-const calcTotalAmount = (items?: SalesReturnPrintItemVO[]) => {
-  if (!items || items.length === 0) return 0
-  return items.reduce((acc, it) => acc + (Number(it.amount) || 0), 0)
-}
-
-/** 大写金额转换函数 */
-const formatChineseAmount = (money?: number | string | null): string => {
-  if (money == null || isNaN(Number(money))) return '零元整'
-  const n = Math.abs(Number(money))
-  if (n === 0) return '零元整'
-
-  const fraction = ['角', '分']
-  const digit = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖']
-  const unit = [
-    ['元', '万', '亿'],
-    ['', '拾', '佰', '仟']
-  ]
-
-  let s = ''
-  const head = n < 0 ? '欠' : ''
-  const numStr = n.toFixed(2)
-  const [intPart, decPart] = numStr.split('.')
-
-  for (let i = 0; i < fraction.length; i++) {
-    const d = parseInt(decPart[i] || '0')
-    if (d > 0) {
-      s += digit[d] + fraction[i]
-    }
-  }
-
-  let p = ''
-  for (let i = 0; i < unit[0].length && parseInt(intPart) > 0; i++) {
-    let sub = ''
-    for (let j = 0; j < unit[1].length && intPart.length > 0; j++) {
-      const d = parseInt(intPart[intPart.length - 1 - (i * 4 + j)] || '-1')
-      if (d >= 0) {
-        sub = digit[d] + unit[1][j] + sub
-      }
-    }
-    sub = sub
-      .replace(/零[拾佰仟]/g, '零')
-      .replace(/零+/g, '零')
-      .replace(/零$/, '')
-    if (sub) {
-      p = sub + unit[0][i] + p
-    }
-  }
-
-  p = p
-    .replace(/零[万亿]/g, '')
-    .replace(/亿万/g, '亿')
-    .replace(/零+/g, '零')
-    .replace(/零$/, '')
-
-  if (!p) p = '零元'
-  else if (!p.endsWith('元')) p += '元'
-
-  return head + (s ? p + s : p + '整')
-}
 </script>

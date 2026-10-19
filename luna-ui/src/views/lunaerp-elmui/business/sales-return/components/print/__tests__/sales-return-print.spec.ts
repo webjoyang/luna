@@ -82,6 +82,16 @@ vi.mock(
 
 import { getTemplatesByBizType, getTemplate } from '@/components/Print/registry'
 import { salesReturnPrintCss } from '../print-styles'
+import {
+  computeSalesReturnTotalQtyText,
+  formatStatusText,
+  formatApprovalStatusText,
+  formatReasonText,
+  formatRollQty,
+  calcTotalPieces,
+  calcTotalAmount,
+  formatChineseAmount
+} from '../utils'
 
 describe('Sales Return Print Template Registration', () => {
   it('正确注册 SALES_RETURN_DOC 打印模板至 04 模板注册表', () => {
@@ -110,5 +120,60 @@ describe('Sales Return Print Template Registration', () => {
     expect(salesReturnPrintCss).toContain('.draft-watermark')
     expect(salesReturnPrintCss).toContain('.sales-return-doc-wrapper')
     expect(salesReturnPrintCss).toContain('.print-table')
+  })
+})
+
+describe('Sales Return Print Utils (coding-standards §23 Multi-Unit & Static Dicts)', () => {
+  it('跨单位退货物理量分组汇总：多单位并存时按单位独立分组（如 100.00 KG / 50.00 M），严禁无量纲混加', () => {
+    const items = [
+      { unit: 'KG', returnQty: 60.5 },
+      { unit: 'KG', returnQty: 39.5 },
+      { unit: 'M', returnQty: 50.0 }
+    ]
+    const text = computeSalesReturnTotalQtyText(items)
+    expect(text).toBe('100.00 KG / 50.00 M')
+  })
+
+  it('单单位退货物理量汇总：单单位时正常汇总', () => {
+    const items = [
+      { unit: 'KG', returnQty: 30 },
+      { unit: 'KG', returnQty: 20 }
+    ]
+    expect(computeSalesReturnTotalQtyText(items)).toBe('50.00 KG')
+  })
+
+  it('空明细列表时返回 0.00', () => {
+    expect(computeSalesReturnTotalQtyText([])).toBe('0.00')
+    expect(computeSalesReturnTotalQtyText(null)).toBe('0.00')
+  })
+
+  it('状态与审批状态文本映射使用静态字典常量正确转换', () => {
+    expect(formatStatusText('DRAFT')).toBe('草稿')
+    expect(formatStatusText('APPROVED')).toBe('已审批')
+    expect(formatStatusText('RECEIVED')).toBe('已收货')
+    expect(formatStatusText('POSTED')).toBe('已过账')
+    expect(formatStatusText('CANCELLED')).toBe('已作废')
+    expect(formatStatusText(undefined)).toBe('—')
+
+    expect(formatApprovalStatusText('PENDING')).toBe('待提交')
+    expect(formatApprovalStatusText('APPROVING')).toBe('审批中')
+    expect(formatApprovalStatusText('APPROVED')).toBe('已通过')
+    expect(formatApprovalStatusText('REJECTED')).toBe('已驳回')
+    expect(formatApprovalStatusText('CANCELLED')).toBe('已撤回')
+    expect(formatApprovalStatusText(undefined)).toBe('')
+
+    expect(formatReasonText('QUALITY')).toBe('质量问题')
+    expect(formatReasonText('WRONG_GOODS')).toBe('发错货')
+    expect(formatReasonText('CUSTOMER_CANCEL')).toBe('客户取消')
+    expect(formatReasonText('EXCESS')).toBe('多发退回')
+    expect(formatReasonText('OTHER')).toBe('其他原因')
+    expect(formatReasonText(undefined)).toBe('—')
+  })
+
+  it('卷数量与大写金额格式化正确', () => {
+    expect(formatRollQty('KG', { rollNo: 'R1', weight: 45.2 })).toBe('45.2kg')
+    expect(formatRollQty('M', { rollNo: 'R2', lengthM: 100.5 })).toBe('100.5m')
+    expect(formatChineseAmount(1250)).toBe('壹仟贰佰伍拾元整')
+    expect(formatChineseAmount(0)).toBe('零元整')
   })
 })

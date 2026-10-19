@@ -128,14 +128,11 @@ public class SalesReturnController {
         return success(true);
     }
 
-    @GetMapping({"/print-data", "/{id}/print-data"})
+    @GetMapping("/print-data")
     @Operation(summary = "获得销售退货单打印数据（豁免脱敏）")
     @Parameter(name = "id", description = "退货单ID", required = true, example = "10")
     @PreAuthorize("@ss.hasPermission('lunaerp:business:sales-return:print')")
-    public CommonResult<SalesReturnPrintRespVO> getSalesReturnPrintData(
-            @PathVariable(value = "id", required = false) Long pathId,
-            @RequestParam(value = "id", required = false) Long queryId) {
-        Long id = pathId != null ? pathId : queryId;
+    public CommonResult<SalesReturnPrintRespVO> getSalesReturnPrintData(@RequestParam("id") Long id) {
         return success(salesReturnService.getSalesReturnPrintData(id));
     }
 

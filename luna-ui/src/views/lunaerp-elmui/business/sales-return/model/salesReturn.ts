@@ -54,7 +54,7 @@ export function getSalesReturnActionFlags(
   const isCancelled = status === 'CANCELLED'
 
   return {
-    canDetail: isCancelled || isApproved || isReceived || isPosted,
+    canDetail: Boolean(status),
     canEdit: isDraft && (isPending || isRejected),
     canDelete: isDraft && (isPending || isRejected),
     canSubmit: isDraft && (isPending || isRejected),
