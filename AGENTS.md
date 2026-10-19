@@ -35,9 +35,9 @@
 - 混合工作区文件定标优先使用 `git ls-files "*<keyword>*"`，严禁未排除 `node_modules` / `target` 进行递归深搜。
 - **代码与符号检索双梯队策略（CodeGraph 优先 + git grep 兜底与文本基准）**：
   1. **第一梯队（CodeGraph 语法与调用链优先，根目录存在 `.codegraph/` 时）**：
-     - 类、接口、方法、实体属性、调用上下游与架构摸底（如 `RecycleBinHandler`、`Approval*`、领域模型等），**必须优先使用 `codegraph explore "<symbol>"`（或 MCP 工具 `codegraph_explore`）**，单次调用即可获取完整符号实现与调用路径，杜绝盲目多次 grep + view_file 循环。
-  2. **基础梯队（git grep 全局兜底与文本/动态检索，无 `.codegraph/` 时为第一选择）**：
-     - 在未建立 `.codegraph/` 索引的环境下，代码与符号检索一律以跨平台原生的 `git grep "<pattern>"` 作为第一选择；
+     - 类、接口、方法、实体属性、调用上下游与架构摸底（如 `RecycleBinHandler`、`Approval*`、领域模型等），**优先推荐使用 `codegraph explore "<symbol>"`（或 MCP 工具 `codegraph_explore`）**，单次调用即可获取完整符号实现与调用路径，大幅减少盲目的 grep + view_file 往返；若检索结果不理想、索引未覆盖或涉及动态调用，平滑退回基础梯队补充检索。
+  2. **基础梯队（git grep 全局兜底与文本/动态检索，无 `.codegraph/` 或第一梯队未达预期时）**：
+     - 在未建立 `.codegraph/` 索引、或第一梯队探索效果不理想时，代码与符号检索以跨平台原生的 `git grep "<pattern>"` 作为坚实兜底；
      - 在存在 `.codegraph/` 时，检索纯文本常量（如错误码前缀 `025_`）、Markdown 需求/Spec 文档、配置文件或刚创建未暂存文件，一律使用 `git grep`；
      - **执行安全禁令**：严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；混合工作区根目录无 `src/`，必须显式指定子项目路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`）；特性开发中检索可能包含刚创建未暂存的文件时，必须附加 `--untracked`（如 `git grep --untracked "<pattern>"`），防止漏检。
 - 严禁在 PowerShell 下将 `vue-tsc`、`mvn` 等长生命周期或海量输出的命令挂接管道传递给 `Select-String`（子进程标准流缓冲会导致进程假死 hang 住）。
