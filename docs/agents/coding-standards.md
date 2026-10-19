@@ -215,6 +215,7 @@
     3. **适用边界与防过度预热**：`TableInfoTestHelper` **仅当**被测类实现中直接构造了 `new LambdaQueryWrapper<DO>()` / `new LambdaQueryWrapperX<DO>()` 或动态提取实体字段方法引用时才需要；对于纯依赖打桩 Service/SPI、仅通过 Mockito 验证方法交互的上层监听器（如 `SalesReturnLedgerListenerTest`）或业务编排单测，严禁无差别拷贝 `TableInfoTestHelper` 与 MyBatis 配置代码，杜绝引入无用依赖与测试样板膨胀。
 - **单测基础实体 Mock 辅助工厂方法规约 (Test Fixture & Mock Factory Pattern)**：
   - 在大型领域 Service 单测中（如涉及仓库、供应商、产品、客户、采购单等多实体引用），测试类应集中定义私有基础实体构建工厂方法（如 `mockWarehouse(id, name, status)`、`mockProduct(id, name, code)`、`mockYarnOrder(id, orderNo)`），避免在单测用例内分散重复手写零碎的 `new EntityDO()` 样板代码，杜绝 TDD 红灯编译期因推测缺失 helper 方法导致的编译中断与往返构建损耗。
+  - **实体软删除类型守卫**：底座 `BaseDO` / `TenantBaseDO` 的逻辑删除字段 `deleted` 类型声明为 `Boolean`（底层 JDBC 驱动会自动与物理表 `tinyint(1)` 的 `0/1` 互相映射）。在 Mockito 单元测试打桩赋值时必须使用 `setDeleted(false)` / `setDeleted(true)`，严禁传入数值字面量 `setDeleted(0/1)` 引发类型编译报错。
 - **MyBatis-Plus Wrapper 动态打桩与参数惰性求值规约 (Wrapper Lazy Evaluation & Param Extraction in Mocks)**：
   - **场景**：在纯 Mockito 单元测试中，通过 `when(mapper.update(entity, wrapper))` 或 `when(mapper.selectCount(wrapper))` 拦截调用，并试图从 `Wrapper` 中提取条件参数（如通过 `aw.getParamNameValuePairs()` 提取目标 ID 或过滤值）以驱动动态打桩或内存仓储更新。
   - **惰性求值陷阱**：MyBatis-Plus 的 `AbstractWrapper` 中，参数命名与键值对（`MPGENVAL1`、`MPGENVAL2`...）是在构建 SQL 片段（调用 `getSqlSegment()` / `getCustomSqlSegment()`）时**惰性生成并填充**入 `paramNameValuePairs` 的。在 Mockito 拦截桩中，如果直接调用 `aw.getParamNameValuePairs()`，返回的将始终是一个空的 Map `{}`，导致无法按预期解析参数值，引发条件漏判、误更目标或测试假失败。
