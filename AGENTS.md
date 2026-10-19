@@ -61,10 +61,10 @@
 - 在luna-srv项目中
 - 技术实现：springboot + postgresql +  MyBatis Plus + Redis
 - 控制器与类文件定位：业务控制器统一位于 `com.luna.lunasrv.module.lunaerp.controller.<domain>`（无 `admin/` 中间层，区别于底座 yudao 系统管理模块的 `controller/admin/`）；定位 Controller/Service/VO/DTO 一律使用 `git ls-files "*<Keyword>*"`，严禁凭经验拼接类路径。
-- 单测执行与快速预检：`Cwd` 切换至 `luna-srv` 目录，执行 `mvn test "-Dtest=TargetTest"` 或指定模块 `mvn test -pl lunasrv-module-lunaerp "-Dtest=TargetTest"`（多类测试在 PowerShell 下务必使用双引号包裹 `"-Dtest=TestA,TestB"`）；凡涉及 `finance`、`business` 等域新增/修改 Controller/Mapper/DO/Handler 时，必须捆绑架构守护单测 `"-Dtest=ArchitectureStandardsTest,TargetTest"`，前置自动检验脱敏注解、可空更新策略、跨域 Mapper 直写拦截与 Mapper 纯洁性（接口严禁 `default` 方法，区别于底座 yudao 习惯）。新增或大幅重构单测后，可先执行 `mvn test-compile -pl lunasrv-module-lunaerp -q` 实施秒级语法与类型预检，杜绝低级编译错误直接进入耗时测试流程。
+- 单测执行与快速预检：`Cwd` 切换至 `luna-srv` 目录，执行 `mvn test "-Dtest=TargetTest"` 或指定模块 `mvn test -pl lunasrv-module-lunaerp "-Dtest=TargetTest"`（多类测试在 PowerShell 下务必使用双引号包裹 `"-Dtest=TestA,TestB"`）；凡涉及 `finance`、`business` 等域新增/修改 Controller/Mapper/DO/Handler 时，必须捆绑架构守护单测 `"-Dtest=ArchitectureStandardsTest,TargetTest"`，前置自动检验脱敏注解、可空更新策略、跨域 Mapper 直写拦截与 Mapper 纯洁性（接口严禁 `default` 方法，区别于底座 yudao 习惯）。新增或大幅重构单测后，可先执行 `mvn test-compile -pl lunasrv-module-lunaerp -q` 实施秒级语法与类型预检，杜绝低级编译错误直接进入耗时测试流程。单测 Mockito 验证 MyBatis-Plus `BaseMapper.insert` / `updateById` 方法时严禁裸用 `any()`，必须显式限定类型 `any(TargetDO.class)`，防范重载推断歧义编译报错。
 - 框架依赖刷新：修改或依赖刚刚调整过的 `lunasrv-framework` 基础组件时，需先执行 `mvn -pl lunasrv-framework/<module-name> install -DskipTests`（如 `lunasrv-spring-boot-starter-mybatis`）将最新 jar 安装至本地仓库，避免子模块 `-pl` 测试时读取 `~/.m2` 旧快照。
-- 编码安全与 import 维护：使用 `replace_file_content` 增删 import 时，`TargetContent` 必须仅定位纯 ASCII 单行 import 语句，严禁跨越 package、Javadoc、类注释或非 ASCII 文本行；超过 3 行的大批量 import 整理优先编写 Node.js 脚本或单行增删。涉及头-行-卷或主子表跨层数据映射时，编码前必须通过 `view_file` 切片查阅 DO/VO 物理属性定义，严禁凭经验臆测字段挂载层级（如缸号/匹号/卷号归属）。
-- 数据库脚本与领域规约：增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁、范围守卫、可空列清空、重构检索、审批流回调单写、伴生单据协同作废、质检中立初始态、跨单位物理量、入库 placement、跨域记账监听器 Fail-Fast 与源码 import 纯洁性规约见 `docs/agents/coding-standards.md` 第 8~26 节。
+- 编码安全与 import 维护：使用 `replace_file_content` 增删 import 时，`TargetContent` 必须仅定位纯 ASCII 单行 import 语句，严禁跨越 package、Javadoc、类注释或非 ASCII 文本行；超过 3 行的大批量 import 整理优先编写 Node.js 脚本或单行增删。涉及头-行-卷或主子表跨层数据映射、或跨域主数据引用（如 `AccountDO`、`CustomerDO` 等关联实体）时，编码前必须通过 `view_file` 切片查阅 DO/VO 物理属性定义，严禁凭经验臆测字段属性与命名（如 `accountName` vs `name`、缸号/匹号/卷号归属）。
+- 数据库脚本与领域规约：增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁（累计上限并发守卫必须加锁）、范围守卫、可空列清空、重构检索、审批流回调单写、伴生单据协同作废、质检中立初始态、跨单位物理量、入库 placement、跨域记账监听器 Fail-Fast 与源码 import 纯洁性规约见 `docs/agents/coding-standards.md` 第 8~26 节。
 
 
 

@@ -51,11 +51,11 @@
   - **`BaseMapperX` 重载消歧与打桩范式**：
     `BaseMapperX` 包含 `selectOne(Wrapper)`、`selectOne(String, Object)` 与 `selectOne(SFunction, Object)` 等多个同名重载。单测打桩严禁使用裸 `when(mapper.selectOne(any(), any()))`，会导致 Java 编译器报 `ambiguous call` 编译失败；亦严禁裸 `selectOne(any())`，易因 Mockito strict stubbing 判定签名不匹配报 `PotentialStubbingProblem`。
     **强制规约**：打桩多参数重载必须显式指定类型：`when(mapper.selectOne(any(SFunction.class), any())).thenReturn(...)`；或在实现与测试中统一优先使用 `LambdaQueryWrapperX`：`when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(...)`。
-  - **`BaseMapper.updateById` 重载消歧与打桩范式 (updateById Overload Disambiguation in Mockito)**：
-    - **重载歧义陷阱**：MyBatis-Plus 3.5.7+ 中，`BaseMapper<T>` 同时定义了 `int updateById(@Param(Constants.ENTITY) T entity)` 与 `int updateById(@Param(Constants.COLL) Collection<T> entityList)` 两个同名重载。在单元测试中使用裸 `verify(mapper).updateById(argThat(...))` 或 `verify(mapper).updateById(any())` 时，若未提供明确类型限定，Java 编译器（javac）会因无法区分目标方法是接收单一实体还是集合而抛出编译失败：`[ERROR] 对 updateById 的引用不明确，com.baomidou.mybatisplus.core.mapper.BaseMapper 中的方法 updateById(T) 和 updateById(java.util.Collection<T>) 都匹配`。
+  - **`BaseMapper.insert` 与 `updateById` 重载消歧与打桩范式 (insert & updateById Overload Disambiguation in Mockito)**：
+    - **重载歧义陷阱**：MyBatis-Plus 3.5.7+ 中，`BaseMapper<T>` 同时定义了单实体方法与批量集合重载方法（如 `int insert(T entity)` 与 `int insert(Collection<T> entityList)`，以及 `int updateById(T entity)` 与 `int updateById(Collection<T> entityList)`）。在单元测试中使用裸 `verify(mapper).insert(any())` 或 `verify(mapper).updateById(any())` / `argThat(...)` 时，Java 编译器（javac）会因无法区分目标方法是接收单一实体还是集合而抛出编译失败：`[ERROR] 对 insert/updateById 的引用不明确，com.baomidou.mybatisplus.core.mapper.BaseMapper 中的方法 insert/updateById(T) 和 insert/updateById(java.util.Collection<T>) 都匹配`。
     - **强制规约**：
-      1. **优先使用 ArgumentCaptor**：推荐声明具体实体捕获器：`ArgumentCaptor<TargetDO> captor = ArgumentCaptor.forClass(TargetDO.class); verify(mapper).updateById(captor.capture());`，既能彻底消除重载调用歧义，又便于后续针对 `captor.getValue()` 进行精确的字段变更断言；
-      2. **显式类型强转兜底**：若仅需打桩或简单验证调用，必须对参数进行类型限定或显式强转：`verify(mapper).updateById((TargetDO) any());` 或 `verify(mapper).updateById(any(TargetDO.class));`，严禁使用未加类型限定的裸 `any()` 或裸 `argThat(...)`。
+      1. **优先使用 ArgumentCaptor**：推荐声明具体实体捕获器：`ArgumentCaptor<TargetDO> captor = ArgumentCaptor.forClass(TargetDO.class); verify(mapper).insert(captor.capture());`，既能彻底消除重载调用歧义，又便于后续针对 `captor.getValue()` 进行精确的字段变更断言；
+      2. **显式类型强转兜底**：若仅需打桩或简单验证调用，必须对参数进行类型限定或显式强转：`verify(mapper).insert(any(TargetDO.class));` 或 `verify(mapper).updateById(any(TargetDO.class));`，严禁使用未加类型限定的裸 `any()` 或裸 `argThat(...)`。
 
 ## 5. 工作区快速代码与文件检索 (Fast Code & File Search)
 
@@ -270,15 +270,15 @@
 
 ## 13. 累计上限并发守卫与行级悲观锁规约 (Concurrency Limit Guards & Row-level Locking)
 
-- **场景**：业务中存在“累计已申请 / 已核销 / 已排产 / 已抵扣 + 本次操作额 ≤ 来源单据总额”的业务守卫（如付款申请挂靠对账单、排产派工挂靠订单）。
+- **场景**：业务中存在“累计已申请 / 已核销 / 已排产 / 已抵扣 / 已发放 + 本次操作额 ≤ 来源单据总额”的业务守卫（如付款申请挂靠对账单、排产派工挂靠订单、工资单发放登记挂靠工资实发总额）。
 - **并发超申与幻读陷阱**：
-  - 在可重复读（RR）或读已提交（RC）事务隔离级别下，若仅执行 `SELECT SUM(...)` 只读聚合计算并与上限比较后直接 `INSERT`，并发事务读取的是同一历史快照，均能通过校验，导致最终累计值严重击穿上限（超申/超额/超配）。
+  - 在可重复读（RR）或读已提交（RC）事务隔离级别下，若仅执行 `SELECT SUM(...)` 只读聚合计算并与上限比较后直接 `INSERT`，并发事务读取的是同一历史快照，均能通过校验，导致最终累计值严重击穿上限（超申/超额/超配/超发）。
 - **强制规约**：
   - **来源行悲观锁串行化**：在事务起始处，必须对被引用的来源根实体行施加行级排他锁（`FOR UPDATE`），将竞争同一来源单据的并发写事务串行化：
     `SourceDO source = sourceMapper.selectOneForUpdate(SourceDO::getId, sourceId);`
-  - **锁后原子重查与上限校验**：持有行锁后，在同一事务上下文重新执行累计值聚合（排除终态或当前单据），若 `appliedSum + currentAmount > source.getTotalAmount()`，必须抛出明确业务错误码（如 `022_007`）。
+  - **锁后原子重查与上限校验**：持有行锁后，在同一事务上下文重新执行累计值聚合（排除终态或当前单据），若 `appliedSum + currentAmount > source.getTotalAmount()`，必须抛出明确业务错误码（如 `022_007`、`025_007`）。
   - **纯 Mockito 单元测试打桩规约**：
-    `BaseMapperX.selectOneForUpdate(SFunction, Object)` 内部委托 `selectOneForUpdate(LambdaQueryWrapper)`。单测打桩应使用 `when(sourceMapper.selectOneForUpdate(any(LambdaQueryWrapper.class))).thenReturn(sourceDO);`，Service 内部可通过判空短路兜底支持 `selectById`，保证真实运行加锁生效与单元测试解耦兼顾。
+    `BaseMapperX.selectOneForUpdate(SFunction, Object)` 内部委托 `selectOneForUpdate(LambdaQueryWrapper)`。单测打桩可使用 `when(sourceMapper.selectOneForUpdate(any(), eq(sourceId))).thenReturn(sourceDO);` 或 `when(sourceMapper.selectOneForUpdate(any(LambdaQueryWrapper.class))).thenReturn(sourceDO);`，Service 内部可通过判空短路兜底支持 `selectById`，保证真实运行加锁生效与单元测试解耦兼顾。
 
 ## 14. 特性工单范围守卫与投机性机能防范 (Spec Scope Hygiene & Opportunistic Feature Guard)
 
