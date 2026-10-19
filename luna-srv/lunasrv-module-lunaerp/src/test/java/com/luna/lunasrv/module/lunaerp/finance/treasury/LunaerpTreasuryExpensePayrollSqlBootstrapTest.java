@@ -1,16 +1,12 @@
 package com.luna.lunasrv.module.lunaerp.finance.treasury;
 
-import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.druid.sql.ast.SQLStatement;
+import com.luna.lunasrv.module.lunaerp.support.BaseSqlBootstrapTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,37 +17,20 @@ import static org.junit.jupiter.api.Assertions.*;
  * 资金账户扩列、转账/其他收支、费用报销与工资初稿 SQL 基建脚本单元测试与规范校验
  * 覆盖 Issue: .scratch/treasury-expense-payroll/issues/01-sql-bootstrap.md
  */
-public class LunaerpTreasuryExpensePayrollSqlBootstrapTest {
+public class LunaerpTreasuryExpensePayrollSqlBootstrapTest extends BaseSqlBootstrapTest {
 
-    private Path getSqlDirectory() {
-        Path sqlDir = Path.of("sql/postgresql");
-        if (!Files.exists(sqlDir)) {
-            sqlDir = Path.of("../sql/postgresql");
+    @Test
+    @DisplayName("规约审查：验证 3 个 SQL 脚本均包含标准工单与日期注释 (-- [YYYY-MM-DD])")
+    void testHeaderDateComments() throws IOException {
+        String[] files = {
+                "lunaerp-finance-account-ext.sql",
+                "lunaerp-finance-expense.sql",
+                "lunaerp-finance-payroll.sql"
+        };
+        for (String file : files) {
+            String sql = loadSqlContent(file);
+            assertHeaderDateComment(sql, file);
         }
-        if (!Files.exists(sqlDir)) {
-            File root = new File("").getAbsoluteFile();
-            while (root != null && !new File(root, "sql/postgresql").exists()) {
-                root = root.getParentFile();
-            }
-            if (root != null) {
-                sqlDir = new File(root, "sql/postgresql").toPath();
-            }
-        }
-        assertTrue(Files.exists(sqlDir) && Files.isDirectory(sqlDir), "SQL 目录必须存在: sql/postgresql");
-        return sqlDir;
-    }
-
-    private String loadSqlContent(String fileName) throws IOException {
-        Path sqlPath = getSqlDirectory().resolve(fileName);
-        assertTrue(Files.exists(sqlPath), "SQL 文件必须存在: sql/postgresql/" + fileName);
-        return Files.readString(sqlPath, StandardCharsets.UTF_8);
-    }
-
-    private List<SQLStatement> parseSql(String sql) {
-        String standardSql = sql.replaceAll("(?s)DO \\$\\$.*?\\$\\$;", "-- DO BLOCK OMITTED FOR PARSER;")
-                .replaceAll("(?i)(CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+[^;]+?)\\s+WHERE\\s+[^;]+;", "$1;")
-                .replaceAll("(?i)CREATE\\s+SEQUENCE\\s+IF\\s+NOT\\s+EXISTS", "CREATE SEQUENCE");
-        return SQLUtils.parseStatements(standardSql, DbType.postgresql);
     }
 
     @Test

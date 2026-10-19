@@ -1,16 +1,12 @@
 package com.luna.lunasrv.module.lunaerp.finance.customerrecon;
 
-import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.druid.sql.ast.SQLStatement;
+import com.luna.lunasrv.module.lunaerp.support.BaseSqlBootstrapTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,38 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 客户对账、总账、开票与收款 SQL 基建脚本单元测试与规范校验
  * 覆盖 Issue: .scratch/customer-reconciliation/issues/01-sql-bootstrap-and-customer-columns.md
  */
-public class LunaerpCustomerReconSqlBootstrapTest {
-
-    private Path getSqlDirectory() {
-        Path sqlDir = Path.of("sql/postgresql");
-        if (!Files.exists(sqlDir)) {
-            sqlDir = Path.of("../sql/postgresql");
-        }
-        if (!Files.exists(sqlDir)) {
-            File root = new File("").getAbsoluteFile();
-            while (root != null && !new File(root, "sql/postgresql").exists()) {
-                root = root.getParentFile();
-            }
-            if (root != null) {
-                sqlDir = new File(root, "sql/postgresql").toPath();
-            }
-        }
-        assertTrue(Files.exists(sqlDir) && Files.isDirectory(sqlDir), "SQL 目录必须存在: sql/postgresql");
-        return sqlDir;
-    }
-
-    private String loadSqlContent(String fileName) throws IOException {
-        Path sqlPath = getSqlDirectory().resolve(fileName);
-        assertTrue(Files.exists(sqlPath), "SQL 文件必须存在: sql/postgresql/" + fileName);
-        return Files.readString(sqlPath, StandardCharsets.UTF_8);
-    }
-
-    private List<SQLStatement> parseSql(String sql) {
-        String standardSql = sql.replaceAll("(?s)DO \\$\\$.*?\\$\\$;", "-- DO BLOCK OMITTED FOR PARSER;")
-                .replaceAll("(?i)(CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+[^;]+?)\\s+WHERE\\s+[^;]+;", "$1;")
-                .replaceAll("(?i)CREATE\\s+SEQUENCE\\s+IF\\s+NOT\\s+EXISTS", "CREATE SEQUENCE");
-        return SQLUtils.parseStatements(standardSql, DbType.postgresql);
-    }
+public class LunaerpCustomerReconSqlBootstrapTest extends BaseSqlBootstrapTest {
 
     @Test
     @DisplayName("验证客户对账 SQL 脚本存在且能被 PostgreSQL 语法解析器解析")

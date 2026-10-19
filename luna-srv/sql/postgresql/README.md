@@ -21,6 +21,7 @@
 - **PostgreSQL 无自增**：插入 `system_menu` / `system_role_menu` 等系统表时必须显式提供 `id`（菜单用固定 id；`system_role_menu` 用 `nextval('system_role_menu_seq')`，插入前用 `setval(seq, GREATEST(max(id),1))` 对齐序列防主键冲突。MySQL 自增写法在 PG 会报 `null value in column "id"`）
 - **跨文件依赖**：若新文件依赖其他文件的表，在文件头部注释 `-- DEPENDS ON: lunaerp-xxx.sql`
 - **菜单 DELETE 覆盖 INSERT**：`system_menu` / `system_role_menu` 先 DELETE 再 INSERT 时，DELETE 的 id 清单必须覆盖该段全部 INSERT 的 id（共享父目录除外——用 `ON CONFLICT (id) DO NOTHING` 或 `WHERE NOT EXISTS` 保证幂等），否则重复执行报主键冲突
+- **离线单测校验**：新脚本编写后，在 `luna-srv` 中通过继承 `BaseSqlBootstrapTest`（`com.luna.lunasrv.module.lunaerp.support.BaseSqlBootstrapTest`），使用 Druid SQL 解析器进行离线 AST 语法、TenantBaseDO 审计列与 `-- [YYYY-MM-DD]` 日期工单注释自动断言，无需依赖本地 PostgreSQL 实例
 - 新文件创建后，**执行完毕立即更新本文档状态表**
 
 ---

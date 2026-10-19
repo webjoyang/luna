@@ -158,6 +158,12 @@
 - **Druid SQL Parser 与 PostgreSQL 高级方言兼容边界**：
   - 单元测试中的 Druid PostgreSQL 解析器对复杂子查询 JOIN 后的 `ON CONFLICT DO NOTHING` 解析受限。
   - **强制规约**：在满足“先 DELETE 后 INSERT + 序列发号”的幂等操作下，无需且禁止在批量插入尾部追加冗余的 `ON CONFLICT DO NOTHING`，保持 SQL 纯正简洁并规避解析器异常。
+- **复合索引最左前缀冗余守卫 (Composite Index Prefix Redundancy Guard)**：
+  - PostgreSQL 与 B-Tree 索引的最左前缀特性使得复合索引（或复合唯一索引）自动覆盖前导列查询。
+  - **强制规约**：严禁在同一张表上创建与已有复合索引（或复合唯一索引）最左前缀完全重叠的单列或复合普通索引（例如已有 `uk_lfpe_payroll_user(tenant_id, payroll_id, user_id)`，严禁重复创建 `idx_lfpe_payroll_id(tenant_id, payroll_id)`），避免浪费存储空间与额外降低并发写吞吐。
+- **业务配置种子工单归位守卫 (Seed Data Scope Guard)**：
+  - 审批流实例配置（`lunaerp_approval_config` 及节点表）归属于各业务域审批流程工单。
+  - **强制规约**：坚持 Spec 最小契约原则，除工单中明确声明的系统字典与菜单初始化外，严禁在纯 SQL 基建工单中超前插入运行时业务配置数据，杜绝无序范围蔓延（Scope Creep）。
 
 ## 9. 业务单号发号与顺延重试规约 (Sequential No Generation & Collision Retry)
 
