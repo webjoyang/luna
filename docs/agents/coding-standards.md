@@ -63,10 +63,13 @@
 - **检索规约**：
   - 禁止在根目录使用无深度限制且未排除依赖目录的 `Get-ChildItem -Recurse`。
   - 文件路径定标优先使用 `git ls-files "*<keyword>*"`。
-  - **CodeGraph 符号检索与调用链优先（根目录存在 `.codegraph/` 时）**：
-    - 查询类、接口、方法实现、字段属性、调用链路与波及影响面（如 `RecycleBinHandler`、`ApprovalCompletedEvent`、VO/DO 映射等），**强制优先使用 `codegraph explore "<symbol>"` 或 MCP `codegraph_explore`**，单次获取精准上下文与关联源码，严禁退化为多次盲目 grep；
-    - 仅在检索纯文本常量（如错误码前缀 `025_`）、Markdown 文档、配置文件或刚创建未暂存代码时使用 `git grep "<pattern>"`（可附加 `--untracked`）；
-    - `git grep` 必须显式指定子工程目录路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`），严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道。
+  - **代码与符号检索双梯队策略（CodeGraph 优先 + git grep 兜底与文本基准）**：
+    1. **第一梯队（CodeGraph 语法与调用链优先，根目录存在 `.codegraph/` 时）**：
+       - 查询类、接口、方法实现、字段属性、调用链路与波及影响面（如 `RecycleBinHandler`、`ApprovalCompletedEvent`、VO/DO 映射等），**强制优先使用 `codegraph explore "<symbol>"` 或 MCP `codegraph_explore`**，单次获取精准上下文与关联源码，严禁退化为多次盲目 grep；
+    2. **基础梯队（git grep 全局兜底与文本/动态检索，无 `.codegraph/` 时为第一选择）**：
+       - 在未建立 `.codegraph/` 索引的环境下，代码与符号检索一律以跨平台原生的 `git grep "<pattern>"` 作为第一选择；
+       - 在存在 `.codegraph/` 时，检索纯文本常量（如错误码前缀 `025_`）、Markdown 文档、配置文件或刚创建未暂存代码，一律使用 `git grep`；
+       - **执行安全禁令**：严禁在 PowerShell 下使用 `xargs` / Linux `grep` 管道；必须显式指定子工程目录路径（如 `git grep "<pattern>" luna-ui/ luna-srv/`），严禁使用不存在的根路径 `src/`；特性开发中检索刚创建未暂存的文件必须携带 `--untracked`（如 `git grep --untracked "<pattern>"`），防止漏检。
 
 ## 6. 前端组件与交互规范 (Frontend Standards)
 
