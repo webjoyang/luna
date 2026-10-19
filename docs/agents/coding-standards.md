@@ -185,15 +185,15 @@
   - **场景**：在采用 `@ExtendWith(MockitoExtension.class)` 的纯单元测试中，被测 Service 内部构建了 `new LambdaQueryWrapper<DO>()` 或 `new LambdaQueryWrapperX<DO>()`（如用于悲观锁条件构造、批量核销查询或分页筛选）。
   - **缓存缺失陷阱**：纯 Mockito 环境不加载 Spring Boot 容器与 MyBatis-Plus 实体自动扫描器，首次执行 Lambda 条件提取时抛出 `com.baomidou.mybatisplus.core.exceptions.MybatisPlusException: can not find lambda cache for this entity [com.luna...DO]`。该未捕获异常不仅中断测试，还会因提前跳出方法体导致后续打桩未被执行，级联触发 Mockito 5 的 `UnnecessaryStubbingException`。
   - **强制规约**：
-    1. 凡涉及 Lambda 条件包装器的纯 Mockito 单元测试，必须在 `@BeforeEach void setUp()` 中为被引用的实体显式预热注入 TableInfo 缓存（推荐使用 `com.luna.lunasrv.module.lunaerp.support.TableInfoTestHelper` 预热工具，支持可变参数且线程安全）：
+    1. 凡涉及 Lambda 条件包装器的纯 Mockito 单元测试，必须在 `@BeforeEach void setUp()` 中为被引用的实体预热注入 TableInfo 缓存（推荐使用 `com.luna.lunasrv.module.lunaerp.support.TableInfoTestHelper` 预热工具，支持全局自动扫描预热或按需传参且线程安全）：
        ```java
-       // 推荐：统一使用预热工具类
+       // 推荐：一键扫描预热全域 DO（底层类加载时亦会自动预热一次）
+       TableInfoTestHelper.initAllEntities();
+       // 或按需预热特定实体（支持外部模块 DO 或追加实体）：
        TableInfoTestHelper.initTableInfo(TargetDO.class, RelatedDO.class);
-       // 底层原生写法：
-       // TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TargetDO.class);
        ```
-    2. 若被测方法级联涉及多个实体（如主表实体、明细实体及关联来源单实体），所有在 LambdaWrapper 泛型或方法引用中出现的实体类必须在 `setUp()` 中一并预热（直接传入 `TableInfoTestHelper.initTableInfo(MainDO.class, ItemDO.class)`），杜绝运行时缓存缺失与误导性测试失败。
-    3. **适用边界与防过度预热**：`TableInfoHelper.initTableInfo(...)` **仅当**被测类实现中直接构造了 `new LambdaQueryWrapper<DO>()` / `new LambdaQueryWrapperX<DO>()` 或动态提取实体字段方法引用时才需要；对于纯依赖打桩 Service/SPI、仅通过 Mockito 验证方法交互的上层监听器（如 `SalesReturnLedgerListenerTest`）或业务编排单测，严禁无差别拷贝 `TableInfoHelper` 与 MyBatis 配置代码，杜绝引入无用依赖与测试样板膨胀。
+    2. 若被测方法级联涉及多个实体（如主表实体、明细实体及关联来源单实体），直接调用 `TableInfoTestHelper.initAllEntities()` 一劳永逸完成全域 DO 预热，或在 `setUp()` 中传入 `TableInfoTestHelper.initTableInfo(MainDO.class, ItemDO.class)`，彻底杜绝运行时缓存缺失与误导性测试失败。
+    3. **适用边界与防过度预热**：`TableInfoTestHelper` **仅当**被测类实现中直接构造了 `new LambdaQueryWrapper<DO>()` / `new LambdaQueryWrapperX<DO>()` 或动态提取实体字段方法引用时才需要；对于纯依赖打桩 Service/SPI、仅通过 Mockito 验证方法交互的上层监听器（如 `SalesReturnLedgerListenerTest`）或业务编排单测，严禁无差别拷贝 `TableInfoTestHelper` 与 MyBatis 配置代码，杜绝引入无用依赖与测试样板膨胀。
 - **单测基础实体 Mock 辅助工厂方法规约 (Test Fixture & Mock Factory Pattern)**：
   - 在大型领域 Service 单测中（如涉及仓库、供应商、产品、客户、采购单等多实体引用），测试类应集中定义私有基础实体构建工厂方法（如 `mockWarehouse(id, name, status)`、`mockProduct(id, name, code)`、`mockYarnOrder(id, orderNo)`），避免在单测用例内分散重复手写零碎的 `new EntityDO()` 样板代码，杜绝 TDD 红灯编译期因推测缺失 helper 方法导致的编译中断与往返构建损耗。
 - **MyBatis-Plus Wrapper 动态打桩与参数惰性求值规约 (Wrapper Lazy Evaluation & Param Extraction in Mocks)**：
@@ -365,6 +365,30 @@
      - 上游档案在回收站中抛出 `RECYCLE_BIN_REFERENCE_IN_RECYCLE`；
      - 上游档案不存在抛出对应领域的 `XXX_NOT_EXISTS`；
   4. **非进站资格反向拒绝**：针对非草稿态（如已生效/过账）单据或不存在单据，SQL 过滤（如 `WHERE status = 'DRAFT'`）查得 `null`，执行 `restore(id)` / `purge(id)` 必须断言抛出 `RECYCLE_BIN_RECORD_NOT_EXISTS`。
+- **回收站标准分页投影（`selectRecyclePage`）列别名规约与 VO 契约对齐 (Recycle Bin SQL Column Alias & VO Parity)**：
+  - **列名与别名失配陷阱**：回收站通用展示统一消费 `RecycleItemRespVO`（包含 `bizType`、`bizId`、`displayName`、`deletedBy`、`deletedTime` 等字段）。若 Mapper XML 的 `selectRecyclePage` 投影 SQL 中列别名与 VO 属性不完全匹配（例如：直接使用了 `id` 而未别名为 `biz_id`，使用了业务单号 `expense_no` 而未别名为 `display_name`，使用了 `deleted_at` 而非 `deleted_time`，或漏了 `'${BIZ_TYPE}' AS biz_type`），MyBatis-Plus 的驼峰映射不会报错，但会导致 `RecycleItemRespVO` 关键属性全部为 `null`，引发前端回收站列表展示空白或单测断言失败。
+  - **强制规约与标准 SQL 投影模板**：
+    所有单据实现 `RecycleBinHandler.selectRecyclePage` 时，Mapper XML 中的投影 SQL 必须统一使用以下标准列别名，严格对齐 `RecycleItemRespVO` 字段：
+    ```xml
+    SELECT
+        id AS biz_id,
+        'EXPENSE' AS biz_type,
+        expense_no AS display_name,
+        update_time AS deleted_time,
+        updater AS deleted_by
+    FROM lunaerp_finance_expense
+    WHERE deleted = 1
+      AND approval_status = 'PENDING'
+      <if test="pageReqVO.displayName != null and pageReqVO.displayName != ''">
+          AND expense_no LIKE CONCAT('%', #{pageReqVO.displayName}, '%')
+      </if>
+    ORDER BY update_time DESC
+    ```
+    （注意：`display_name` 根据业务特性选取具有代表性的标识列，如单号 `expense_no`、编码 `code` 或名称 `name`；时间与操作人一律映射底层软删除落库字段 `update_time AS deleted_time` 与 `updater AS deleted_by`）。
+- **跨域/跨表实体引用前置属性切片防盲测规约 (Physical Attribute Slice Read Before Reference)**：
+  - **惯性命名与推测陷阱**：在跨域或跨表引用关联实体（如资金账户 `AccountDO`、报销单 `ExpenseDO`、员工档案 `SystemUserDO`）进行打桩、赋值或条件构造时，极易凭习惯性命名假设字段（例如臆测账户名称为 `name` 实为 `accountName`，臆测审批状态为 `status` 实为 `approvalStatus`）。该行为不仅引发 Java 编译失败，还会导致 SQL 投影漏列或别名失配。
+  - **强制规约**：
+    在编码或编写单测打桩前，凡涉及引用其他模块或关联表的实体字段，**必须先通过 `view_file` 切片查阅对应 DO 的物理属性与 getter/setter 声明**，严禁凭经验臆测字段名与类型。
 
 ## 20. 审批流引擎集成与回调单写规约 (Approval Engine Integration & Callback Single-Writer Principle)
 
