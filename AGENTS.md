@@ -51,4 +51,4 @@
 - 单测执行：`mvn test "-Dtest=TargetTest"` 或指定模块 `mvn test -pl lunasrv-module-lunaerp "-Dtest=TargetTest"`（多类测试在 PowerShell 下务必使用双引号包裹 `"-Dtest=TestA,TestB"`）；凡涉及 `finance`、`business` 等域新增/修改 Controller/Mapper/DO/Handler 时，必须捆绑架构守护单测 `"-Dtest=ArchitectureStandardsTest,TargetTest"`，前置自动检验脱敏注解、可空更新策略、跨域 Mapper 直写拦截与 Mapper 纯洁性（接口严禁 `default` 方法，区别于底座 yudao 习惯）。
 - 框架依赖刷新：修改或依赖刚刚调整过的 `lunasrv-framework` 基础组件时，需先执行 `mvn -pl lunasrv-framework/<module-name> install -DskipTests`（如 `lunasrv-spring-boot-starter-mybatis`）将最新 jar 安装至本地仓库，避免子模块 `-pl` 测试时读取 `~/.m2` 旧快照。
 - 编码安全与实体层级核验：Java/TS 修改 import 严禁大块框选临近 import 粗暴替换，必须单行精细追加/替换；涉及头-行-卷或主子表跨层数据映射时，编码前必须先执行 `view_file` 查阅 DO/VO 物理属性定义，严禁凭经验臆测字段挂载层级（如缸号/匹号/卷号归属）。
-- 数据库脚本与领域规约：36 个增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁、范围守卫、可空列清空、重构检索、审批流回调单写与跨域伴生单据协同作废见 `docs/agents/coding-standards.md` 第 8~21 节。
+- 数据库脚本与领域规约：36 个增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁、范围守卫、可空列清空、重构检索、审批流回调单写、伴生单据协同作废、质检中立初始态、跨单位物理量与入库 placement 规约见 `docs/agents/coding-standards.md` 第 8~24 节。
