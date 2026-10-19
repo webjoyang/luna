@@ -446,6 +446,63 @@ public class ArchitectureStandardsTest {
                 "检测到 ApprovalHandler 注入了非本领域的 Mapper 接口:\n" + String.join("\n", violations));
     }
 
+    @Test
+    @DisplayName("规约审查：事件监听器（Listener）严禁注入外部域 Mapper 直连写库，必须委托外部域 Service (coding-standards.md §20, §21, §22)")
+    public void testEventListenersDoNotInjectForeignDomainMappers() {
+        Set<Class<?>> allLunaerpClasses = ClassUtil.scanPackage("com.luna.lunasrv.module.lunaerp");
+        assertTrue(!allLunaerpClasses.isEmpty(), "未扫描到 lunaerp 模块的类");
+
+        List<String> violations = new ArrayList<>();
+        for (Class<?> clazz : allLunaerpClasses) {
+            if (clazz.isInterface() || clazz.isEnum()) {
+                continue;
+            }
+            // 筛选 Listener 类（类名包含 Listener 或含有 @EventListener / @TransactionalEventListener 注解方法）
+            boolean isListener = clazz.getSimpleName().contains("Listener");
+            if (!isListener) {
+                for (Method method : clazz.getDeclaredMethods()) {
+                    if (method.isAnnotationPresent(org.springframework.context.event.EventListener.class)
+                            || method.isAnnotationPresent(org.springframework.transaction.event.TransactionalEventListener.class)) {
+                        isListener = true;
+                        break;
+                    }
+                }
+            }
+            if (!isListener) {
+                continue;
+            }
+
+            String pkg = clazz.getPackage().getName();
+            String allowedDomainPackage;
+            if (pkg.contains(".business")) {
+                allowedDomainPackage = "com.luna.lunasrv.module.lunaerp.dal.mysql.business";
+            } else if (pkg.contains(".finance")) {
+                allowedDomainPackage = "com.luna.lunasrv.module.lunaerp.dal.mysql.finance";
+            } else if (pkg.contains(".stock")) {
+                allowedDomainPackage = "com.luna.lunasrv.module.lunaerp.dal.mysql.stock";
+            } else if (pkg.contains(".production")) {
+                allowedDomainPackage = "com.luna.lunasrv.module.lunaerp.dal.mysql.production";
+            } else {
+                // approval / infra 等跨域聚合层：严禁直接注入任何业务域 Mapper
+                allowedDomainPackage = null;
+            }
+
+            for (Field field : clazz.getDeclaredFields()) {
+                Class<?> fieldType = field.getType();
+                if (BaseMapper.class.isAssignableFrom(fieldType) || fieldType.getSimpleName().endsWith("Mapper")) {
+                    String mapperPackage = fieldType.getPackage().getName();
+                    if (allowedDomainPackage == null || !mapperPackage.startsWith(allowedDomainPackage)) {
+                        violations.add(clazz.getSimpleName() + "." + field.getName() + " (" + fieldType.getSimpleName()
+                                + ") 是外部域 Mapper (" + mapperPackage + ")，违反 coding-standards.md §20/§21/§22 严禁跨域直连他人 Mapper 写库（必须调用外部域 Service）");
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "检测到 Listener 注入了外部域的 Mapper 接口:\n" + String.join("\n", violations));
+    }
+
     private void collectJavaFiles(java.io.File dir, List<java.io.File> result) {
         java.io.File[] files = dir.listFiles();
         if (files == null) {

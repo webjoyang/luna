@@ -184,6 +184,7 @@
        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TargetDO.class);
        ```
     2. 若被测方法级联涉及多个实体（如主表实体、明细实体及关联来源单实体），所有在 LambdaWrapper 泛型或方法引用中出现的实体类必须在 `setUp()` 中一并预热，杜绝运行时缓存缺失与误导性测试失败。
+    3. **适用边界与防过度预热**：`TableInfoHelper.initTableInfo(...)` **仅当**被测类实现中直接构造了 `new LambdaQueryWrapper<DO>()` / `new LambdaQueryWrapperX<DO>()` 或动态提取实体字段方法引用时才需要；对于纯依赖打桩 Service/SPI、仅通过 Mockito 验证方法交互的上层监听器（如 `SalesReturnLedgerListenerTest`）或业务编排单测，严禁无差别拷贝 `TableInfoHelper` 与 MyBatis 配置代码，杜绝引入无用依赖与测试样板膨胀。
 - **单测基础实体 Mock 辅助工厂方法规约 (Test Fixture & Mock Factory Pattern)**：
   - 在大型领域 Service 单测中（如涉及仓库、供应商、产品、客户、采购单等多实体引用），测试类应集中定义私有基础实体构建工厂方法（如 `mockWarehouse(id, name, status)`、`mockProduct(id, name, code)`、`mockYarnOrder(id, orderNo)`），避免在单测用例内分散重复手写零碎的 `new EntityDO()` 样板代码，杜绝 TDD 红灯编译期因推测缺失 helper 方法导致的编译中断与往返构建损耗。
 - **MyBatis-Plus Wrapper 动态打桩与参数惰性求值规约 (Wrapper Lazy Evaluation & Param Extraction in Mocks)**：
@@ -266,6 +267,9 @@
   - **自动化守护保障**：全域由 `ArchitectureStandardsTest.testUpdateVOsFollowMinimalFieldSetConvention()` 自动反射检验所有 `*UpdateReqVO`，对黑名单不可变字段（`effectiveDate`, `accountName`, `currency`, `tenantId`, `openingBalance`, `applyNo`, `reconNo`, `statementNo`, `partyType`, `partyId`, `shipmentId`, `returnNo`, `sourceId`, `sourceNo`, `sourceDocType`, `sourceDocId` 等）进行前置物理拦截。
 - **工单错误码声明与常量命名对齐规约 (Error Code Citation Hygiene)**：
   - 特性工单在描述业务校验要求时，若引用业务错误码，必须以常量标识符或对照 `docs/contexts/<domain>/GLOSSARY.md` 段位总表引用，严禁凭直觉或假设裸写未在基建工单确认的数字代号（如臆测数字），避免导致实现方与 Reviewer 因字面错位产生伪需求冲突；在常量已落库时优先写出明确常量名（如 `SALES_RETURN_REASON_EMPTY`）。
+- **详情页与工作台留痕严格归位 (Workspace Audit Trail Isolation)**：
+  - 前端详情页（Detail）与工作台（Workspace）的响应式表单对象（`formData`）与留痕卡片组件，仅允许声明并渲染本工单 Spec 明确要求的操作留痕（如财务确认工单仅展示 `postedBy/postedAt`）。
+  - **严禁**在当前工单中投机性或习惯性地带入前序或后序工单的生命周期留痕字段（如提前绑定 `arrivedBy/At`、`cancelledBy/At` 等），坚决防止跨工单范围蔓延并确保单据工作台视图的单一职责。
 - **全局共享存量配置文件格式化防污染守卫 (Shared Config Formatting Hygiene)**：
   - 对 `luna-ui/src/utils/dict.ts`、`luna-ui/src/router/modules/remaining.ts` 等全局共享存量大文件，禁止执行整文件 `npx prettier --write`。
   - **强制规约**：必须采用局部单块代码替换或精细编辑，提交前通过 `git diff` 严格审查，严禁带入跨业务模块的排版与空白字符 Diff 噪音。
@@ -421,6 +425,25 @@
      - 当入库卷/明细尚未分配具体库位（`locationId == null`）时，**严禁向 `inItem.getPlacements()` 中追加任何空库位对象，必须直接保留空集合或 `null`**。
   2. **“先入账后上架”标准机制**：
      - 入库审核（`auditStockIn`）在检测到入库项无 placement 时，自动以 `location_id = null` 记入库存台账（`InventoryBalanceDO`），作为标准的“先入账后上架”待上架资产；后续由仓管在库存工作台执行“库位调整/上架”动作补录库位。Reviewer 与实现均不得将无 placement 误判为逻辑缺失。
+
+## 25. 跨域同事务记账监听器 Fail-Fast 阻断与血缘完整性规约 (Transactional Event Listener Fail-Fast & Bloodline Parity)
+
+- **场景**：业务单据在生命周期终态流转时（如发货审核出库 `ShipmentAuditedEvent`、销售退货财务确认过账 `SalesReturnPostedEvent`），通过 Spring `@TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)` 事务事件驱动财务域（`finance`）追加经营分录账（`ledger_entry`）或应收/应付反向冲减。
+- **静默吞没与单边账陷阱**：
+  - 监听器执行在 `BEFORE_COMMIT` 事务提交前，属于同一数据库事务上下文。
+  - 若监听器在遍历逐行明细时，遇到明细行为空、原单血缘丢失（如 `shipmentItemId == null`）或反查不到原发货入账汇率时，若采用 `continue;`、空值跳过或 `try-catch` 静默吞没异常：
+    - 业务主单据会顺利提交并进入不可逆的终态（如 `POSTED`、`COMPLETED`），触发不可修改、不可作废的终态写保护；
+    - 财务域却少记、漏记了应收冲减分录，导致单据状态与财务总账发生永久性不可挽回的勾稽失衡（单边账）。
+- **强制规约**：
+  1. **Fail-Fast 整单事务回滚 (Strict Fail-Fast on Data Loss)**：
+     - 在 `@TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)` 记账监听器中，凡涉及事件载荷明细缺失、血缘外键缺失（如 `shipmentItemId == null`）、原单入账分录不存在或即期/原单汇率为空时，**必须立即抛出明确领域业务异常**（如 `SALES_RETURN_EXCHANGE_RATE_MISSING` 014 或 `EXCHANGE_RATE_NOT_FOUND`）；
+     - 异常将直接触发 Spring 声明式事务回滚，阻断业务单据的终态流转，确保“要么业务与财务全部原子成功，要么整单完整回滚”。严禁任何局部吞没或降级跳过行为。
+  2. **事件监听器禁止跨域直连 Mapper (No Foreign Domain Mapper Injection)**：
+     - 监听器必须依赖被调用域的 Service 接口（如 `LedgerService`、`ExchangeRateService`），严禁跨域直接注入外部持久层 Mapper 直写底层表（由 `ArchitectureStandardsTest` 机械化测试强制守护）。
+  3. **幂等 CAS 状态前置条件与终态全写阻断 (Idempotent CAS & Write Protection)**：
+     - 发布过账/出库事件的业务 Service 必须先通过 CAS 条件更新（如 `WHERE id = ? AND status = 'RECEIVED'`）保证防并发双过账；
+     - 一旦置为终态（`POSTED`），业务端的所有修改、删除、作废、流转接口（`update/delete/cancel/receive`）必须前置阻断并抛出不可操作异常。
+
 
 
 

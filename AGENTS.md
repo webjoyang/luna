@@ -3,7 +3,11 @@
 ### Issue tracker
 
 问题（issue）以 Markdown 文件形式跟踪在 `.scratch/<feature>/` 下。见 `docs/agents/issue-tracker.md`。
-- 工单范围守卫：坚持 Spec 最小契约原则。纯前端或纯后端工单若因联调需要扩展对侧契约，必须在实现前显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延（Scope Creep）；严禁在特性工单中顺带扩展未在 Spec 声明的查询维度（如非必须的综合搜索关键词扩展）或修补非本工单归属的遗留字段；详情字段不入列表：Spec 声明在详情页（Detail/Workspace）的只读拓展字段（如审批伴生的下游单据号/状态、审批历史链路、时序时间线等），严禁顺带扩展至分页列表 VO 中，亦严禁在分页查询实现中发起额外的批量关联查询（如 `selectBatchIds`），杜绝非必要跨域蔓延与查询负载；跨模块/跨工单实体守卫同理：严禁在特性工单中静默修改归属于后续 Issue（如未到开发阶段的关联域实体或表结构）的主实体，必须通过安全空值兜底、视图快照或显式前置依赖扩展，杜绝无序跨域蔓延。
+- 工单范围守卫：坚持 Spec 最小契约原则。
+  - **【契约最小化】**：纯前端或纯后端工单若因联调需要扩展对侧契约，必须在实现前显式声明向前兼容扩展点或增补 issue，严禁静默进行未经声明的跨端范围蔓延（Scope Creep）；严禁在特性工单中顺带扩展未在 Spec 声明的查询维度（如非必须的综合搜索关键词扩展）或修补非本工单归属的遗留字段；
+  - **【详情不入列表】**：Spec 声明在详情页（Detail/Workspace）的只读拓展字段（如审批伴生的下游单据号/状态、审批历史链路、时序时间线等），严禁顺带扩展至分页列表 VO 中，亦严禁在分页查询实现中发起额外的批量关联查询（如 `selectBatchIds`），杜绝非必要跨域蔓延与查询负载；
+  - **【留痕严格归位】**：详情页与工作台表单及视图仅渲染本工单 Spec 明确声明的字段与留痕（如财务确认仅渲染 `postedBy/postedAt`），严禁超前或附带渲染归属于其他工单的生命周期留痕字段（如 `arrivedBy/At`、`cancelledBy/At`）；
+  - **【跨域实体守卫】**：严禁在特性工单中静默修改归属于后续 Issue（如未到开发阶段的关联域实体或表结构）的主实体，必须通过安全空值兜底、视图快照或显式前置依赖扩展，杜绝无序跨域蔓延。
 - 特性开发前置工作区干净度检查：开启新工单实现前，必须先执行 `git status -s` 确认工作区无无关改动；若存在前序环境同步、数据库脚本重跑等遗留文件，必须先独立 commit 或 stash，严禁将历史脏工作区带入特性工单引发 Diff 审查与范围蔓延判定噪声。
 
 ### Triage labels
@@ -51,4 +55,4 @@
 - 单测执行：`mvn test "-Dtest=TargetTest"` 或指定模块 `mvn test -pl lunasrv-module-lunaerp "-Dtest=TargetTest"`（多类测试在 PowerShell 下务必使用双引号包裹 `"-Dtest=TestA,TestB"`）；凡涉及 `finance`、`business` 等域新增/修改 Controller/Mapper/DO/Handler 时，必须捆绑架构守护单测 `"-Dtest=ArchitectureStandardsTest,TargetTest"`，前置自动检验脱敏注解、可空更新策略、跨域 Mapper 直写拦截与 Mapper 纯洁性（接口严禁 `default` 方法，区别于底座 yudao 习惯）。
 - 框架依赖刷新：修改或依赖刚刚调整过的 `lunasrv-framework` 基础组件时，需先执行 `mvn -pl lunasrv-framework/<module-name> install -DskipTests`（如 `lunasrv-spring-boot-starter-mybatis`）将最新 jar 安装至本地仓库，避免子模块 `-pl` 测试时读取 `~/.m2` 旧快照。
 - 编码安全与实体层级核验：Java/TS 修改 import 严禁大块框选临近 import 粗暴替换，必须单行精细追加/替换；涉及头-行-卷或主子表跨层数据映射时，编码前必须先执行 `view_file` 查阅 DO/VO 物理属性定义，严禁凭经验臆测字段挂载层级（如缸号/匹号/卷号归属）。
-- 数据库脚本与领域规约：36 个增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁、范围守卫、可空列清空、重构检索、审批流回调单写、伴生单据协同作废、质检中立初始态、跨单位物理量与入库 placement 规约见 `docs/agents/coding-standards.md` 第 8~24 节。
+- 数据库脚本与领域规约：36 个增量脚本执行状态见 `luna-srv/sql/postgresql/README.md`；PostgreSQL 幂等发号、顺延重试、DTO 校验、行级悲观锁、范围守卫、可空列清空、重构检索、审批流回调单写、伴生单据协同作废、质检中立初始态、跨单位物理量、入库 placement 与跨域记账监听器 Fail-Fast 规约见 `docs/agents/coding-standards.md` 第 8~25 节。
