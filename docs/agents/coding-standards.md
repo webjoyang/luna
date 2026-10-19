@@ -8,9 +8,11 @@
 - **集合空安全强制规约**：
   - 依赖派生集合过滤的业务 Service，必须前置短路守卫：`if (CollUtil.isEmpty(ids)) { return Collections.emptyList(); }`，避免无谓的数据库往返。
   - 框架已在 `LambdaQueryWrapperX` 提供 `inOrEmpty(col, values)`：当 `values` 为空集或 `null` 时自动追加 `1 = 0` 永假条件；非空时拼接 `IN`。在必须强制以集合过滤的 SQL 条件中优先使用 `inOrEmpty`。
-- **MyBatis-Plus Wrapper 链式调用类型截断陷阱**：
-  - MyBatis-Plus 原生 `AbstractLambdaWrapper` 的泛型返回参数固定为 `LambdaQueryWrapper<T>`，一旦先调用原生 `.ge()` / `.le()` / `.eq()` / `.orderBy*()`，方法链返回类型退化为原生 Wrapper，导致后续链式调用 `eqIfPresent` / `inOrEmpty` 报编译错误（找不到符号）。
-  - **强制规约**：`LambdaQueryWrapperX` 自定义方法（如 `*IfPresent`、`inOrEmpty`）必须链式书写在原生方法（`ge`、`le`、`orderBy*`）**之前**，或直接使用扩展提供的 `geIfPresent`、`leIfPresent`、`betweenIfPresent`。当需要将 Wrapper 实例赋予局部变量以便跨分支追加条件时，局部变量类型应声明为基类 `LambdaQueryWrapper<T>`（或使用 `var`），避免多层泛型擦除导致的类型不匹配与编译失败。
+- **MyBatis-Plus Wrapper 链式调用类型截断陷阱 (Wrapper Chaining CRTP Degradation)**：
+  - `LambdaQueryWrapperX<T>` 继承自 MyBatis-Plus 原生 `LambdaQueryWrapper<T>`。原生方法（如 `.eq()`、`.ne()`、`.ge()`、`.le()`、`.orderBy*()`）在基类 `AbstractLambdaWrapper` 中定义的返回类型为原生 `Children`（即 `LambdaQueryWrapper<T>` 而非 `LambdaQueryWrapperX<T>`）。一旦在链式调用中先调用了原生方法，返回值类型即发生退化（类型截断），导致后续无法继续调用 `LambdaQueryWrapperX` 专属的扩展方法（如 `.eqIfPresent()`、`.neIfPresent()`、`.inOrEmpty()`），报 `[ERROR] 找不到符号: 方法 neIfPresent(...)` 编译失败。
+  - **强制规约**：
+    1. **前置扩展方法**：链式构造 Wrapper 时，所有 `LambdaQueryWrapperX` 自定义扩展方法（`*IfPresent`、`inOrEmpty` 等）**必须书写在原生方法（`eq`、`ne`、`ge`、`orderBy*` 等）之前**；
+    2. **局部变量与多分支**：若需跨分支动态组装条件，在调用原生方法之前应保持局部变量类型为 `LambdaQueryWrapperX<T>`，完成所有 `*IfPresent` 扩展方法拼接后，再追加原生条件或将其赋值给 `LambdaQueryWrapper<T>`（或 `var`）。
 - **可空日期区间相交陷阱 (Nullable Date Range Overlap Pitfall)**：
   - 在 SQL 中，闭区间重叠判定条件 `planned_end >= startDate AND planned_start <= endDate` 当记录的起止列允许为 `NULL`（如待排池中尚未排期的任务）时，三值逻辑比较会导致结果为 `UNKNOWN`（被 `WHERE` 视为 `false`），未排期或单侧日期的记录会被静默过滤剔除。
   - **强制规约**：当查询语义要求包含未定日期的记录时，必须显式显化可空分支：`(planned_end IS NULL OR planned_end >= :startDate) AND (planned_start IS NULL OR planned_start <= :endDate)`，或通过 `COALESCE` 显式设置极端边界时间兜底，严禁直接对可空列进行裸比较。
@@ -49,6 +51,11 @@
   - **`BaseMapperX` 重载消歧与打桩范式**：
     `BaseMapperX` 包含 `selectOne(Wrapper)`、`selectOne(String, Object)` 与 `selectOne(SFunction, Object)` 等多个同名重载。单测打桩严禁使用裸 `when(mapper.selectOne(any(), any()))`，会导致 Java 编译器报 `ambiguous call` 编译失败；亦严禁裸 `selectOne(any())`，易因 Mockito strict stubbing 判定签名不匹配报 `PotentialStubbingProblem`。
     **强制规约**：打桩多参数重载必须显式指定类型：`when(mapper.selectOne(any(SFunction.class), any())).thenReturn(...)`；或在实现与测试中统一优先使用 `LambdaQueryWrapperX`：`when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(...)`。
+  - **`BaseMapper.updateById` 重载消歧与打桩范式 (updateById Overload Disambiguation in Mockito)**：
+    - **重载歧义陷阱**：MyBatis-Plus 3.5.7+ 中，`BaseMapper<T>` 同时定义了 `int updateById(@Param(Constants.ENTITY) T entity)` 与 `int updateById(@Param(Constants.COLL) Collection<T> entityList)` 两个同名重载。在单元测试中使用裸 `verify(mapper).updateById(argThat(...))` 或 `verify(mapper).updateById(any())` 时，若未提供明确类型限定，Java 编译器（javac）会因无法区分目标方法是接收单一实体还是集合而抛出编译失败：`[ERROR] 对 updateById 的引用不明确，com.baomidou.mybatisplus.core.mapper.BaseMapper 中的方法 updateById(T) 和 updateById(java.util.Collection<T>) 都匹配`。
+    - **强制规约**：
+      1. **优先使用 ArgumentCaptor**：推荐声明具体实体捕获器：`ArgumentCaptor<TargetDO> captor = ArgumentCaptor.forClass(TargetDO.class); verify(mapper).updateById(captor.capture());`，既能彻底消除重载调用歧义，又便于后续针对 `captor.getValue()` 进行精确的字段变更断言；
+      2. **显式类型强转兜底**：若仅需打桩或简单验证调用，必须对参数进行类型限定或显式强转：`verify(mapper).updateById((TargetDO) any());` 或 `verify(mapper).updateById(any(TargetDO.class));`，严禁使用未加类型限定的裸 `any()` 或裸 `argThat(...)`。
 
 ## 5. 工作区快速代码与文件检索 (Fast Code & File Search)
 
@@ -164,6 +171,12 @@
 - **业务配置种子工单归位守卫 (Seed Data Scope Guard)**：
   - 审批流实例配置（`lunaerp_approval_config` 及节点表）归属于各业务域审批流程工单。
   - **强制规约**：坚持 Spec 最小契约原则，除工单中明确声明的系统字典与菜单初始化外，严禁在纯 SQL 基建工单中超前插入运行时业务配置数据，杜绝无序范围蔓延（Scope Creep）。
+- **PostgreSQL 唯一键冲突捕获与 Multi-catch 继承树禁令 (Unique Constraint Multi-catch Trap)**：
+  - **场景**：在业务单号顺延重试（如发号撞车）、租户周期唯一索引防重等高并发插入逻辑中，通过 `try-catch` 捕获数据库唯一约束冲突以驱动重试或转换为业务异常。
+  - **继承树编译陷阱**：在 Spring DAO / JDBC 体系中，`org.springframework.dao.DuplicateKeyException` 继承自 `org.springframework.dao.DataIntegrityViolationException`。若编写 `catch (DuplicateKeyException | DataIntegrityViolationException ex)`，Java 编译器会因 multi-catch 规范直接拒绝编译：`[ERROR] multi-catch 语句中的类型无法通过子类化关联: org.springframework.dao.DuplicateKeyException 是 org.springframework.dao.DataIntegrityViolationException 的子类`。
+  - **强制规约**：
+    1. 持久层捕获唯一键冲突或数据完整性冲突时，**一律直接捕获基类 `DataIntegrityViolationException`**（已完整涵盖 `DuplicateKeyException` 与底层 PSQLException），严禁在 multi-catch 中并列捕获父子异常；
+    2. 在 `catch (DataIntegrityViolationException ex)` 块中，通过 `ex.getMessage()` 检测具体约束名（如 `uk_lfp_tenant_period`）精准辨析冲突来源，并据此决定顺延重试或抛出对应的领域业务异常码（如期间重复、流水号耗尽等）。
 
 ## 9. 业务单号发号与顺延重试规约 (Sequential No Generation & Collision Retry)
 

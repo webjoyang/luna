@@ -66,9 +66,39 @@ Task:
 3. Report only the saved file path and a 2-line summary. Do not output raw code files in your report.
 ```
 
+## 5. Reviewer（代码审查）子代理派发标准模板（< 12 行）
+
+用于特性工单实现完毕后的 Standards / Spec 并行 Review。Reviewer 子代理必须以只读 `Workspace: "inherit"` 继承父工作区。
+
+> [!IMPORTANT]
+> **Diff 优先审查规约 (Diff-First Review Guard)**：Reviewer 必须首先通过 `git diff <base_commit>..HEAD`（或针对特定文件 `git diff <base_commit>..HEAD -- <path>`）查阅实际代码变更差异；**严禁对所有新增或修改文件无脑调用 `view_file` 全量通读**（极易引发数十次冗余文件读取与上下文膨胀，导致单次审查超时 10+ 分钟）；仅在 Diff 中发现疑似问题需要上下文确认时，才允许针对性对特定代码块做切片读取（Slice Read）。
+
+### Standards Reviewer 模板：
+```markdown
+You are Standards Reviewer for Ticket {NN}: {slug}.
+Context pointers:
+- Diff: git diff {base_commit}..HEAD
+- Standards: docs/agents/coding-standards.md
+- Arch Test: cd luna-srv; mvn test -q -pl lunasrv-module-lunaerp "-Dtest=ArchitectureStandardsTest"
+Rule: Review git diff FIRST. Prohibit full-file view_file traversals. Use slice read only when investigating specific diff hunks.
+Report: Concise pass/fail summary with violated standard rules (if any), zero raw code dumps.
+```
+
+### Spec Reviewer 模板：
+```markdown
+You are Spec Reviewer for Ticket {NN}: {slug}.
+Context pointers:
+- Diff: git diff {base_commit}..HEAD
+- Ticket: .scratch/{feature}/issues/{NN}-{slug}.md
+- Spec: .scratch/{feature}/spec.md
+- Verify Test: {compact_verification_command}
+Rule: Review git diff FIRST against Ticket checklist. Prohibit full-file view_file traversals. Use slice read only when investigating specific diff hunks.
+Report: Compact checklist mapping (pass/fail per item), zero raw code dumps.
+```
+
 ---
 
-## 5. 对比示范
+## 6. 对比示范
 
 ### ❌ 坏示范（Prompt 臃肿，吞噬 10k+ Tokens）：
 ```markdown
