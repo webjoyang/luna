@@ -22,16 +22,18 @@
           <span class="info-val">{{ detail.customerName }}</span>
         </div>
 
-        <div class="card-row info-row">
-          <span class="info-label">对账日期</span>
-          <span class="info-val">{{ detail.statementDate || '-' }}</span>
-        </div>
-
         <div v-if="detail.periodStart || detail.periodEnd" class="card-row info-row">
           <span class="info-label">对账期间</span>
           <span class="info-val"
             >{{ detail.periodStart || '' }} ~ {{ detail.periodEnd || '' }}</span
           >
+        </div>
+
+        <div v-if="detail.statementDate || detail.createTime" class="card-row info-row">
+          <span class="info-label">制单时间</span>
+          <span class="info-val">{{
+            detail.statementDate || formatDateTime(detail.createTime)
+          }}</span>
         </div>
 
         <div class="card-row info-row">
@@ -260,6 +262,7 @@ import {
   getStatementStatusText,
   getStatementStatusTagType,
   formatAmount,
+  formatDateTime,
   resolveStatementDetailParams,
   canConfirmOrReject
 } from '../model/portalStatement'
@@ -316,14 +319,6 @@ const rejectRules: FormRules = {
 
 const handleBack = () => {
   router.push('/portal/statements')
-}
-
-const formatDateTime = (val?: string | Date) => {
-  if (!val) return '-'
-  const d = new Date(val)
-  if (isNaN(d.getTime())) return String(val)
-  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`)
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 const loadDetail = async () => {

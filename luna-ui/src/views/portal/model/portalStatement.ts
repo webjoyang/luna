@@ -34,6 +34,17 @@ export function getStatementStatusTagType(
 }
 
 /**
+ * 格式化日期时间
+ */
+export function formatDateTime(val?: string | Date | null): string {
+  if (!val) return '-'
+  const d = new Date(val)
+  if (isNaN(d.getTime())) return String(val)
+  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/**
  * 格式化金额展示
  */
 export function formatAmount(amount?: number | string | null, currency = 'RMB'): string {

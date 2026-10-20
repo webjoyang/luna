@@ -23,16 +23,18 @@
             </el-tag>
           </div>
 
-          <div class="card-meta">
-            <span class="meta-label">对账日期:</span>
-            <span class="meta-value">{{ item.statementDate || '-' }}</span>
-          </div>
-
           <div v-if="item.periodStart || item.periodEnd" class="card-meta">
             <span class="meta-label">对账期间:</span>
             <span class="meta-value">
               {{ item.periodStart || '' }} ~ {{ item.periodEnd || '' }}
             </span>
+          </div>
+
+          <div v-if="item.statementDate || item.createTime" class="card-meta">
+            <span class="meta-label">制单时间:</span>
+            <span class="meta-value">{{
+              item.statementDate || formatDateTime(item.createTime)
+            }}</span>
           </div>
 
           <div
@@ -50,8 +52,10 @@
 
           <div class="card-footer">
             <div class="amount-box">
-              <span class="amount-label">应结金额:</span>
-              <span class="amount-val">{{ formatAmount(item.totalAmount) }}</span>
+              <span class="amount-label">期末应结:</span>
+              <span class="amount-val">{{
+                formatAmount(item.closingBalance ?? item.totalAmount, item.currency)
+              }}</span>
             </div>
             <div class="view-detail-hint">
               <span>查看详情 &gt;</span>
@@ -85,6 +89,7 @@ import {
   getStatementStatusText,
   getStatementStatusTagType,
   formatAmount,
+  formatDateTime,
   filterStatementListByTab
 } from '../model/portalStatement'
 import { getPortalToken, handlePortalTokenGuide } from '@/utils/portalAuth'

@@ -401,7 +401,7 @@ public class CustomerStatementPortalIsolationTest {
         PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
         CustomerStatementDO stmtA = createStatementDO(10L, CUSTOMER_A_ID, "CS20260010", CustomerStatementStatus.SENT.getValue());
         stmtA.setTenantId(1L);
-        when(customerStatementMapper.selectOne(any())).thenReturn(stmtA);
+        when(customerStatementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(stmtA);
 
         CustomerStatementItemDO item = new CustomerStatementItemDO();
         item.setId(101L);
@@ -409,7 +409,7 @@ public class CustomerStatementPortalIsolationTest {
         item.setLineNo(1);
         item.setDebitAmount(BigDecimal.valueOf(100));
         item.setCreditAmount(BigDecimal.ZERO);
-        when(customerStatementItemMapper.selectList(any())).thenReturn(List.of(item));
+        when(customerStatementItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(item));
 
         CustomerStatementDetailRespVO detail = customerStatementService.getPortalCustomerStatement(null, "CS20260010", null);
         assertNotNull(detail);

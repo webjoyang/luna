@@ -72,14 +72,21 @@ export interface PortalShipmentSignReqVO {
 export interface PortalStatementRespVO {
   id: number
   statementNo: string
-  statementDate: string
+  statementDate?: string
   periodStart?: string
   periodEnd?: string
-  status: string
+  currency?: string
+  openingBalance?: number
+  periodDebit?: number
+  periodCredit?: number
+  closingBalance?: number
   totalAmount?: number
+  status: string
+  confirmType?: string
   confirmByName?: string
   confirmTime?: string
   rejectReason?: string
+  createTime?: string
 }
 
 export interface PortalStatementItemRespVO {

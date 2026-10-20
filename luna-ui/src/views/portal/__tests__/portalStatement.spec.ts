@@ -8,6 +8,7 @@ import {
   getStatementStatusText,
   getStatementStatusTagType,
   formatAmount,
+  formatDateTime,
   resolveStatementDetailParams,
   filterStatementListByTab,
   canConfirmOrReject,
@@ -43,6 +44,14 @@ describe('portalStatement model & utils', () => {
       expect(formatAmount(null)).toBe('¥0.00')
       expect(formatAmount(undefined)).toBe('¥0.00')
       expect(formatAmount('200.75')).toBe('¥200.75')
+    })
+  })
+
+  describe('formatDateTime', () => {
+    it('should format date correctly', () => {
+      expect(formatDateTime('2026-10-20T15:30:00')).toContain('2026-10-20')
+      expect(formatDateTime(null)).toBe('-')
+      expect(formatDateTime(undefined)).toBe('-')
     })
   })
 
