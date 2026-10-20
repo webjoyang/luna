@@ -25,13 +25,35 @@ const whiteList = [
   '/bind',
   '/register',
   '/oauthLogin/gitee',
-  '/pms/kb/document/share'
+  '/pms/kb/document/share',
+  '/portal'
 ]
 
 // 路由加载前
 router.beforeEach(async (to, from, next) => {
   start()
   loadStart()
+
+  // 客户门户免登路由与 token 引导
+  if (to.path.startsWith('/portal')) {
+    const queryToken = (to.query.t as string) || null
+    if (queryToken) {
+      sessionStorage.setItem('luna_portal_token', queryToken)
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        const url = new URL(window.location.href)
+        url.searchParams.delete('t')
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''))
+      }
+    }
+    const token =
+      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('luna_portal_token') : null
+    if (to.path !== '/portal/invalid' && !token) {
+      next({ path: '/portal/invalid', replace: true })
+      return
+    }
+    next()
+    return
+  }
   if (getAccessToken()) {
     if (to.path === '/login' || to.path === '/luna-login') {
       next({ path: '/index' })

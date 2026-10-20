@@ -945,6 +945,89 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/portal',
+    component: () => import('@/views/portal/PortalLayout.vue'),
+    redirect: '/portal/shipments',
+    name: 'CustomerPortal',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '客户门户'
+    },
+    children: [
+      {
+        path: 'shipments',
+        name: 'PortalShipmentList',
+        component: () => import('@/views/portal/shipment/list.vue'),
+        meta: {
+          title: '发货单列表',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'shipment/:id',
+        name: 'PortalShipmentDetail',
+        component: () => import('@/views/portal/shipment/detail.vue'),
+        meta: {
+          title: '发货单详情',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'shipment',
+        name: 'PortalShipmentDetailByNo',
+        component: () => import('@/views/portal/shipment/detail.vue'),
+        meta: {
+          title: '发货单详情',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'statements',
+        name: 'PortalStatementList',
+        component: () => import('@/views/portal/statement/list.vue'),
+        meta: {
+          title: '对账单列表',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'statement/:id',
+        name: 'PortalStatementDetail',
+        component: () => import('@/views/portal/statement/detail.vue'),
+        meta: {
+          title: '对账单详情',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'statement',
+        name: 'PortalStatementDetailByNo',
+        component: () => import('@/views/portal/statement/detail.vue'),
+        meta: {
+          title: '对账单详情',
+          hidden: true,
+          noTagsView: true
+        }
+      }
+    ]
+  },
+  {
+    path: '/portal/invalid',
+    name: 'PortalInvalid',
+    component: () => import('@/views/portal/invalid.vue'),
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '链接已失效'
+    }
+  },
+  {
     path: '/h5/scan/weaving-ticket',
     component: () => import('@/views/h5/scan/weaving-ticket.vue'),
     name: 'H5ScanWeavingTicket',
