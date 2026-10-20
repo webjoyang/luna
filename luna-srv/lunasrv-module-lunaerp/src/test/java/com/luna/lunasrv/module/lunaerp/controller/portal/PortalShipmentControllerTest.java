@@ -5,8 +5,10 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentSignReqVO;
 import com.luna.lunasrv.module.lunaerp.portal.service.PortalShipmentService;
 import jakarta.annotation.security.PermitAll;
+import jakarta.validation.Valid;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +17,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -100,5 +104,36 @@ public class PortalShipmentControllerTest {
         CommonResult<PortalShipmentDetailRespVO> res2 = controller.getPortalShipment(null, "SH-20260927-001", null);
         assertEquals(0, res2.getCode());
         assertSame(expected, res2.getData());
+    }
+
+    @Test
+    @DisplayName("端点契约：/sign 必须为 PUT 端点，且请求体必须标注 @Valid 与 @RequestBody")
+    public void testSignEndpointHttpMethod() throws Exception {
+        Method signMethod = PortalShipmentController.class.getMethod("signPortalShipment", PortalShipmentSignReqVO.class);
+        assertTrue(signMethod.isAnnotationPresent(PutMapping.class), "signPortalShipment 必须标注 @PutMapping");
+        assertArrayEquals(new String[]{"/sign"}, signMethod.getAnnotation(PutMapping.class).value());
+
+        java.lang.reflect.Parameter param = signMethod.getParameters()[0];
+        assertTrue(param.isAnnotationPresent(Valid.class), "请求体参数必须标注 @Valid");
+        assertTrue(param.isAnnotationPresent(RequestBody.class), "请求体参数必须标注 @RequestBody");
+    }
+
+    @Test
+    @DisplayName("控制器透传：签收接口正常透传至 service（返回 success(true)）")
+    public void testSignPortalShipment_passthrough() {
+        PortalShipmentSignReqVO reqVO = PortalShipmentSignReqVO.builder()
+                .id(10L)
+                .signStatus("SIGNED")
+                .signedByName("张三")
+                .signRemark("货物已清点")
+                .build();
+
+        doNothing().when(portalShipmentService).signPortalShipment(reqVO);
+
+        CommonResult<Boolean> result = controller.signPortalShipment(reqVO);
+        assertNotNull(result);
+        assertEquals(0, result.getCode());
+        assertTrue(result.getData());
+        verify(portalShipmentService).signPortalShipment(reqVO);
     }
 }

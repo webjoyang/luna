@@ -108,6 +108,64 @@
         </div>
         <div v-else class="empty-items">暂无明细数据</div>
       </div>
+
+      <!-- 底部操作栏（仅待签收 PENDING 状态显示） -->
+      <div v-if="canSign" class="action-footer-bar">
+        <el-button type="danger" plain class="action-btn" @click="openSignDialog('REFUSED')">
+          拒收
+        </el-button>
+        <el-button type="success" class="action-btn sign-btn" @click="openSignDialog('SIGNED')">
+          确认签收
+        </el-button>
+      </div>
+
+      <!-- 签收/拒收二次确认弹窗 -->
+      <el-dialog
+        v-model="signDialogVisible"
+        :title="dialogTitle"
+        width="90%"
+        class="portal-sign-dialog"
+        :close-on-click-modal="false"
+        append-to-body
+      >
+        <el-form ref="signFormRef" :model="signForm" :rules="signRules" label-position="top">
+          <el-form-item label="签收人姓名" prop="signedByName" required>
+            <el-input
+              v-model="signForm.signedByName"
+              placeholder="请输入签收人姓名"
+              maxlength="30"
+              clearable
+            />
+          </el-form-item>
+          <el-form-item
+            :label="signAction === 'REFUSED' ? '拒收原因' : '签收备注'"
+            prop="signRemark"
+          >
+            <el-input
+              v-model="signForm.signRemark"
+              type="textarea"
+              :rows="3"
+              :placeholder="
+                signAction === 'REFUSED' ? '请输入拒收原因（可选）' : '请输入签收备注（可选）'
+              "
+              maxlength="200"
+              show-word-limit
+            />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <div class="dialog-footer">
+            <el-button :disabled="submitting" @click="signDialogVisible = false"> 取消 </el-button>
+            <el-button
+              :type="signAction === 'SIGNED' ? 'success' : 'danger'"
+              :loading="submitting"
+              @click="doSubmitSign"
+            >
+              {{ dialogConfirmText }}
+            </el-button>
+          </div>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
@@ -116,12 +174,20 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { getPortalShipment, type PortalShipmentDetailRespVO } from '@/api/portal'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import {
+  getPortalShipment,
+  signPortalShipment,
+  type PortalShipmentDetailRespVO
+} from '@/api/portal'
 import {
   getSignStatusText,
   getSignStatusTagType,
   formatAmount,
-  resolveShipmentDetailParams
+  resolveShipmentDetailParams,
+  canSignShipment,
+  getSignActionTitle,
+  getSignActionConfirmText
 } from '../model/portalShipment'
 import { getPortalToken, handlePortalTokenGuide, setPortalCustomerName } from '@/utils/portalAuth'
 
@@ -132,6 +198,69 @@ const router = useRouter()
 
 const loading = ref<boolean>(false)
 const detail = ref<PortalShipmentDetailRespVO | null>(null)
+
+const canSign = computed(() => {
+  return canSignShipment(detail.value?.signStatus)
+})
+
+const signDialogVisible = ref<boolean>(false)
+const signAction = ref<'SIGNED' | 'REFUSED'>('SIGNED')
+const submitting = ref<boolean>(false)
+const signFormRef = ref<FormInstance>()
+const signForm = ref<{ signedByName: string; signRemark: string }>({
+  signedByName: '',
+  signRemark: ''
+})
+
+const signRules: FormRules = {
+  signedByName: [
+    { required: true, message: '请输入签收人姓名', trigger: 'blur' },
+    {
+      validator: (_rule, value, callback) => {
+        if (!value || !value.trim()) {
+          callback(new Error('请输入签收人姓名'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ]
+}
+
+const dialogTitle = computed(() => getSignActionTitle(signAction.value))
+const dialogConfirmText = computed(() => getSignActionConfirmText(signAction.value))
+
+const openSignDialog = (action: 'SIGNED' | 'REFUSED') => {
+  signAction.value = action
+  signForm.value = {
+    signedByName: '',
+    signRemark: ''
+  }
+  signDialogVisible.value = true
+}
+
+const doSubmitSign = async () => {
+  if (!signFormRef.value || !detail.value) return
+  await signFormRef.value.validate()
+
+  submitting.value = true
+  try {
+    await signPortalShipment({
+      id: detail.value.id,
+      signStatus: signAction.value,
+      signedByName: signForm.value.signedByName.trim(),
+      signRemark: signForm.value.signRemark ? signForm.value.signRemark.trim() : undefined
+    })
+    ElMessage.success(signAction.value === 'SIGNED' ? '签收成功' : '已记录拒收')
+    signDialogVisible.value = false
+    await loadDetail()
+  } catch (err) {
+    console.error('签收操作失败:', err)
+  } finally {
+    submitting.value = false
+  }
+}
 
 const grandTotal = computed<number>(() => {
   if (!detail.value) return 0
@@ -356,5 +485,29 @@ onMounted(() => {
   color: #909399;
   padding: 20px 0;
   font-size: 13px;
+}
+
+.action-footer-bar {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+}
+
+.action-btn {
+  flex: 1;
+  height: 42px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 6px;
+}
+
+.sign-btn {
+  flex: 2;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>

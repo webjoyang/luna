@@ -3,7 +3,11 @@ import {
   getSignStatusText,
   getSignStatusTagType,
   formatAmount,
-  resolveShipmentDetailParams
+  resolveShipmentDetailParams,
+  canSignShipment,
+  validateSignForm,
+  getSignActionTitle,
+  getSignActionConfirmText
 } from '../model/portalShipment'
 
 describe('portalShipment model & utils', () => {
@@ -67,6 +71,42 @@ describe('portalShipment model & utils', () => {
       const res = resolveShipmentDetailParams({}, { no: '  SH-20260927-002  ' })
       expect(res.isValid).toBe(true)
       expect(res.no).toBe('SH-20260927-002')
+    })
+  })
+
+  describe('canSignShipment', () => {
+    it('should only return true for PENDING status', () => {
+      expect(canSignShipment('PENDING')).toBe(true)
+      expect(canSignShipment('SIGNED')).toBe(false)
+      expect(canSignShipment('REFUSED')).toBe(false)
+      expect(canSignShipment(undefined)).toBe(false)
+    })
+  })
+
+  describe('validateSignForm', () => {
+    it('should require signedByName to be non-empty', () => {
+      expect(validateSignForm('', '').valid).toBe(false)
+      expect(validateSignForm('  ', '').valid).toBe(false)
+      expect(validateSignForm(undefined, '').valid).toBe(false)
+      expect(validateSignForm(null, '').valid).toBe(false)
+      expect(validateSignForm('', '').error).toBe('请输入签收人姓名')
+    })
+
+    it('should pass with valid signedByName and optional remark', () => {
+      expect(validateSignForm('张三', '').valid).toBe(true)
+      expect(validateSignForm('李四', '货物破损拒收').valid).toBe(true)
+    })
+  })
+
+  describe('sign dialog titles & buttons', () => {
+    it('should return appropriate title and button text for SIGNED', () => {
+      expect(getSignActionTitle('SIGNED')).toBe('发货单签收确认')
+      expect(getSignActionConfirmText('SIGNED')).toBe('确认签收')
+    })
+
+    it('should return appropriate title and button text for REFUSED', () => {
+      expect(getSignActionTitle('REFUSED')).toBe('发货单拒收确认')
+      expect(getSignActionConfirmText('REFUSED')).toBe('确认拒收')
     })
   })
 })

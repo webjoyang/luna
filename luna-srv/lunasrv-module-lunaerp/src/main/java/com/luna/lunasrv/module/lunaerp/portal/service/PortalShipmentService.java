@@ -4,6 +4,8 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentSignReqVO;
+import jakarta.validation.Valid;
 
 /**
  * 客户门户发货单只读服务接口
@@ -28,5 +30,12 @@ public interface PortalShipmentService {
      * @return 发货单详情（头+逐行明细）
      */
     PortalShipmentDetailRespVO getPortalShipment(Long id, String shipmentNo);
+
+    /**
+     * 客户门户发货单登记签收/拒收（仅允许 COMPLETED 单据，SIGNED/REFUSED 两态）
+     *
+     * @param reqVO 签收登记信息（id, signStatus, signedByName, signRemark）
+     */
+    void signPortalShipment(@Valid PortalShipmentSignReqVO reqVO);
 
 }

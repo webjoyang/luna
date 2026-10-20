@@ -5,6 +5,7 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentSignReqVO;
 import com.luna.lunasrv.module.lunaerp.portal.service.PortalShipmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,6 +16,8 @@ import jakarta.annotation.security.PermitAll;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -56,6 +59,13 @@ public class PortalShipmentController {
             @RequestParam(value = "shipmentNo", required = false) String shipmentNo) {
         String finalNo = no != null && !no.trim().isEmpty() ? no : shipmentNo;
         return success(portalShipmentService.getPortalShipment(id, finalNo));
+    }
+
+    @PutMapping("/sign")
+    @Operation(summary = "客户门户发货单签收登记")
+    public CommonResult<Boolean> signPortalShipment(@Valid @RequestBody PortalShipmentSignReqVO reqVO) {
+        portalShipmentService.signPortalShipment(reqVO);
+        return success(true);
     }
 
 }

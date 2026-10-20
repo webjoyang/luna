@@ -65,3 +65,37 @@ export function resolveShipmentDetailParams(
 
   return { isValid: false }
 }
+
+/**
+ * 判断发货单是否处于可签收状态（仅 PENDING 允许签收或拒收）
+ */
+export function canSignShipment(signStatus?: string): boolean {
+  return signStatus === 'PENDING'
+}
+
+/**
+ * 校验门户发货单签收/拒收表单
+ */
+export function validateSignForm(
+  signedByName?: string | null,
+  _signRemark?: string | null
+): { valid: boolean; error?: string } {
+  if (!signedByName || signedByName.trim().length === 0) {
+    return { valid: false, error: '请输入签收人姓名' }
+  }
+  return { valid: true }
+}
+
+/**
+ * 获取签收/拒收弹窗标题
+ */
+export function getSignActionTitle(action: 'SIGNED' | 'REFUSED'): string {
+  return action === 'SIGNED' ? '发货单签收确认' : '发货单拒收确认'
+}
+
+/**
+ * 获取签收/拒收确定按钮文本
+ */
+export function getSignActionConfirmText(action: 'SIGNED' | 'REFUSED'): string {
+  return action === 'SIGNED' ? '确认签收' : '确认拒收'
+}
