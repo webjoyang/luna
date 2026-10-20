@@ -1,9 +1,10 @@
-package com.luna.lunasrv.module.lunaerp.portal.controller.portal;
+package com.luna.lunasrv.module.lunaerp.controller.portal;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentPageReqVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageRespVO;
 import com.luna.lunasrv.module.lunaerp.portal.service.PortalShipmentService;
 import jakarta.annotation.security.PermitAll;
 import org.junit.jupiter.api.DisplayName;
@@ -67,14 +68,14 @@ public class PortalShipmentControllerTest {
     }
 
     @Test
-    @DisplayName("控制器透传：分页接口正常透传至 service")
+    @DisplayName("控制器透传：分页接口正常透传至 service（返回 PortalShipmentPageRespVO）")
     public void testGetPortalShipmentPage_passthrough() {
         PortalShipmentPageReqVO reqVO = new PortalShipmentPageReqVO();
         reqVO.setSignStatus("PENDING");
-        PageResult<PortalShipmentRespVO> expected = new PageResult<>(Collections.emptyList(), 0L);
+        PageResult<PortalShipmentPageRespVO> expected = new PageResult<>(Collections.emptyList(), 0L);
         when(portalShipmentService.getPortalShipmentPage(reqVO)).thenReturn(expected);
 
-        CommonResult<PageResult<PortalShipmentRespVO>> result = controller.getPortalShipmentPage(reqVO);
+        CommonResult<PageResult<PortalShipmentPageRespVO>> result = controller.getPortalShipmentPage(reqVO);
         assertNotNull(result);
         assertEquals(0, result.getCode());
         assertSame(expected, result.getData());
@@ -82,21 +83,21 @@ public class PortalShipmentControllerTest {
     }
 
     @Test
-    @DisplayName("控制器透传：详情接口（id形态与?no=形态）正常透传至 service")
+    @DisplayName("控制器透传：详情接口（id形态与?no=形态）正常透传至 service（返回 PortalShipmentDetailRespVO）")
     public void testGetPortalShipment_passthrough() {
-        PortalShipmentRespVO expected = new PortalShipmentRespVO();
+        PortalShipmentDetailRespVO expected = new PortalShipmentDetailRespVO();
         expected.setId(10L);
         expected.setShipmentNo("SH-20260927-001");
 
         // 1. id 形态
         when(portalShipmentService.getPortalShipment(10L, null)).thenReturn(expected);
-        CommonResult<PortalShipmentRespVO> res1 = controller.getPortalShipment(10L, null, null);
+        CommonResult<PortalShipmentDetailRespVO> res1 = controller.getPortalShipment(10L, null, null);
         assertEquals(0, res1.getCode());
         assertSame(expected, res1.getData());
 
         // 2. ?no= 形态
         when(portalShipmentService.getPortalShipment(null, "SH-20260927-001")).thenReturn(expected);
-        CommonResult<PortalShipmentRespVO> res2 = controller.getPortalShipment(null, "SH-20260927-001", null);
+        CommonResult<PortalShipmentDetailRespVO> res2 = controller.getPortalShipment(null, "SH-20260927-001", null);
         assertEquals(0, res2.getCode());
         assertSame(expected, res2.getData());
     }

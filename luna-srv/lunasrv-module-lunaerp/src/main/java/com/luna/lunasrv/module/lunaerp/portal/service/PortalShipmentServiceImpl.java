@@ -1,17 +1,17 @@
 package com.luna.lunasrv.module.lunaerp.portal.service;
 
-import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentItemRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentItemRespVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentPageReqVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentRespVO;
 import com.luna.lunasrv.module.lunaerp.portal.core.PortalContext;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -44,7 +44,7 @@ public class PortalShipmentServiceImpl implements PortalShipmentService {
     private ShipmentItemMapper shipmentItemMapper;
 
     @Override
-    public PageResult<PortalShipmentRespVO> getPortalShipmentPage(PortalShipmentPageReqVO reqVO) {
+    public PageResult<PortalShipmentPageRespVO> getPortalShipmentPage(PortalShipmentPageReqVO reqVO) {
         Long customerId = PortalContext.getCustomerId();
         if (customerId == null) {
             throw exception(PORTAL_DATA_ACCESS_DENIED);
@@ -64,17 +64,11 @@ public class PortalShipmentServiceImpl implements PortalShipmentService {
                 .orderByDesc(ShipmentDO::getId);
 
         PageResult<ShipmentDO> pageResult = shipmentMapper.selectPage(reqVO, wrapper);
-        PageResult<PortalShipmentRespVO> result = BeanUtils.toBean(pageResult, PortalShipmentRespVO.class);
-        if (CollUtil.isNotEmpty(result.getList())) {
-            for (PortalShipmentRespVO vo : result.getList()) {
-                fillCompatibilityFields(vo);
-            }
-        }
-        return result;
+        return BeanUtils.toBean(pageResult, PortalShipmentPageRespVO.class);
     }
 
     @Override
-    public PortalShipmentRespVO getPortalShipment(Long id, String shipmentNo) {
+    public PortalShipmentDetailRespVO getPortalShipment(Long id, String shipmentNo) {
         Long customerId = PortalContext.getCustomerId();
         if (customerId == null) {
             throw exception(PORTAL_DATA_ACCESS_DENIED);
@@ -108,30 +102,12 @@ public class PortalShipmentServiceImpl implements PortalShipmentService {
             throw exception(PORTAL_DATA_ACCESS_DENIED);
         }
 
-        // 组装 VO 与明细行
-        PortalShipmentRespVO respVO = BeanUtils.toBean(shipment, PortalShipmentRespVO.class);
-        fillCompatibilityFields(respVO);
-
+        // 组装详情 VO 与明细行
+        PortalShipmentDetailRespVO respVO = BeanUtils.toBean(shipment, PortalShipmentDetailRespVO.class);
         List<ShipmentItemDO> itemDOList = shipmentItemMapper.selectListByShipmentId(shipment.getId());
         List<PortalShipmentItemRespVO> itemVOList = BeanUtils.toBean(itemDOList, PortalShipmentItemRespVO.class);
         respVO.setItems(itemVOList != null ? itemVOList : Collections.emptyList());
 
         return respVO;
-    }
-
-    private void fillCompatibilityFields(PortalShipmentRespVO vo) {
-        if (vo == null) return;
-        if (vo.getLogisticsCompany() == null) {
-            vo.setLogisticsCompany(vo.getCarrier());
-        }
-        if (vo.getLogisticsNo() == null) {
-            vo.setLogisticsNo(vo.getTrackingNumber());
-        }
-        if (vo.getFreightAmount() == null) {
-            vo.setFreightAmount(vo.getFreightFee());
-        }
-        if (vo.getShipmentDate() == null && vo.getShippingDate() != null) {
-            vo.setShipmentDate(vo.getShippingDate().toString());
-        }
     }
 }

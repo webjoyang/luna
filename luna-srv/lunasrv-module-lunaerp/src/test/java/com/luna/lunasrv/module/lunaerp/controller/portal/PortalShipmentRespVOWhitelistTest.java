@@ -1,11 +1,12 @@
-package com.luna.lunasrv.module.lunaerp.portal.controller.portal;
+package com.luna.lunasrv.module.lunaerp.controller.portal;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentItemRespVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentItemRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageRespVO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -25,9 +26,23 @@ public class PortalShipmentRespVOWhitelistTest {
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     @Test
-    @DisplayName("规约审查：PortalShipmentRespVO 序列化输出不含客户手机号、内部备注、成本相关与敏感管理字段")
-    public void testPortalShipmentRespVO_whitelistFields() throws Exception {
-        PortalShipmentRespVO vo = new PortalShipmentRespVO();
+    @DisplayName("规约审查：PortalShipmentPageRespVO 遵循【详情不入列表】原则，严禁包含 items、明细与签收历史")
+    public void testPortalShipmentPageRespVO_minimalContract() {
+        // 确保列表 VO 不挂载明细列表 items 与签收历史等详情字段
+        Field[] fields = PortalShipmentPageRespVO.class.getDeclaredFields();
+        for (Field f : fields) {
+            assertNotEquals("items", f.getName(), "分页列表 VO 严禁挂载 items 明细行，违反【详情不入列表】原则");
+            assertNotEquals("signedByName", f.getName(), "分页列表 VO 严禁包含 signedByName，应归属详情页");
+            assertNotEquals("signedAt", f.getName(), "分页列表 VO 严禁包含 signedAt，应归属详情页");
+            assertNotEquals("signRemark", f.getName(), "分页列表 VO 严禁包含 signRemark，应归属详情页");
+            assertNotEquals("receiveAddress", f.getName(), "分页列表 VO 严禁包含 receiveAddress，应归属详情页");
+        }
+    }
+
+    @Test
+    @DisplayName("规约审查：PortalShipmentDetailRespVO 序列化输出不含客户手机号、内部备注、成本相关与管理端用户字段")
+    public void testPortalShipmentDetailRespVO_whitelistFields() throws Exception {
+        PortalShipmentDetailRespVO vo = new PortalShipmentDetailRespVO();
         vo.setId(1001L);
         vo.setShipmentNo("SH-20260927-001");
         vo.setCustomerName("常州盛达纺织有限公司");
@@ -72,7 +87,7 @@ public class PortalShipmentRespVOWhitelistTest {
                 "creator", "updater", "tenantId"
         };
         for (String field : forbiddenFields) {
-            assertFalse(root.has(field), "PortalShipmentRespVO 严禁暴露字段: " + field);
+            assertFalse(root.has(field), "PortalShipmentDetailRespVO 严禁暴露字段: " + field);
             assertFalse(root.get("items").get(0).has(field), "PortalShipmentItemRespVO 严禁暴露字段: " + field);
         }
 
@@ -92,15 +107,19 @@ public class PortalShipmentRespVOWhitelistTest {
     }
 
     @Test
-    @DisplayName("规约审查：PortalShipmentRespVO 与 ItemRespVO 中 BigDecimal 金额字段严禁标注 @Sensitive 注解（门户金额透明）")
-    public void testPortalShipmentRespVO_noSensitiveAnnotation() {
-        for (Field field : PortalShipmentRespVO.class.getDeclaredFields()) {
+    @DisplayName("规约审查：Portal VO 中 BigDecimal 金额字段严禁标注 @Sensitive 注解（门户金额透明）")
+    public void testPortalVO_noSensitiveAnnotation() {
+        for (Field field : PortalShipmentPageRespVO.class.getDeclaredFields()) {
             assertFalse(field.isAnnotationPresent(Sensitive.class),
-                    "PortalShipmentRespVO." + field.getName() + " 不应标注 @Sensitive，门户看自身单据金额透明");
+                    "PortalShipmentPageRespVO." + field.getName() + " 不应标注 @Sensitive，门户金额透明");
+        }
+        for (Field field : PortalShipmentDetailRespVO.class.getDeclaredFields()) {
+            assertFalse(field.isAnnotationPresent(Sensitive.class),
+                    "PortalShipmentDetailRespVO." + field.getName() + " 不应标注 @Sensitive，门户金额透明");
         }
         for (Field field : PortalShipmentItemRespVO.class.getDeclaredFields()) {
             assertFalse(field.isAnnotationPresent(Sensitive.class),
-                    "PortalShipmentItemRespVO." + field.getName() + " 不应标注 @Sensitive，门户看自身单据金额透明");
+                    "PortalShipmentItemRespVO." + field.getName() + " 不应标注 @Sensitive，门户金额透明");
         }
     }
 }

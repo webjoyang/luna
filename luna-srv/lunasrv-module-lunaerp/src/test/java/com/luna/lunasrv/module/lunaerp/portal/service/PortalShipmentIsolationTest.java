@@ -6,13 +6,14 @@ import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.shipment.ShipmentItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentMapper;
 import com.luna.lunasrv.module.lunaerp.enums.PortalErrorCodeConstants;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentPageReqVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentRespVO;
 import com.luna.lunasrv.module.lunaerp.portal.core.PortalContext;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
@@ -27,9 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.Collections;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -85,11 +84,11 @@ public class PortalShipmentIsolationTest {
         when(shipmentMapper.selectPage(any(PortalShipmentPageReqVO.class), any()))
                 .thenReturn(new PageResult<>(Collections.singletonList(shipmentDO), 1L));
 
-        PageResult<PortalShipmentRespVO> result = portalShipmentService.getPortalShipmentPage(reqVO);
+        PageResult<PortalShipmentPageRespVO> result = portalShipmentService.getPortalShipmentPage(reqVO);
 
         assertNotNull(result);
         assertEquals(1, result.getList().size());
-        PortalShipmentRespVO resp = result.getList().get(0);
+        PortalShipmentPageRespVO resp = result.getList().get(0);
         assertEquals("SH-20260927-001", resp.getShipmentNo());
         assertEquals("PENDING", resp.getSignStatus());
         assertEquals(new BigDecimal("5000.00"), resp.getTotalAmount());
@@ -117,7 +116,7 @@ public class PortalShipmentIsolationTest {
         when(shipmentMapper.selectPage(any(PortalShipmentPageReqVO.class), any()))
                 .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
 
-        PageResult<PortalShipmentRespVO> result = portalShipmentService.getPortalShipmentPage(reqVO);
+        PageResult<PortalShipmentPageRespVO> result = portalShipmentService.getPortalShipmentPage(reqVO);
         assertNotNull(result);
 
         ArgumentCaptor<LambdaQueryWrapperX<ShipmentDO>> captor = ArgumentCaptor.forClass(LambdaQueryWrapperX.class);
@@ -145,7 +144,7 @@ public class PortalShipmentIsolationTest {
         ShipmentItemDO itemDO = createShipmentItem(101L, 10L);
         when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(Collections.singletonList(itemDO));
 
-        PortalShipmentRespVO resp = portalShipmentService.getPortalShipment(10L, null);
+        PortalShipmentDetailRespVO resp = portalShipmentService.getPortalShipment(10L, null);
 
         assertNotNull(resp);
         assertEquals(10L, resp.getId());
@@ -201,7 +200,7 @@ public class PortalShipmentIsolationTest {
         ShipmentItemDO itemDO = createShipmentItem(101L, 10L);
         when(shipmentItemMapper.selectListByShipmentId(10L)).thenReturn(Collections.singletonList(itemDO));
 
-        PortalShipmentRespVO resp = portalShipmentService.getPortalShipment(null, "SH-20260927-001");
+        PortalShipmentDetailRespVO resp = portalShipmentService.getPortalShipment(null, "SH-20260927-001");
 
         assertNotNull(resp);
         assertEquals(10L, resp.getId());

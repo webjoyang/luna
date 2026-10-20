@@ -23,24 +23,40 @@ export interface PortalShipmentItemRespVO {
   amount?: number
 }
 
-export interface PortalShipmentRespVO {
+/**
+ * 发货单分页列表 Response VO（遵循详情不入列表原则）
+ */
+export interface PortalShipmentPageRespVO {
   id: number
   shipmentNo: string
   customerName?: string
   shippingDate?: string
-  shipmentDate?: string
+  carrier?: string
+  trackingNumber?: string
+  signStatus: string
+  totalAmount?: number
+  freightFee?: number
+  totalPieces?: number
+  currency?: string
+}
+
+/**
+ * 发货单详情 Response VO（头+逐行明细）
+ */
+export interface PortalShipmentDetailRespVO {
+  id: number
+  shipmentNo: string
+  customerName?: string
+  shippingDate?: string
   receiveAddress?: string
   carrier?: string
-  logisticsCompany?: string
   trackingNumber?: string
-  logisticsNo?: string
   signStatus: string
   signedByName?: string
   signedAt?: string
   signRemark?: string
   totalAmount?: number
   freightFee?: number
-  freightAmount?: number
   totalPieces?: number
   currency?: string
   items?: PortalShipmentItemRespVO[]
@@ -63,7 +79,7 @@ export interface PortalStatementRespVO {
  * 获得客户门户发货单分页
  */
 export const getPortalShipmentPage = (params: PortalPageParam) => {
-  return portalRequest.get<PageResult<PortalShipmentRespVO>>({
+  return portalRequest.get<PageResult<PortalShipmentPageRespVO>>({
     url: '/lunaerp/portal/shipment/page',
     params
   })
@@ -73,7 +89,7 @@ export const getPortalShipmentPage = (params: PortalPageParam) => {
  * 获得客户门户发货单详情（按 id 或 no 查询）
  */
 export const getPortalShipment = (params: { id?: number; no?: string; shipmentNo?: string }) => {
-  return portalRequest.get<PortalShipmentRespVO>({
+  return portalRequest.get<PortalShipmentDetailRespVO>({
     url: '/lunaerp/portal/shipment/get',
     params
   })

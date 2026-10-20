@@ -1,4 +1,4 @@
-package com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo;
+package com.luna.lunasrv.module.lunaerp.controller.portal.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;

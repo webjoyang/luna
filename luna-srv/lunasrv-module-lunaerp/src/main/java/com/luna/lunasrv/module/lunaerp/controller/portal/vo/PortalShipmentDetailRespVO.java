@@ -1,4 +1,4 @@
-package com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo;
+package com.luna.lunasrv.module.lunaerp.controller.portal.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -8,9 +8,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
-@Schema(description = "客户门户 - 发货单 Response VO")
+@Schema(description = "客户门户 - 发货单详情 Response VO（头+逐行明细）")
 @Data
-public class PortalShipmentRespVO {
+public class PortalShipmentDetailRespVO {
 
     @Schema(description = "发货单ID", example = "1001")
     private Long id;
@@ -18,14 +18,11 @@ public class PortalShipmentRespVO {
     @Schema(description = "发货单号", example = "SH-20260927-001")
     private String shipmentNo;
 
-    @Schema(description = "客户名称", example = "常州盛达纺织有限公司")
+    @Schema(description = "客户名称快照", example = "常州盛达纺织有限公司")
     private String customerName;
 
     @Schema(description = "发货日期", example = "2026-09-27")
     private LocalDate shippingDate;
-
-    @Schema(description = "发货日期文本（前端兼容）", example = "2026-09-27")
-    private String shipmentDate;
 
     @Schema(description = "收货地址", example = "江苏省常州市武进区高新产业园8号")
     private String receiveAddress;
@@ -33,20 +30,11 @@ public class PortalShipmentRespVO {
     @Schema(description = "承运商/物流公司", example = "顺丰速运")
     private String carrier;
 
-    @Schema(description = "物流公司别名（前端兼容）", example = "顺丰速运")
-    private String logisticsCompany;
-
     @Schema(description = "物流单号", example = "SF123456789")
     private String trackingNumber;
 
-    @Schema(description = "物流单号别名（前端兼容）", example = "SF123456789")
-    private String logisticsNo;
-
     @Schema(description = "运费（金额透明，不脱敏）", example = "150.00")
     private BigDecimal freightFee;
-
-    @Schema(description = "运费别名（前端兼容）", example = "150.00")
-    private BigDecimal freightAmount;
 
     @Schema(description = "货物金额合计（金额透明，不脱敏）", example = "5000.00")
     private BigDecimal totalAmount;

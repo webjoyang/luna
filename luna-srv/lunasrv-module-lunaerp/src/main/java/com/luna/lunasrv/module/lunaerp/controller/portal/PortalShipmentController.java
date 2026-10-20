@@ -1,9 +1,10 @@
-package com.luna.lunasrv.module.lunaerp.portal.controller.portal;
+package com.luna.lunasrv.module.lunaerp.controller.portal;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentPageReqVO;
-import com.luna.lunasrv.module.lunaerp.portal.controller.portal.vo.PortalShipmentRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.portal.vo.PortalShipmentPageRespVO;
 import com.luna.lunasrv.module.lunaerp.portal.service.PortalShipmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,7 +38,7 @@ public class PortalShipmentController {
 
     @GetMapping("/page")
     @Operation(summary = "获得客户门户发货单分页")
-    public CommonResult<PageResult<PortalShipmentRespVO>> getPortalShipmentPage(
+    public CommonResult<PageResult<PortalShipmentPageRespVO>> getPortalShipmentPage(
             @Valid PortalShipmentPageReqVO pageReqVO) {
         return success(portalShipmentService.getPortalShipmentPage(pageReqVO));
     }
@@ -49,7 +50,7 @@ public class PortalShipmentController {
             @Parameter(name = "no", description = "发货单号（二维码冻结契约）", example = "SH-20260927-001"),
             @Parameter(name = "shipmentNo", description = "发货单号别名", example = "SH-20260927-001")
     })
-    public CommonResult<PortalShipmentRespVO> getPortalShipment(
+    public CommonResult<PortalShipmentDetailRespVO> getPortalShipment(
             @RequestParam(value = "id", required = false) Long id,
             @RequestParam(value = "no", required = false) String no,
             @RequestParam(value = "shipmentNo", required = false) String shipmentNo) {

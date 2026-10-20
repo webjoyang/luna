@@ -26,21 +26,14 @@
 
           <div class="card-meta">
             <span class="meta-label">发货日期:</span>
-            <span class="meta-value">{{ item.shipmentDate || item.shippingDate || '-' }}</span>
+            <span class="meta-value">{{ item.shippingDate || '-' }}</span>
           </div>
 
-          <div
-            v-if="item.logisticsCompany || item.carrier || item.logisticsNo || item.trackingNumber"
-            class="card-meta"
-          >
+          <div v-if="item.carrier || item.trackingNumber" class="card-meta">
             <span class="meta-label">物流信息:</span>
             <span class="meta-value">
-              {{ item.logisticsCompany || item.carrier || '' }}
-              {{
-                item.logisticsNo || item.trackingNumber
-                  ? `(${item.logisticsNo || item.trackingNumber})`
-                  : ''
-              }}
+              {{ item.carrier || '' }}
+              {{ item.trackingNumber ? `(${item.trackingNumber})` : '' }}
             </span>
           </div>
 
@@ -48,11 +41,8 @@
             <div class="amount-box">
               <span class="amount-label">金额:</span>
               <span class="amount-val">{{ formatAmount(item.totalAmount) }}</span>
-              <span
-                v-if="item.freightAmount != null || item.freightFee != null"
-                class="freight-val"
-              >
-                (含运费 {{ formatAmount(item.freightAmount ?? item.freightFee) }})
+              <span v-if="item.freightFee != null" class="freight-val">
+                (含运费 {{ formatAmount(item.freightFee) }})
               </span>
             </div>
             <div v-if="item.totalPieces != null" class="pieces-box">
@@ -85,7 +75,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getPortalShipmentPage, type PortalShipmentRespVO } from '@/api/portal'
+import { getPortalShipmentPage, type PortalShipmentPageRespVO } from '@/api/portal'
 import { getSignStatusText, getSignStatusTagType, formatAmount } from '../model/portalShipment'
 import { getPortalToken, handlePortalTokenGuide, setPortalCustomerName } from '@/utils/portalAuth'
 
@@ -96,7 +86,7 @@ const router = useRouter()
 
 const activeTab = ref<string>('PENDING')
 const loading = ref<boolean>(false)
-const shipmentList = ref<PortalShipmentRespVO[]>([])
+const shipmentList = ref<PortalShipmentPageRespVO[]>([])
 const total = ref<number>(0)
 
 const queryParams = reactive({

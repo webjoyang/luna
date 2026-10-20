@@ -19,23 +19,14 @@
 
         <div class="card-row info-row">
           <span class="info-label">发货日期</span>
-          <span class="info-val">{{ detail.shipmentDate || detail.shippingDate || '-' }}</span>
+          <span class="info-val">{{ detail.shippingDate || '-' }}</span>
         </div>
 
-        <div
-          v-if="
-            detail.carrier || detail.logisticsCompany || detail.trackingNumber || detail.logisticsNo
-          "
-          class="card-row info-row"
-        >
+        <div v-if="detail.carrier || detail.trackingNumber" class="card-row info-row">
           <span class="info-label">物流信息</span>
           <span class="info-val">
-            {{ detail.logisticsCompany || detail.carrier || '' }}
-            {{
-              detail.logisticsNo || detail.trackingNumber
-                ? `(${detail.logisticsNo || detail.trackingNumber})`
-                : ''
-            }}
+            {{ detail.carrier || '' }}
+            {{ detail.trackingNumber ? `(${detail.trackingNumber})` : '' }}
           </span>
         </div>
 
@@ -75,9 +66,7 @@
           </div>
           <div class="amount-row">
             <span class="amt-lbl">运费:</span>
-            <span class="amt-val">{{
-              formatAmount(detail.freightAmount ?? detail.freightFee)
-            }}</span>
+            <span class="amt-val">{{ formatAmount(detail.freightFee) }}</span>
           </div>
           <div class="amount-row total-row">
             <span class="amt-lbl">总计金额:</span>
@@ -127,7 +116,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { getPortalShipment, type PortalShipmentRespVO } from '@/api/portal'
+import { getPortalShipment, type PortalShipmentDetailRespVO } from '@/api/portal'
 import {
   getSignStatusText,
   getSignStatusTagType,
@@ -142,17 +131,12 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref<boolean>(false)
-const detail = ref<PortalShipmentRespVO | null>(null)
+const detail = ref<PortalShipmentDetailRespVO | null>(null)
 
 const grandTotal = computed<number>(() => {
   if (!detail.value) return 0
   const goods = detail.value.totalAmount != null ? Number(detail.value.totalAmount) : 0
-  const freight =
-    detail.value.freightAmount != null
-      ? Number(detail.value.freightAmount)
-      : detail.value.freightFee != null
-        ? Number(detail.value.freightFee)
-        : 0
+  const freight = detail.value.freightFee != null ? Number(detail.value.freightFee) : 0
   return goods + freight
 })
 
