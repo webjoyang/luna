@@ -4,10 +4,10 @@
 
 **Blocked by:** 02、03、04
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `views/lunaerp-elmui/finance/account/`：列表+新建编辑弹窗（币种/类型建后不可改、期初可改性提示、account_no 按类型条件必填提示）+流水抽屉（DictTag 类别、借/贷方向、原币/本位币金额、汇率、往来主体、来源单号跳转）+转账弹窗（同账户/跨币种前置校验提示）+其他收支弹窗（类别随方向联动过滤）
-- [ ] `views/lunaerp-elmui/finance/overview/`：期间选择（缺省本月）+账户汇总表+合计行+类别汇总（钻取=带 category 参数进入流水视图）+毛利卡片（收入/成本/差额毛利率+「管理参考、期间错配、非法定报表」永久标注+无 AR 数据空态说明）
-- [ ] API 镜像 `src/api/lunaerp-elmui/finance/account|overview/index.ts`，TS 类型以 spec Controller 契约为准；账户下拉（simple-list）停用过滤在各弹窗生效
-- [ ] 金额千分位、DictTag 渲染、账号 @Sensitive(CONTACT) 脱敏展示、停用/删除二次确认（020_103/020_104 错误友好化）；菜单 10710/10715 挂接与按钮权限（10711–10713/10716/10717、overview:query）显隐控制
-- [ ] 简单冒烟：新建账户→转账→流水抽屉可见两笔 TRANSFER→总览页数字对得上
+- [x] `views/lunaerp-elmui/finance/account/`：列表+新建编辑弹窗（币种/类型建后不可改、期初可改性提示、account_no 按类型条件必填提示）+流水抽屉（DictTag 类别、借/贷方向、原币/本位币金额、汇率、往来主体、来源单号跳转）+转账弹窗（同账户/跨币种前置校验提示）+其他收支弹窗（类别随方向联动过滤）
+- [x] `views/lunaerp-elmui/finance/overview/`：期间选择（缺省本月）+账户汇总表+合计行+类别汇总（钻取=带 category 参数进入流水视图）+毛利卡片（收入/成本/差额毛利率+「管理参考、期间错配、非法定报表」永久标注+无 AR 数据空态说明）
+- [x] API 镜像 `src/api/lunaerp-elmui/finance/account|overview/index.ts`，TS 类型以 spec Controller 契约为准；账户下拉（simple-list）停用过滤在各弹窗生效
+- [x] 金额千分位、DictTag 渲染、账号 @Sensitive(CONTACT) 脱敏展示、停用/删除二次确认（020_103/020_104 错误友好化）；菜单 10710/10715 挂接与按钮权限（10711–10713/10716/10717、overview:query）显隐控制
+- [x] 简单冒烟：新建账户→转账→流水抽屉可见两笔 TRANSFER→总览页数字对得上
