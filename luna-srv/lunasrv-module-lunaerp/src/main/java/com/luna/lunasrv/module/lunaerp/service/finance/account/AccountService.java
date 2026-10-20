@@ -1,5 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.account;
 
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountUpdateReqVO;
@@ -68,6 +70,14 @@ public interface AccountService {
      * @return 账户详情VO
      */
     AccountRespVO getAccount(Long id);
+
+    /**
+     * 获得资金账户分页
+     *
+     * @param pageReqVO 分页查询条件
+     * @return 资金账户分页结果
+     */
+    PageResult<AccountRespVO> getAccountPage(AccountPageReqVO pageReqVO);
 
 
     /**

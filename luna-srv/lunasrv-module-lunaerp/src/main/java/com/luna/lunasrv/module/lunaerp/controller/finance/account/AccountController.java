@@ -31,6 +31,28 @@ public class AccountController {
     @Resource
     private AccountService accountService;
 
+    @PostMapping("/create")
+    @Operation(summary = "创建资金账户")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:account:create')")
+    public CommonResult<Long> createAccount(@Valid @RequestBody AccountSaveReqVO createReqVO) {
+        return success(accountService.createAccount(createReqVO));
+    }
+
+    @GetMapping("/get")
+    @Operation(summary = "获得资金账户详情")
+    @Parameter(name = "id", description = "账户编号", required = true)
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:account:query')")
+    public CommonResult<AccountRespVO> getAccount(@RequestParam("id") Long id) {
+        return success(accountService.getAccount(id));
+    }
+
+    @GetMapping("/page")
+    @Operation(summary = "获得资金账户分页")
+    @PreAuthorize("@ss.hasPermission('lunaerp:finance:account:query')")
+    public CommonResult<PageResult<AccountRespVO>> getAccountPage(@Valid AccountPageReqVO pageReqVO) {
+        return success(accountService.getAccountPage(pageReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "修改资金账户")
     @PreAuthorize("@ss.hasPermission('lunaerp:finance:account:update')")

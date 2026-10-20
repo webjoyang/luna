@@ -376,6 +376,36 @@ public class AccountServiceImplTest {
     }
 
     @Test
+    @DisplayName("getAccountPage: 分页查询正常返回")
+    void testGetAccountPage_success() {
+        com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountPageReqVO req =
+                new com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountPageReqVO();
+        req.setAccountName("基本户");
+        req.setStatus("ENABLE");
+
+        AccountDO account = new AccountDO();
+        account.setId(101L);
+        account.setAccountName("基本户");
+        account.setAccountType("BANK");
+        account.setAccountNature("PUBLIC");
+        account.setCurrency("RMB");
+        account.setOpeningBalance(new BigDecimal("1000.00"));
+        account.setCurrentBalance(new BigDecimal("1000.00"));
+        account.setStatus("ENABLE");
+
+        com.luna.lunasrv.framework.common.pojo.PageResult<AccountDO> pageResult =
+                new com.luna.lunasrv.framework.common.pojo.PageResult<>(java.util.List.of(account), 1L);
+        when(accountMapper.selectPage(eq(req), any())).thenReturn(pageResult);
+
+        com.luna.lunasrv.framework.common.pojo.PageResult<com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountRespVO> result =
+                accountService.getAccountPage(req);
+        assertNotNull(result);
+        assertEquals(1L, result.getTotal());
+        assertEquals(1, result.getList().size());
+        assertEquals("基本户", result.getList().get(0).getAccountName());
+    }
+
+    @Test
     @DisplayName("updateBalance: 扣减余额受阻（余额不足）抛出 1_030_023_004 PAYMENT_ACCOUNT_BALANCE_NOT_ENOUGH")
     void testUpdateBalance_insufficientBalance_throwsException() {
         when(accountMapper.updateBalanceDecrease(101L, new BigDecimal("-300.00"), new BigDecimal("300.00"))).thenReturn(0);

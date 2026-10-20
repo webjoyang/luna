@@ -167,6 +167,36 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_finance_payment_direction', label: '收款', value: 'IN', colorType: 'success', cssClass: '' },
     { dictType: 'lunaerp_finance_payment_direction', label: '付款', value: 'OUT', colorType: 'warning', cssClass: '' }
   ],
+  lunaerp_finance_account_type: [
+    { dictType: 'lunaerp_finance_account_type', label: '现金', value: 'CASH', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_type', label: '银行账户', value: 'BANK', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_type', label: '微信支付', value: 'WECHAT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_type', label: '支付宝', value: 'ALIPAY', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_finance_account_nature: [
+    { dictType: 'lunaerp_finance_account_nature', label: '公户', value: 'PUBLIC', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_nature', label: '私户', value: 'PRIVATE', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_finance_account_status: [
+    { dictType: 'lunaerp_finance_account_status', label: '启用', value: 'ENABLE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_status', label: '停用', value: 'DISABLE', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_other_txn_category: [
+    { dictType: 'lunaerp_other_txn_category', label: '利息收入', value: 'INTEREST_IN', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '废品收入', value: 'WASTE_IN', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '其他收入', value: 'OTHER_IN', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '手续费', value: 'FEE_OUT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '工本费', value: 'COST_OUT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '其他支出', value: 'OTHER_OUT', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_finance_ledger_category: [
+    { dictType: 'lunaerp_finance_ledger_category', label: '员工报销支出', value: 'OUT_EXPENSE', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '员工工资发放', value: 'OUT_SALARY', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '账户转账转入', value: 'TRANSFER_IN', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '账户转账转出', value: 'TRANSFER_OUT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '其他收入入账', value: 'IN_OTHER', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '其他支出流出', value: 'OUT_OTHER', colorType: 'danger', cssClass: '' }
+  ],
   lunaerp_approval_status: [
     { dictType: 'lunaerp_approval_status', label: '待提交', value: 'PENDING', colorType: 'info', cssClass: '' },
     { dictType: 'lunaerp_approval_status', label: '审批中', value: 'APPROVING', colorType: 'primary', cssClass: '' },
@@ -702,5 +732,10 @@ export enum DICT_TYPE {
   // ========== LunaERP - 销售退货模块 ==========
   LUNAERP_SALES_RETURN_STATUS = 'lunaerp_sales_return_status', // 销售退货状态
   LUNAERP_SALES_RETURN_REASON = 'lunaerp_sales_return_reason', // 销售退货原因
-  LUNAERP_SALES_RETURN_QC_RESULT = 'lunaerp_sales_return_qc_result' // 销售退货质检判定
+  LUNAERP_SALES_RETURN_QC_RESULT = 'lunaerp_sales_return_qc_result', // 销售退货质检判定
+  LUNAERP_FINANCE_ACCOUNT_TYPE = 'lunaerp_finance_account_type', // 资金账户类型
+  LUNAERP_FINANCE_ACCOUNT_NATURE = 'lunaerp_finance_account_nature', // 资金账户性质
+  LUNAERP_FINANCE_ACCOUNT_STATUS = 'lunaerp_finance_account_status', // 资金账户状态
+  LUNAERP_FINANCE_LEDGER_CATEGORY = 'lunaerp_finance_ledger_category', // 资金流水类别
+  LUNAERP_OTHER_TXN_CATEGORY = 'lunaerp_other_txn_category' // 其他收支类别
 }

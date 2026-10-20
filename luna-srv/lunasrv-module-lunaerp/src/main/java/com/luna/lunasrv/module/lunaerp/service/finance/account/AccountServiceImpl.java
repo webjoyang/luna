@@ -1,6 +1,10 @@
 package com.luna.lunasrv.module.lunaerp.service.finance.account;
 
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.framework.common.util.collection.CollectionUtils;
+import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.finance.account.vo.AccountUpdateReqVO;
@@ -224,6 +228,33 @@ public class AccountServiceImpl implements AccountService {
         respVO.setRemark(account.getRemark());
         respVO.setCreateTime(account.getCreateTime());
         return respVO;
+    }
+
+    @Override
+    public PageResult<AccountRespVO> getAccountPage(AccountPageReqVO pageReqVO) {
+        LambdaQueryWrapper<AccountDO> wrapper = new LambdaQueryWrapper<AccountDO>()
+                .like(StrUtil.isNotBlank(pageReqVO.getAccountName()), AccountDO::getAccountName, pageReqVO.getAccountName())
+                .eq(StrUtil.isNotBlank(pageReqVO.getAccountType()), AccountDO::getAccountType, pageReqVO.getAccountType())
+                .eq(StrUtil.isNotBlank(pageReqVO.getAccountNature()), AccountDO::getAccountNature, pageReqVO.getAccountNature())
+                .eq(StrUtil.isNotBlank(pageReqVO.getCurrency()), AccountDO::getCurrency, pageReqVO.getCurrency())
+                .eq(StrUtil.isNotBlank(pageReqVO.getStatus()), AccountDO::getStatus, pageReqVO.getStatus())
+                .orderByDesc(AccountDO::getId);
+        PageResult<AccountDO> page = accountMapper.selectPage(pageReqVO, wrapper);
+        return CollectionUtils.convertPage(page, account -> {
+            AccountRespVO respVO = new AccountRespVO();
+            respVO.setId(account.getId());
+            respVO.setAccountName(account.getAccountName());
+            respVO.setAccountType(account.getAccountType());
+            respVO.setAccountNo(account.getAccountNo());
+            respVO.setAccountNature(account.getAccountNature());
+            respVO.setCurrency(account.getCurrency());
+            respVO.setOpeningBalance(account.getOpeningBalance());
+            respVO.setCurrentBalance(account.getCurrentBalance());
+            respVO.setStatus(account.getStatus());
+            respVO.setRemark(account.getRemark());
+            respVO.setCreateTime(account.getCreateTime());
+            return respVO;
+        });
     }
 
 

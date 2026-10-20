@@ -39,6 +39,45 @@ public class AccountControllerTest {
     private AccountService accountService;
 
     @Test
+    @DisplayName("createAccount: 委托 Service 创建账户返回主键")
+    void testCreateAccount() {
+        AccountSaveReqVO req = new AccountSaveReqVO();
+        req.setAccountName("基本户");
+        when(accountService.createAccount(req)).thenReturn(101L);
+
+        CommonResult<Long> result = accountController.createAccount(req);
+        assertEquals(0, result.getCode());
+        assertEquals(101L, result.getData());
+        verify(accountService).createAccount(req);
+    }
+
+    @Test
+    @DisplayName("getAccount: 委托 Service 查询账户详情")
+    void testGetAccount() {
+        AccountRespVO respVO = new AccountRespVO();
+        respVO.setId(101L);
+        when(accountService.getAccount(101L)).thenReturn(respVO);
+
+        CommonResult<AccountRespVO> result = accountController.getAccount(101L);
+        assertEquals(0, result.getCode());
+        assertEquals(101L, result.getData().getId());
+        verify(accountService).getAccount(101L);
+    }
+
+    @Test
+    @DisplayName("getAccountPage: 委托 Service 分页查询账户")
+    void testGetAccountPage() {
+        AccountPageReqVO req = new AccountPageReqVO();
+        PageResult<AccountRespVO> pageResult = new PageResult<>();
+        when(accountService.getAccountPage(req)).thenReturn(pageResult);
+
+        CommonResult<PageResult<AccountRespVO>> result = accountController.getAccountPage(req);
+        assertEquals(0, result.getCode());
+        assertSame(pageResult, result.getData());
+        verify(accountService).getAccountPage(req);
+    }
+
+    @Test
     @DisplayName("updateAccount: 委托 Service 修改账户返回成功")
     void testUpdateAccount() {
         AccountUpdateReqVO req = new AccountUpdateReqVO();
@@ -74,6 +113,21 @@ public class AccountControllerTest {
     @Test
     @DisplayName("权限码审查：Controller 各端点权限码配置严格符合规范")
     void testControllerPermissions() throws Exception {
+        Method createMethod = AccountController.class.getMethod("createAccount", AccountSaveReqVO.class);
+        PreAuthorize createAuth = createMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(createAuth);
+        assertTrue(createAuth.value().contains("lunaerp:finance:account:create"));
+
+        Method getMethod = AccountController.class.getMethod("getAccount", Long.class);
+        PreAuthorize getAuth = getMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(getAuth);
+        assertTrue(getAuth.value().contains("lunaerp:finance:account:query"));
+
+        Method pageMethod = AccountController.class.getMethod("getAccountPage", AccountPageReqVO.class);
+        PreAuthorize pageAuth = pageMethod.getAnnotation(PreAuthorize.class);
+        assertNotNull(pageAuth);
+        assertTrue(pageAuth.value().contains("lunaerp:finance:account:query"));
+
         Method updateMethod = AccountController.class.getMethod("updateAccount", AccountUpdateReqVO.class);
         PreAuthorize updateAuth = updateMethod.getAnnotation(PreAuthorize.class);
         assertNotNull(updateAuth);
