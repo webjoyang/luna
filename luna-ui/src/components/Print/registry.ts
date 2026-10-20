@@ -20,6 +20,7 @@ import { supplierReconPrintCss } from '@/views/lunaerp-elmui/finance/supplier-re
 import { customerStatementPrintCss } from '@/views/lunaerp-elmui/finance/customer-reconciliation/components/print/print-styles'
 import { salesReturnPrintCss } from '@/views/lunaerp-elmui/business/sales-return/components/print/print-styles'
 import { expensePrintCss } from '@/views/lunaerp-elmui/finance/expense/components/print/print-styles'
+import { payrollPrintCss } from '@/views/lunaerp-elmui/finance/payroll/components/print/print-styles'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -198,6 +199,22 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
       ),
     customCss: expensePrintCss,
     getDocNo: (data: any) => data?.expenseNo || ''
+  },
+  {
+    bizType: 'PAYROLL',
+    templateCode: 'PAYROLL_SHEET',
+    name: '员工工资表',
+    paper: 'A4',
+    permission: 'lunaerp:finance:payroll:print',
+    component: defineAsyncComponent(
+      () => import('@/views/lunaerp-elmui/finance/payroll/components/print/PayrollPrintSheet.vue')
+    ),
+    fetchApi: (bizId: string | number) =>
+      import('@/api/lunaerp-elmui/finance/payroll').then((m) =>
+        m.getPayrollPrintData(Number(bizId))
+      ),
+    customCss: payrollPrintCss,
+    getDocNo: (data: any) => data?.payrollNo || ''
   }
 ]
 

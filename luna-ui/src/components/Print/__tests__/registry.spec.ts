@@ -198,6 +198,20 @@ describe('Print Template Registry', () => {
     expect(tpl.getDocNo?.({ expenseNo: 'BX20261019001' })).toBe('BX20261019001')
   })
 
+  it('should have PAYROLL_SHEET statically registered for PAYROLL', () => {
+    const payrollTemplates = getTemplatesByBizType('PAYROLL')
+    expect(payrollTemplates).toHaveLength(1)
+
+    const tpl = payrollTemplates[0]
+    expect(tpl.templateCode).toBe('PAYROLL_SHEET')
+    expect(tpl.name).toBe('员工工资表')
+    expect(tpl.paper).toBe('A4')
+    expect(tpl.permission).toBe('lunaerp:finance:payroll:print')
+    expect(typeof tpl.fetchApi).toBe('function')
+    expect(typeof tpl.getDocNo).toBe('function')
+    expect(tpl.getDocNo?.({ payrollNo: 'GZ202610001' })).toBe('GZ202610001')
+  })
+
   it('getTemplate should return default or specific template', () => {
     const defaultTpl = getTemplate('WEAVING_TICKET')
     expect(defaultTpl).toBeDefined()

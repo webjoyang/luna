@@ -213,6 +213,23 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_expense_category', label: '水电费', value: 'UTILITY', colorType: 'primary', cssClass: '' },
     { dictType: 'lunaerp_expense_category', label: '通讯费', value: 'COMM', colorType: 'info', cssClass: '' },
     { dictType: 'lunaerp_expense_category', label: '其他', value: 'OTHER', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_payroll_earning_type: [
+    { dictType: 'lunaerp_payroll_earning_type', label: '基本工资', value: 'BASE', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '计件工资', value: 'PIECE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '提成', value: 'COMMISSION', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '奖金', value: 'BONUS', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '补贴', value: 'SUBSIDY', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '其他收入', value: 'OTHER', colorType: 'default', cssClass: '' }
+  ],
+  lunaerp_payroll_deduction_type: [
+    { dictType: 'lunaerp_payroll_deduction_type', label: '次品扣款', value: 'DEFECT', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_payroll_deduction_type', label: '其他扣款', value: 'OTHER', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_payroll_payment_status: [
+    { dictType: 'lunaerp_payroll_payment_status', label: '未发放', value: 'UNPAID', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_payroll_payment_status', label: '部分发放', value: 'PARTIAL', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_payroll_payment_status', label: '已发清', value: 'PAID', colorType: 'success', cssClass: '' }
   ]
 }
 
@@ -748,5 +765,8 @@ export enum DICT_TYPE {
   LUNAERP_FINANCE_ACCOUNT_STATUS = 'lunaerp_finance_account_status', // 资金账户状态
   LUNAERP_FINANCE_LEDGER_CATEGORY = 'lunaerp_finance_ledger_category', // 资金流水类别
   LUNAERP_OTHER_TXN_CATEGORY = 'lunaerp_other_txn_category', // 其他收支类别
-  LUNAERP_EXPENSE_CATEGORY = 'lunaerp_expense_category' // 费用报销类别（2284）
+  LUNAERP_EXPENSE_CATEGORY = 'lunaerp_expense_category', // 费用报销类别（2284）
+  LUNAERP_PAYROLL_EARNING_TYPE = 'lunaerp_payroll_earning_type', // 工资收入款项类型（2285）
+  LUNAERP_PAYROLL_DEDUCTION_TYPE = 'lunaerp_payroll_deduction_type', // 工资扣款款项类型（2286）
+  LUNAERP_PAYROLL_PAYMENT_STATUS = 'lunaerp_payroll_payment_status' // 工资派生发放状态
 }
