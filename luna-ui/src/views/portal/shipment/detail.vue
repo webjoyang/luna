@@ -186,6 +186,7 @@ import {
   formatAmount,
   resolveShipmentDetailParams,
   canSignShipment,
+  validateSignForm,
   getSignActionTitle,
   getSignActionConfirmText
 } from '../model/portalShipment'
@@ -217,8 +218,9 @@ const signRules: FormRules = {
     { required: true, message: '请输入签收人姓名', trigger: 'blur' },
     {
       validator: (_rule, value, callback) => {
-        if (!value || !value.trim()) {
-          callback(new Error('请输入签收人姓名'))
+        const check = validateSignForm(value)
+        if (!check.valid) {
+          callback(new Error(check.error))
         } else {
           callback()
         }
@@ -242,7 +244,11 @@ const openSignDialog = (action: 'SIGNED' | 'REFUSED') => {
 
 const doSubmitSign = async () => {
   if (!signFormRef.value || !detail.value) return
-  await signFormRef.value.validate()
+  try {
+    await signFormRef.value.validate()
+  } catch {
+    return
+  }
 
   submitting.value = true
   try {

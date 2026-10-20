@@ -76,10 +76,7 @@ export function canSignShipment(signStatus?: string): boolean {
 /**
  * 校验门户发货单签收/拒收表单
  */
-export function validateSignForm(
-  signedByName?: string | null,
-  _signRemark?: string | null
-): { valid: boolean; error?: string } {
+export function validateSignForm(signedByName?: string | null): { valid: boolean; error?: string } {
   if (!signedByName || signedByName.trim().length === 0) {
     return { valid: false, error: '请输入签收人姓名' }
   }

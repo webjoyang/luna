@@ -85,16 +85,16 @@ describe('portalShipment model & utils', () => {
 
   describe('validateSignForm', () => {
     it('should require signedByName to be non-empty', () => {
-      expect(validateSignForm('', '').valid).toBe(false)
-      expect(validateSignForm('  ', '').valid).toBe(false)
-      expect(validateSignForm(undefined, '').valid).toBe(false)
-      expect(validateSignForm(null, '').valid).toBe(false)
-      expect(validateSignForm('', '').error).toBe('请输入签收人姓名')
+      expect(validateSignForm('').valid).toBe(false)
+      expect(validateSignForm('  ').valid).toBe(false)
+      expect(validateSignForm(undefined).valid).toBe(false)
+      expect(validateSignForm(null).valid).toBe(false)
+      expect(validateSignForm('').error).toBe('请输入签收人姓名')
     })
 
-    it('should pass with valid signedByName and optional remark', () => {
-      expect(validateSignForm('张三', '').valid).toBe(true)
-      expect(validateSignForm('李四', '货物破损拒收').valid).toBe(true)
+    it('should pass with valid signedByName', () => {
+      expect(validateSignForm('张三').valid).toBe(true)
+      expect(validateSignForm('李四').valid).toBe(true)
     })
   })
 
