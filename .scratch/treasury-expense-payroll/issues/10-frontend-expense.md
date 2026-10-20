@@ -4,10 +4,10 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `views/lunaerp-elmui/finance/expense/`：列表（审批状态 DictTag、四维筛选）+工作台（报销人 UserSelect 远程搜索缺省本人可代填/付款账户下拉（停用过滤）联动币种展示/行表增删改（费用类型 2284、金额>0、发生日期、必填说明）/附件上传 ≤10 有序可移除、超限前端拦截）
-- [ ] 详情：主从信息+附件清单+审批进度摘要时间线；草稿/驳回可编辑再提、审批中可撤回（cancel-approve）；APPROVED 只读
-- [ ] 打印：APPROVED 调 print-data 走 04 号打印内核 A4 套打；打印视图金额豁免脱敏
-- [ ] API 镜像 `src/api/lunaerp-elmui/finance/expense/index.ts`；菜单 10750 挂接与按钮权限（10751–10755）显隐；金额千分位与 @Sensitive(AMOUNT) 脱敏
-- [ ] 简单冒烟：建单→提交→（审批通过）→列表 APPROVED→资金流水页可见 OUT_EXPENSE 分录（余额已扣）→套打预览正常
+- [x] `views/lunaerp-elmui/finance/expense/`：列表（审批状态 DictTag、四维筛选）+工作台（报销人 UserSelect 远程搜索缺省本人可代填/付款账户下拉（停用过滤）联动币种展示/行表增删改（费用类型 2284、金额>0、发生日期、必填说明）/附件上传 ≤10 有序可移除、超限前端拦截）
+- [x] 详情：主从信息+附件清单+审批进度摘要时间线；草稿/驳回可编辑再提、审批中可撤回（cancel-approve）；APPROVED 只读
+- [x] 打印：APPROVED 调 print-data 走 04 号打印内核 A4 套打；打印视图金额豁免脱敏
+- [x] API 镜像 `src/api/lunaerp-elmui/finance/expense/index.ts`；菜单 10750 挂接与按钮权限（10751–10755）显隐；金额千分位与 @Sensitive(AMOUNT) 脱敏
+- [x] 简单冒烟：建单→提交→（审批通过）→列表 APPROVED→资金流水页可见 OUT_EXPENSE 分录（余额已扣）→套打预览正常
