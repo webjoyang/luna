@@ -6,6 +6,15 @@ export const PORTAL_TOKEN_STORAGE_KEY = 'luna_portal_token'
 export const PORTAL_CUSTOMER_NAME_KEY = 'luna_portal_customer_name'
 
 /**
+ * 客户门户错误码（镜像后端 PortalErrorCodeConstants 1-030-038 段）
+ */
+export const PORTAL_ERROR_CODE = {
+  TOKEN_INVALID: 1030038000,
+  DATA_ACCESS_DENIED: 1030038001,
+  REQUEST_TOO_FREQUENT: 1030038002
+} as const
+
+/**
  * 获取当前存储的客户门户令牌
  */
 export function getPortalToken(): string {
@@ -54,7 +63,7 @@ export function setPortalCustomerName(name: string): void {
 }
 
 /**
- * 门户令牌引导决策
+ * 门户令牌引导决策与地址栏清理
  *
  * @param queryToken URL query 中的 ?t= 令牌
  * @param currentStoredToken 当前已存在的 sessionStorage 令牌
@@ -67,6 +76,11 @@ export function handlePortalTokenGuide(
   if (queryToken && queryToken.trim().length > 0) {
     const cleanToken = queryToken.trim()
     setPortalToken(cleanToken)
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('t')
+      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''))
+    }
     return {
       token: cleanToken,
       shouldCleanUrl: true,
@@ -74,9 +88,10 @@ export function handlePortalTokenGuide(
     }
   }
 
-  if (currentStoredToken && currentStoredToken.trim().length > 0) {
+  const stored = currentStoredToken ?? getPortalToken()
+  if (stored && stored.trim().length > 0) {
     return {
-      token: currentStoredToken.trim(),
+      token: stored.trim(),
       shouldCleanUrl: false,
       isValid: true
     }

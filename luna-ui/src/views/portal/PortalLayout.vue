@@ -41,7 +41,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Van, Tickets } from '@element-plus/icons-vue'
-import { getPortalCustomerName } from '@/views/portal/utils/portalAuth'
+import { getPortalCustomerName } from '@/utils/portalAuth'
 
 defineOptions({ name: 'PortalLayout' })
 

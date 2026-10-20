@@ -2,7 +2,7 @@ import axios from 'axios'
 import type { AxiosInstance, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
-import { getPortalToken, clearPortalToken } from '@/views/portal/utils/portalAuth'
+import { PORTAL_ERROR_CODE, getPortalToken, clearPortalToken } from '@/utils/portalAuth'
 
 // baseURL 同 /app-api
 const appApiBaseUrl = (import.meta.env.VITE_BASE_URL || '') + '/app-api'
@@ -25,8 +25,9 @@ portalAxios.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 })
 
 // 统一跳转到失效页
-const redirectToInvalid = () => {
+const redirectToInvalid = (msg = '链接已失效，请联系业务员重新获取') => {
   clearPortalToken()
+  ElMessage.error(msg)
   if (typeof window !== 'undefined') {
     try {
       if (router?.push) {
@@ -52,14 +53,19 @@ portalAxios.interceptors.response.use(
     if (code === 0) {
       return data.data
     }
-    // 401 或 1030038000: 令牌无效或已过期
-    if (code === 401 || code === 1030038000) {
-      ElMessage.error('链接已失效，请联系业务员重新获取')
-      redirectToInvalid()
-      return Promise.reject(new Error(data.msg || '链接已失效，请联系业务员重新获取'))
+    // 401 或 1030038000: 令牌无效或已过期；403 或 1030038001: 客户已删除或数据归属不符
+    if (
+      code === 401 ||
+      code === 403 ||
+      code === PORTAL_ERROR_CODE.TOKEN_INVALID ||
+      code === PORTAL_ERROR_CODE.DATA_ACCESS_DENIED
+    ) {
+      const msg = data.msg || '链接已失效，请联系业务员重新获取'
+      redirectToInvalid(msg)
+      return Promise.reject(new Error(msg))
     }
     // 429 或 1030038002: 请求过于频繁
-    if (code === 429 || code === 1030038002) {
+    if (code === 429 || code === PORTAL_ERROR_CODE.REQUEST_TOO_FREQUENT) {
       ElMessage.warning('请求过于频繁，请稍后再试')
       return Promise.reject(new Error(data.msg || '请求过于频繁，请稍后再试'))
     }
@@ -69,12 +75,19 @@ portalAxios.interceptors.response.use(
   (error: AxiosError<any>) => {
     const status = error.response?.status
     const code = error.response?.data?.code
-    if (status === 401 || code === 401 || code === 1030038000) {
-      ElMessage.error('链接已失效，请联系业务员重新获取')
-      redirectToInvalid()
+    if (
+      status === 401 ||
+      status === 403 ||
+      code === 401 ||
+      code === 403 ||
+      code === PORTAL_ERROR_CODE.TOKEN_INVALID ||
+      code === PORTAL_ERROR_CODE.DATA_ACCESS_DENIED
+    ) {
+      const msg = error.response?.data?.msg || '链接已失效，请联系业务员重新获取'
+      redirectToInvalid(msg)
       return Promise.reject(error)
     }
-    if (status === 429 || code === 429 || code === 1030038002) {
+    if (status === 429 || code === 429 || code === PORTAL_ERROR_CODE.REQUEST_TOO_FREQUENT) {
       ElMessage.warning('请求过于频繁，请稍后再试')
       return Promise.reject(error)
     }

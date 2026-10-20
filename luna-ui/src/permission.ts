@@ -10,6 +10,7 @@ import { useUserStoreWithOut } from '@/store/modules/user'
 import { usePermissionStoreWithOut } from '@/store/modules/permission'
 import { parseRouteLocation } from '@/utils/routeParams'
 import { isUnactivatedModuleRoute } from '@/utils/moduleGateway'
+import { handlePortalTokenGuide, isPortalPath, isPortalInvalidPath } from '@/utils/portalAuth'
 
 const { start, done } = useNProgress()
 
@@ -35,19 +36,10 @@ router.beforeEach(async (to, from, next) => {
   loadStart()
 
   // 客户门户免登路由与 token 引导
-  if (to.path.startsWith('/portal')) {
+  if (isPortalPath(to.path)) {
     const queryToken = (to.query.t as string) || null
-    if (queryToken) {
-      sessionStorage.setItem('luna_portal_token', queryToken)
-      if (typeof window !== 'undefined' && window.history?.replaceState) {
-        const url = new URL(window.location.href)
-        url.searchParams.delete('t')
-        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''))
-      }
-    }
-    const token =
-      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('luna_portal_token') : null
-    if (to.path !== '/portal/invalid' && !token) {
+    const { isValid } = handlePortalTokenGuide(queryToken)
+    if (!isPortalInvalidPath(to.path) && !isValid) {
       next({ path: '/portal/invalid', replace: true })
       return
     }

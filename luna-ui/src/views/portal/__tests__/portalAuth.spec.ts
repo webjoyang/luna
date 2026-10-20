@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   PORTAL_TOKEN_STORAGE_KEY,
   PORTAL_CUSTOMER_NAME_KEY,
+  PORTAL_ERROR_CODE,
   getPortalToken,
   setPortalToken,
   clearPortalToken,
@@ -10,7 +11,7 @@ import {
   handlePortalTokenGuide,
   isPortalPath,
   isPortalInvalidPath
-} from '../utils/portalAuth'
+} from '@/utils/portalAuth'
 
 describe('PortalAuth & Token Guide Tests', () => {
   beforeEach(() => {
@@ -83,5 +84,11 @@ describe('PortalAuth & Token Guide Tests', () => {
 
     expect(isPortalInvalidPath('/portal/invalid')).toBe(true)
     expect(isPortalInvalidPath('/portal/shipments')).toBe(false)
+  })
+
+  it('错误码常量镜像对齐后端 1-030-038 段', () => {
+    expect(PORTAL_ERROR_CODE.TOKEN_INVALID).toBe(1030038000)
+    expect(PORTAL_ERROR_CODE.DATA_ACCESS_DENIED).toBe(1030038001)
+    expect(PORTAL_ERROR_CODE.REQUEST_TOO_FREQUENT).toBe(1030038002)
   })
 })
