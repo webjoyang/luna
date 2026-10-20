@@ -82,3 +82,37 @@ export const importCustomer = (file: File) => {
     responseType: 'blob'
   })
 }
+
+// 客户门户令牌 VO
+export interface CustomerPortalTokenVO {
+  exists: boolean
+  url?: string
+  token?: string
+  tokenFingerprint?: string
+  generateTime?: string | Date
+  remainingDays?: number
+}
+
+// 获得客户门户令牌状态
+export const getCustomerPortalToken = (customerId: number) => {
+  return request.get<CustomerPortalTokenVO>({
+    url: '/lunaerp/baseinfo/customer/portal-token',
+    params: { customerId }
+  })
+}
+
+// 生成/重新生成客户门户令牌
+export const generateCustomerPortalToken = (customerId: number) => {
+  return request.post<CustomerPortalTokenVO>({
+    url: '/lunaerp/baseinfo/customer/portal-token/generate',
+    params: { customerId }
+  })
+}
+
+// 吊销客户门户令牌
+export const revokeCustomerPortalToken = (customerId: number) => {
+  return request.delete<boolean>({
+    url: '/lunaerp/baseinfo/customer/portal-token',
+    params: { customerId }
+  })
+}

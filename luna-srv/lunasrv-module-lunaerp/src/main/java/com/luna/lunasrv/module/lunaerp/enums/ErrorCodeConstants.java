@@ -28,8 +28,9 @@ import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
  *                  与 1-030-035-xxx 段（下达生产）
  *                  与 1-030-036-xxx 段（排产与齐套）
  *                  与 1-030-037-xxx 段（销售退货，见 SalesReturnErrorCodeConstants）
+ *                  与 1-030-038-xxx 段（客户门户，见 PortalErrorCodeConstants）
  */
-public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ColorInstructionErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, FinanceErrorCodeConstants, SalesReturnErrorCodeConstants {
+public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ColorInstructionErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, FinanceErrorCodeConstants, SalesReturnErrorCodeConstants, PortalErrorCodeConstants {
 
     // ========== 产品模块 1-030-001-000 ==========
     ErrorCode PRODUCT_NOT_EXISTS = new ErrorCode(1_030_001_000, "产品不存在");

@@ -195,6 +195,9 @@
         </el-form-item>
       </el-col>
     </el-row>
+
+    <CustomerPortalCard v-if="!isCreateMode && customerId" :customer-id="customerId" class="mt-4" />
+
     <div class="form-footer">
       <el-button
         type="primary"
@@ -218,6 +221,7 @@ import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import UserSelect from '@/views/system/user/components/UserSelect.vue'
+import CustomerPortalCard from './CustomerPortalCard.vue'
 import { useUserStore } from '@/store/modules/user'
 
 defineOptions({ name: 'LunaerpElmuiCustomerBasicProfileTab' })

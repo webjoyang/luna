@@ -254,3 +254,33 @@ INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon
 
 COMMIT;
 -- @formatter:on
+
+-- =============================================================================
+-- 7. [2026-10-20] 客户门户权限按钮（system_menu，可重复执行）
+--    10150 承载客户门户令牌签发/吊销管理权限，挂在 10030 客户信息菜单下、type=3 按钮。
+--    避让退货 10141–10149，ADR-0044。
+-- =============================================================================
+-- @formatter:off
+BEGIN;
+
+DELETE FROM system_menu WHERE id = 10150;
+
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
+VALUES (10150, '客户门户', 'lunaerp:baseinfo:customer:portal-token', 3, 14, 10030, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-10-20 00:00:00', '1', '2026-10-20 00:00:00', '0');
+
+COMMIT;
+
+-- 角色权限关联（super_admin / admin 默认授予）
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
+DELETE FROM system_role_menu WHERE menu_id = 10150;
+
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, 10150, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+FROM system_role r
+WHERE r.code IN ('super_admin', 'admin') AND r.deleted = 0;
+-- @formatter:on

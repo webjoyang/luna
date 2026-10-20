@@ -318,6 +318,18 @@ public class ErrorCodeConstantsTest {
     }
 
     @Test
+    void testPortalErrorCodes() {
+        assertEquals(1_030_038_000, PortalErrorCodeConstants.PORTAL_TOKEN_INVALID.getCode());
+        assertEquals("门户令牌无效或已过期", PortalErrorCodeConstants.PORTAL_TOKEN_INVALID.getMsg());
+
+        assertEquals(1_030_038_001, PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED.getCode());
+        assertEquals("门户数据归属不符", PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED.getMsg());
+
+        assertEquals(1_030_038_002, PortalErrorCodeConstants.PORTAL_REQUEST_TOO_FREQUENT.getCode());
+        assertEquals("门户请求过于频繁", PortalErrorCodeConstants.PORTAL_REQUEST_TOO_FREQUENT.getMsg());
+    }
+
+    @Test
     void testSalesReturnErrorCodes() {
         // 销售退货 1-030-037-000 ~ 014
         assertEquals(1_030_037_000, ErrorCodeConstants.SALES_RETURN_NOT_EXISTS.getCode());
