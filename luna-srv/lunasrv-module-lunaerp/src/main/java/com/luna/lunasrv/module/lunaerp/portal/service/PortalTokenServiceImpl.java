@@ -35,7 +35,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.PortalErrorCodeConstants.POR
 @Validated
 public class PortalTokenServiceImpl implements PortalTokenService {
 
-    private static final String PORTAL_BASE_URL_KEY = "luna.portal.base-url";
+    public static final String PORTAL_BASE_URL_KEY = "luna.portal.base-url";
     private static final String TOKEN_MAIN_KEY_PREFIX = "luna_portal:token:";
     private static final String TOKEN_REVERSE_KEY_PREFIX = "luna_portal:token_of:";
     private static final long TOKEN_TTL_DAYS = 30L;

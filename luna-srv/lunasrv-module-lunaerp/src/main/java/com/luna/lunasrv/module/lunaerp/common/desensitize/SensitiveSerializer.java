@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ser.ContextualSerializer;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import com.luna.lunasrv.framework.common.util.spring.SpringUtils;
 import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.module.lunaerp.portal.core.PortalContext;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -77,6 +78,10 @@ public class SensitiveSerializer extends StdSerializer<Object> implements Contex
      */
     private boolean hasPermission(String permission) {
         if (StrUtil.isBlank(permission)) {
+            return true;
+        }
+        // 门户客户免登上下文免权限脱敏（客户对账场景金额对客户自身透明可见）
+        if (PortalContext.getCustomerId() != null) {
             return true;
         }
         try {
