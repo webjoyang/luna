@@ -203,6 +203,16 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_approval_status', label: '已通过', value: 'APPROVED', colorType: 'success', cssClass: '' },
     { dictType: 'lunaerp_approval_status', label: '已驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' },
     { dictType: 'lunaerp_approval_status', label: '已撤回', value: 'CANCELLED', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_expense_category: [
+    { dictType: 'lunaerp_expense_category', label: '差旅费', value: 'TRAVEL', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '办公费', value: 'OFFICE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '运输费', value: 'TRANSPORT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '业务招待费', value: 'ENTERTAIN', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '房租', value: 'RENT', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '水电费', value: 'UTILITY', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '通讯费', value: 'COMM', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '其他', value: 'OTHER', colorType: 'info', cssClass: '' }
   ]
 }
 
@@ -737,5 +747,6 @@ export enum DICT_TYPE {
   LUNAERP_FINANCE_ACCOUNT_NATURE = 'lunaerp_finance_account_nature', // 资金账户性质
   LUNAERP_FINANCE_ACCOUNT_STATUS = 'lunaerp_finance_account_status', // 资金账户状态
   LUNAERP_FINANCE_LEDGER_CATEGORY = 'lunaerp_finance_ledger_category', // 资金流水类别
-  LUNAERP_OTHER_TXN_CATEGORY = 'lunaerp_other_txn_category' // 其他收支类别
+  LUNAERP_OTHER_TXN_CATEGORY = 'lunaerp_other_txn_category', // 其他收支类别
+  LUNAERP_EXPENSE_CATEGORY = 'lunaerp_expense_category' // 费用报销类别（2284）
 }

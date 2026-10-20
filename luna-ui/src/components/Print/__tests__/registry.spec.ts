@@ -184,6 +184,20 @@ describe('Print Template Registry', () => {
     expect(tpl.getDocNo?.({ returnNo: 'RT-20261019-001' })).toBe('RT-20261019-001')
   })
 
+  it('should have EXPENSE_DOC statically registered for EXPENSE', () => {
+    const expenseTemplates = getTemplatesByBizType('EXPENSE')
+    expect(expenseTemplates).toHaveLength(1)
+
+    const tpl = expenseTemplates[0]
+    expect(tpl.templateCode).toBe('EXPENSE_DOC')
+    expect(tpl.name).toBe('员工费用报销单')
+    expect(tpl.paper).toBe('A4')
+    expect(tpl.permission).toBe('lunaerp:finance:expense:print')
+    expect(typeof tpl.fetchApi).toBe('function')
+    expect(typeof tpl.getDocNo).toBe('function')
+    expect(tpl.getDocNo?.({ expenseNo: 'BX20261019001' })).toBe('BX20261019001')
+  })
+
   it('getTemplate should return default or specific template', () => {
     const defaultTpl = getTemplate('WEAVING_TICKET')
     expect(defaultTpl).toBeDefined()

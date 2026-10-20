@@ -19,6 +19,7 @@ import { colorInstructionPrintCss } from '@/views/lunaerp-elmui/production/color
 import { supplierReconPrintCss } from '@/views/lunaerp-elmui/finance/supplier-recon/components/print/print-styles'
 import { customerStatementPrintCss } from '@/views/lunaerp-elmui/finance/customer-reconciliation/components/print/print-styles'
 import { salesReturnPrintCss } from '@/views/lunaerp-elmui/business/sales-return/components/print/print-styles'
+import { expensePrintCss } from '@/views/lunaerp-elmui/finance/expense/components/print/print-styles'
 
 /**
  * 打印模板注册项接口（规范见 W0 spec）
@@ -181,6 +182,22 @@ export const printTemplateRegistry: PrintTemplateReg[] = [
       ),
     customCss: salesReturnPrintCss,
     getDocNo: (data: any) => data?.returnNo || ''
+  },
+  {
+    bizType: 'EXPENSE',
+    templateCode: 'EXPENSE_DOC',
+    name: '员工费用报销单',
+    paper: 'A4',
+    permission: 'lunaerp:finance:expense:print',
+    component: defineAsyncComponent(
+      () => import('@/views/lunaerp-elmui/finance/expense/components/print/ExpensePrintSheet.vue')
+    ),
+    fetchApi: (bizId: string | number) =>
+      import('@/api/lunaerp-elmui/finance/expense').then((m) =>
+        m.getExpensePrintData(Number(bizId))
+      ),
+    customCss: expensePrintCss,
+    getDocNo: (data: any) => data?.expenseNo || ''
   }
 ]
 
