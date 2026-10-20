@@ -40,6 +40,9 @@ _避免_：把 fms 称为财务域的一部分或"一期财务模块"。
 **资金账户 (FinanceAccount / account)**：
 企业资金的存放账户，单租户多个：类型（现金/银行/微信/支付宝，字典 2277）、**账户性质**（公户/私户，字典 2282——私户走账是经营刚需）、账号或标识（现金可空，其余必填）、单币种（建户后不可改）、期初余额、备注；启用/停用，停用后不可登记新分录但历史不变。多租户隔离。物理表归 10 号 spec，管理页（无分录可改期初/可删）与 account_no/account_nature/remark 三列归 12 号 spec（ADR-0043）。
 
+**账户性质 (Account nature)**：
+资金账户的企业资金归属分类，字典 2282（PUBLIC 公户 primary / PRIVATE 私户 warning，缺省 PUBLIC）。私户走账是中小制造企业经营刚需；公私户资金严格隔离，在资金账户列表与流水明细中以标签形式高亮标示，转账支持公私互转，报销与工资发放支持指定私户支出。
+
 **期初余额 (Opening balance)**：
 建账事实，是资金账户主数据（opening_balance），不是一条 OPENING 分录。建户时一次写入；仅在该账户**无任何业务分录**时可修改，之后只读（错误码 020_104）。
 
@@ -101,6 +104,9 @@ _避免_：台账重建、recalculate、第二本流水表。
 **工资单 (Payroll / payroll)**：
 一期工资初稿（Q14-b）：**一租户一个自然月（period=YYYY-MM）一张有效单**（部分唯一索引），手工增删员工（全员可选不按岗位）。每个员工挂多条**工资款项行**：收入项（字典 2285：基本/计件/提成/奖金/补贴/其他，计件支持数量×单价）与扣款项（字典 2286）；应发/扣款/实发服务端重算，实发不可为负。走 02 号审批链（强制单据 payroll，五态）。**两步制**：APPROVED 的 Handler 为空（审批通过 ≠ 已发），出纳做**工资发放登记**才过账。**不含考勤算薪、社保个税、工资结构表、员工银行账户、工资条**（二期随 HR）。
 
+**工资款项行 (Payroll line item)**：
+工资单中归属于单个员工的明细收支行。分为两类：收入项（字典 2285：BASIC 基本工资 / PIECE 计件工资 / COMMISSION 提成 / BONUS 奖金 / SUBSIDY 补贴 / OTHER 其它，计件支持数量 × 单价输入并联动折算金额）与扣款项（字典 2286：DEFECT 次品扣款 / OTHER 其它扣款）。款项金额必须 > 0，服务端根据明细行重算员工与单头 earning_total、deduction_total 与 net_amount，并守卫实发金额 net_amount ≥ 0。
+
 **次品引用 (Defect reference)**：
 工资次品扣款项下**每卷一条**的引用子表（confirmation_id/确认单号/卷号/等级/确认日/扣款单价快照），可逐卷追溯到质检确认记录——替代老系统 otherDeduction 单一标量挂不上明细的缺陷。取数口径=区间版 payroll-summary：confirmed_at 落在工资月内 + CONFIRMED + OPERATOR（REVOKED 天然排除），导入时填统一单价（仅本次使用不存配置）。防重靠**引用指纹**：已被有效工资单（非 CANCELLED）引用的确认记录不再入候选，工资单作废/草稿删除即释放；**只读质检表，不回写、不引入 payrollSyncedAt 列**（守 inspection-confirmation MVP 决议）。
 
@@ -112,6 +118,9 @@ _避免_：台账重建、recalculate、第二本流水表。
 
 **收支总览 (Finance overview)**：
 菜单 10715 的只读汇总页（12 号新增）：资金视角按账户/期间列期初/本期流入/本期流出/期末并按类别钻取流水；并列**经营毛利参考**卡片（管理口径，非法定报表）：收入=区间内发货日口径应收分录净额（AR_INC−AR_INC_REVERSAL，直接查分录账，不复制发货白名单），成本=确认日落区间的供应商已确认对账单 total_amount；永久标注"管理参考、期间错配、非法定报表"。
+
+**经营毛利参考 (Operating gross margin reference)**：
+收支总览页（10715）并列展示的经营管理卡片（管理口径，非法定报表）：计算公式为 经营毛利 = 期间收入净额 − 期间对账成本。其中收入取区间内发货日口径已审核应收分录净额（AR_INC − AR_INC_REVERSAL，直接查分录账，不复制发货白名单），成本取确认日落区间的供应商已确认对账单 total_amount；永久显式标注"管理参考、期间错配、非法定报表"，无 AR 数据或无对账数据时平稳降级呈现 0。
 
 **发票申请 (InvoiceApplication / invoice)**：
 开票的业务申请与登记，申请与法定凭证分离建模；**不对接金税盘/电子发票平台**（10 号定稿）。多选发货单为开票来源（同客户同币种），支持部分开票，守卫"同一发货单累计开票（含在途）≤ 发货单金额+运费"；抬头四要素自客户档案快照（税号=统一社会信用代码快照）；单头单税率（字典），不含税额/税额按税率服务端反算；状态机 **DRAFT → SUBMITTED → ISSUED / REJECTED**（登记回填数电票 20 位发票号即财务复核点，不接审批引擎）；**开票与收款核销完全解耦**（不冲应收、不进账龄）。
@@ -133,7 +142,7 @@ _避免_：台账重建、recalculate、第二本流水表。
 
 错误码段位总表与取段规则见 `docs/contexts/shared/GLOSSARY.md`。本域预留 **`1-030-020` ~ `1-030-029`**，逐段分配见上方"模块清单"表与 ADR-0037 决策 5。各段具体错误码（000/001/…）随 spec 落地后回填本节。
 
-- `1-030-020`（域公共，分录账/资金账户/汇率主档，10/12 号回填）：000 `LEDGER_IMMUTABLE` / 100 `ACCOUNT_NOT_EXISTS` / 101 `ACCOUNT_DISABLED` / 102 `ACCOUNT_NAME_DUPLICATE` / 103 `ACCOUNT_HAS_ENTRIES` / 104 `ACCOUNT_OPENING_BALANCE_IMMUTABLE` / 105 账号必填 / 106 币种不一致 / 107 转出转入相同 / 108 转账单不存在 / 109 其他收支单不存在 / 110 类别与方向不符 / 200 `EXCHANGE_RATE_NOT_FOUND` / 201 `EXCHANGE_RATE_DUPLICATE` / 202 `EXCHANGE_RATE_BASE_CURRENCY_NOT_ALLOWED`
+- `1-030-020`（域公共，分录账/资金账户/汇率主档，10/12 号回填）：000 `LEDGER_IMMUTABLE` / 100 `ACCOUNT_NOT_EXISTS` / 101 `ACCOUNT_DISABLED` / 102 `ACCOUNT_NAME_DUPLICATE` / 103 `ACCOUNT_HAS_ENTRIES` / 104 `ACCOUNT_OPENING_BALANCE_IMMUTABLE` / 105 账号必填 / 106 币种不一致 / 107 转出转入相同 / 108 转账单不存在 / 109 其他收支单不存在 / 110 类别与方向不符 / 111 转账单号耗尽 / 112 其他收支单号耗尽 / 200 `EXCHANGE_RATE_NOT_FOUND` / 201 `EXCHANGE_RATE_DUPLICATE` / 202 `EXCHANGE_RATE_BASE_CURRENCY_NOT_ALLOWED`
 - `1-030-021`（customerrecon，10 号已回填）：000 `STATEMENT_NOT_EXISTS` 对账单不存在 / 001 `STATEMENT_STATUS_NOT_ALLOWED` 当前状态不允许该操作 / 002 `STATEMENT_NO_ENTRIES` 对账区间内无可对账分录 / 003 `STATEMENT_ENTRY_ALREADY_OCCUPIED` 分录已被占用 / 004 `STATEMENT_CANNOT_VOID_CONFIRMED` 已确认对账单不可作废 / 005 `STATEMENT_MULTI_CURRENCY_NOT_ALLOWED` 不允许跨币种分单 / 006 `STATEMENT_CUSTOMER_MISMATCH` 客户不一致 / 007 `STATEMENT_PERIOD_INVALID` 对账区间不合法 / 008 `STATEMENT_NO_EXHAUSTED` 对账单编号序号耗尽
 - `1-030-022`（supplierrecon，11 号已回填）：000 `SUPPLIER_RECON_NOT_EXISTS` 对账单不存在 / 001 `SUPPLIER_RECON_STATUS_NOT_ALLOWED` 当前状态不允许该操作 / 002 `SUPPLIER_RECON_SUPPLIER_NOT_EXISTS` 供应商不存在 / 003 `SUPPLIER_RECON_NO_SOURCE_ITEMS` 对账区间内无可对账明细 / 004 `SUPPLIER_RECON_SOURCE_REFERENCED` 源明细已被对账单【{}】引用 / 005 `SUPPLIER_RECON_ADJUST_LINE_INVALID` 调整项行不合法：金额为 0 或缺备注 / 006 `SUPPLIER_RECON_HAS_PAYMENT_APPLY` 对账单存在付款申请，禁止作废 / 007 `SUPPLIER_RECON_APPLY_AMOUNT_EXCEED` 累计申请金额【{}】超出对账确认金额
 - `1-030-023`（payment 共享段，OUT 侧 000–010 由 11 号先占，IN 侧 100–107 由 10 号回填）：000 `PAYMENT_APPLY_NOT_EXISTS` / 001 `PAYMENT_APPLY_STATUS_NOT_ALLOWED` / 002 `PAYMENT_APPLY_RECON_NOT_CONFIRMED` / 003 `PAYMENT_ALLOCATE_EXCEED` / 004 `PAYMENT_ACCOUNT_BALANCE_NOT_ENOUGH` / 005 `PAYMENT_PREPAY_BALANCE_NOT_ENOUGH` / 006 `PAYMENT_ACCOUNT_NOT_AVAILABLE` / 007 `PAYMENT_AMOUNT_INVALID` / 008 `PAYMENT_APPLY_NO_EXHAUSTED` / 009 `PAYMENT_NOT_EXISTS` / 010 `PAYMENT_NO_EXHAUSTED`；IN 侧：100 `RECEIPT_NOT_EXISTS` / 101 `RECEIPT_STATUS_NOT_ALLOWED` / 102 `RECEIPT_CUSTOMER_MISMATCH` / 103 `RECEIPT_CURRENCY_MISMATCH` / 104 `RECEIPT_ALLOCATE_EXCEED` / 105 `RECEIPT_POSTING_CONFLICT` / 106 `RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH` / 107 `RECEIPT_REVERSAL_NOT_ALLOWED`
@@ -156,6 +165,8 @@ _避免_：台账重建、recalculate、第二本流水表。
 | `1_030_020_108` | `TRANSFER_NOT_EXISTS` | 转账单不存在 | 账户间转账 (100–199) |
 | `1_030_020_109` | `OTHER_TXN_NOT_EXISTS` | 其他收支单不存在 | 其他收支 (100–199) |
 | `1_030_020_110` | `OTHER_TXN_CATEGORY_DIRECTION_MISMATCH` | 收支类别与方向不一致 | 其他收支 (100–199) |
+| `1_030_020_111` | `TRANSFER_NO_EXHAUSTED` | 转账单号生成重试耗尽 | 账户间转账 (100–199) |
+| `1_030_020_112` | `OTHER_TXN_NO_EXHAUSTED` | 其他收支单号生成重试耗尽 | 其他收支 (100–199) |
 | `1_030_020_200` | `EXCHANGE_RATE_NOT_FOUND` | 未找到币种【{}】在日期【{}】的有效汇率 | 汇率主档 (200–299) |
 | `1_030_020_201` | `EXCHANGE_RATE_DUPLICATE` | 币种【{}】在日期【{}】的汇率已存在 | 汇率主档 (200–299) |
 | `1_030_020_202` | `EXCHANGE_RATE_BASE_CURRENCY_NOT_ALLOWED` | 本位币无需配置汇率 | 汇率主档 (200–299) |

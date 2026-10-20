@@ -108,6 +108,11 @@ public class FinanceErrorCodeConstantsTest {
         assertEquals(1_030_020_110, FinanceErrorCodeConstants.OTHER_TXN_CATEGORY_DIRECTION_MISMATCH.getCode());
         assertEquals("收支类别与方向不一致", FinanceErrorCodeConstants.OTHER_TXN_CATEGORY_DIRECTION_MISMATCH.getMsg());
 
+        assertEquals(1_030_020_111, FinanceErrorCodeConstants.TRANSFER_NO_EXHAUSTED.getCode());
+        assertEquals("转账单号生成重试耗尽", FinanceErrorCodeConstants.TRANSFER_NO_EXHAUSTED.getMsg());
+        assertEquals(1_030_020_112, FinanceErrorCodeConstants.OTHER_TXN_NO_EXHAUSTED.getCode());
+        assertEquals("其他收支单号生成重试耗尽", FinanceErrorCodeConstants.OTHER_TXN_NO_EXHAUSTED.getMsg());
+
         assertEquals(1_030_020_200, FinanceErrorCodeConstants.EXCHANGE_RATE_NOT_FOUND.getCode());
         assertEquals(1_030_020_201, FinanceErrorCodeConstants.EXCHANGE_RATE_NO_DUPLICATE.getCode());
         assertEquals(1_030_020_202, FinanceErrorCodeConstants.EXCHANGE_RATE_BASE_CURRENCY_FORBIDDEN.getCode());
