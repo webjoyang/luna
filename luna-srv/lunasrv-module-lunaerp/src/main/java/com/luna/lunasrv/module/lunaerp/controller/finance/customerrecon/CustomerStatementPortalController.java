@@ -7,6 +7,7 @@ import com.luna.lunasrv.module.lunaerp.controller.finance.customerrecon.vo.*;
 import com.luna.lunasrv.module.lunaerp.service.finance.customerrecon.CustomerStatementService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import jakarta.annotation.security.PermitAll;
@@ -30,7 +31,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeCons
  */
 @Tag(name = "客户门户 - 客户对账单")
 @RestController
-@RequestMapping("/portal/finance/statement")
+@RequestMapping("/app-api/lunaerp/portal/finance/statement")
 @Validated
 @PermitAll
 public class CustomerStatementPortalController {
@@ -40,23 +41,40 @@ public class CustomerStatementPortalController {
 
     @GetMapping("/list")
     @Operation(summary = "获得客户对账单列表（仅 SENT/CONFIRMED 状态）")
-    @Parameter(name = "customerId", description = "客户ID", required = true, example = "1001")
+    @Parameter(name = "customerId", description = "客户ID（内部代客场景传参，门户免登由 PortalContext 注入）", required = false, example = "1001")
     public CommonResult<List<CustomerStatementRespVO>> getCustomerStatementList(
-            @RequestParam("customerId") Long customerId) {
+            @RequestParam(value = "customerId", required = false) Long customerId) {
         return success(customerStatementService.getPortalCustomerStatementList(customerId));
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "获得客户对账单详情（含全部明细行）")
     @Parameter(name = "id", description = "对账单ID", required = true, example = "1024")
-    @Parameter(name = "customerId", description = "客户ID", required = true, example = "1001")
+    @Parameter(name = "customerId", description = "客户ID（内部代客场景传参，门户免登由 PortalContext 注入）", required = false, example = "1001")
     public CommonResult<CustomerStatementDetailRespVO> getCustomerStatement(
             @PathVariable("id") Long id,
-            @RequestParam("customerId") Long customerId) {
+            @RequestParam(value = "customerId", required = false) Long customerId) {
         if (id == null) {
             throw exception(STATEMENT_NOT_EXISTS);
         }
         return success(customerStatementService.getPortalCustomerStatement(id, customerId));
+    }
+
+    @GetMapping("/get")
+    @Operation(summary = "获得客户对账单详情（支持按 id 或 no 查询）")
+    @Parameters({
+            @Parameter(name = "id", description = "对账单ID", example = "1024"),
+            @Parameter(name = "no", description = "对账单号（二维码冻结契约）", example = "CS-20260927-001"),
+            @Parameter(name = "statementNo", description = "对账单号别名", example = "CS-20260927-001"),
+            @Parameter(name = "customerId", description = "客户ID", example = "1001")
+    })
+    public CommonResult<CustomerStatementDetailRespVO> getCustomerStatementByParam(
+            @RequestParam(value = "id", required = false) Long id,
+            @RequestParam(value = "no", required = false) String no,
+            @RequestParam(value = "statementNo", required = false) String statementNo,
+            @RequestParam(value = "customerId", required = false) Long customerId) {
+        String finalNo = StrUtil.isNotBlank(no) ? no.trim() : (StrUtil.isNotBlank(statementNo) ? statementNo.trim() : null);
+        return success(customerStatementService.getPortalCustomerStatement(id, finalNo, customerId));
     }
 
     @PutMapping("/confirm")

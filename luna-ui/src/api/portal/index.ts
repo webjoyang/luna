@@ -82,6 +82,57 @@ export interface PortalStatementRespVO {
   rejectReason?: string
 }
 
+export interface PortalStatementItemRespVO {
+  id: number
+  statementId: number
+  lineNo: number
+  sourceType?: string
+  bizNo?: string
+  bizDate?: string
+  summary?: string
+  currency?: string
+  debitAmount?: number
+  creditAmount?: number
+  balanceAmount?: number
+  remark?: string
+  isReversed?: boolean
+}
+
+export interface PortalStatementDetailRespVO {
+  id: number
+  statementNo: string
+  statementDate: string
+  customerId: number
+  customerName?: string
+  periodStart?: string
+  periodEnd?: string
+  currency?: string
+  openingBalance?: number
+  periodDebit?: number
+  periodCredit?: number
+  closingBalance?: number
+  status: string
+  confirmType?: string
+  confirmByName?: string
+  confirmTime?: string
+  confirmIp?: string
+  rejectReason?: string
+  remark?: string
+  creator?: string
+  createTime?: string
+  items?: PortalStatementItemRespVO[]
+}
+
+export interface PortalStatementConfirmReqVO {
+  id: number
+  confirmByName: string
+}
+
+export interface PortalStatementRejectReqVO {
+  id: number
+  rejectReason: string
+}
+
 /**
  * 获得客户门户发货单分页
  */
@@ -118,5 +169,35 @@ export const signPortalShipment = (data: PortalShipmentSignReqVO) => {
 export const getPortalStatementList = () => {
   return portalRequest.get<PortalStatementRespVO[]>({
     url: '/lunaerp/portal/finance/statement/list'
+  })
+}
+
+/**
+ * 获得客户门户对账单详情（支持按 id 或 no 查询）
+ */
+export const getPortalStatement = (params: { id?: number; no?: string; statementNo?: string }) => {
+  return portalRequest.get<PortalStatementDetailRespVO>({
+    url: '/lunaerp/portal/finance/statement/get',
+    params
+  })
+}
+
+/**
+ * 客户门户对账单在线确认（SENT -> CONFIRMED）
+ */
+export const confirmPortalStatement = (data: PortalStatementConfirmReqVO) => {
+  return portalRequest.put<boolean>({
+    url: '/lunaerp/portal/finance/statement/confirm',
+    data
+  })
+}
+
+/**
+ * 客户门户对账单在线驳回（SENT -> REJECTED）
+ */
+export const rejectPortalStatement = (data: PortalStatementRejectReqVO) => {
+  return portalRequest.put<boolean>({
+    url: '/lunaerp/portal/finance/statement/reject',
+    data
   })
 }

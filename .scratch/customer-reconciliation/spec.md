@@ -173,7 +173,7 @@ payment_ref 的 ref_type 扩值：OUT=PAY_APPLY（11 号，一期唯一）；IN=
 | account | `/account` page/get/create（opening_balance 仅此可写）/update（仅备注/状态）；无删除（有分录引用） |
 | ledger | `/ledger/page`、`/ledger/customer-balance`（party 维度只读视图查询，含汇率差异列） |
 
-**门户契约（14 号接页面，Q9）**：`/portal/finance/statement/` — `GET /list`（仅 SENT/CONFIRMED）、`GET /{id}`（含全部行）、`PUT /confirm`（SENT→CONFIRMED，记录 confirm_by_name/time/ip）、`PUT /reject`（必填 reject_reason）。客户身份 14 号 token 注入；本票实现按显式 customerId 并完成隔离专测（A 客户不可见/不可操作 B 客户单、不可遍历 id），14 号接入时仅替换身份来源。
+**门户契约（14 号接页面，Q9）**：`/portal/finance/statement/`（完整路径映射为 `/app-api/lunaerp/portal/finance/statement/*`，模块内相对前缀不变，契约语义零变更）— `GET /list`（仅 SENT/CONFIRMED）、`GET /{id}`（含全部行）、`PUT /confirm`（SENT→CONFIRMED，记录 confirm_by_name/time/ip）、`PUT /reject`（必填 reject_reason）。客户身份由 14 号 PortalContext 令牌注入（保留 customerId 参数路径做内部代客场景）；完成隔离专测（A 客户不可见/不可操作 B 客户单、不可遍历 id，均报 038-001）。
 
 ### 审批集成（02 号契约）
 
@@ -299,7 +299,7 @@ payment_ref 的 ref_type 扩值：OUT=PAY_APPLY（11 号，一期唯一）；IN=
 
 - **13 号销售退货**：审批通过 handler 同事务调 `LedgerService.recordArReturnReversal(customerId, shipmentItemId, returnQty, origAmount, currency, 原发货汇率快照, returnOrderId)` → category=AR_RETURN_REVERSAL、按原发货入账汇率折本位额、自动参与下期对账单贷方与 FIFO 消耗；13 号不得自建应收台账/余额表（其票已加 Blocked by 10）。
 - **12 号资金/报销/工资**：消费 ledger_entry/account/exchange_rate/category 字典 2274；account 扩外币双余额与账面加权汇率、exchange_rate 扩 MONTH_END、报销/工资发放写分录+资金流水视图；不另建第二本账。
-- **14 号客户门户**：`/portal/finance/statement/` 4 端点 + 二维码 URL `/portal/statement?no=` 已冻结；门户对账确认页仅接前端。
+- **14 号客户门户**：`/portal/finance/statement/` 4 端点（映射 `/app-api/lunaerp/portal/finance/statement/*`）+ 二维码 URL `/portal/statement?no=` 已冻结；门户对账确认页仅接前端。
 
 ### 参考
 

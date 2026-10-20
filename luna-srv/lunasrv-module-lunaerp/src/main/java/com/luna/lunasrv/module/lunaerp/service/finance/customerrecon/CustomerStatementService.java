@@ -128,6 +128,16 @@ public interface CustomerStatementService {
     CustomerStatementDetailRespVO getPortalCustomerStatement(Long id, Long customerId);
 
     /**
+     * 客户门户：查询客户对账单详情（支持按 ID 或对账单号查询，含全表明细行，严格校验客户归属）
+     *
+     * @param id 对账单ID（可选）
+     * @param statementNo 对账单号（可选）
+     * @param customerId 客户ID（可选，优先使用 PortalContext）
+     * @return 对账单详情
+     */
+    CustomerStatementDetailRespVO getPortalCustomerStatement(Long id, String statementNo, Long customerId);
+
+    /**
      * 客户门户：在线确认对账单（SENT -> CONFIRMED，落库 confirm_type=ONLINE_PORTAL、确认人、时间、IP）
      *
      * @param reqVO 在线确认参数

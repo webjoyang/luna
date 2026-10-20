@@ -39,7 +39,7 @@ public class CustomerStatementPortalControllerTest {
     private CustomerStatementPortalController controller;
 
     @Test
-    @DisplayName("规约审查：控制器必须标注 @PermitAll 免登录注解，且映射 /portal/finance/statement 路由")
+    @DisplayName("规约审查：控制器必须标注 @PermitAll 免登录注解，且映射单一标准路径 /app-api/lunaerp/portal/finance/statement")
     void testControllerClassAnnotations() {
         PermitAll permitAll = CustomerStatementPortalController.class.getAnnotation(PermitAll.class);
         assertNotNull(permitAll, "CustomerStatementPortalController 必须标注 @PermitAll 免密访问");
@@ -47,7 +47,8 @@ public class CustomerStatementPortalControllerTest {
         RequestMapping requestMapping = CustomerStatementPortalController.class.getAnnotation(RequestMapping.class);
         assertNotNull(requestMapping, "必须标注 @RequestMapping");
         String[] values = requestMapping.value();
-        assertTrue(ArrayUtil.contains(values, "/portal/finance/statement"), "必须支持 /portal/finance/statement 前缀");
+        assertEquals(1, values.length, "必须映射单一标准路径");
+        assertEquals("/app-api/lunaerp/portal/finance/statement", values[0], "必须映射标准路径 /app-api/lunaerp/portal/finance/statement");
     }
 
     @Test
@@ -83,6 +84,21 @@ public class CustomerStatementPortalControllerTest {
         ServiceException ex = assertThrows(ServiceException.class, () ->
                 controller.getCustomerStatement(null, 1001L));
         assertEquals(FinanceErrorCodeConstants.STATEMENT_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("GET /get 接口：通过 RequestParam 支持按 id 或 no 查询并委托 Service")
+    void testGetCustomerStatementByParam() {
+        CustomerStatementDetailRespVO detailVO = new CustomerStatementDetailRespVO();
+        detailVO.setId(100L);
+        detailVO.setStatementNo("CS20260001");
+        detailVO.setCustomerId(1001L);
+        when(customerStatementService.getPortalCustomerStatement(100L, "CS20260001", 1001L)).thenReturn(detailVO);
+
+        CommonResult<CustomerStatementDetailRespVO> res = controller.getCustomerStatementByParam(100L, "CS20260001", null, 1001L);
+        assertTrue(res.isSuccess());
+        assertEquals("CS20260001", res.getData().getStatementNo());
+        verify(customerStatementService).getPortalCustomerStatement(100L, "CS20260001", 1001L);
     }
 
     @Test

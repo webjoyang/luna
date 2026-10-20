@@ -40,7 +40,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import com.luna.lunasrv.module.lunaerp.portal.core.PortalContext;
+
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static com.luna.lunasrv.module.lunaerp.enums.PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED;
 import static com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants.*;
 
 /**
@@ -778,7 +781,13 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
 
     @Override
     public List<CustomerStatementRespVO> getPortalCustomerStatementList(Long customerId) {
-        if (customerId == null) {
+        Long portalCustomerId = PortalContext.getCustomerId();
+        if (portalCustomerId != null) {
+            if (customerId != null && !Objects.equals(customerId, portalCustomerId)) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            customerId = portalCustomerId;
+        } else if (customerId == null) {
             throw exception(STATEMENT_CUSTOMER_MISMATCH);
         }
         LambdaQueryWrapperX<CustomerStatementDO> query = new LambdaQueryWrapperX<CustomerStatementDO>()
@@ -793,18 +802,59 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
 
     @Override
     public CustomerStatementDetailRespVO getPortalCustomerStatement(Long id, Long customerId) {
-        if (id == null) {
+        return getPortalCustomerStatement(id, null, customerId);
+    }
+
+    @Override
+    public CustomerStatementDetailRespVO getPortalCustomerStatement(Long id, String statementNo, Long customerId) {
+        Long portalCustomerId = PortalContext.getCustomerId();
+        if (portalCustomerId != null) {
+            if (customerId != null && !Objects.equals(customerId, portalCustomerId)) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            customerId = portalCustomerId;
+        } else if (customerId == null) {
+            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        }
+
+        if (id == null && StrUtil.isBlank(statementNo)) {
+            if (portalCustomerId != null) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
             throw exception(STATEMENT_NOT_EXISTS);
         }
-        if (customerId == null) {
-            throw exception(STATEMENT_CUSTOMER_MISMATCH);
-        }
-        CustomerStatementDO statement = customerStatementMapper.selectById(id);
-        validateStatementExistsAndTenant(statement);
 
-        // 隔离校验：单据所属客户与请求客户必须一致
-        if (!Objects.equals(statement.getCustomerId(), customerId)) {
-            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        CustomerStatementDO statement;
+        if (id != null) {
+            statement = customerStatementMapper.selectById(id);
+        } else {
+            statement = customerStatementMapper.selectOne(new LambdaQueryWrapperX<CustomerStatementDO>()
+                    .eq(CustomerStatementDO::getStatementNo, statementNo.trim()));
+        }
+
+        if (portalCustomerId != null) {
+            if (statement == null) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            Long currentTenantId = TenantContextHolder.getTenantId();
+            if (currentTenantId != null && statement.getTenantId() != null
+                    && !Objects.equals(currentTenantId, statement.getTenantId())) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            // 隔离校验：单据所属客户与请求客户必须一致
+            if (!Objects.equals(statement.getCustomerId(), portalCustomerId)) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            if (id != null && StrUtil.isNotBlank(statementNo)
+                    && !StrUtil.equals(statement.getStatementNo(), statementNo.trim())) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+        } else {
+            validateStatementExistsAndTenant(statement);
+            // 隔离校验：单据所属客户与请求客户必须一致
+            if (!Objects.equals(statement.getCustomerId(), customerId)) {
+                throw exception(STATEMENT_CUSTOMER_MISMATCH);
+            }
         }
 
         // 门户权限守卫：草稿态或已作废单据不可在门户中查阅
@@ -815,7 +865,7 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
 
         List<CustomerStatementItemDO> items = customerStatementItemMapper.selectList(
                 new LambdaQueryWrapperX<CustomerStatementItemDO>()
-                        .eq(CustomerStatementItemDO::getStatementId, id)
+                        .eq(CustomerStatementItemDO::getStatementId, statement.getId())
                         .orderByAsc(CustomerStatementItemDO::getLineNo)
                         .orderByAsc(CustomerStatementItemDO::getId));
 
@@ -834,9 +884,18 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
     @LogRecord(type = "FINANCE_STATEMENT", subType = "PORTAL_CONFIRM", bizNo = "{{#reqVO.id}}", success = "门户在线确认客户对账单【{{#reqVO.id}}】成功")
     public void confirmPortalCustomerStatement(CustomerStatementPortalConfirmReqVO reqVO) {
         if (reqVO == null || reqVO.getId() == null) {
+            if (PortalContext.getCustomerId() != null) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
             throw exception(STATEMENT_NOT_EXISTS);
         }
-        if (reqVO.getCustomerId() == null) {
+        Long portalCustomerId = PortalContext.getCustomerId();
+        if (portalCustomerId != null) {
+            if (reqVO.getCustomerId() != null && !Objects.equals(reqVO.getCustomerId(), portalCustomerId)) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            reqVO.setCustomerId(portalCustomerId);
+        } else if (reqVO.getCustomerId() == null) {
             throw exception(STATEMENT_CUSTOMER_MISMATCH);
         }
         if (StrUtil.isBlank(reqVO.getConfirmByName())) {
@@ -844,11 +903,25 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         }
 
         CustomerStatementDO statement = customerStatementMapper.selectById(reqVO.getId());
-        validateStatementExistsAndTenant(statement);
-
-        // 隔离校验：单据归属客户与请求客户严格一致
-        if (!Objects.equals(statement.getCustomerId(), reqVO.getCustomerId())) {
-            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        if (portalCustomerId != null) {
+            if (statement == null) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            Long currentTenantId = TenantContextHolder.getTenantId();
+            if (currentTenantId != null && statement.getTenantId() != null
+                    && !Objects.equals(currentTenantId, statement.getTenantId())) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            // 隔离校验：单据归属客户与请求客户严格一致
+            if (!Objects.equals(statement.getCustomerId(), portalCustomerId)) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+        } else {
+            validateStatementExistsAndTenant(statement);
+            // 隔离校验：单据归属客户与请求客户严格一致
+            if (!Objects.equals(statement.getCustomerId(), reqVO.getCustomerId())) {
+                throw exception(STATEMENT_CUSTOMER_MISMATCH);
+            }
         }
 
         // 状态守卫：仅 SENT 状态允许确认
@@ -879,9 +952,18 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
     @LogRecord(type = "FINANCE_STATEMENT", subType = "PORTAL_REJECT", bizNo = "{{#reqVO.id}}", success = "门户驳回客户对账单【{{#reqVO.id}}】成功")
     public void rejectPortalCustomerStatement(CustomerStatementPortalRejectReqVO reqVO) {
         if (reqVO == null || reqVO.getId() == null) {
+            if (PortalContext.getCustomerId() != null) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
             throw exception(STATEMENT_NOT_EXISTS);
         }
-        if (reqVO.getCustomerId() == null) {
+        Long portalCustomerId = PortalContext.getCustomerId();
+        if (portalCustomerId != null) {
+            if (reqVO.getCustomerId() != null && !Objects.equals(reqVO.getCustomerId(), portalCustomerId)) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            reqVO.setCustomerId(portalCustomerId);
+        } else if (reqVO.getCustomerId() == null) {
             throw exception(STATEMENT_CUSTOMER_MISMATCH);
         }
         if (StrUtil.isBlank(reqVO.getRejectReason())) {
@@ -889,11 +971,25 @@ public class CustomerStatementServiceImpl implements CustomerStatementService {
         }
 
         CustomerStatementDO statement = customerStatementMapper.selectById(reqVO.getId());
-        validateStatementExistsAndTenant(statement);
-
-        // 隔离校验：单据归属客户与请求客户严格一致
-        if (!Objects.equals(statement.getCustomerId(), reqVO.getCustomerId())) {
-            throw exception(STATEMENT_CUSTOMER_MISMATCH);
+        if (portalCustomerId != null) {
+            if (statement == null) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            Long currentTenantId = TenantContextHolder.getTenantId();
+            if (currentTenantId != null && statement.getTenantId() != null
+                    && !Objects.equals(currentTenantId, statement.getTenantId())) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+            // 隔离校验：单据归属客户与请求客户严格一致
+            if (!Objects.equals(statement.getCustomerId(), portalCustomerId)) {
+                throw exception(PORTAL_DATA_ACCESS_DENIED);
+            }
+        } else {
+            validateStatementExistsAndTenant(statement);
+            // 隔离校验：单据归属客户与请求客户严格一致
+            if (!Objects.equals(statement.getCustomerId(), reqVO.getCustomerId())) {
+                throw exception(STATEMENT_CUSTOMER_MISMATCH);
+            }
         }
 
         // 状态守卫：仅 SENT 状态允许驳回

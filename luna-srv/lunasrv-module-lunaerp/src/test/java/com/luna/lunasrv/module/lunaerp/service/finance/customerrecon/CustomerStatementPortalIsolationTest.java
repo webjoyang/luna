@@ -30,10 +30,12 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static com.luna.lunasrv.module.lunaerp.enums.PortalErrorCodeConstants.PORTAL_DATA_ACCESS_DENIED;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.portal.core.PortalContext;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,6 +87,7 @@ public class CustomerStatementPortalIsolationTest {
 
     @AfterEach
     void tearDown() {
+        PortalContext.clear();
         if (tenantContextMock != null) {
             tenantContextMock.close();
         }
@@ -351,6 +354,169 @@ public class CustomerStatementPortalIsolationTest {
         assertEquals(CustomerStatementStatus.CONFIRMED.getValue(), behalfCaptor.getValue().getStatus());
         assertEquals(CustomerStatementConfirmType.ON_BEHALF.getValue(), behalfCaptor.getValue().getConfirmType());
         assertEquals("微信", behalfCaptor.getValue().getConfirmMethod());
+    }
+
+    // ==================== Issue 05: PortalContext 身份注入与 038-001 隔离专测 ====================
+
+    @Test
+    @DisplayName("PortalContext 隔离专测 - 详情查询跨客户越权拦截：A 客户 Token 访问 B 客户单据报 038-001")
+    void testPortalGet_portalContext_crossCustomerMismatchThrows038001() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+        CustomerStatementDO stmtB = createStatementDO(20L, CUSTOMER_B_ID, "CS20260020", CustomerStatementStatus.SENT.getValue());
+        stmtB.setTenantId(1L);
+        when(customerStatementMapper.selectById(20L)).thenReturn(stmtB);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                customerStatementService.getPortalCustomerStatement(20L, null));
+        assertEquals(PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("PortalContext 隔离专测 - 详情查询跨租户越权拦截：当前租户 Token 访问其他租户单据报 038-001")
+    void testPortalGet_portalContext_crossTenantMismatchThrows038001() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+        CustomerStatementDO stmtOtherTenant = createStatementDO(30L, CUSTOMER_A_ID, "CS20260030", CustomerStatementStatus.SENT.getValue());
+        stmtOtherTenant.setTenantId(2L);
+        when(customerStatementMapper.selectById(30L)).thenReturn(stmtOtherTenant);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                customerStatementService.getPortalCustomerStatement(30L, null));
+        assertEquals(PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("PortalContext 隔离专测 - 详情查询不存在/遍历拦截：单据不存在报 038-001")
+    void testPortalGet_portalContext_notFoundThrows038001() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+        when(customerStatementMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                customerStatementService.getPortalCustomerStatement(999L, null));
+        assertEquals(PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("PortalContext 成功路径 - 按单号 ?no= 查询自身对账单详情成功")
+    void testPortalGet_portalContext_byNo_success() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+        CustomerStatementDO stmtA = createStatementDO(10L, CUSTOMER_A_ID, "CS20260010", CustomerStatementStatus.SENT.getValue());
+        stmtA.setTenantId(1L);
+        when(customerStatementMapper.selectOne(any())).thenReturn(stmtA);
+
+        CustomerStatementItemDO item = new CustomerStatementItemDO();
+        item.setId(101L);
+        item.setStatementId(10L);
+        item.setLineNo(1);
+        item.setDebitAmount(BigDecimal.valueOf(100));
+        item.setCreditAmount(BigDecimal.ZERO);
+        when(customerStatementItemMapper.selectList(any())).thenReturn(List.of(item));
+
+        CustomerStatementDetailRespVO detail = customerStatementService.getPortalCustomerStatement(null, "CS20260010", null);
+        assertNotNull(detail);
+        assertEquals("CS20260010", detail.getStatementNo());
+        assertEquals(1, detail.getItems().size());
+    }
+
+    @Test
+    @DisplayName("PortalContext 隔离专测 - 在线确认跨客户越权拦截：A 客户 Token 确认 B 客户单据报 038-001")
+    void testPortalConfirm_portalContext_crossCustomerMismatchThrows038001() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+        CustomerStatementDO stmtB = createStatementDO(20L, CUSTOMER_B_ID, "CS20260020", CustomerStatementStatus.SENT.getValue());
+        stmtB.setTenantId(1L);
+        when(customerStatementMapper.selectById(20L)).thenReturn(stmtB);
+
+        CustomerStatementPortalConfirmReqVO reqVO = new CustomerStatementPortalConfirmReqVO();
+        reqVO.setId(20L);
+        reqVO.setConfirmByName("张主管");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                customerStatementService.confirmPortalCustomerStatement(reqVO));
+        assertEquals(PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("PortalContext 隔离专测 - 在线确认跨租户越权拦截：单据属于其他租户报 038-001")
+    void testPortalConfirm_portalContext_crossTenantMismatchThrows038001() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+        CustomerStatementDO stmtOther = createStatementDO(30L, CUSTOMER_A_ID, "CS20260030", CustomerStatementStatus.SENT.getValue());
+        stmtOther.setTenantId(2L);
+        when(customerStatementMapper.selectById(30L)).thenReturn(stmtOther);
+
+        CustomerStatementPortalConfirmReqVO reqVO = new CustomerStatementPortalConfirmReqVO();
+        reqVO.setId(30L);
+        reqVO.setConfirmByName("张主管");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                customerStatementService.confirmPortalCustomerStatement(reqVO));
+        assertEquals(PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("PortalContext 成功路径 - 在线确认成功并自动注入 PortalContext customerId 与客户端IP")
+    void testPortalConfirm_portalContext_success() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+        CustomerStatementDO stmtA = createStatementDO(10L, CUSTOMER_A_ID, "CS20260010", CustomerStatementStatus.SENT.getValue());
+        stmtA.setTenantId(1L);
+        when(customerStatementMapper.selectById(10L)).thenReturn(stmtA);
+        when(customerStatementMapper.update(any(CustomerStatementDO.class), any())).thenReturn(1);
+
+        CustomerStatementPortalConfirmReqVO reqVO = new CustomerStatementPortalConfirmReqVO();
+        reqVO.setId(10L);
+        reqVO.setConfirmByName("客户财务张总");
+        reqVO.setConfirmIp("192.168.1.100");
+
+        customerStatementService.confirmPortalCustomerStatement(reqVO);
+
+        ArgumentCaptor<CustomerStatementDO> captor = ArgumentCaptor.forClass(CustomerStatementDO.class);
+        verify(customerStatementMapper).update(captor.capture(), any());
+        assertEquals(CustomerStatementStatus.CONFIRMED.getValue(), captor.getValue().getStatus());
+        assertEquals(CustomerStatementConfirmType.ONLINE_PORTAL.getValue(), captor.getValue().getConfirmType());
+        assertEquals("客户财务张总", captor.getValue().getConfirmByName());
+        assertEquals("192.168.1.100", captor.getValue().getConfirmIp());
+    }
+
+    @Test
+    @DisplayName("PortalContext 隔离专测 - 驳回跨客户越权拦截：A 客户 Token 驳回 B 客户单据报 038-001")
+    void testPortalReject_portalContext_crossCustomerMismatchThrows038001() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+        CustomerStatementDO stmtB = createStatementDO(20L, CUSTOMER_B_ID, "CS20260020", CustomerStatementStatus.SENT.getValue());
+        stmtB.setTenantId(1L);
+        when(customerStatementMapper.selectById(20L)).thenReturn(stmtB);
+
+        CustomerStatementPortalRejectReqVO reqVO = new CustomerStatementPortalRejectReqVO();
+        reqVO.setId(20L);
+        reqVO.setRejectReason("金额与我司账面不符");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                customerStatementService.rejectPortalCustomerStatement(reqVO));
+        assertEquals(PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("PortalContext 隔离专测 - 驳回跨租户越权拦截：单据属于其他租户报 038-001")
+    void testPortalReject_portalContext_crossTenantMismatchThrows038001() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+        CustomerStatementDO stmtOther = createStatementDO(30L, CUSTOMER_A_ID, "CS20260030", CustomerStatementStatus.SENT.getValue());
+        stmtOther.setTenantId(2L);
+        when(customerStatementMapper.selectById(30L)).thenReturn(stmtOther);
+
+        CustomerStatementPortalRejectReqVO reqVO = new CustomerStatementPortalRejectReqVO();
+        reqVO.setId(30L);
+        reqVO.setRejectReason("金额有异议");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                customerStatementService.rejectPortalCustomerStatement(reqVO));
+        assertEquals(PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("PortalContext 隔离专测 - 列表参数冲突拦截：Token 与显式 customerId 不一致报 038-001")
+    void testPortalList_portalContext_crossCustomerParamMismatchThrows038001() {
+        PortalContext.set(1L, CUSTOMER_A_ID, "客户A");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                customerStatementService.getPortalCustomerStatementList(CUSTOMER_B_ID));
+        assertEquals(PORTAL_DATA_ACCESS_DENIED.getCode(), ex.getCode());
     }
 
     private CustomerStatementDO createStatementDO(Long id, Long customerId, String statementNo, String status) {

@@ -13,8 +13,7 @@ public class CustomerStatementPortalRejectReqVO {
     @NotNull(message = "对账单ID不能为空")
     private Long id;
 
-    @Schema(description = "客户ID（租户与客户隔离校验）", requiredMode = Schema.RequiredMode.REQUIRED, example = "2001")
-    @NotNull(message = "客户ID不能为空")
+    @Schema(description = "客户ID（租户与客户隔离校验，代客场景必填，门户免登由 Token 注入）", requiredMode = Schema.RequiredMode.NOT_REQUIRED, example = "2001")
     private Long customerId;
 
     @Schema(description = "驳回/异议原因（必填）", requiredMode = Schema.RequiredMode.REQUIRED, example = "第2行数量与实际到货不符")
