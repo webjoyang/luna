@@ -4,12 +4,12 @@
 
 **Blocked by:** 01（错误码已落）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] ALTER `lunaerp_production_weaving_ticket` ADD COLUMN IF NOT EXISTS `exception_photos` jsonb
-- [ ] COMMENT ON COLUMN `lunaerp_production_weaving_ticket.exception_photos` IS '异常现场照片 URL JSON 数组（车间 H5 异常登记上传，≤6 张，infra 文件服务）'
-- [ ] `WeavingTicketDO` 加 `List<String> exceptionPhotos`，使用 MyBatis JacksonTypeHandler（同 `samplePhotos` 先例，typeHandler 配置一致）
-- [ ] `WeavingTicketExceptionReqVO` 加 `private List<String> exceptionPhotos`（可空，H5 端点组装后传给同一 service）
-- [ ] `WeavingTicketRespVO` 输出 `exceptionPhotos` 字段供 PC 只读展示（不提供 PC 上传入口）
-- [ ] 语义文档：照片挂在当前异常事实上（与 exceptionType/exceptionNote 同生共死），再次异常登记覆盖；正常开工/完工不带照片
-- [ ] 脚本幂等可重复执行
+- [x] ALTER `lunaerp_production_weaving_ticket` ADD COLUMN IF NOT EXISTS `exception_photos` jsonb
+- [x] COMMENT ON COLUMN `lunaerp_production_weaving_ticket.exception_photos` IS '异常现场照片 URL JSON 数组（车间 H5 异常登记上传，≤6 张，infra 文件服务）'
+- [x] `WeavingTicketDO` 加 `List<String> exceptionPhotos`，使用 MyBatis JacksonTypeHandler（同 `samplePhotos` 先例，typeHandler 配置一致）
+- [x] `WeavingTicketExceptionReqVO` 加 `private List<String> exceptionPhotos`（可空，H5 端点组装后传给同一 service）
+- [x] `WeavingTicketRespVO` 输出 `exceptionPhotos` 字段供 PC 只读展示（不提供 PC 上传入口）
+- [x] 语义文档：照片挂在当前异常事实上（与 exceptionType/exceptionNote 同生共死），再次异常登记覆盖；正常开工/完工不带照片
+- [x] 脚本幂等可重复执行
