@@ -4,25 +4,25 @@
 
 **Blocked by:** 12（报工三动作完成）, 16（成品 ROLL 录检完成）, 19（领纱弱网幂等完善完成）, 08（拍照/弱网组件就位）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] 织造单工作台布票 Tab：异常票展示 `exceptionPhotos` 缩略图，点击查看大图
-- [ ] 检验单工作台 ItemsTab：录检行展示 `photos` 缩略图，点击查看大图
-- [ ] PC 不提供照片上传入口（一期照片仅现场产生）
-- [ ] 不新增任何 PC 菜单项
-- [ ] 五终端 × 四流程冒烟全绿（报工/胚布质检/成品质检/领纱发纱）
-  - [ ] Android Chrome HTTPS
-  - [ ] 企业微信 WebView HTTPS
-  - [ ] 钉钉 WebView HTTPS
-  - [ ] iPhone Safari HTTPS
-  - [ ] 安卓 PDA（头扫键盘楔入）/ PC+USB 扫码枪 HTTP 局域网（HTTP 环境只验收楔入路径）
-- [ ] 性能：my-tasks/我的领纱单 EXPLAIN 验证走 worker 索引+EXISTS 半连接，万级任务量 P95<1s
-- [ ] 必要时补 `machine_task(worker_user_id,status)` 索引
-- [ ] `@LogRecord` 留痕核对：开工/完工/异常/录检/发纱五动作均落 system_operate_log
-- [ ] 统一 DoD 对照清单全部勾选（spec §统一 DoD 对照）
-- [ ] 跨票契约核对：
-  - [ ] 04 通用件冻结 URL `/h5/scan/weaving-ticket?code=` 消费零回改
-  - [ ] 14 客户门户 ADR-0044 互引（同模式异凭证）
-  - [ ] 11 weaving-execution 布票/领纱 service 零签名破坏式改动（异常 VO、明细 VO 仅加可空字段）
-  - [ ] inspection-order vatNo 条件校验 PC 同步生效
-- [ ] GLOSSARY/错误码/ADR-0045 收尾核对
+- [x] 织造单工作台布票 Tab：异常票展示 `exceptionPhotos` 缩略图，点击查看大图
+- [x] 检验单工作台 ItemsTab：录检行展示 `photos` 缩略图，点击查看大图
+- [x] PC 不提供照片上传入口（一期照片仅现场产生）
+- [x] 不新增任何 PC 菜单项
+- [x] 五终端 × 四流程冒烟全绿（报工/胚布质检/成品质检/领纱发纱）
+  - [x] Android Chrome HTTPS
+  - [x] 企业微信 WebView HTTPS
+  - [x] 钉钉 WebView HTTPS
+  - [x] iPhone Safari HTTPS
+  - [x] 安卓 PDA（头扫键盘楔入）/ PC+USB 扫码枪 HTTP 局域网（HTTP 环境只验收楔入路径）
+- [x] 性能：my-tasks/我的领纱单 EXPLAIN 验证走 worker 索引+EXISTS 半连接，万级任务量 P95<1s
+- [x] 必要时补 `machine_task(worker_user_id,status)` 索引
+- [x] `@LogRecord` 留痕核对：开工/完工/异常/录检/发纱五动作均落 system_operate_log
+- [x] 统一 DoD 对照清单全部勾选（spec §统一 DoD 对照）
+- [x] 跨票契约核对：
+  - [x] 04 通用件冻结 URL `/h5/scan/weaving-ticket?code=` 消费零回改
+  - [x] 14 客户门户 ADR-0044 互引（同模式异凭证）
+  - [x] 11 weaving-execution 布票/领纱 service 零签名破坏式改动（异常 VO、明细 VO 仅加可空字段）
+  - [x] inspection-order vatNo 条件校验 PC 同步生效
+- [x] GLOSSARY/错误码/ADR-0045 收尾核对
