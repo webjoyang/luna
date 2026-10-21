@@ -201,6 +201,27 @@
           <span v-else>-</span>
         </template>
       </el-table-column>
+      <el-table-column label="异常照片" width="100" align="center">
+        <template #default="{ row }">
+          <div
+            v-if="row.exceptionPhotos && row.exceptionPhotos.length > 0"
+            class="flex items-center justify-center gap-1"
+          >
+            <el-image
+              :src="row.exceptionPhotos[0]"
+              class="w-36px h-36px rounded border border-gray-200 cursor-pointer object-cover"
+              fit="cover"
+              preview-teleported
+              :preview-src-list="row.exceptionPhotos"
+              @click.stop
+            />
+            <span v-if="row.exceptionPhotos.length > 1" class="text-xs text-gray-500 font-mono">
+              +{{ row.exceptionPhotos.length }}
+            </span>
+          </div>
+          <span v-else class="text-gray-300">—</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="startedAt" label="开工时间" width="150" align="center">
         <template #default="{ row }">
           <span class="text-12px">{{ formatDateTime(row.startedAt) }}</span>
@@ -421,6 +442,24 @@
         </el-form-item>
         <el-form-item label="异常说明" prop="exceptionNote">
           <el-input v-model="exceptionForm.exceptionNote" type="textarea" :rows="3" placeholder="请输入异常详细情况" />
+        </el-form-item>
+        <el-form-item
+          v-if="!isBatchMode && currentOperatingTicket?.exceptionPhotos && currentOperatingTicket.exceptionPhotos.length > 0"
+          label="现场照片"
+        >
+          <div class="flex items-center gap-2 flex-wrap">
+            <el-image
+              v-for="(url, idx) in currentOperatingTicket.exceptionPhotos"
+              :key="idx"
+              :src="url"
+              class="w-54px h-54px rounded border border-gray-200 cursor-pointer object-cover"
+              fit="cover"
+              preview-teleported
+              :preview-src-list="currentOperatingTicket.exceptionPhotos"
+              :initial-index="idx"
+            />
+          </div>
+          <div class="text-xs text-gray-400 mt-1">（现场 H5 报工上传，PC 仅供只读查看）</div>
         </el-form-item>
       </el-form>
       <template #footer>
