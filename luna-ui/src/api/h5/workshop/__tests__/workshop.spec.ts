@@ -21,7 +21,12 @@ import {
   getInspectionPage,
   getInspection,
   ticketScan,
-  saveInspectionItem
+  saveInspectionItem,
+  getRequisitionPage,
+  getRequisition,
+  getWarehouseSimpleList,
+  getYarnBalance,
+  H5_YARN_REQUISITION_NOT_OWNED
 } from '../index'
 
 describe('Workshop H5 API', () => {
@@ -352,5 +357,93 @@ describe('Workshop H5 API', () => {
       data: payload
     })
     expect(result).toBe(601)
+  })
+
+  it('getRequisitionPage should call request.get with correct url and params', async () => {
+    const mockResponse = {
+      list: [
+        {
+          id: 101,
+          code: 'YS-001',
+          weavingOrderId: 201,
+          weavingOrderCode: 'ZZ-001',
+          status: 'ACTIVE',
+          createTime: '2026-10-21 10:00:00'
+        }
+      ],
+      total: 1
+    }
+    vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
+
+    const params = { pageNo: 1, pageSize: 10, status: 'ACTIVE,PARTIAL' }
+    const result = await getRequisitionPage(params)
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/requisition/page',
+      params
+    })
+    expect(result).toEqual(mockResponse)
+  })
+
+  it('getRequisition should call request.get with correct url and id', async () => {
+    const mockResponse = {
+      id: 101,
+      code: 'YS-001',
+      weavingOrderId: 201,
+      weavingOrderCode: 'ZZ-001',
+      status: 'ACTIVE',
+      defaultWarehouseId: 1,
+      items: [
+        {
+          id: 1001,
+          requisitionId: 101,
+          yarnSpecId: 10,
+          yarnSpecName: '40S全棉',
+          requiredQty: 100,
+          dispatchedQty: 30,
+          unit: 'KG'
+        }
+      ]
+    }
+    vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
+
+    const result = await getRequisition(101)
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/requisition/get',
+      params: { id: 101 }
+    })
+    expect(result).toEqual(mockResponse)
+  })
+
+  it('getWarehouseSimpleList should call request.get with correct url', async () => {
+    const mockResponse = [
+      { id: 1, name: '原料仓' },
+      { id: 2, name: '备用仓' }
+    ]
+    vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
+
+    const result = await getWarehouseSimpleList()
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/warehouse/simple-list'
+    })
+    expect(result).toEqual(mockResponse)
+  })
+
+  it('getYarnBalance should call request.get with warehouseId and yarnSpecId', async () => {
+    vi.mocked(request.get).mockResolvedValueOnce(250.5)
+
+    const result = await getYarnBalance(1, 10)
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/yarn-balance',
+      params: { warehouseId: 1, yarnSpecId: 10 }
+    })
+    expect(result).toBe(250.5)
+  })
+
+  it('H5_YARN_REQUISITION_NOT_OWNED constant should match error code 1030039006', () => {
+    expect(H5_YARN_REQUISITION_NOT_OWNED).toBe(1030039006)
   })
 })

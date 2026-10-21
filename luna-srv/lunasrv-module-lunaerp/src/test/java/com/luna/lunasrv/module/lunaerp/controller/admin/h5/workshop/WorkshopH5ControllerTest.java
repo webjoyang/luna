@@ -5,6 +5,10 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopWarehouseSimpleRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
@@ -24,6 +28,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 
 import java.math.BigDecimal;
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -291,6 +296,128 @@ class WorkshopH5ControllerTest {
         PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
         assertNotNull(preAuthorize, "saveInspectionItem 必须标注 @PreAuthorize");
         assertEquals("@ss.hasPermission('lunaerp:workshop:h5:inspection')", preAuthorize.value());
+    }
+
+    @Test
+    @DisplayName("requisition/page: 委托 Service 并返回分页数据")
+    void testGetRequisitionPage_success() {
+        WorkshopRequisitionPageReqVO reqVO = new WorkshopRequisitionPageReqVO();
+        reqVO.setStatus("ACTIVE");
+        PageResult<WorkshopRequisitionRespVO> pageResult = new PageResult<>(
+                List.of(WorkshopRequisitionRespVO.builder().id(101L).code("YS-001").status("ACTIVE").build()),
+                1L
+        );
+        when(workshopH5Service.getRequisitionPage(reqVO)).thenReturn(pageResult);
+
+        CommonResult<PageResult<WorkshopRequisitionRespVO>> result = workshopH5Controller.getRequisitionPage(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertEquals(1, result.getData().getList().size());
+        assertEquals("YS-001", result.getData().getList().get(0).getCode());
+        verify(workshopH5Service).getRequisitionPage(reqVO);
+    }
+
+    @Test
+    @DisplayName("requisition/page: 校验端点注解与权限表达式")
+    void testGetRequisitionPage_annotations() throws NoSuchMethodException {
+        Method method = WorkshopH5Controller.class.getMethod("getRequisitionPage", WorkshopRequisitionPageReqVO.class);
+        GetMapping getMapping = method.getAnnotation(GetMapping.class);
+        assertNotNull(getMapping, "getRequisitionPage 必须标注 @GetMapping");
+        assertArrayEquals(new String[]{"/requisition/page"}, getMapping.value());
+
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "getRequisitionPage 必须标注 @PreAuthorize");
+        assertEquals("@ss.hasPermission('lunaerp:workshop:h5:dispatch')", preAuthorize.value());
+    }
+
+    @Test
+    @DisplayName("requisition/get: 委托 Service 并返回详情")
+    void testGetRequisition_success() {
+        Long id = 101L;
+        WorkshopRequisitionDetailRespVO detailVO = WorkshopRequisitionDetailRespVO.builder()
+                .id(id)
+                .code("YS-001")
+                .status("ACTIVE")
+                .defaultWarehouseId(1L)
+                .build();
+        when(workshopH5Service.getRequisition(id)).thenReturn(detailVO);
+
+        CommonResult<WorkshopRequisitionDetailRespVO> result = workshopH5Controller.getRequisition(id);
+
+        assertTrue(result.isSuccess());
+        assertEquals(101L, result.getData().getId());
+        assertEquals("YS-001", result.getData().getCode());
+        verify(workshopH5Service).getRequisition(id);
+    }
+
+    @Test
+    @DisplayName("requisition/get: 校验端点注解与权限表达式")
+    void testGetRequisition_annotations() throws NoSuchMethodException {
+        Method method = WorkshopH5Controller.class.getMethod("getRequisition", Long.class);
+        GetMapping getMapping = method.getAnnotation(GetMapping.class);
+        assertNotNull(getMapping, "getRequisition 必须标注 @GetMapping");
+        assertArrayEquals(new String[]{"/requisition/get"}, getMapping.value());
+
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "getRequisition 必须标注 @PreAuthorize");
+        assertEquals("@ss.hasPermission('lunaerp:workshop:h5:dispatch')", preAuthorize.value());
+    }
+
+    @Test
+    @DisplayName("warehouse/simple-list: 委托 Service 并返回仓库简表")
+    void testGetWarehouseSimpleList_success() {
+        List<WorkshopWarehouseSimpleRespVO> list = List.of(
+                WorkshopWarehouseSimpleRespVO.builder().id(1L).name("原料仓").build()
+        );
+        when(workshopH5Service.getWarehouseSimpleList()).thenReturn(list);
+
+        CommonResult<List<WorkshopWarehouseSimpleRespVO>> result = workshopH5Controller.getWarehouseSimpleList();
+
+        assertTrue(result.isSuccess());
+        assertEquals(1, result.getData().size());
+        assertEquals("原料仓", result.getData().get(0).getName());
+        verify(workshopH5Service).getWarehouseSimpleList();
+    }
+
+    @Test
+    @DisplayName("warehouse/simple-list: 校验端点注解与权限表达式")
+    void testGetWarehouseSimpleList_annotations() throws NoSuchMethodException {
+        Method method = WorkshopH5Controller.class.getMethod("getWarehouseSimpleList");
+        GetMapping getMapping = method.getAnnotation(GetMapping.class);
+        assertNotNull(getMapping, "getWarehouseSimpleList 必须标注 @GetMapping");
+        assertArrayEquals(new String[]{"/warehouse/simple-list"}, getMapping.value());
+
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "getWarehouseSimpleList 必须标注 @PreAuthorize");
+        assertEquals("@ss.hasPermission('lunaerp:workshop:h5:dispatch')", preAuthorize.value());
+    }
+
+    @Test
+    @DisplayName("yarn-balance: 委托 Service 并返回纱线余额")
+    void testGetYarnBalance_success() {
+        Long warehouseId = 1L;
+        Long yarnSpecId = 10L;
+        BigDecimal balance = new BigDecimal("500.00");
+        when(workshopH5Service.getYarnBalance(warehouseId, yarnSpecId)).thenReturn(balance);
+
+        CommonResult<BigDecimal> result = workshopH5Controller.getYarnBalance(warehouseId, yarnSpecId);
+
+        assertTrue(result.isSuccess());
+        assertEquals(balance, result.getData());
+        verify(workshopH5Service).getYarnBalance(warehouseId, yarnSpecId);
+    }
+
+    @Test
+    @DisplayName("yarn-balance: 校验端点注解与权限表达式")
+    void testGetYarnBalance_annotations() throws NoSuchMethodException {
+        Method method = WorkshopH5Controller.class.getMethod("getYarnBalance", Long.class, Long.class);
+        GetMapping getMapping = method.getAnnotation(GetMapping.class);
+        assertNotNull(getMapping, "getYarnBalance 必须标注 @GetMapping");
+        assertArrayEquals(new String[]{"/yarn-balance"}, getMapping.value());
+
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "getYarnBalance 必须标注 @PreAuthorize");
+        assertEquals("@ss.hasPermission('lunaerp:workshop:h5:dispatch')", preAuthorize.value());
     }
 
 }

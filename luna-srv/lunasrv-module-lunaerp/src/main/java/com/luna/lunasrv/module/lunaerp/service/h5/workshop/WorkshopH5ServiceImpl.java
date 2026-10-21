@@ -21,6 +21,20 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionItemRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopWarehouseSimpleRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.stock.warehouse.vo.WarehouseRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.YarnRequisitionDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.requisition.item.YarnRequisitionItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.requisition.YarnRequisitionMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.requisition.item.YarnRequisitionItemMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.requisition.item.YarnRequisitionItemService;
+import com.luna.lunasrv.module.lunaerp.service.stock.warehouse.WarehouseService;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
+import java.math.BigDecimal;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.item.vo.InspectionOrderItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.item.InspectionOrderItemService;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
@@ -37,6 +51,7 @@ import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketCompleteReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketExceptionReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.WeavingOrderDO;
@@ -75,6 +90,9 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
 
     private static final List<String> DEFAULT_ACTIVE_STATUSES = List.of("PENDING", "IN_PROGRESS", "HALTED");
     private static final List<String> DEFAULT_INSPECTION_STATUSES = List.of("DRAFT", "ACTIVE");
+    private static final List<String> DEFAULT_REQUISITION_STATUSES = List.of("ACTIVE", "PARTIAL");
+    private static final Set<String> ALLOWED_REQUISITION_STATUSES = Set.of("ACTIVE", "PARTIAL");
+    private static final String DEFAULT_WAREHOUSE_CONFIG_KEY = "luna.workshop.default-warehouse-id";
 
     @Resource
     private MachineTaskMapper machineTaskMapper;
@@ -105,6 +123,21 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
 
     @Resource
     private GreigeOrderColorMapper greigeOrderColorMapper;
+
+    @Resource
+    private YarnRequisitionMapper yarnRequisitionMapper;
+
+    @Resource
+    private YarnRequisitionItemMapper yarnRequisitionItemMapper;
+
+    @Resource
+    private WarehouseService warehouseService;
+
+    @Resource
+    private YarnRequisitionItemService yarnRequisitionItemService;
+
+    @Resource
+    private ConfigApi configApi;
 
     @Override
     public PageResult<WorkshopMyTaskRespVO> getMyTasksPage(WorkshopMyTasksPageReqVO reqVO) {
@@ -868,6 +901,160 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
         saveReqVO.setProductCode(productCode);
         saveReqVO.setProductName(productName);
         saveReqVO.setColorName(colorName);
+    }
+
+    @Override
+    public PageResult<WorkshopRequisitionRespVO> getRequisitionPage(WorkshopRequisitionPageReqVO reqVO) {
+        // 1. 强制登录人校验
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 解析状态过滤条件（默认 ACTIVE, PARTIAL；DISPATCHED/CLOSED/DRAFT 不列）
+        List<String> statuses;
+        if (StrUtil.isNotBlank(reqVO.getStatus())) {
+            statuses = Arrays.stream(reqVO.getStatus().split(","))
+                    .map(String::trim)
+                    .filter(ALLOWED_REQUISITION_STATUSES::contains)
+                    .collect(Collectors.toList());
+            if (statuses.isEmpty()) {
+                statuses = DEFAULT_REQUISITION_STATUSES;
+            }
+        } else {
+            statuses = DEFAULT_REQUISITION_STATUSES;
+        }
+
+        // 3. 领纱单→织造单→机台任务 EXISTS worker_user_id=登录人 去重分页查询
+        LambdaQueryWrapper<YarnRequisitionDO> query = new LambdaQueryWrapper<YarnRequisitionDO>()
+                .in(YarnRequisitionDO::getStatus, statuses)
+                .exists("SELECT 1 FROM lunaerp_production_machine_task t WHERE t.weaving_order_id = lunaerp_production_yarn_requisition.weaving_order_id AND t.worker_user_id = {0} AND t.deleted = 0", loginUserId)
+                .orderByDesc(YarnRequisitionDO::getId);
+        PageResult<YarnRequisitionDO> pageResult = yarnRequisitionMapper.selectPage(reqVO, query);
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+
+        // 4. 批量加载织造单号快照（防 N+1，coding-standards.md §2 batch* 规范）
+        Set<Long> orderIds = pageResult.getList().stream()
+                .map(YarnRequisitionDO::getWeavingOrderId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, WeavingOrderDO> orderMap = batchLoadWeavingOrders(orderIds);
+
+        // 5. 组装 H5 精简 VO
+        List<WorkshopRequisitionRespVO> voList = pageResult.getList().stream().map(req -> {
+            WeavingOrderDO order = orderMap.get(req.getWeavingOrderId());
+            return WorkshopRequisitionRespVO.builder()
+                    .id(req.getId())
+                    .code(req.getCode())
+                    .weavingOrderId(req.getWeavingOrderId())
+                    .weavingOrderCode(order != null ? order.getCode() : null)
+                    .status(req.getStatus())
+                    .remark(req.getRemark())
+                    .createTime(req.getCreateTime())
+                    .build();
+        }).collect(Collectors.toList());
+
+        return new PageResult<>(voList, pageResult.getTotal());
+    }
+
+    @Override
+    public WorkshopRequisitionDetailRespVO getRequisition(Long id) {
+        // 1. 强制登录校验
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 校验单据存在性（租户隔离自动生效，跨租户构造 id 查无）
+        if (id == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.YARN_REQUISITION_NOT_EXISTS);
+        }
+        YarnRequisitionDO req = yarnRequisitionMapper.selectById(id);
+        if (req == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.YARN_REQUISITION_NOT_EXISTS);
+        }
+
+        // 3. 归属校验：机台任务必须存在 worker_user_id = 登录人，不符抛 039-006
+        Long taskCount = machineTaskMapper.selectCount(new LambdaQueryWrapperX<MachineTaskDO>()
+                .eq(MachineTaskDO::getWeavingOrderId, req.getWeavingOrderId())
+                .eq(MachineTaskDO::getWorkerUserId, loginUserId));
+        if (taskCount == null || taskCount == 0) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_YARN_REQUISITION_NOT_OWNED);
+        }
+
+        // 4. 查询织造单快照
+        WeavingOrderDO order = req.getWeavingOrderId() != null ? weavingOrderMapper.selectById(req.getWeavingOrderId()) : null;
+
+        // 5. 查询领纱明细行列表
+        LambdaQueryWrapperX<YarnRequisitionItemDO> itemQuery = new LambdaQueryWrapperX<YarnRequisitionItemDO>()
+                .eq(YarnRequisitionItemDO::getRequisitionId, id);
+        itemQuery.orderByAsc(YarnRequisitionItemDO::getId);
+        List<YarnRequisitionItemDO> items = yarnRequisitionItemMapper.selectList(itemQuery);
+        List<WorkshopRequisitionItemRespVO> itemVOList = items != null ? items.stream().map(it -> WorkshopRequisitionItemRespVO.builder()
+                .id(it.getId())
+                .requisitionId(it.getRequisitionId())
+                .yarnTypeId(it.getYarnTypeId())
+                .yarnSpecId(it.getYarnSpecId())
+                .yarnSpecName(it.getYarnSpecName())
+                .requiredQty(it.getRequiredQty())
+                .dispatchedQty(it.getDispatchedQty())
+                .unit(it.getUnit())
+                .remark(it.getRemark())
+                .build()).collect(Collectors.toList()) : Collections.emptyList();
+
+        // 6. 解析默认仓库：取 luna.workshop.default-warehouse-id（存在且启用才预选）
+        Long defaultWarehouseId = null;
+        if (configApi != null) {
+            String configVal = configApi.getConfigValueByKey(DEFAULT_WAREHOUSE_CONFIG_KEY);
+            if (StrUtil.isNotBlank(configVal)) {
+                try {
+                    Long whId = Long.valueOf(configVal.trim());
+                    WarehouseRespVO wh = warehouseService.getWarehouse(whId);
+                    if (wh != null && "ACTIVE".equals(wh.getStatus())) {
+                        defaultWarehouseId = whId;
+                    }
+                } catch (Exception ignored) {
+                    // 未配置或已停用时不预选，不阻断详情接口
+                }
+            }
+        }
+
+        return WorkshopRequisitionDetailRespVO.builder()
+                .id(req.getId())
+                .code(req.getCode())
+                .weavingOrderId(req.getWeavingOrderId())
+                .weavingOrderCode(order != null ? order.getCode() : null)
+                .status(req.getStatus())
+                .remark(req.getRemark())
+                .createTime(req.getCreateTime())
+                .defaultWarehouseId(defaultWarehouseId)
+                .items(itemVOList)
+                .build();
+    }
+
+    @Override
+    public List<WorkshopWarehouseSimpleRespVO> getWarehouseSimpleList() {
+        List<WarehouseRespVO> list = warehouseService.getWarehouseListAll("ACTIVE");
+        if (CollUtil.isEmpty(list)) {
+            return Collections.emptyList();
+        }
+        return list.stream()
+                .map(w -> WorkshopWarehouseSimpleRespVO.builder()
+                        .id(w.getId())
+                        .name(w.getName())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public BigDecimal getYarnBalance(Long warehouseId, Long yarnSpecId) {
+        if (warehouseId == null || yarnSpecId == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal balance = yarnRequisitionItemService.getYarnBalance(warehouseId, yarnSpecId);
+        return balance != null ? balance : BigDecimal.ZERO;
     }
 
 }

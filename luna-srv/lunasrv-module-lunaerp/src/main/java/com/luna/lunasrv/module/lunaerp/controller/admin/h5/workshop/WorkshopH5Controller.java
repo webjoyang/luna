@@ -14,6 +14,12 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopWarehouseSimpleRespVO;
+import java.math.BigDecimal;
+import java.util.List;
 import com.luna.lunasrv.module.lunaerp.service.h5.workshop.WorkshopH5Service;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -116,6 +122,38 @@ public class WorkshopH5Controller {
     @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:inspection')")
     public CommonResult<Long> saveInspectionItem(@Valid @RequestBody WorkshopInspectionItemSaveReqVO reqVO) {
         return success(workshopH5Service.saveInspectionItem(reqVO));
+    }
+
+    @GetMapping("/requisition/page")
+    @Operation(summary = "查询我的待领纱单列表（分页）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:dispatch')")
+    public CommonResult<PageResult<WorkshopRequisitionRespVO>> getRequisitionPage(@Valid WorkshopRequisitionPageReqVO reqVO) {
+        return success(workshopH5Service.getRequisitionPage(reqVO));
+    }
+
+    @GetMapping("/requisition/get")
+    @Operation(summary = "查询领纱单详情（含明细及默认仓库）")
+    @Parameter(name = "id", description = "领纱单ID", required = true, example = "101")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:dispatch')")
+    public CommonResult<WorkshopRequisitionDetailRespVO> getRequisition(@RequestParam("id") Long id) {
+        return success(workshopH5Service.getRequisition(id));
+    }
+
+    @GetMapping("/warehouse/simple-list")
+    @Operation(summary = "获取启用中仓库列表（H5精简）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:dispatch')")
+    public CommonResult<List<WorkshopWarehouseSimpleRespVO>> getWarehouseSimpleList() {
+        return success(workshopH5Service.getWarehouseSimpleList());
+    }
+
+    @GetMapping("/yarn-balance")
+    @Operation(summary = "查询指定仓库下某纱线规格的可用库存余额")
+    @Parameter(name = "warehouseId", description = "仓库ID", required = true, example = "1")
+    @Parameter(name = "yarnSpecId", description = "纱线规格ID", required = true, example = "10")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:dispatch')")
+    public CommonResult<BigDecimal> getYarnBalance(@RequestParam("warehouseId") Long warehouseId,
+                                                   @RequestParam("yarnSpecId") Long yarnSpecId) {
+        return success(workshopH5Service.getYarnBalance(warehouseId, yarnSpecId));
     }
 
 }

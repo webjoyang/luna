@@ -13,6 +13,12 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopWarehouseSimpleRespVO;
+import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 车间移动 H5 接入层编排服务
@@ -90,5 +96,37 @@ public interface WorkshopH5Service {
      * @return 录检明细ID
      */
     Long saveInspectionItem(WorkshopInspectionItemSaveReqVO reqVO);
+
+    /**
+     * 查询我的待领纱单列表（分页）
+     *
+     * @param reqVO 分页查询条件
+     * @return 领纱单分页
+     */
+    PageResult<WorkshopRequisitionRespVO> getRequisitionPage(WorkshopRequisitionPageReqVO reqVO);
+
+    /**
+     * 查询领纱单详情（含明细及默认仓库）
+     *
+     * @param id 领纱单ID
+     * @return 领纱单详情
+     */
+    WorkshopRequisitionDetailRespVO getRequisition(Long id);
+
+    /**
+     * 获取启用中仓库精简列表（供移动端手选仓库）
+     *
+     * @return 仓库精简列表
+     */
+    List<WorkshopWarehouseSimpleRespVO> getWarehouseSimpleList();
+
+    /**
+     * 查询指定仓库下某纱线规格的可用库存余额
+     *
+     * @param warehouseId 仓库ID
+     * @param yarnSpecId  纱线规格ID
+     * @return 库存余额
+     */
+    BigDecimal getYarnBalance(Long warehouseId, Long yarnSpecId);
 
 }

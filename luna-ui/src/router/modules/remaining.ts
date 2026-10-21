@@ -1131,6 +1131,16 @@ const remainingRouter: AppRouteRecordRaw[] = [
     }
   },
   {
+    path: '/h5/requisition/detail',
+    component: () => import('@/views/h5/requisition/detail.vue'),
+    name: 'H5RequisitionDetail',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '移动发纱详情'
+    }
+  },
+  {
     path: '/h5/demo',
     component: () => import('@/views/h5/demo/index.vue'),
     name: 'H5Demo',

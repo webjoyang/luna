@@ -349,3 +349,107 @@ export const saveInspectionItem = (data: WorkshopInspectionItemSaveReqVO) => {
     data
   })
 }
+
+/**
+ * 车间移动 H5 - 待领纱单精简出参 VO
+ */
+export interface WorkshopRequisitionVO {
+  id: number
+  code: string
+  weavingOrderId: number
+  weavingOrderCode?: string
+  status: 'ACTIVE' | 'PARTIAL' | string
+  remark?: string
+  createTime?: string
+}
+
+/**
+ * 车间移动 H5 - 待领纱单分页入参 VO
+ */
+export interface WorkshopRequisitionPageReqVO {
+  pageNo?: number
+  pageSize?: number
+  status?: string
+}
+
+/**
+ * 车间移动 H5 - 领纱单明细精简出参 VO
+ */
+export interface WorkshopRequisitionItemVO {
+  id: number
+  requisitionId: number
+  yarnTypeId?: number
+  yarnSpecId: number
+  yarnSpecName: string
+  requiredQty: number
+  dispatchedQty: number
+  unit: string
+  remark?: string
+}
+
+/**
+ * 车间移动 H5 - 领纱单详情精简出参 VO
+ */
+export interface WorkshopRequisitionDetailVO {
+  id: number
+  code: string
+  weavingOrderId: number
+  weavingOrderCode?: string
+  status: string
+  remark?: string
+  createTime?: string
+  defaultWarehouseId?: number | null
+  items: WorkshopRequisitionItemVO[]
+}
+
+/**
+ * 车间移动 H5 - 启用中仓库精简 VO
+ */
+export interface WorkshopWarehouseSimpleVO {
+  id: number
+  name: string
+}
+
+/**
+ * 车间移动 H5 领纱单无权操作错误码（039-006 领纱单不属于你的机台任务，无权操作）
+ */
+export const H5_YARN_REQUISITION_NOT_OWNED = 1030039006
+
+/**
+ * 查询我的待领纱单列表（分页）
+ */
+export const getRequisitionPage = (params?: WorkshopRequisitionPageReqVO) => {
+  return request.get<{ list: WorkshopRequisitionVO[]; total: number }>({
+    url: '/lunaerp/h5/workshop/requisition/page',
+    params
+  })
+}
+
+/**
+ * 查询领纱单详情（含明细及默认仓库）
+ */
+export const getRequisition = (id: number) => {
+  return request.get<WorkshopRequisitionDetailVO>({
+    url: '/lunaerp/h5/workshop/requisition/get',
+    params: { id }
+  })
+}
+
+/**
+ * 获取启用中仓库简表（供移动端手选仓库）
+ */
+export const getWarehouseSimpleList = () => {
+  return request.get<WorkshopWarehouseSimpleVO[]>({
+    url: '/lunaerp/h5/workshop/warehouse/simple-list'
+  })
+}
+
+/**
+ * 查询指定仓库下某纱线规格的可用库存余额
+ */
+export const getYarnBalance = (warehouseId: number, yarnSpecId: number) => {
+  return request.get<number>({
+    url: '/lunaerp/h5/workshop/yarn-balance',
+    params: { warehouseId, yarnSpecId }
+  })
+}
