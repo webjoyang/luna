@@ -83,6 +83,11 @@ function canvasToBlob(
   })
 }
 
+function fallbackToFile(file: File | Blob, fileName: string): File {
+  if (file instanceof File) return file
+  return new File([file], fileName, { type: 'image/jpeg' })
+}
+
 /**
  * 统一图片压缩工具：canvas 长边 ≤1920、JPEG ≤2MB
  */
@@ -101,17 +106,12 @@ export async function compressImageFile(
 
   // Node 环境或无 DOM Canvas 环境下兜底直接返回
   if (typeof window === 'undefined' || typeof document === 'undefined') {
-    if (file instanceof File) return file
-    return new File([file], fileName, { type: 'image/jpeg' })
+    return fallbackToFile(file, fileName)
   }
 
   try {
     const img = await loadImage(file)
-    const { width, height } = calculateTargetDimensions(
-      img.naturalWidth,
-      img.naturalHeight,
-      maxEdge
-    )
+    let { width, height } = calculateTargetDimensions(img.naturalWidth, img.naturalHeight, maxEdge)
 
     const canvas = document.createElement('canvas')
     canvas.width = width
@@ -119,13 +119,12 @@ export async function compressImageFile(
     const ctx = canvas.getContext('2d')
 
     if (!ctx) {
-      if (file instanceof File) return file
-      return new File([file], fileName, { type: 'image/jpeg' })
+      return fallbackToFile(file, fileName)
     }
 
     ctx.drawImage(img, 0, 0, width, height)
 
-    // 迭代压缩质量直到 <= maxSize 或触达最低质量 minQuality
+    // 1. 迭代压缩质量直到 <= maxSize 或触达最低质量 minQuality
     let quality = initialQuality
     let blob = await canvasToBlob(canvas, quality, 'image/jpeg')
 
@@ -139,9 +138,23 @@ export async function compressImageFile(
       }
     }
 
+    // 2. 强守卫硬兜底：若达到最低质量依然 > maxSize，对画布尺寸进一步缩放采样直至 <= maxSize
+    while (blob && blob.size > maxSize && (width > 480 || height > 480)) {
+      width = Math.round(width * 0.75)
+      height = Math.round(height * 0.75)
+      canvas.width = width
+      canvas.height = height
+      ctx.drawImage(img, 0, 0, width, height)
+      const nextBlob = await canvasToBlob(canvas, minQuality, 'image/jpeg')
+      if (nextBlob) {
+        blob = nextBlob
+      } else {
+        break
+      }
+    }
+
     if (!blob) {
-      if (file instanceof File) return file
-      return new File([file], fileName, { type: 'image/jpeg' })
+      return fallbackToFile(file, fileName)
     }
 
     return new File([blob], fileName, {
@@ -150,8 +163,7 @@ export async function compressImageFile(
     })
   } catch (error) {
     console.warn('[h5-compress] Canvas 压缩失败，降级使用原文件:', error)
-    if (file instanceof File) return file
-    return new File([file], fileName, { type: 'image/jpeg' })
+    return fallbackToFile(file, fileName)
   }
 }
 

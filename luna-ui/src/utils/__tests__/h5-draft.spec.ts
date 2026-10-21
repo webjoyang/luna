@@ -5,9 +5,10 @@ import {
   getDraft,
   clearDraft,
   hasDraft,
-  clearAllDrafts,
-  getDraftPayload
+  getDraftPayload,
+  useH5Draft
 } from '../h5-draft'
+import { ref } from 'vue'
 
 class MemoryStorage implements Storage {
   private store = new Map<string, string>()
@@ -151,17 +152,33 @@ describe('h5-draft', () => {
     })
   })
 
-  describe('clearAllDrafts', () => {
-    it('clears all drafts matching given namespace', () => {
-      saveDraft('report', '1', { a: 1 })
-      saveDraft('report', '2', { a: 2 })
-      saveDraft('other', '3', { a: 3 })
+  describe('useH5Draft', () => {
+    it('supports getter function as key and correctly resolves dynamic code/id', () => {
+      const code = ref('WT-001')
+      const form = ref({ note: '测试1' })
 
-      const count = clearAllDrafts('report')
-      expect(count).toBe(2)
-      expect(hasDraft('report', '1')).toBe(false)
-      expect(hasDraft('report', '2')).toBe(false)
-      expect(hasDraft('other', '3')).toBe(true)
+      const { saveDraft: save, loadDraft: load } = useH5Draft({
+        namespace: 'ticket',
+        key: () => code.value,
+        formData: form,
+        autoSave: false
+      })
+
+      save()
+      expect(getDraft('ticket', 'WT-001')).toEqual({ note: '测试1' })
+
+      // Change code
+      code.value = 'WT-002'
+      form.value = { note: '测试2' }
+      save()
+
+      expect(getDraft('ticket', 'WT-002')).toEqual({ note: '测试2' })
+      expect(getDraft('ticket', 'WT-001')).toEqual({ note: '测试1' })
+
+      // Reload draft for WT-001
+      code.value = 'WT-001'
+      load()
+      expect(form.value.note).toBe('测试1')
     })
   })
 })

@@ -15,11 +15,11 @@
       :capture="capture"
       :after-read="handleAfterRead"
       :before-delete="handleBeforeDelete"
-      :reupload="true"
       multiple
       accept="image/*"
       upload-icon="photograph"
       :upload-text="uploadText"
+      @delete="handleDelete"
       @click-reupload="handleClickReupload"
     />
 
@@ -152,6 +152,7 @@ const uploadSingleItem = async (item: InternalPhotoItem) => {
 
     // 2. POST /admin-api/infra/file/upload 携带同一 token 上传
     const url = await uploadPhotoFile(compressed, {
+      compress: false, // 已经过统一压缩，避免二次冗余压缩
       directory: props.directory
     })
 
@@ -198,16 +199,17 @@ const handleClickReupload = async (_item: UploaderFileListItem, detail: { index:
 }
 
 /**
- * 删除照片前拦截与同步
+ * 删除照片前拦截与同步：交由 Vant 进行安全删除，触发 @delete 后同步 URLs，避免双重删除
  */
-const handleBeforeDelete = (item: UploaderFileListItem, detail: { index: number }) => {
+const handleBeforeDelete = (_item: UploaderFileListItem, _detail: { index: number }) => {
   if (props.disabled || isReadonly.value) {
     return false
   }
-
-  fileList.value.splice(detail.index, 1)
-  emitCurrentUrls()
   return true
+}
+
+const handleDelete = () => {
+  emitCurrentUrls()
 }
 </script>
 

@@ -132,38 +132,14 @@ export function clearDraft(namespace: string, key: string | number): boolean {
   }
 }
 
-/**
- * 清理指定命名空间（或全量 H5）下的所有草稿
- */
-export function clearAllDrafts(namespace?: string): number {
-  const storage = getStorage()
-  if (!storage) return 0
-
-  const prefix = namespace
-    ? `${H5_DRAFT_PREFIX}:${String(namespace).trim()}:`
-    : `${H5_DRAFT_PREFIX}:`
-
-  let count = 0
-  const keysToRemove: string[] = []
-
-  for (let i = 0; i < storage.length; i++) {
-    const key = storage.key(i)
-    if (key && key.startsWith(prefix)) {
-      keysToRemove.push(key)
-    }
-  }
-
-  for (const k of keysToRemove) {
-    storage.removeItem(k)
-    count++
-  }
-
-  return count
-}
-
 export interface UseH5DraftOptions<T> {
   namespace: string
-  key: Ref<string | number | undefined> | string | number | undefined
+  key:
+    | Ref<string | number | undefined>
+    | (() => string | number | undefined)
+    | string
+    | number
+    | undefined
   formData: Ref<T>
   autoSave?: boolean
   debounceMs?: number
@@ -179,6 +155,9 @@ export function useH5Draft<T extends Record<string, any>>(options: UseH5DraftOpt
   let timer: any = null
 
   const getCurrentKey = (): string | number | undefined => {
+    if (typeof key === 'function') {
+      return (key as () => string | number | undefined)()
+    }
     return isRef(key) ? key.value : key
   }
 
