@@ -8,6 +8,9 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionRespVO;
+import com.luna.lunasrv.framework.idempotent.core.annotation.Idempotent;
+import com.luna.lunasrv.framework.idempotent.core.keyresolver.impl.ExpressionIdempotentKeyResolver;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDispatchReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopWarehouseSimpleRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
@@ -29,6 +32,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import java.math.BigDecimal;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -418,6 +422,46 @@ class WorkshopH5ControllerTest {
         PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
         assertNotNull(preAuthorize, "getYarnBalance 必须标注 @PreAuthorize");
         assertEquals("@ss.hasPermission('lunaerp:workshop:h5:dispatch')", preAuthorize.value());
+    }
+
+    @Test
+    @DisplayName("requisition-item/dispatch: 委托 Service 并返回 success(true)")
+    void testDispatchYarn_success() {
+        WorkshopRequisitionDispatchReqVO reqVO = WorkshopRequisitionDispatchReqVO.builder()
+                .itemId(1024L)
+                .warehouseId(1L)
+                .locationId(10L)
+                .dispatchQty(new BigDecimal("50.00"))
+                .remark("现场发纱")
+                .requestId("550e8400-e29b-41d4-a716-446655440000")
+                .build();
+
+        CommonResult<Boolean> result = workshopH5Controller.dispatchYarn(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertTrue(result.getData());
+        verify(workshopH5Service).dispatchYarn(reqVO);
+    }
+
+    @Test
+    @DisplayName("requisition-item/dispatch: 校验端点注解、权限表达式与幂等配置")
+    void testDispatchYarn_annotations() throws NoSuchMethodException {
+        Method method = WorkshopH5Controller.class.getMethod("dispatchYarn", WorkshopRequisitionDispatchReqVO.class);
+        PostMapping postMapping = method.getAnnotation(PostMapping.class);
+        assertNotNull(postMapping, "dispatchYarn 必须标注 @PostMapping");
+        assertArrayEquals(new String[]{"/requisition-item/dispatch"}, postMapping.value());
+
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "dispatchYarn 必须标注 @PreAuthorize");
+        assertEquals("@ss.hasPermission('lunaerp:workshop:h5:dispatch')", preAuthorize.value());
+
+        Idempotent idempotent = method.getAnnotation(Idempotent.class);
+        assertNotNull(idempotent, "dispatchYarn 必须标注 @Idempotent");
+        assertEquals(30, idempotent.timeout());
+        assertEquals(TimeUnit.SECONDS, idempotent.timeUnit());
+        assertEquals(ExpressionIdempotentKeyResolver.class, idempotent.keyResolver());
+        assertEquals("#reqVO.requestId", idempotent.keyArg());
+        assertEquals("发纱正在处理，请勿重复提交", idempotent.message());
     }
 
 }

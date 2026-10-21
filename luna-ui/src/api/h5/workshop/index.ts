@@ -453,3 +453,43 @@ export const getYarnBalance = (warehouseId: number, yarnSpecId: number) => {
     params: { warehouseId, yarnSpecId }
   })
 }
+
+/**
+ * 车间移动 H5 - 领纱明细发纱 Request VO
+ */
+export interface WorkshopRequisitionDispatchReqVO {
+  /**
+   * 领纱明细ID
+   */
+  itemId: number
+  /**
+   * 发纱仓库ID
+   */
+  warehouseId: number
+  /**
+   * 库位ID（可选）
+   */
+  locationId?: number
+  /**
+   * 发纱数量(KG)
+   */
+  dispatchQty: number
+  /**
+   * 备注说明（可选）
+   */
+  remark?: string
+  /**
+   * 幂等请求ID（UUID）
+   */
+  requestId: string
+}
+
+/**
+ * 领纱明细发纱（移动端发纱出库，幂等守卫）
+ */
+export const dispatchRequisitionItem = (data: WorkshopRequisitionDispatchReqVO) => {
+  return request.post<boolean>({
+    url: '/lunaerp/h5/workshop/requisition-item/dispatch',
+    data
+  })
+}

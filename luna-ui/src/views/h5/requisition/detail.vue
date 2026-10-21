@@ -160,20 +160,31 @@
                 备注：{{ item.remark }}
               </div>
 
-              <!-- 逐行发纱表单占位（18 号工单落成） -->
+              <!-- 逐行发纱表单 -->
               <div class="pt-2 border-t border-gray-50">
-                <div class="text-12px text-gray-400 mb-1.5">本次发纱登记（占位）：</div>
+                <div class="text-12px font-medium text-gray-700 mb-1.5">本次发纱出库：</div>
                 <div class="flex items-center space-x-2">
                   <van-field
-                    disabled
-                    placeholder="输入发纱量（KG）"
+                    v-model="dispatchQtyMap[item.id]"
+                    type="number"
+                    :disabled="isItemCompleted(item) || isOrderClosed"
+                    :placeholder="isItemCompleted(item) ? '已全部发纱' : '输入发纱量（KG）'"
                     class="bg-gray-50 rounded-lg p-2 text-13px flex-1"
+                    clearable
                   />
-                  <van-button size="small" type="primary" disabled round class="shrink-0">
-                    发纱出库
+                  <van-button
+                    v-hasPermi="['lunaerp:workshop:h5:dispatch']"
+                    size="small"
+                    type="primary"
+                    :loading="dispatchLoadingMap[item.id]"
+                    :disabled="isItemCompleted(item) || isOrderClosed"
+                    round
+                    class="shrink-0"
+                    @click="handleDispatch(item)"
+                  >
+                    {{ isItemCompleted(item) ? '已发完' : '发纱出库' }}
                   </van-button>
                 </div>
-                <div class="text-11px text-gray-400 mt-1">发纱提交功能将在 18 号工单中落成</div>
               </div>
             </div>
           </div>
@@ -196,12 +207,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import { generateUUID } from '@/utils'
 import {
   getRequisition,
   getWarehouseSimpleList,
   getYarnBalance,
+  dispatchRequisitionItem,
   type WorkshopRequisitionDetailVO,
-  type WorkshopWarehouseSimpleVO
+  type WorkshopWarehouseSimpleVO,
+  type WorkshopRequisitionItemVO
 } from '@/api/h5/workshop'
 
 defineOptions({ name: 'H5RequisitionDetail' })
@@ -212,6 +226,10 @@ const router = useRouter()
 const loading = ref(false)
 const errorMessage = ref('')
 const requisition = ref<WorkshopRequisitionDetailVO | null>(null)
+
+// 发纱操作状态
+const dispatchQtyMap = ref<Record<number, string>>({})
+const dispatchLoadingMap = ref<Record<number, boolean>>({})
 
 // 仓库选择
 const warehouseList = ref<WorkshopWarehouseSimpleVO[]>([])
@@ -254,6 +272,15 @@ const calculateRemainingQty = (requiredQty: number, dispatchedQty: number) => {
   return diff > 0 ? Number(diff.toFixed(2)) : 0
 }
 
+const isItemCompleted = (item: WorkshopRequisitionItemVO) => {
+  return Number(item.dispatchedQty || 0) >= Number(item.requiredQty || 0)
+}
+
+const isOrderClosed = computed(() => {
+  const status = requisition.value?.status
+  return status === 'DISPATCHED' || status === 'CLOSED'
+})
+
 const goBack = () => {
   if (window.history.length > 1) {
     router.back()
@@ -286,8 +313,11 @@ const loadData = async () => {
     requisition.value = detailRes
     warehouseList.value = warehouseRes || []
 
-    // 默认仓库设置：若返回了有效 defaultWarehouseId，则预选
-    if (detailRes.defaultWarehouseId) {
+    // 默认仓库设置：优先保留已选手选仓库；未手选时若返回了有效 defaultWarehouseId 则预选
+    if (selectedWarehouseId.value) {
+      const matched = warehouseList.value.find((w) => w.id === selectedWarehouseId.value)
+      selectedWarehouseName.value = matched ? matched.name : `仓库 #${selectedWarehouseId.value}`
+    } else if (detailRes.defaultWarehouseId) {
       selectedWarehouseId.value = detailRes.defaultWarehouseId
       const matched = warehouseList.value.find((w) => w.id === detailRes.defaultWarehouseId)
       selectedWarehouseName.value = matched ? matched.name : `仓库 #${detailRes.defaultWarehouseId}`
@@ -301,6 +331,44 @@ const loadData = async () => {
     showToast(msg)
   } finally {
     loading.value = false
+  }
+}
+
+const handleDispatch = async (item: WorkshopRequisitionItemVO) => {
+  if (!selectedWarehouseId.value) {
+    showToast('请先选择发纱仓库')
+    showWarehousePicker.value = true
+    return
+  }
+
+  const qtyStr = dispatchQtyMap.value[item.id]
+  const qty = Number(qtyStr)
+  if (!qtyStr || isNaN(qty) || qty <= 0) {
+    showToast('请输入合法的发纱数量')
+    return
+  }
+
+  dispatchLoadingMap.value[item.id] = true
+  try {
+    // 每次点击一次性生成全新 UUID 作为 requestId 确保幂等拦截
+    const requestId = generateUUID()
+    await dispatchRequisitionItem({
+      itemId: item.id,
+      warehouseId: selectedWarehouseId.value,
+      dispatchQty: qty,
+      requestId
+    })
+    showToast('发纱出库成功')
+    dispatchQtyMap.value[item.id] = ''
+    // 重新拉取最新领纱单明细与已发数量，并更新余额
+    await loadData()
+    if (selectedWarehouseId.value) {
+      await handleQueryBalance(item.yarnSpecId)
+    }
+  } catch (e: any) {
+    showToast(e?.message || '发纱出库失败')
+  } finally {
+    dispatchLoadingMap.value[item.id] = false
   }
 }
 

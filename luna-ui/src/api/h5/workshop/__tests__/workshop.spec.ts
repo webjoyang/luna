@@ -26,6 +26,8 @@ import {
   getRequisition,
   getWarehouseSimpleList,
   getYarnBalance,
+  dispatchRequisitionItem,
+  type WorkshopRequisitionDispatchReqVO,
   H5_YARN_REQUISITION_NOT_OWNED
 } from '../index'
 
@@ -445,5 +447,25 @@ describe('Workshop H5 API', () => {
 
   it('H5_YARN_REQUISITION_NOT_OWNED constant should match error code 1030039006', () => {
     expect(H5_YARN_REQUISITION_NOT_OWNED).toBe(1030039006)
+  })
+
+  it('dispatchRequisitionItem should call request.post with correct url and data', async () => {
+    const data: WorkshopRequisitionDispatchReqVO = {
+      itemId: 1001,
+      warehouseId: 1,
+      locationId: 10,
+      dispatchQty: 50.0,
+      remark: '移动端发纱',
+      requestId: '550e8400-e29b-41d4-a716-446655440000'
+    }
+    vi.mocked(request.post).mockResolvedValueOnce(true)
+
+    const result = await dispatchRequisitionItem(data)
+
+    expect(request.post).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/requisition-item/dispatch',
+      data
+    })
+    expect(result).toBe(true)
   })
 })

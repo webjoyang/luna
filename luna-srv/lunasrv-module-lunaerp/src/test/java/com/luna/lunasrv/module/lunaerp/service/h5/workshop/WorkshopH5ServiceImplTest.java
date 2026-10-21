@@ -19,6 +19,8 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopT
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDispatchReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.requisition.item.vo.YarnRequisitionDispatchReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopWarehouseSimpleRespVO;
@@ -2533,6 +2535,135 @@ class WorkshopH5ServiceImplTest {
         assertEquals(BigDecimal.ZERO, workshopH5Service.getYarnBalance(null, 10L));
         assertEquals(BigDecimal.ZERO, workshopH5Service.getYarnBalance(1L, null));
         verify(yarnRequisitionItemService, never()).getYarnBalance(any(), any());
+    }
+
+    @Test
+    @DisplayName("dispatchYarn: 未登录抛 UNAUTHORIZED")
+    void testDispatchYarn_unauthorized() {
+        WorkshopRequisitionDispatchReqVO reqVO = WorkshopRequisitionDispatchReqVO.builder()
+                .itemId(1001L)
+                .warehouseId(1L)
+                .dispatchQty(new BigDecimal("20.00"))
+                .requestId("req-001")
+                .build();
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(null);
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.dispatchYarn(reqVO));
+            assertEquals(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("dispatchYarn: 领纱明细不存在抛 YARN_REQUISITION_ITEM_NOT_EXISTS")
+    void testDispatchYarn_itemNotExists() {
+        Long workerUserId = 1001L;
+        WorkshopRequisitionDispatchReqVO reqVO = WorkshopRequisitionDispatchReqVO.builder()
+                .itemId(9999L)
+                .warehouseId(1L)
+                .dispatchQty(new BigDecimal("20.00"))
+                .requestId("req-001")
+                .build();
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(workerUserId);
+            when(yarnRequisitionItemMapper.selectById(9999L)).thenReturn(null);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.dispatchYarn(reqVO));
+            assertEquals(ErrorCodeConstants.YARN_REQUISITION_ITEM_NOT_EXISTS.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("dispatchYarn: 领纱单不存在抛 YARN_REQUISITION_NOT_EXISTS")
+    void testDispatchYarn_requisitionNotExists() {
+        Long workerUserId = 1001L;
+        WorkshopRequisitionDispatchReqVO reqVO = WorkshopRequisitionDispatchReqVO.builder()
+                .itemId(1001L)
+                .warehouseId(1L)
+                .dispatchQty(new BigDecimal("20.00"))
+                .requestId("req-001")
+                .build();
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(workerUserId);
+
+            YarnRequisitionItemDO item = new YarnRequisitionItemDO();
+            item.setId(1001L);
+            item.setRequisitionId(2001L);
+            when(yarnRequisitionItemMapper.selectById(1001L)).thenReturn(item);
+            when(yarnRequisitionMapper.selectById(2001L)).thenReturn(null);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.dispatchYarn(reqVO));
+            assertEquals(ErrorCodeConstants.YARN_REQUISITION_NOT_EXISTS.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("dispatchYarn: 领纱单不属于当前登录挡车工抛 039-006")
+    void testDispatchYarn_horizontalAuth_notOwned() {
+        Long workerUserId = 1001L;
+        WorkshopRequisitionDispatchReqVO reqVO = WorkshopRequisitionDispatchReqVO.builder()
+                .itemId(1001L)
+                .warehouseId(1L)
+                .dispatchQty(new BigDecimal("20.00"))
+                .requestId("req-001")
+                .build();
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(workerUserId);
+
+            YarnRequisitionItemDO item = new YarnRequisitionItemDO();
+            item.setId(1001L);
+            item.setRequisitionId(2001L);
+            when(yarnRequisitionItemMapper.selectById(1001L)).thenReturn(item);
+
+            YarnRequisitionDO req = new YarnRequisitionDO();
+            req.setId(2001L);
+            req.setWeavingOrderId(3001L);
+            when(yarnRequisitionMapper.selectById(2001L)).thenReturn(req);
+
+            when(machineTaskMapper.selectCount(any())).thenReturn(0L);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.dispatchYarn(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_YARN_REQUISITION_NOT_OWNED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("dispatchYarn: 校验通过后委托 YarnRequisitionItemService.dispatchYarn 执行出库")
+    void testDispatchYarn_success() {
+        Long workerUserId = 1001L;
+        WorkshopRequisitionDispatchReqVO reqVO = WorkshopRequisitionDispatchReqVO.builder()
+                .itemId(1001L)
+                .warehouseId(2L)
+                .locationId(20L)
+                .dispatchQty(new BigDecimal("35.50"))
+                .remark("车间自领")
+                .requestId("req-001")
+                .build();
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(workerUserId);
+
+            YarnRequisitionItemDO item = new YarnRequisitionItemDO();
+            item.setId(1001L);
+            item.setRequisitionId(2001L);
+            when(yarnRequisitionItemMapper.selectById(1001L)).thenReturn(item);
+
+            YarnRequisitionDO req = new YarnRequisitionDO();
+            req.setId(2001L);
+            req.setWeavingOrderId(3001L);
+            when(yarnRequisitionMapper.selectById(2001L)).thenReturn(req);
+
+            when(machineTaskMapper.selectCount(any())).thenReturn(1L);
+
+            workshopH5Service.dispatchYarn(reqVO);
+
+            ArgumentCaptor<YarnRequisitionDispatchReqVO> captor = ArgumentCaptor.forClass(YarnRequisitionDispatchReqVO.class);
+            verify(yarnRequisitionItemService).dispatchYarn(captor.capture());
+            YarnRequisitionDispatchReqVO dispatched = captor.getValue();
+            assertEquals(1001L, dispatched.getItemId());
+            assertEquals(2L, dispatched.getWarehouseId());
+            assertEquals(20L, dispatched.getLocationId());
+            assertEquals(new BigDecimal("35.50"), dispatched.getDispatchQty());
+            assertEquals("车间自领", dispatched.getRemark());
+        }
     }
 
 }

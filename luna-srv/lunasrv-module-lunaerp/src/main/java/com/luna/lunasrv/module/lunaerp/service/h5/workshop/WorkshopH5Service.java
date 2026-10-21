@@ -17,6 +17,8 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopR
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopWarehouseSimpleRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDispatchReqVO;
+import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -128,5 +130,12 @@ public interface WorkshopH5Service {
      * @return 库存余额
      */
     BigDecimal getYarnBalance(Long warehouseId, Long yarnSpecId);
+
+    /**
+     * 移动端领纱明细发纱
+     *
+     * @param reqVO 发纱请求参数
+     */
+    void dispatchYarn(@Valid WorkshopRequisitionDispatchReqVO reqVO);
 
 }

@@ -24,6 +24,7 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionDispatchReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopRequisitionItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopWarehouseSimpleRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.stock.warehouse.vo.WarehouseRespVO;
@@ -35,6 +36,7 @@ import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.requisiti
 import com.luna.lunasrv.module.lunaerp.service.stock.warehouse.WarehouseService;
 import com.luna.lunasrv.module.infra.api.config.ConfigApi;
 import java.math.BigDecimal;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.requisition.item.vo.YarnRequisitionDispatchReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.item.vo.InspectionOrderItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.item.InspectionOrderItemService;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
@@ -1055,6 +1057,54 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
         }
         BigDecimal balance = yarnRequisitionItemService.getYarnBalance(warehouseId, yarnSpecId);
         return balance != null ? balance : BigDecimal.ZERO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "车间移动H5", subType = "领纱发纱", bizNo = "{{#reqVO.itemId}}", success = "领纱明细【{{#reqVO.itemId}}】发纱【{{#reqVO.dispatchQty}}】KG成功")
+    public void dispatchYarn(WorkshopRequisitionDispatchReqVO reqVO) {
+        // 1. 强制登录校验
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 校验领纱明细存在性
+        if (reqVO == null || reqVO.getItemId() == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.YARN_REQUISITION_ITEM_NOT_EXISTS);
+        }
+        YarnRequisitionItemDO item = yarnRequisitionItemMapper.selectById(reqVO.getItemId());
+        if (item == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.YARN_REQUISITION_ITEM_NOT_EXISTS);
+        }
+
+        // 3. 校验领纱单存在性
+        YarnRequisitionDO requisition = yarnRequisitionMapper.selectById(item.getRequisitionId());
+        if (requisition == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.YARN_REQUISITION_NOT_EXISTS);
+        }
+
+        // 4. 领纱单归属守卫：机台任务必须存在 worker_user_id = 登录人，不符抛 039-006
+        Long taskCount = machineTaskMapper.selectCount(new LambdaQueryWrapperX<MachineTaskDO>()
+                .eq(MachineTaskDO::getWeavingOrderId, requisition.getWeavingOrderId())
+                .eq(MachineTaskDO::getWorkerUserId, loginUserId));
+        if (taskCount == null || taskCount == 0) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_YARN_REQUISITION_NOT_OWNED);
+        }
+
+        // 5. 校验发纱仓库必填
+        if (reqVO.getWarehouseId() == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.WAREHOUSE_NOT_EXISTS);
+        }
+
+        // 6. 委托生产域核心 Service 执行发纱（复用 ACTIVE/PARTIAL 守卫、余额校验 015-311、同事务 YARN_OUT + dispatchedQty + 状态推导）
+        YarnRequisitionDispatchReqVO dispatchVO = new YarnRequisitionDispatchReqVO();
+        dispatchVO.setItemId(reqVO.getItemId());
+        dispatchVO.setWarehouseId(reqVO.getWarehouseId());
+        dispatchVO.setLocationId(reqVO.getLocationId());
+        dispatchVO.setDispatchQty(reqVO.getDispatchQty());
+        dispatchVO.setRemark(reqVO.getRemark());
+        yarnRequisitionItemService.dispatchYarn(dispatchVO);
     }
 
 }
