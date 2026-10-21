@@ -1,7 +1,6 @@
 package com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.item.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
@@ -28,8 +27,7 @@ public class InspectionOrderItemSaveReqVO {
     @Schema(description = "关联织造布票ID", example = "3001")
     private Long weavingTicketId;
 
-    @Schema(description = "缸号", requiredMode = Schema.RequiredMode.REQUIRED, example = "V001")
-    @NotBlank(message = "缸号不能为空")
+    @Schema(description = "缸号（type=FINISHED 或 packageMode=ROLL 必填；type=GREIGE 且 packageMode=PIECE 可空）", example = "V001")
     private String vatNo;
 
     @Schema(description = "实称重量 KG", example = "25.50")

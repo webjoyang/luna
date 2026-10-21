@@ -57,6 +57,7 @@ public class InspectionOrderItemDO extends TenantBaseDO {
     /**
      * 缸号
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String vatNo;
 
     /**

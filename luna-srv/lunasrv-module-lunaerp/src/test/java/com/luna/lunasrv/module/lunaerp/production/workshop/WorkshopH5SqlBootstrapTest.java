@@ -64,4 +64,39 @@ public class WorkshopH5SqlBootstrapTest extends BaseSqlBootstrapTest {
         assertTrue(sql.contains("COMMENT ON COLUMN lunaerp_production_inspection_order_item.photos IS '疵点照片 URL JSON 数组（车间 H5 录检上传，≤6 张，infra 文件服务）'"),
                 "必须包含标准的字段 COMMENT");
     }
+
+    @Test
+    @DisplayName("验证录检明细缸号校验放宽 ALTER TABLE vat_no DROP NOT NULL (Issue 05)")
+    void testInspectionOrderItemVatNoDropNotNull() throws IOException {
+        String sql = loadSqlContent(SQL_FILE);
+        assertTrue(sql.contains("ALTER TABLE lunaerp_production_inspection_order_item"), "必须包含 ALTER TABLE lunaerp_production_inspection_order_item 语句");
+        assertTrue(sql.contains("ALTER COLUMN vat_no DROP NOT NULL"), "必须包含 ALTER COLUMN vat_no DROP NOT NULL 语句");
+    }
+
+    @Test
+    @DisplayName("验证包含车间移动 H5 权限容器 10530 与三按钮 10531-10533 菜单种子且幂等 (Issue 05)")
+    void testWorkshopH5MenuAndButtonsSeed() throws IOException {
+        String sql = loadSqlContent(SQL_FILE);
+        assertTrue(sql.contains("DELETE FROM system_menu WHERE id IN (10530, 10531, 10532, 10533)"), "必须包含先清后插的幂等清理语句");
+        assertTrue(sql.contains("10530"), "必须包含菜单容器 10530");
+        assertTrue(sql.contains("车间 H5"), "10530 名称必须为 '车间 H5'");
+        assertTrue(sql.contains("10200"), "10530 父菜单必须为 10200");
+        assertTrue(sql.contains("lunaerp:workshop:h5:report"), "必须包含移动报工按钮 10531 权限码");
+        assertTrue(sql.contains("lunaerp:workshop:h5:inspection"), "必须包含移动质检按钮 10532 权限码");
+        assertTrue(sql.contains("lunaerp:workshop:h5:dispatch"), "必须包含移动发纱按钮 10533 权限码");
+    }
+
+    @Test
+    @DisplayName("验证包含车间工人与检验员角色种子及 super_admin/admin 权限同步 DO 块 (Issue 05)")
+    void testWorkshopRoleSeedAndAdminSync() throws IOException {
+        String sql = loadSqlContent(SQL_FILE);
+        assertTrue(sql.contains("workshop_worker"), "必须包含角色 code workshop_worker");
+        assertTrue(sql.contains("车间工人"), "必须包含角色名称 车间工人");
+        assertTrue(sql.contains("workshop_inspector"), "必须包含角色 code workshop_inspector");
+        assertTrue(sql.contains("车间检验员"), "必须包含角色名称 车间检验员");
+        assertTrue(sql.contains("10531"), "workshop_worker 必须授权 10531");
+        assertTrue(sql.contains("10533"), "workshop_worker 必须授权 10533");
+        assertTrue(sql.contains("10532"), "workshop_inspector 必须授权 10532");
+        assertTrue(sql.contains("super_admin"), "必须包含 super_admin / admin 同步赋权逻辑");
+    }
 }

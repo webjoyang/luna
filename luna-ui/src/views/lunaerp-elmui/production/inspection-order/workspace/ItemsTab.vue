@@ -1,11 +1,7 @@
 <template>
   <div v-loading="loading" class="items-tab">
     <!-- 未创建主表时提示 -->
-    <el-empty
-      v-if="isCreateMode"
-      description="请先保存基本信息后再录检"
-      :image-size="100"
-    >
+    <el-empty v-if="isCreateMode" description="请先保存基本信息后再录检" :image-size="100">
       <el-button type="primary" plain @click="emit('switch-to-basic')">
         前往填写基本信息
       </el-button>
@@ -45,20 +41,40 @@
       <!-- 表格列：卷号/匹号/缸号/实称重量/米数/机台号/等级(字典下拉)/颜色/色号/款号/匹数/备注/操作 -->
       <el-table :data="list" border stripe class="w-full">
         <!-- PIECE 模式：匹号 + 卷号（可选） -->
-        <el-table-column v-if="isPieceMode" label="匹号" prop="pieceNo" min-width="140" show-overflow-tooltip>
+        <el-table-column
+          v-if="isPieceMode"
+          label="匹号"
+          prop="pieceNo"
+          min-width="140"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">
             <span class="cell-bold">{{ row.pieceNo }}</span>
-            <el-tag v-if="row.weavingTicketId" size="small" type="success" class="ml-1">已联布票</el-tag>
+            <el-tag v-if="row.weavingTicketId" size="small" type="success" class="ml-1"
+              >已联布票</el-tag
+            >
           </template>
         </el-table-column>
         <!-- ROLL 模式：卷号 -->
-        <el-table-column v-if="!isPieceMode" label="卷号" prop="rollNo" min-width="110" show-overflow-tooltip>
+        <el-table-column
+          v-if="!isPieceMode"
+          label="卷号"
+          prop="rollNo"
+          min-width="110"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">
             <span class="cell-bold">{{ row.rollNo }}</span>
           </template>
         </el-table-column>
         <!-- PIECE 模式：卷号（可选，一卷拆多匹） -->
-        <el-table-column v-if="isPieceMode" label="卷号" prop="rollNo" min-width="110" show-overflow-tooltip>
+        <el-table-column
+          v-if="isPieceMode"
+          label="卷号"
+          prop="rollNo"
+          min-width="110"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">{{ row.rollNo || '—' }}</template>
         </el-table-column>
         <el-table-column label="缸号" prop="vatNo" min-width="110" show-overflow-tooltip />
@@ -87,7 +103,10 @@
         </el-table-column>
         <el-table-column label="疵点照片" width="100" align="center">
           <template #default="{ row }">
-            <div v-if="row.photos && row.photos.length > 0" class="flex items-center justify-center gap-1">
+            <div
+              v-if="row.photos && row.photos.length > 0"
+              class="flex items-center justify-center gap-1"
+            >
               <el-image
                 :src="row.photos[0]"
                 class="w-36px h-36px rounded border border-gray-200 cursor-pointer object-cover"
@@ -112,7 +131,13 @@
         <el-table-column label="款号" prop="styleNo" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.styleNo || '—' }}</template>
         </el-table-column>
-        <el-table-column v-if="!isPieceMode" label="匹数" prop="pieceCount" width="80" align="right">
+        <el-table-column
+          v-if="!isPieceMode"
+          label="匹数"
+          prop="pieceCount"
+          width="80"
+          align="right"
+        >
           <template #default="{ row }">{{ row.pieceCount ?? 1 }}</template>
         </el-table-column>
         <el-table-column label="备注" prop="remark" min-width="140" show-overflow-tooltip>
@@ -209,7 +234,11 @@
         <el-row v-if="isPieceMode" :gutter="16">
           <el-col :span="12">
             <el-form-item label="卷号" prop="rollNo">
-              <el-input v-model="formData.rollNo" placeholder="请输入卷号（可选，一卷拆多匹）" maxlength="64" />
+              <el-input
+                v-model="formData.rollNo"
+                placeholder="请输入卷号（可选，一卷拆多匹）"
+                maxlength="64"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -249,7 +278,12 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="等级" prop="grade">
-              <el-select v-model="formData.grade" placeholder="请选择等级" clearable class="!w-full">
+              <el-select
+                v-model="formData.grade"
+                placeholder="请选择等级"
+                clearable
+                class="!w-full"
+              >
                 <el-option
                   v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_INSPECTION_GRADE)"
                   :key="dict.value"
@@ -337,7 +371,10 @@
           type="primary"
           :loading="submitting"
           @click="handleSubmit"
-          v-hasPermi="['lunaerp:production:inspection-order-item:create', 'lunaerp:production:inspection-order-item:update']"
+          v-hasPermi="[
+            'lunaerp:production:inspection-order-item:create',
+            'lunaerp:production:inspection-order-item:update'
+          ]"
         >
           确定
         </el-button>
@@ -366,6 +403,8 @@ const props = defineProps<{
   orderId?: number | null
   /** 检验单状态：DRAFT / ACTIVE / COMPLETED / CANCELLED */
   orderStatus?: string
+  /** 检验类型：GREIGE / FINISHED */
+  orderType?: string
   /** 包装模式：ROLL / PIECE */
   packageMode?: string
   /** 是否只读查看模式 */
@@ -436,10 +475,20 @@ const dialogTitle = computed(() => {
   return formData.id ? `编辑录检明细${modeText}` : `添加录检明细${modeText}`
 })
 
+const isVatNoRequired = computed(() => {
+  // FINISHED 或 ROLL 模式必填；GREIGE 且 PIECE 模式可空
+  if (props.orderType === 'FINISHED') return true
+  if (props.packageMode !== 'PIECE') return true
+  return false
+})
+
 const rules = computed<FormRules>(() => {
+  const vatNoRule = isVatNoRequired.value
+    ? [{ required: true, message: '缸号不能为空', trigger: 'blur' }]
+    : []
   if (isPieceMode.value) {
     return {
-      vatNo: [{ required: true, message: '缸号不能为空', trigger: 'blur' }],
+      vatNo: vatNoRule,
       pieceNo: [{ required: true, message: '匹号不能为空', trigger: 'blur' }]
     }
   }
@@ -542,6 +591,7 @@ const handleSubmit = async () => {
   try {
     const payload: InspectionOrderItemSaveReqVO = {
       ...formData,
+      vatNo: formData.vatNo?.trim() || undefined,
       inspectionOrderId: props.orderId,
       rollNo: formData.rollNo?.trim() || (isPieceMode.value ? undefined : ''),
       pieceNo: isPieceMode.value ? formData.pieceNo?.trim() : undefined,
@@ -566,7 +616,9 @@ const handleSubmit = async () => {
 const handleDelete = async (id?: number) => {
   if (!id) return
   try {
-    await message.delConfirm(isPieceMode.value ? '是否确认删除该匹明细？' : '是否确认删除该卷明细？')
+    await message.delConfirm(
+      isPieceMode.value ? '是否确认删除该匹明细？' : '是否确认删除该卷明细？'
+    )
     await InspectionOrderItemApi.deleteInspectionOrderItem(id)
     message.success('删除成功')
     emit('item-changed')

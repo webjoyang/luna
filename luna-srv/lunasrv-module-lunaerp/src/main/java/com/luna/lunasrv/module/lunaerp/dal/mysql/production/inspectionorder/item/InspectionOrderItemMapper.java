@@ -6,6 +6,7 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.item.vo.InspectionOrderItemPageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 /**
  * 生产管理-检验单录检明细表 Mapper
@@ -54,11 +55,16 @@ public interface InspectionOrderItemMapper extends BaseMapperX<InspectionOrderIt
      * @param pieceNo 匹号
      * @return 录检明细
      */
-    default InspectionOrderItemDO selectByInspectionOrderIdAndVatNoAndPieceNo(Long inspectionOrderId, String vatNo, String pieceNo) {
-        return selectOne(new LambdaQueryWrapperX<InspectionOrderItemDO>()
+        default InspectionOrderItemDO selectByInspectionOrderIdAndVatNoAndPieceNo(Long inspectionOrderId, String vatNo, String pieceNo) {
+        LambdaQueryWrapperX<InspectionOrderItemDO> wrapper = new LambdaQueryWrapperX<InspectionOrderItemDO>()
                 .eq(InspectionOrderItemDO::getInspectionOrderId, inspectionOrderId)
-                .eq(InspectionOrderItemDO::getVatNo, vatNo)
-                .eq(InspectionOrderItemDO::getPieceNo, pieceNo));
+                .eq(InspectionOrderItemDO::getPieceNo, pieceNo);
+        if (StringUtils.hasText(vatNo)) {
+            wrapper.eq(InspectionOrderItemDO::getVatNo, vatNo);
+        } else {
+            wrapper.and(w -> w.isNull(InspectionOrderItemDO::getVatNo).or().eq(InspectionOrderItemDO::getVatNo, ""));
+        }
+        return selectOne(wrapper);
     }
 
     /**

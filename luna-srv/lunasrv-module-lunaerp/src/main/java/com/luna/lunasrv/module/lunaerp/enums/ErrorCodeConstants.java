@@ -94,6 +94,7 @@ public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalEr
     ErrorCode INSPECTION_ORDER_ROLL_NO_REQUIRED = new ErrorCode(1_030_010_002, "卷装模式下卷号不能为空");
     ErrorCode INSPECTION_ORDER_PIECE_NO_FORBIDDEN = new ErrorCode(1_030_010_002, "卷装模式下禁止填写匹号");
     ErrorCode INSPECTION_ORDER_PIECE_NO_REQUIRED = new ErrorCode(1_030_010_002, "匹装模式下匹号不能为空");
+    ErrorCode INSPECTION_ORDER_VAT_NO_REQUIRED = new ErrorCode(1_030_010_002, "缸号不能为空");
     ErrorCode INSPECTION_ORDER_PIECE_DUPLICATE = new ErrorCode(1_030_010_004, "单内匹号【{}】缸号【{}】已存在");
     ErrorCode INSPECTION_ORDER_STATUS_NOT_COMPLETED = new ErrorCode(1_030_010_005, "仅录检完成（COMPLETED）状态允许生成入库单");
     ErrorCode INSPECTION_ORDER_NO_QUALIFIED_ITEMS = new ErrorCode(1_030_010_006, "检验单无未入库的合格明细，无法生成入库单");

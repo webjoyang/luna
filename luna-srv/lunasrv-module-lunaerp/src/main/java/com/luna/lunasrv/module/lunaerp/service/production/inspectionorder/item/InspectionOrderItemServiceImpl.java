@@ -55,8 +55,14 @@ public class InspectionOrderItemServiceImpl implements InspectionOrderItemServic
         // 1. 校验所属检验单存在
         InspectionOrderRespVO order = validateInspectionOrderExists(createReqVO.getInspectionOrderId());
 
-        // 2. 根据包装模式分化校验（ADR-0025）
+        // 2. 缸号条件校验（05 票：FINISHED 或 ROLL 模式必填；GREIGE 且 PIECE 模式可空）
         String packageMode = StringUtils.hasText(order.getPackageMode()) ? order.getPackageMode() : "ROLL";
+        validateVatNo(order.getType(), packageMode, createReqVO.getVatNo());
+        if (!StringUtils.hasText(createReqVO.getVatNo())) {
+            createReqVO.setVatNo(null);
+        }
+
+        // 3. 根据包装模式分化校验（ADR-0025）
         if ("PIECE".equals(packageMode)) {
             // PIECE 模式：pieceNo 必填，rollNo 可空可填且允许重复，(vatNo, pieceNo) 唯一
             if (!StringUtils.hasText(createReqVO.getPieceNo())) {
@@ -118,12 +124,17 @@ public class InspectionOrderItemServiceImpl implements InspectionOrderItemServic
     public void updateInspectionOrderItem(InspectionOrderItemSaveReqVO updateReqVO) {
         // 1. 校验明细存在
         InspectionOrderItemDO exist = validateInspectionOrderItemExists(updateReqVO.getId());
-
         // 2. 校验所属检验单存在
         InspectionOrderRespVO order = validateInspectionOrderExists(updateReqVO.getInspectionOrderId());
 
-        // 3. 根据包装模式分化校验（ADR-0025）
+        // 3. 缸号条件校验（05 票：FINISHED 或 ROLL 模式必填；GREIGE 且 PIECE 模式可空）
         String packageMode = StringUtils.hasText(order.getPackageMode()) ? order.getPackageMode() : "ROLL";
+        validateVatNo(order.getType(), packageMode, updateReqVO.getVatNo());
+        if (!StringUtils.hasText(updateReqVO.getVatNo())) {
+            updateReqVO.setVatNo(null);
+        }
+
+        // 4. 根据包装模式分化校验（ADR-0025）
         if ("PIECE".equals(packageMode)) {
             // PIECE 模式：pieceNo 必填，(vatNo, pieceNo) 重复查重（排除自身）
             if (!StringUtils.hasText(updateReqVO.getPieceNo())) {
@@ -189,6 +200,14 @@ public class InspectionOrderItemServiceImpl implements InspectionOrderItemServic
     }
 
     // ==================== 私有方法 ====================
+
+
+    private void validateVatNo(String orderType, String packageMode, String vatNo) {
+        boolean vatNoRequired = "FINISHED".equalsIgnoreCase(orderType) || "ROLL".equalsIgnoreCase(packageMode);
+        if (vatNoRequired && !StringUtils.hasText(vatNo)) {
+            throw exception(INSPECTION_ORDER_VAT_NO_REQUIRED);
+        }
+    }
 
     private InspectionOrderItemDO validateInspectionOrderItemExists(Long id) {
         if (id == null) {

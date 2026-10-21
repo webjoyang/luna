@@ -73,7 +73,7 @@
 | 39 | lunaerp-finance-account-ext.sql | 2026-10-19 | ✅ | 资金账户扩3列、分录账扩2列、转账单与其他收支单表、字典 2282/2283/2287 落地及 2274 追加 6 值、菜单 10710 按钮与 10715 收支总览 |
 | 40 | lunaerp-finance-expense.sql | 2026-10-19 | ✅ | 报销单主从2表、attachments jsonb、字典 2284、菜单 10750 报销与按钮 10751–10755、审批流 expense |
 | 41 | lunaerp-finance-payroll.sql | 2026-10-19 | ✅ | 工资单主表/员工行/款项行/次品追溯/发放批次 5 表、部分唯一索引、字典 2285/2286、菜单 10760 与按钮 10761–10768、审批流 payroll |
-| 42 | lunaerp-workshop-h5.sql | 2026-10-21 | ✅ | 车间移动 H5 权限容器与配置种子；布票 exception_photos 与录检明细 photos 加列；参数 luna.workshop.default-warehouse-id |
+| 42 | lunaerp-workshop-h5.sql | 2026-10-21 | ✅ | 车间移动 H5 权限容器 10530 与按钮 10531-10533、角色 workshop_worker/workshop_inspector 种子与 super_admin/admin 同步；布票 exception_photos 与录检明细 photos 加列；录检明细 vat_no DROP NOT NULL 放宽；参数 luna.workshop.default-warehouse-id |
 
 ### 状态汇总（2026-10-19 复扫）
 

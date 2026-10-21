@@ -107,6 +107,12 @@ class InspectionOrderItemServiceImplTest {
         return buildOrder(id, status, "ROLL");
     }
 
+    private InspectionOrderRespVO buildOrder(Long id, String status, String packageMode, String type) {
+        InspectionOrderRespVO order = buildOrder(id, status, packageMode);
+        order.setType(type);
+        return order;
+    }
+
     private InspectionOrderRespVO buildOrder(Long id, String status, String packageMode) {
         InspectionOrderRespVO order = new InspectionOrderRespVO();
         order.setId(id);
@@ -256,6 +262,77 @@ class InspectionOrderItemServiceImplTest {
         ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
         verify(inspectionOrderItemMapper).insert(captor.capture());
         assertEquals(1, captor.getValue().getPieceCount(), "匹数缺省应为 1");
+    }
+
+    @Test
+    void createInspectionOrderItem_rollMode_missingVatNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, "", ROLL_NO);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "ROLL", "GREIGE"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.createInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("缸号不能为空"));
+        verify(inspectionOrderItemMapper, never()).insert(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void createInspectionOrderItem_finishedType_pieceMode_missingVatNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, null, null, PIECE_NO);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "PIECE", "FINISHED"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.createInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("缸号不能为空"));
+        verify(inspectionOrderItemMapper, never()).insert(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void createInspectionOrderItem_greigeType_pieceMode_missingVatNo_success() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, "", null, PIECE_NO);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "PIECE", "GREIGE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, null, PIECE_NO))
+                .thenReturn(null);
+        when(inspectionOrderItemMapper.selectCountByInspectionOrderId(ORDER_ID)).thenReturn(0L);
+
+        Long id = inspectionOrderItemService.createInspectionOrderItem(reqVO);
+        assertEquals(ITEM_ID, id);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).insert(captor.capture());
+        assertNull(captor.getValue().getVatNo());
+        assertEquals(PIECE_NO, captor.getValue().getPieceNo());
+    }
+
+    @Test
+    void updateInspectionOrderItem_rollMode_missingVatNo_throws1030010002() {
+        InspectionOrderItemDO exist = buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(exist);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "ROLL", "GREIGE"));
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, "", ROLL_NO);
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.updateInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("缸号不能为空"));
+        verify(inspectionOrderItemMapper, never()).updateById(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void updateInspectionOrderItem_greigeType_pieceMode_missingVatNo_success() {
+        InspectionOrderItemDO exist = buildItem(ITEM_ID, ORDER_ID, null, null, PIECE_NO);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(exist);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "PIECE", "GREIGE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, null, PIECE_NO))
+                .thenReturn(null);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, null, null, PIECE_NO);
+        inspectionOrderItemService.updateInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).updateById(captor.capture());
+        assertNull(captor.getValue().getVatNo());
     }
 
     @Test
@@ -705,10 +782,10 @@ class InspectionOrderItemServiceImplTest {
         }
 
         @Test
-        void saveReqVO_missingVatNo_failsValidation() {
+        void saveReqVO_missingVatNo_passesValidation() {
             InspectionOrderItemSaveReqVO vo = buildSaveReqVO(null, ORDER_ID, "", ROLL_NO);
             Set<ConstraintViolation<InspectionOrderItemSaveReqVO>> violations = validator.validate(vo);
-            assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("vatNo")));
+            assertTrue(violations.stream().noneMatch(v -> v.getPropertyPath().toString().equals("vatNo")));
         }
 
         @Test
