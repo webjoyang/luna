@@ -32,6 +32,10 @@ ALTER TABLE lunaerp_production_inspection_order_item
     ALTER COLUMN vat_no DROP NOT NULL;
 COMMENT ON COLUMN lunaerp_production_inspection_order_item.vat_no IS '缸号（type=FINISHED 或 packageMode=ROLL 必填；type=GREIGE 且 packageMode=PIECE 可空）';
 
+-- [2026-10-21] 09-backend-skeleton-my-tasks: 机台任务按挡车工与状态组合索引（支撑 my-tasks P95 < 1s 性能硬指标）
+CREATE INDEX IF NOT EXISTS idx_lb_machine_task_worker_status
+    ON lunaerp_production_machine_task (tenant_id, worker_user_id, status);
+
 -- [2026-10-21] 05-vatno-validation-relax-and-menu-role-seed: 车间移动 H5 权限容器与按钮菜单
 DELETE FROM system_menu WHERE id IN (10530, 10531, 10532, 10533);
 INSERT INTO system_menu (
