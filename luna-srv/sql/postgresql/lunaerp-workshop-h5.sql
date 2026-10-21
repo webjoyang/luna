@@ -17,4 +17,9 @@ INSERT INTO infra_config (
     'admin', CURRENT_TIMESTAMP, '1', CURRENT_TIMESTAMP, 0
 );
 
+-- [2026-10-21] 03-weaving-ticket-exception-photos-column: 布票加异常照片列
+ALTER TABLE lunaerp_production_weaving_ticket
+    ADD COLUMN IF NOT EXISTS exception_photos jsonb;
+COMMENT ON COLUMN lunaerp_production_weaving_ticket.exception_photos IS '异常现场照片 URL JSON 数组（车间 H5 异常登记上传，≤6 张，infra 文件服务）';
+
 COMMIT;

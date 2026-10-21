@@ -40,7 +40,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
  * 核心机制：
  * 1. 编号规则：BT-{机台任务号去符号}-{4 位流水}，单内流水计数，全量唯一含软删行，作废占号不重用，撞键重试。
  * 2. 余量校验与行锁：在事务内通过 FOR UPDATE 锁定机台任务行，强校验不超计划匹数。
- * 3. 扫码白名单守卫：开工（GENERATED/STARTED/EXCEPTION）、完工（STARTED）、异常（GENERATED/STARTED）、作废（人工终态）。
+ * 3. 扫码白名单守卫：开工（GENERATED/STARTED/EXCEPTION）、完工（STARTED）、异常（GENERATED/STARTED）、作废（人工终态）。异常照片挂在当前异常事实上（与 exceptionType/exceptionNote 同生共死），再次异常登记覆盖；恢复开工清除，正常开工/完工不带照片。
  * 4. 三层状态同事务推导：每次布票变更同事务推导机台任务 actualQty/状态与织造单状态；HALTED 期间只更新 actualQty 不覆盖状态。
  *
  * @author luna
@@ -237,6 +237,7 @@ public class WeavingTicketServiceImpl implements WeavingTicketService {
             if (STATUS_EXCEPTION.equals(ticket.getStatus())) {
                 updateTicket.setExceptionType(null);
                 updateTicket.setExceptionNote(null);
+                updateTicket.setExceptionPhotos(null);
             }
 
             weavingTicketMapper.updateById(updateTicket);
@@ -313,6 +314,7 @@ public class WeavingTicketServiceImpl implements WeavingTicketService {
             updateTicket.setStatus(STATUS_EXCEPTION);
             updateTicket.setExceptionType(cleanExType);
             updateTicket.setExceptionNote(StringUtils.hasText(exceptionReqVO.getExceptionNote()) ? exceptionReqVO.getExceptionNote().trim() : null);
+            updateTicket.setExceptionPhotos(exceptionReqVO.getExceptionPhotos());
 
             weavingTicketMapper.updateById(updateTicket);
             affectedTaskIds.add(ticket.getMachineTaskId());

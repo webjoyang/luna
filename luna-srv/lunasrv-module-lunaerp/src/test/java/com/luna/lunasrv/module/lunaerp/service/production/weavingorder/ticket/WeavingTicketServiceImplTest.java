@@ -368,6 +368,7 @@ class WeavingTicketServiceImplTest {
         WeavingTicketDO ticket = buildTicket(1L, "EXCEPTION");
         ticket.setExceptionType("YARN_BREAK");
         ticket.setExceptionNote("断纱处理完毕");
+        ticket.setExceptionPhotos(Arrays.asList("https://oss.example.com/p1.jpg", "https://oss.example.com/p2.jpg"));
         when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
 
         WeavingTicketStartReqVO req = WeavingTicketStartReqVO.builder()
@@ -382,6 +383,7 @@ class WeavingTicketServiceImplTest {
         assertEquals("STARTED", updated.getStatus());
         assertNull(updated.getExceptionType());
         assertNull(updated.getExceptionNote());
+        assertNull(updated.getExceptionPhotos());
     }
 
     @Test
@@ -468,6 +470,53 @@ class WeavingTicketServiceImplTest {
         assertEquals("EXCEPTION", updated.getStatus());
         assertEquals("YARN_BREAK", updated.getExceptionType());
         assertEquals("纱筒脱落", updated.getExceptionNote());
+    }
+
+    @Test
+    void testExceptionTicket_withPhotos_persistsExceptionPhotos() {
+        WeavingTicketDO ticket = buildTicket(1L, "STARTED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        List<String> photos = Arrays.asList("https://oss.example.com/photo1.jpg", "https://oss.example.com/photo2.jpg");
+        WeavingTicketExceptionReqVO req = WeavingTicketExceptionReqVO.builder()
+                .id(1L)
+                .exceptionType("CLOTH_DAMAGE")
+                .exceptionNote("织造疵点破洞")
+                .exceptionPhotos(photos)
+                .build();
+
+        weavingTicketService.exceptionTicket(req);
+
+        ArgumentCaptor<WeavingTicketDO> captor = ArgumentCaptor.forClass(WeavingTicketDO.class);
+        verify(weavingTicketMapper).updateById(captor.capture());
+        WeavingTicketDO updated = captor.getValue();
+        assertEquals("EXCEPTION", updated.getStatus());
+        assertEquals("CLOTH_DAMAGE", updated.getExceptionType());
+        assertEquals("织造疵点破洞", updated.getExceptionNote());
+        assertEquals(2, updated.getExceptionPhotos().size());
+        assertEquals(photos, updated.getExceptionPhotos());
+    }
+
+    @Test
+    void testExceptionTicket_overwritePhotos_persistsNewPhotos() {
+        WeavingTicketDO ticket = buildTicket(1L, "STARTED");
+        ticket.setExceptionPhotos(Collections.singletonList("https://oss.example.com/old.jpg"));
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        List<String> newPhotos = Arrays.asList("https://oss.example.com/new1.jpg", "https://oss.example.com/new2.jpg");
+        WeavingTicketExceptionReqVO req = WeavingTicketExceptionReqVO.builder()
+                .id(1L)
+                .exceptionType("YARN_BREAK")
+                .exceptionNote("重新报异常")
+                .exceptionPhotos(newPhotos)
+                .build();
+
+        weavingTicketService.exceptionTicket(req);
+
+        ArgumentCaptor<WeavingTicketDO> captor = ArgumentCaptor.forClass(WeavingTicketDO.class);
+        verify(weavingTicketMapper).updateById(captor.capture());
+        WeavingTicketDO updated = captor.getValue();
+        assertEquals(newPhotos, updated.getExceptionPhotos());
     }
 
     @Test
@@ -743,6 +792,18 @@ class WeavingTicketServiceImplTest {
         WeavingTicketRespVO resp = weavingTicketService.getTicket(1L);
         assertNotNull(resp);
         assertEquals("BT-MTZZPB09190010101-0001", resp.getCode());
+    }
+
+    @Test
+    void testGetTicket_withExceptionPhotos_mapsToRespVO() {
+        WeavingTicketDO ticket = buildTicket(1L, "EXCEPTION");
+        List<String> photos = Arrays.asList("https://oss.example.com/p1.jpg", "https://oss.example.com/p2.jpg");
+        ticket.setExceptionPhotos(photos);
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        WeavingTicketRespVO resp = weavingTicketService.getTicket(1L);
+        assertNotNull(resp);
+        assertEquals(photos, resp.getExceptionPhotos());
     }
 
     @Test

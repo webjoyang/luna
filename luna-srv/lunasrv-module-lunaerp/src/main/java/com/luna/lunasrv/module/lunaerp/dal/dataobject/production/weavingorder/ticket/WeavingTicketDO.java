@@ -2,12 +2,16 @@ package com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.t
 
 import com.baomidou.mybatisplus.annotation.KeySequence;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 生产管理 - 织造布票 DO
@@ -17,7 +21,7 @@ import java.time.LocalDateTime;
  *
  * @author luna
  */
-@TableName("lunaerp_production_weaving_ticket")
+@TableName(value = "lunaerp_production_weaving_ticket", autoResultMap = true)
 @KeySequence("lunaerp_production_weaving_ticket_seq")
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -92,6 +96,12 @@ public class WeavingTicketDO extends TenantBaseDO {
      * 异常说明
      */
     private String exceptionNote;
+
+    /**
+     * 异常现场照片 URL JSON 数组（车间 H5 异常登记上传，≤6 张，infra 文件服务）
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class, updateStrategy = FieldStrategy.ALWAYS)
+    private List<String> exceptionPhotos;
 
     /**
      * 开工时间

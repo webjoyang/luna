@@ -210,7 +210,7 @@ _避免_：匹条、落布票、卷票。
 字典 `lunaerp_weaving_ticket_status`，七态：`GENERATED` 已生成（缺省）/ `STARTED` 已开工 / `COMPLETED` 已完工 / `INSPECTED` 已检验 / `STOCKED` 已入库 / `EXCEPTION` 异常 / `VOID` 作废。流转只能向前走且有守卫（ADR-0024）：开工允许从 GENERATED/STARTED/EXCEPTION 进入（异常恢复、转机重扫更新 actualMachine 均为设计内恢复路径）；完工允许从 STARTED 进入；异常可从 GENERATED/STARTED 进入；作废为人工终态。检验明细按 `weavingTicketId` 审核保存时回写 INSPECTED；胚布入库审核过账时回写 STOCKED。
 
 **异常类型 (WeavingExceptionType)**：
-布票异常分类，字典 `lunaerp_weaving_exception_type`：`YARN_BREAK` 断纱 / `CLOTH_DAMAGE` 坏布 / `YARN_SHORTAGE` 缺纱停机 / `MACHINE_CHANGE` 换机 / `WORKER_CHANGE` 换人。配合布票上的 `exceptionNote` 自由说明。
+布票异常分类，字典 `lunaerp_weaving_exception_type`：`YARN_BREAK` 断纱 / `CLOTH_DAMAGE` 坏布 / `YARN_SHORTAGE` 缺纱停机 / `MACHINE_CHANGE` 换机 / `WORKER_CHANGE` 换人。配合布票上的 `exceptionNote` 自由说明与 `exceptionPhotos` 现场照片（照片挂在当前异常事实上，与 exceptionType/exceptionNote 同生共死，再次异常登记覆盖；恢复开工清除，正常开工/完工不带照片）。
 
 **织机 (LoomMachine)**：
 织造车间的织机设备档案（本模块自建的轻量机台主数据，尚无更上层设备域）。字段：`loomNo`（机台号，租户内唯一含软删行）、`model`（型号）、`status`（ACTIVE/INACTIVE，不建字典）、`remark`。不提供物理删除：被机台任务引用时禁删、引导停用（仿仓库删除守卫）。
