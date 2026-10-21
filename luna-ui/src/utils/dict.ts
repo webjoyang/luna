@@ -230,6 +230,48 @@ const defaultApprovalDicts: Record<string, DictDataType[]> = {
     { dictType: 'lunaerp_payroll_payment_status', label: '未发放', value: 'UNPAID', colorType: 'info', cssClass: '' },
     { dictType: 'lunaerp_payroll_payment_status', label: '部分发放', value: 'PARTIAL', colorType: 'warning', cssClass: '' },
     { dictType: 'lunaerp_payroll_payment_status', label: '已发清', value: 'PAID', colorType: 'success', cssClass: '' }
+  ],
+  // ========== LunaERP - 车间移动 H5 模块默认回退字典 ==========
+  lunaerp_weaving_exception_type: [
+    { dictType: 'lunaerp_weaving_exception_type', label: '断纱', value: 'YARN_BREAK', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_weaving_exception_type', label: '坏布', value: 'CLOTH_DAMAGE', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_weaving_exception_type', label: '缺纱停机', value: 'YARN_SHORTAGE', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_weaving_exception_type', label: '换机', value: 'MACHINE_CHANGE', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_weaving_exception_type', label: '换人', value: 'WORKER_CHANGE', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_inspection_grade: [
+    { dictType: 'lunaerp_inspection_grade', label: '一等品', value: 'A', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_inspection_grade', label: '二等品', value: 'B', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_inspection_grade', label: '三等品', value: 'C', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_inspection_grade', label: '等外品', value: 'DEFECTIVE', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_weaving_ticket_status: [
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已生成', value: 'GENERATED', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已开工', value: 'STARTED', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已完工', value: 'COMPLETED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已检验', value: 'INSPECTED', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已入库', value: 'STOCKED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '异常', value: 'EXCEPTION', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '作废', value: 'VOID', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_weaving_task_status: [
+    { dictType: 'lunaerp_weaving_task_status', label: '待开始', value: 'PENDING', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_weaving_task_status', label: '生产中', value: 'IN_PROGRESS', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_weaving_task_status', label: '暂停异常', value: 'HALTED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_weaving_task_status', label: '已完工', value: 'COMPLETED', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_yarn_requisition_status: [
+    { dictType: 'lunaerp_yarn_requisition_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_yarn_requisition_status', label: '待发纱', value: 'ACTIVE', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_yarn_requisition_status', label: '部分发纱', value: 'PARTIAL', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_yarn_requisition_status', label: '已发纱', value: 'DISPATCHED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_yarn_requisition_status', label: '已关闭', value: 'CLOSED', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_inspection_order_status: [
+    { dictType: 'lunaerp_inspection_order_status', label: '草稿', value: 'DRAFT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_inspection_order_status', label: '录检中', value: 'ACTIVE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_inspection_order_status', label: '录检完成', value: 'COMPLETED', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_inspection_order_status', label: '已取消', value: 'CANCELLED', colorType: 'danger', cssClass: '' }
   ]
 }
 
@@ -770,3 +812,24 @@ export enum DICT_TYPE {
   LUNAERP_PAYROLL_DEDUCTION_TYPE = 'lunaerp_payroll_deduction_type', // 工资扣款款项类型（2286）
   LUNAERP_PAYROLL_PAYMENT_STATUS = 'lunaerp_payroll_payment_status' // 工资派生发放状态
 }
+
+/**
+ * 车间移动 H5 专属既有字典引用常量（ADR-0045，零新增字典，仅常量名暴露）
+ * 异常类型 2244、检验等级 2232、布票状态、机台任务状态、领纱单状态、检验单状态
+ */
+export const H5_DICT_TYPE = {
+  WEAVING_EXCEPTION_TYPE: DICT_TYPE.LUNAERP_WEAVING_EXCEPTION_TYPE,
+  INSPECTION_GRADE: DICT_TYPE.LUNAERP_INSPECTION_GRADE,
+  WEAVING_TICKET_STATUS: DICT_TYPE.LUNAERP_WEAVING_TICKET_STATUS,
+  WEAVING_TASK_STATUS: DICT_TYPE.LUNAERP_WEAVING_TASK_STATUS,
+  YARN_REQUISITION_STATUS: DICT_TYPE.LUNAERP_YARN_REQUISITION_STATUS,
+  INSPECTION_ORDER_STATUS: DICT_TYPE.LUNAERP_INSPECTION_ORDER_STATUS
+} as const
+
+export const H5_WEAVING_EXCEPTION_TYPE = DICT_TYPE.LUNAERP_WEAVING_EXCEPTION_TYPE // 异常类型 2244
+export const H5_INSPECTION_GRADE = DICT_TYPE.LUNAERP_INSPECTION_GRADE // 检验等级 2232
+export const H5_WEAVING_TICKET_STATUS = DICT_TYPE.LUNAERP_WEAVING_TICKET_STATUS // 布票状态
+export const H5_WEAVING_TASK_STATUS = DICT_TYPE.LUNAERP_WEAVING_TASK_STATUS // 机台任务状态
+export const H5_YARN_REQUISITION_STATUS = DICT_TYPE.LUNAERP_YARN_REQUISITION_STATUS // 领纱单状态
+export const H5_INSPECTION_ORDER_STATUS = DICT_TYPE.LUNAERP_INSPECTION_ORDER_STATUS // 检验单状态
+

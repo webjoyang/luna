@@ -5,7 +5,7 @@ import VueJsx from '@vitejs/plugin-vue-jsx'
 import ElementPlus from 'unplugin-element-plus/vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
-import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import { ElementPlusResolver, VantResolver } from 'unplugin-vue-components/resolvers'
 import viteCompression from 'vite-plugin-compression'
 import { createSvgIconsPlugin } from 'vite-plugin-svg-icons-ng'
 import UnoCSS from 'unocss/vite'
@@ -59,7 +59,7 @@ export function createVitePlugins(isBuild = false, env: Record<string, string> =
       // 生成自定义 `auto-components.d.ts` 全局声明
       dts: !isBuild && 'src/types/auto-components.d.ts',
       // 自定义组件的解析器
-      resolvers: [ElementPlusResolver()],
+      resolvers: [ElementPlusResolver(), VantResolver()],
       globs: ['src/components/**/**.{vue, md}', '!src/components/DiyEditor/components/mobile/**']
     }),
     createSvgIconsPlugin({

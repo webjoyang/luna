@@ -77,6 +77,28 @@ export default tseslint.config(
     }
   },
 
+  // 移动子树架构边界守护：严禁引用 lunaerp-elmui/** PC 组件与 ElementPlus 业务组件（隔离依赖方向，保持 PC/H5 互不干扰，ADR-0045）
+  {
+    files: ['src/views/h5/**/*.{vue,ts,js,mts,cts}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/views/lunaerp-elmui/**', '**/views/lunaerp-elmui/**'],
+              message: '移动子树（/h5/**）严禁引用 lunaerp-elmui/** PC 视图与业务组件（ADR-0045 隔离依赖方向）'
+            },
+            {
+              group: ['element-plus', 'element-plus/**'],
+              message: '移动子树（/h5/**）严禁直接引用 ElementPlus 组件与类型（ADR-0045 移动端采用 Vant 4）'
+            }
+          ]
+        }
+      ]
+    }
+  },
+
   // 时区日期初始化守卫：严禁使用 toISOString() 截取业务日期（存在 UTC 时区偏移），统一使用 toLocaleDateString('en-CA') 或 dayjs()
   {
     files: ['src/views/lunaerp-elmui/**/*.{vue,ts,js,mts,cts}'],
