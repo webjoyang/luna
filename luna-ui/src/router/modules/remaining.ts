@@ -1028,6 +1028,79 @@ const remainingRouter: AppRouteRecordRaw[] = [
     }
   },
   {
+    path: '/h5/login',
+    component: () => import('@/views/h5/login.vue'),
+    name: 'H5Login',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '车间移动端登录'
+    }
+  },
+  {
+    path: '/h5/403',
+    component: () => import('@/views/h5/403.vue'),
+    name: 'H5Forbidden',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '无权限访问'
+    }
+  },
+  {
+    path: '/h5',
+    component: () => import('@/views/h5/layout/H5Layout.vue'),
+    name: 'H5Layout',
+    redirect: '/h5/report',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '车间移动端'
+    },
+    children: [
+      {
+        path: 'report',
+        name: 'H5Report',
+        component: () => import('@/views/h5/report/index.vue'),
+        meta: {
+          title: '车间报工',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'inspection',
+        name: 'H5Inspection',
+        component: () => import('@/views/h5/inspection/index.vue'),
+        meta: {
+          title: '移动质检',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'requisition',
+        name: 'H5Requisition',
+        component: () => import('@/views/h5/requisition/index.vue'),
+        meta: {
+          title: '移动发纱',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'me',
+        name: 'H5Me',
+        component: () => import('@/views/h5/me/index.vue'),
+        meta: {
+          title: '个人中心',
+          hidden: true,
+          noTagsView: true
+        }
+      }
+    ]
+  },
+  {
     path: '/h5/scan/weaving-ticket',
     component: () => import('@/views/h5/scan/weaving-ticket.vue'),
     name: 'H5ScanWeavingTicket',

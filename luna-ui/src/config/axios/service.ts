@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import { useI18n } from '@/hooks/web/useI18n'
 
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import qs from 'qs'
@@ -245,6 +246,12 @@ service.interceptors.response.use(
     ) {
       return handleForbidden(error.config)
     }
+    if (
+      error.response?.status === 401 ||
+      (error.response?.data as any)?.code === 401
+    ) {
+      return handleAuthorized()
+    }
     let { message } = error
     const { t } = useI18n()
     if (message === 'Network Error') {
@@ -286,8 +293,30 @@ const refreshToken = async () => {
   axios.defaults.headers.common['tenant-id'] = getTenantId()
   return await axios.post(base_url + '/system/auth/refresh-token?refreshToken=' + getRefreshToken())
 }
-const handleAuthorized = () => {
+export const handleAuthorized = () => {
   const { t } = useI18n()
+  const currentPath =
+    typeof window !== 'undefined'
+      ? window.location.pathname + window.location.search
+      : ((router?.currentRoute?.value?.fullPath as string) || '')
+  const isH5 = currentPath.startsWith('/h5')
+
+  if (isH5) {
+    resetRouter()
+    deleteUserCache()
+    removeToken()
+    isRelogin.show = false
+    if (!currentPath.includes('/h5/login')) {
+      const redirectUrl = '/h5/login?redirect=' + encodeURIComponent(currentPath)
+      if (router?.push) {
+        router.push(redirectUrl)
+      } else if (typeof window !== 'undefined') {
+        window.location.href = redirectUrl
+      }
+    }
+    return Promise.reject(t('sys.api.timeoutMessage'))
+  }
+
   if (!isRelogin.show) {
     // 如果已经到登录页面则不进行弹窗提示
     if (window.location.href.includes('login')) {

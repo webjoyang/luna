@@ -51,7 +51,14 @@ vi.mock('@/utils/auth', () => ({
 }))
 
 vi.mock('@/hooks/web/useCache', () => ({
-  deleteUserCache: vi.fn()
+  deleteUserCache: vi.fn(),
+  useCache: () => ({
+    wsCache: {
+      get: vi.fn(),
+      set: vi.fn(),
+      delete: vi.fn()
+    }
+  })
 }))
 
 vi.mock('@/utils/encrypt', () => ({
