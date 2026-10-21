@@ -4,9 +4,9 @@
 
 **Blocked by:** None（can start immediately）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `lunasrv-module-lunaerp` 的 `ErrorCodeConstants.java` 落 `1_030_039_001-009` 共 9 条常量，注释含中文名与触发场景，与 spec §6 一致：
+- [x] `lunasrv-module-lunaerp` 的 `ErrorCodeConstants.java` 落 `1_030_039_001-009` 共 9 条常量，注释含中文名与触发场景，与 spec §6 一致：
   - 039-001 布票不存在或已作废
   - 039-002 该机台任务已派给其他挡车工，无权操作
   - 039-003 布票尚未完工，不能扫码质检
@@ -16,7 +16,7 @@
   - 039-007 未配置车间默认发纱仓库（保留段，前端通常在选择器侧引导，不阻断）
   - 039-008 照片数量超过 6 张或含非图片文件
   - 039-009 起预留
-- [ ] `docs/adr/0045-workshop-h5-engineering-vant.md` 落 ADR-0045，与 ADR-0044（14 号客户门户）互引，显式记录：同模式（单工程独立路由区/独立布局/懒加载/自有 401 分支）异凭证（admin token vs 门户令牌）、Vant 4 引入理由、html5-qrcode 选型、移动子树禁止引用 PC 组件
-- [ ] shared GLOSSARY 段位表追加 1-030-039 段位（避让 14 号门户 038 段位记录）
-- [ ] production GLOSSARY 增术语：车间移动 H5 / 布票异常照片 / 录检疵点照片 / 自助认领 / 移动发纱 / 默认仓库（含模块边界说明：H5 层不持有业务状态机，只做登录人身份注入、本人范围过滤、扫码定位/自动交接编排、H5 专属 VO 与幂等包装）
-- [ ] 引用 `luna.h5.base-url` 冻结契约不变（04 号已交付，本票不新增逻辑）
+- [x] `docs/adr/0045-workshop-h5-engineering-vant.md` 落 ADR-0045，与 ADR-0044（14 号客户门户）互引，显式记录：同模式（单工程独立路由区/独立布局/懒加载/自有 401 分支）异凭证（admin token vs 门户令牌）、Vant 4 引入理由、html5-qrcode 选型、移动子树禁止引用 PC 组件
+- [x] shared GLOSSARY 段位表追加 1-030-039 段位（避让 14 号门户 038 段位记录）
+- [x] production GLOSSARY 增术语：车间移动 H5 / 布票异常照片 / 录检疵点照片 / 自助认领 / 移动发纱 / 默认仓库（含模块边界说明：H5 层不持有业务状态机，只做登录人身份注入、本人范围过滤、扫码定位/自动交接编排、H5 专属 VO 与幂等包装）
+- [x] 引用 `luna.h5.base-url` 冻结契约不变（04 号已交付，本票不新增逻辑）
