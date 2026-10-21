@@ -11,8 +11,13 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopM
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketExceptionReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStatusCountsVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketStartReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketCompleteReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketExceptionReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.mzt.logapi.starter.annotation.LogRecord;
@@ -22,6 +27,7 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ti
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.WeavingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
+import com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants;
 import com.luna.lunasrv.module.lunaerp.enums.WorkshopH5ErrorCodeConstants;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +35,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
+import java.time.LocalDateTime;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -270,6 +278,141 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
                 .workerName(loginNickname)
                 .build();
         weavingTicketService.startTicket(startReqVO);
+    }
+
+    private static final Pattern IMAGE_URL_PATTERN = Pattern.compile(
+            "^(https?://|/).*\\.(jpg|jpeg|png|gif|webp|bmp|svg)(\\?.*)?$",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "车间移动H5", subType = "布票完工", bizNo = "{{#reqVO.code}}", success = "布票【{{#reqVO.code}}】完工成功")
+    public WorkshopTicketCompleteRespVO completeTicket(WorkshopTicketCompleteReqVO reqVO) {
+        // 1. 强制取登录人用户ID，不信任前端传参
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 校验参数
+        if (reqVO == null || StrUtil.isBlank(reqVO.getCode())) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+
+        // 3. 按布票编号查询有效布票（非 VOID）
+        WeavingTicketDO ticket = weavingTicketMapper.selectOne(
+                new LambdaQueryWrapperX<WeavingTicketDO>()
+                        .eq(WeavingTicketDO::getCode, reqVO.getCode().trim())
+        );
+        if (ticket == null) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+        if ("VOID".equalsIgnoreCase(ticket.getStatus())) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.WEAVING_TICKET_ALREADY_VOIDED);
+        }
+
+        // 4. 查询关联机台任务并进行挡车工权限守卫（横向越权拦截）
+        MachineTaskDO task = ticket.getMachineTaskId() != null
+                ? machineTaskMapper.selectById(ticket.getMachineTaskId())
+                : null;
+        if (task != null) {
+            if (task.getWorkerUserId() != null && !Objects.equals(task.getWorkerUserId(), loginUserId)) {
+                throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER);
+            }
+        } else if (ticket.getWorkerUserId() != null && !Objects.equals(ticket.getWorkerUserId(), loginUserId)) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER);
+        }
+
+        // 5. 幂等友好：票已 COMPLETED/INSPECTED/STOCKED → 返回成功+alreadyCompleted=true（不报错），供弱网重试
+        if ("COMPLETED".equals(ticket.getStatus()) || "INSPECTED".equals(ticket.getStatus()) || "STOCKED".equals(ticket.getStatus())) {
+            return WorkshopTicketCompleteRespVO.builder()
+                    .alreadyCompleted(Boolean.TRUE)
+                    .build();
+        }
+
+        // 6. 状态守卫：非 STARTED/已完成态抛既有 015-111
+        if (!"STARTED".equals(ticket.getStatus())) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.WEAVING_TICKET_STATUS_NOT_ALLOW,
+                    String.format("布票当前状态【%s】不允许完工操作，仅已开工（STARTED）允许完工", ticket.getStatus()));
+        }
+
+        // 7. 委托生产域核心 Service 执行完工
+        WeavingTicketCompleteReqVO completeReqVO = WeavingTicketCompleteReqVO.builder()
+                .id(ticket.getId())
+                .completedAt(LocalDateTime.now())
+                .build();
+        weavingTicketService.completeTicket(completeReqVO);
+
+        return WorkshopTicketCompleteRespVO.builder()
+                .alreadyCompleted(Boolean.FALSE)
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "车间移动H5", subType = "布票异常登记", bizNo = "{{#reqVO.code}}", success = "布票【{{#reqVO.code}}】异常登记成功：{{#reqVO.exceptionType}}")
+    public void exceptionTicket(WorkshopTicketExceptionReqVO reqVO) {
+        // 1. 强制取登录人用户ID，不信任前端传参
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 校验参数
+        if (reqVO == null || StrUtil.isBlank(reqVO.getCode())) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+
+        // 3. 按布票编号查询有效布票（非 VOID）
+        WeavingTicketDO ticket = weavingTicketMapper.selectOne(
+                new LambdaQueryWrapperX<WeavingTicketDO>()
+                        .eq(WeavingTicketDO::getCode, reqVO.getCode().trim())
+        );
+        if (ticket == null) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+        if ("VOID".equalsIgnoreCase(ticket.getStatus())) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.WEAVING_TICKET_ALREADY_VOIDED);
+        }
+
+        // 4. 查询关联机台任务并进行挡车工权限守卫（横向越权拦截）
+        MachineTaskDO task = ticket.getMachineTaskId() != null
+                ? machineTaskMapper.selectById(ticket.getMachineTaskId())
+                : null;
+        if (task != null) {
+            if (task.getWorkerUserId() != null && !Objects.equals(task.getWorkerUserId(), loginUserId)) {
+                throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER);
+            }
+        } else if (ticket.getWorkerUserId() != null && !Objects.equals(ticket.getWorkerUserId(), loginUserId)) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER);
+        }
+
+        // 5. 照片守卫：≤6 张且仅允许图片 URL，超限抛 039-008
+        validateExceptionPhotos(reqVO.getExceptionPhotos());
+
+        // 6. 委托生产域核心 Service 执行异常登记（内部校验异常类型字典 015-113 与来源态 GENERATED/STARTED 015-111，写入 exception_photos jsonb 并覆盖前次异常）
+        WeavingTicketExceptionReqVO exceptionReqVO = WeavingTicketExceptionReqVO.builder()
+                .id(ticket.getId())
+                .exceptionType(reqVO.getExceptionType())
+                .exceptionNote(reqVO.getExceptionNote())
+                .exceptionPhotos(reqVO.getExceptionPhotos())
+                .build();
+        weavingTicketService.exceptionTicket(exceptionReqVO);
+    }
+
+    private void validateExceptionPhotos(List<String> photos) {
+        if (CollUtil.isEmpty(photos)) {
+            return;
+        }
+        if (photos.size() > 6) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_PHOTO_COUNT_EXCEED_OR_INVALID);
+        }
+        for (String photo : photos) {
+            if (StrUtil.isBlank(photo) || !IMAGE_URL_PATTERN.matcher(photo.trim()).matches()) {
+                throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_PHOTO_COUNT_EXCEED_OR_INVALID);
+            }
+        }
     }
 
     /**

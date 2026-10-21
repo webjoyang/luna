@@ -5,6 +5,9 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopM
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketExceptionReqVO;
 
 /**
  * 车间移动 H5 接入层编排服务
@@ -35,5 +38,20 @@ public interface WorkshopH5Service {
      * @param reqVO 开工请求入参
      */
     void startTicket(WorkshopTicketStartReqVO reqVO);
+
+    /**
+     * 布票完工（幂等友好）
+     *
+     * @param reqVO 完工请求入参
+     * @return 完工响应（含 alreadyCompleted 标志）
+     */
+    WorkshopTicketCompleteRespVO completeTicket(WorkshopTicketCompleteReqVO reqVO);
+
+    /**
+     * 布票异常登记（含现场照片）
+     *
+     * @param reqVO 异常登记请求入参
+     */
+    void exceptionTicket(WorkshopTicketExceptionReqVO reqVO);
 
 }

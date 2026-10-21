@@ -6,6 +6,9 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopM
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketExceptionReqVO;
 import com.luna.lunasrv.module.lunaerp.service.h5.workshop.WorkshopH5Service;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -62,6 +65,21 @@ public class WorkshopH5Controller {
     @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:report')")
     public CommonResult<Boolean> startTicket(@Valid @RequestBody WorkshopTicketStartReqVO reqVO) {
         workshopH5Service.startTicket(reqVO);
+        return success(true);
+    }
+
+    @PostMapping("/ticket/complete")
+    @Operation(summary = "布票完工（幂等友好）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:report')")
+    public CommonResult<WorkshopTicketCompleteRespVO> completeTicket(@Valid @RequestBody WorkshopTicketCompleteReqVO reqVO) {
+        return success(workshopH5Service.completeTicket(reqVO));
+    }
+
+    @PostMapping("/ticket/exception")
+    @Operation(summary = "布票异常登记")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:report')")
+    public CommonResult<Boolean> exceptionTicket(@Valid @RequestBody WorkshopTicketExceptionReqVO reqVO) {
+        workshopH5Service.exceptionTicket(reqVO);
         return success(true);
     }
 

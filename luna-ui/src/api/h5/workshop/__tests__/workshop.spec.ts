@@ -12,7 +12,7 @@ vi.mock('@/config/axios', () => {
 })
 
 import request from '@/config/axios'
-import { getMyTasks, getTicketByCode, startTicket } from '../index'
+import { getMyTasks, getTicketByCode, startTicket, completeTicket, exceptionTicket } from '../index'
 
 describe('Workshop H5 API', () => {
   beforeEach(() => {
@@ -106,6 +106,38 @@ describe('Workshop H5 API', () => {
 
     expect(request.post).toHaveBeenCalledWith({
       url: '/lunaerp/h5/workshop/ticket/start',
+      data: payload
+    })
+    expect(result).toBe(true)
+  })
+
+  it('completeTicket should call request.post with /ticket/complete and return resp', async () => {
+    const mockResp = { alreadyCompleted: false }
+    vi.mocked(request.post).mockResolvedValueOnce(mockResp)
+
+    const payload = { code: 'BT-001' }
+    const result = await completeTicket(payload)
+
+    expect(request.post).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/ticket/complete',
+      data: payload
+    })
+    expect(result).toEqual(mockResp)
+  })
+
+  it('exceptionTicket should call request.post with /ticket/exception and data', async () => {
+    vi.mocked(request.post).mockResolvedValueOnce(true)
+
+    const payload = {
+      code: 'BT-001',
+      exceptionType: 'YARN_BREAK',
+      exceptionNote: '断纱停机',
+      exceptionPhotos: ['https://oss.example.com/p1.jpg']
+    }
+    const result = await exceptionTicket(payload)
+
+    expect(request.post).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/ticket/exception',
       data: payload
     })
     expect(result).toBe(true)

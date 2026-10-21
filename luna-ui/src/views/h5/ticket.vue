@@ -143,10 +143,27 @@
             <div v-if="ticket.exceptionType" class="pt-2 border-t border-gray-50 text-red-600">
               <div class="flex justify-between">
                 <span>异常类型：</span>
-                <span class="font-semibold">{{ ticket.exceptionType }}</span>
+                <span class="font-semibold">{{ exceptionTypeLabel(ticket.exceptionType) }}</span>
               </div>
               <div v-if="ticket.exceptionNote" class="mt-1 text-12px text-gray-600">
                 说明：{{ ticket.exceptionNote }}
+              </div>
+              <div v-if="ticket.exceptionPhotos && ticket.exceptionPhotos.length > 0" class="mt-2">
+                <span class="text-12px text-gray-400 block mb-1.5">
+                  异常现场照片（{{ ticket.exceptionPhotos.length }}张）：
+                </span>
+                <div class="flex flex-wrap gap-2">
+                  <van-image
+                    v-for="(photo, idx) in ticket.exceptionPhotos"
+                    :key="idx"
+                    :src="photo"
+                    width="60"
+                    height="60"
+                    radius="4"
+                    fit="cover"
+                    @click="handlePreviewPhotos(ticket.exceptionPhotos, idx)"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -163,7 +180,7 @@
       </div>
     </div>
 
-    <!-- 底部固定操作栏（开工/完工/异常登记占位，待后续 Ticket 11/12 业务动作闭环） -->
+    <!-- 底部固定操作栏 -->
     <div
       v-if="ticket"
       class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2.5 z-20 flex space-x-2"
@@ -175,7 +192,8 @@
         plain
         class="flex-1"
         size="normal"
-        @click="handleActionPlaceholder('异常登记')"
+        :disabled="!canException"
+        @click="openExceptionPopup"
       >
         <van-icon name="warning-o" class="mr-1" />
         异常登记
@@ -197,21 +215,99 @@
         round
         class="flex-1"
         size="normal"
-        @click="handleActionPlaceholder('完工')"
+        :loading="completeSubmitting"
+        :disabled="!canComplete"
+        @click="handleComplete"
       >
         <van-icon name="passed" class="mr-1" />
         完工
       </van-button>
     </div>
+
+    <!-- 异常登记弹窗 -->
+    <van-popup
+      v-model:show="exceptionPopupVisible"
+      position="bottom"
+      round
+      closeable
+      safe-area-inset-bottom
+      class="max-h-[85vh] flex flex-col"
+    >
+      <div class="p-4 pb-2 border-b border-gray-100 font-bold text-16px text-gray-900">
+        布票异常登记
+      </div>
+
+      <div class="p-4 overflow-y-auto space-y-4 flex-1">
+        <div>
+          <div class="text-13px font-medium text-gray-700 mb-2">
+            异常类型 <span class="text-red-500">*</span>
+          </div>
+          <van-radio-group v-model="exceptionForm.exceptionType" direction="horizontal">
+            <van-radio
+              v-for="item in EXCEPTION_TYPES"
+              :key="item.value"
+              :name="item.value"
+              class="mb-2 mr-3 text-13px"
+            >
+              {{ item.label }}
+            </van-radio>
+          </van-radio-group>
+        </div>
+
+        <div>
+          <div class="text-13px font-medium text-gray-700 mb-2">异常说明</div>
+          <van-field
+            v-model="exceptionForm.exceptionNote"
+            type="textarea"
+            rows="3"
+            autosize
+            maxlength="200"
+            show-word-limit
+            placeholder="请输入异常详细说明（选填）"
+            class="bg-gray-50 rounded-lg border border-gray-200"
+          />
+        </div>
+
+        <div>
+          <H5PhotoUploader v-model="exceptionForm.exceptionPhotos" :max-count="6" />
+        </div>
+      </div>
+
+      <div class="p-4 border-t border-gray-100 flex space-x-2 bg-white">
+        <van-button round block plain class="flex-1" @click="exceptionPopupVisible = false">
+          取消
+        </van-button>
+        <van-button
+          round
+          block
+          type="danger"
+          class="flex-1"
+          :loading="exceptionSubmitting"
+          :disabled="!exceptionForm.exceptionType"
+          @click="handleExceptionSubmit"
+        >
+          提交异常
+        </van-button>
+      </div>
+    </van-popup>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showConfirmDialog, showToast } from 'vant'
-import { getTicketByCode, startTicket, type WorkshopTicketVO } from '@/api/h5/workshop'
+import { showConfirmDialog, showToast, showImagePreview } from 'vant'
+import {
+  getTicketByCode,
+  startTicket,
+  completeTicket,
+  exceptionTicket,
+  type WorkshopTicketVO
+} from '@/api/h5/workshop'
+import { useH5Draft } from '@/utils/h5-draft'
+import { formatSubmitError } from '@/utils/h5-submit'
 import H5Scanner from './components/Scanner.vue'
+import H5PhotoUploader from './components/PhotoUploader.vue'
 
 defineOptions({ name: 'H5Ticket' })
 
@@ -220,8 +316,32 @@ const router = useRouter()
 
 const loading = ref(false)
 const startSubmitting = ref(false)
+const completeSubmitting = ref(false)
+const exceptionSubmitting = ref(false)
+const exceptionPopupVisible = ref(false)
 const errorMessage = ref('')
 const ticket = ref<WorkshopTicketVO | null>(null)
+
+const EXCEPTION_TYPES = [
+  { label: '断纱', value: 'YARN_BREAK' },
+  { label: '坏布', value: 'CLOTH_DAMAGE' },
+  { label: '缺纱停机', value: 'YARN_SHORTAGE' },
+  { label: '换机', value: 'MACHINE_CHANGE' },
+  { label: '换人', value: 'WORKER_CHANGE' }
+]
+
+const exceptionForm = ref({
+  exceptionType: '',
+  exceptionNote: '',
+  exceptionPhotos: [] as string[]
+})
+
+const { load: loadExceptionDraft, clear: clearExceptionDraft } = useH5Draft({
+  namespace: 'ticket-exception',
+  key: () => ticket.value?.code,
+  formData: exceptionForm,
+  autoSave: true
+})
 
 const STATUS_MAP: Record<
   string,
@@ -250,6 +370,29 @@ const canStart = computed(() => {
   if (!ticket.value?.status) return false
   return ['GENERATED', 'STARTED', 'EXCEPTION'].includes(ticket.value.status)
 })
+
+const canException = computed(() => {
+  if (!ticket.value?.status) return false
+  return ['GENERATED', 'STARTED'].includes(ticket.value.status)
+})
+
+const canComplete = computed(() => {
+  if (!ticket.value?.status) return false
+  return ['STARTED', 'COMPLETED', 'INSPECTED', 'STOCKED'].includes(ticket.value.status)
+})
+
+const exceptionTypeLabel = (type: string) => {
+  const matched = EXCEPTION_TYPES.find((item) => item.value === type)
+  return matched ? matched.label : type
+}
+
+const handlePreviewPhotos = (photos?: string[], startPosition = 0) => {
+  if (!photos || photos.length === 0) return
+  showImagePreview({
+    images: photos,
+    startPosition
+  })
+}
 
 const loadTicket = async (code: string) => {
   const cleanCode = (code || '').trim()
@@ -324,17 +467,111 @@ const handleStart = async () => {
     })
     await loadTicket(ticket.value.code)
   } catch (err: any) {
+    const errInfo = formatSubmitError(err)
     showToast({
       type: 'fail',
-      message: err?.msg || err?.message || '开工操作失败'
+      message: errInfo.message
     })
   } finally {
     startSubmitting.value = false
   }
 }
 
-const handleActionPlaceholder = (actionName: string) => {
-  showToast(`[${actionName}] 按钮已占位就绪，待后续工单接入实际动作`)
+const handleComplete = async () => {
+  if (!ticket.value || completeSubmitting.value) return
+  if (!canComplete.value) {
+    showToast('当前布票状态不允许完工操作')
+    return
+  }
+
+  const isAlreadyCompleted = ['COMPLETED', 'INSPECTED', 'STOCKED'].includes(ticket.value.status)
+  try {
+    await showConfirmDialog({
+      title: '确认完工',
+      message: isAlreadyCompleted
+        ? `布票【${ticket.value.code}】当前已在完工状态，确认再次提交完工？`
+        : `确认对布票【${ticket.value.code}】执行完工操作？`,
+      confirmButtonText: '确认完工',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    // 用户取消确认
+    return
+  }
+
+  completeSubmitting.value = true
+  try {
+    const res = await completeTicket({
+      code: ticket.value.code
+    })
+    if (res?.alreadyCompleted) {
+      showToast({
+        type: 'success',
+        message: '布票已处于完工状态（幂等成功）'
+      })
+    } else {
+      showToast({
+        type: 'success',
+        message: '完工成功！'
+      })
+    }
+    await loadTicket(ticket.value.code)
+  } catch (err: any) {
+    const errInfo = formatSubmitError(err)
+    showToast({
+      type: 'fail',
+      message: errInfo.message
+    })
+  } finally {
+    completeSubmitting.value = false
+  }
+}
+
+const openExceptionPopup = () => {
+  if (!ticket.value) return
+  loadExceptionDraft()
+  exceptionPopupVisible.value = true
+}
+
+const handleExceptionSubmit = async () => {
+  if (!ticket.value || exceptionSubmitting.value) return
+  if (!exceptionForm.value.exceptionType) {
+    showToast('请选择异常类型')
+    return
+  }
+
+  exceptionSubmitting.value = true
+  try {
+    await exceptionTicket({
+      code: ticket.value.code,
+      exceptionType: exceptionForm.value.exceptionType,
+      exceptionNote: exceptionForm.value.exceptionNote || undefined,
+      exceptionPhotos:
+        exceptionForm.value.exceptionPhotos.length > 0
+          ? exceptionForm.value.exceptionPhotos
+          : undefined
+    })
+    showToast({
+      type: 'success',
+      message: '异常登记成功！'
+    })
+    clearExceptionDraft()
+    exceptionForm.value = {
+      exceptionType: '',
+      exceptionNote: '',
+      exceptionPhotos: []
+    }
+    exceptionPopupVisible.value = false
+    await loadTicket(ticket.value.code)
+  } catch (err: any) {
+    const errInfo = formatSubmitError(err)
+    showToast({
+      type: 'fail',
+      message: errInfo.message
+    })
+  } finally {
+    exceptionSubmitting.value = false
+  }
 }
 
 const goBack = () => {
