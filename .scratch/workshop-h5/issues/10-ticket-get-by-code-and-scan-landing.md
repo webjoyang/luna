@@ -4,12 +4,12 @@
 
 **Blocked by:** 07（扫码组件已就位用于扫票输入）, 09（后端 H5 包骨架与报工 Tab 已就位）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] GET `/lunaerp/h5/workshop/ticket/get-by-code`（code；返回布票卡 + `claimable` 标志）
-- [ ] 票不存在/VOID → 039-001；任务 worker 为他人 → 039-002；任务 worker 为空或=登录人 → `claimable=true`
-- [ ] `@PreAuthorize lunaerp:workshop:h5:report`
-- [ ] 前端 `src/views/h5/scan/weaving-ticket.vue`（扫码落点分流）
-- [ ] 冻结二维码落点 `/h5/scan/weaving-ticket?code=`，登录后按角色分流：仅 report → `/h5/ticket`；仅 inspection → 走 ticket-scan 进胚布录检；两者都有 → ActionSheet 选择并记 localStorage 上次选择
-- [ ] "我的"里可重置扫码落点上次选择
-- [ ] demo：扫票/手输码定位→看到布票卡占位（开工/完工/异常按钮占位）
+- [x] GET `/lunaerp/h5/workshop/ticket/get-by-code`（code；返回布票卡 + `claimable` 标志）
+- [x] 票不存在/VOID → 039-001；任务 worker 为他人 → 039-002；任务 worker 为空或=登录人 → `claimable=true`
+- [x] `@PreAuthorize lunaerp:workshop:h5:report`
+- [x] 前端 `src/views/h5/scan/weaving-ticket.vue`（扫码落点分流）
+- [x] 冻结二维码落点 `/h5/scan/weaving-ticket?code=`，登录后按角色分流：仅 report → `/h5/ticket`；仅 inspection → 走 ticket-scan 进胚布录检；两者都有 → ActionSheet 选择并记 localStorage 上次选择
+- [x] "我的"里可重置扫码落点上次选择
+- [x] demo：扫票/手输码定位→看到布票卡占位（开工/完工/异常按钮占位）
