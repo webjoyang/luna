@@ -119,7 +119,7 @@
 
         <!-- 胚布扫码录检入口与占位卡片 -->
         <div
-          v-if="order.type === 'GREIGE'"
+          v-if="isGreigePieceMode"
           class="mode-action-card bg-white rounded-xl p-4 shadow-xs border border-primary/30"
         >
           <div class="flex items-center justify-between mb-3">
@@ -325,30 +325,220 @@
           </div>
         </div>
 
-        <!-- 成品模式骨架占位 -->
+        <!-- 成品 ROLL 模式录检卡片 -->
         <div
           v-else
-          class="mode-placeholder-card bg-white rounded-xl p-4 shadow-xs border border-dashed border-primary/40"
+          class="mode-action-card bg-white rounded-xl p-4 shadow-xs border border-primary/30"
         >
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center justify-between mb-3">
             <div class="flex items-center space-x-2">
               <div
                 class="w-8 h-8 rounded-full bg-blue-50 text-primary flex items-center justify-center"
               >
-                <van-icon name="edit" size="18" />
+                <van-icon name="records-o" size="18" />
               </div>
               <div>
                 <span class="text-14px font-bold text-gray-900">成品逐卷录检</span>
                 <span class="text-11px text-primary block mt-0.5">
-                  模式入口骨架（待 16 号 Ticket 接入）
+                  输入/扫码卷号，自动记忆缸号与查重定位
                 </span>
               </div>
             </div>
-            <van-tag type="primary" plain round size="small">ROLL</van-tag>
+            <div class="flex items-center space-x-2">
+              <van-tag type="primary" plain round size="small">ROLL</van-tag>
+              <van-button
+                v-hasPermi="['lunaerp:workshop:h5:inspection']"
+                v-if="!order.readonly"
+                type="primary"
+                size="small"
+                icon="scan"
+                round
+                @click="triggerScanner"
+              >
+                扫卷码
+              </van-button>
+            </div>
           </div>
-          <p class="text-12px text-gray-500 bg-gray-50 rounded-lg p-2.5">
-            支持现场逐卷录入缸号、卷号、等级、实称重量、米数与瑕疵照片。
+
+          <!-- 扫码/查重命中已有行改录提示 -->
+          <div
+            v-if="currentScannedItem"
+            class="scan-hit-alert bg-blue-50 border border-blue-200 rounded-lg p-3 text-12px text-blue-900 mb-3"
+          >
+            <div class="flex items-center font-bold mb-1">
+              <van-icon name="checked" color="#1989fa" class="mr-1" />
+              已定位到已有录检行（改录模式）
+            </div>
+            <div
+              >缸号：<span class="font-mono font-medium">{{ form.vatNo }}</span
+              >，卷号：<span class="font-mono font-medium">{{ form.rollNo }}</span></div
+            >
+          </div>
+          <div
+            v-else-if="form.rollNo"
+            class="scan-hit-alert bg-amber-50 border border-amber-200 rounded-lg p-3 text-12px text-amber-900 mb-3"
+          >
+            <div class="flex items-center font-bold mb-1">
+              <van-icon name="passed" color="#ed6a0c" class="mr-1" />
+              新卷录入模式
+            </div>
+            <div
+              >缸号：<span class="font-mono font-medium">{{ form.vatNo || '待输入' }}</span
+              >，卷号：<span class="font-mono font-medium">{{ form.rollNo }}</span></div
+            >
+          </div>
+          <p v-else class="text-12px text-gray-500 bg-gray-50 rounded-lg p-2.5 mb-3">
+            现场逐卷录检：输入/扫码卷号，同 (缸号,卷号) 自动定位改录；缸号自动记忆上次录入值。
           </p>
+
+          <!-- 成品录检表单（仅非只读展示） -->
+          <div v-if="!order.readonly" class="inspection-form-card pt-1 border-t border-gray-100">
+            <div class="flex items-center justify-between mb-3 mt-2">
+              <span class="text-13px font-bold text-gray-900 flex items-center">
+                <van-icon :name="currentScannedItem ? 'edit' : 'add-o'" class="mr-1 text-primary" />
+                {{ currentScannedItem ? '改录原行明细' : '录入新卷明细' }}
+              </span>
+              <van-tag :type="currentScannedItem ? 'primary' : 'warning'" size="small" round>
+                {{ currentScannedItem ? '改录' : '新建' }}
+              </van-tag>
+            </div>
+
+            <van-form @submit="handleSaveItem">
+              <van-cell-group
+                inset
+                class="!mx-0 mb-3 border border-gray-100 rounded-lg overflow-hidden"
+              >
+                <!-- 缸号（必填，记忆上次值） -->
+                <van-field
+                  v-model="form.vatNo"
+                  label="缸号"
+                  placeholder="请输入缸号（自动记忆）"
+                  clearable
+                  required
+                  :rules="[{ required: true, message: '缸号不能为空' }]"
+                  @blur="handleRollNoOrVatNoChange"
+                />
+
+                <!-- 卷号（必填，支持扫码和手输） -->
+                <van-field
+                  v-model="form.rollNo"
+                  label="卷号"
+                  placeholder="请输入或扫码卷号"
+                  clearable
+                  required
+                  :rules="[{ required: true, message: '卷号不能为空' }]"
+                  @blur="handleRollNoOrVatNoChange"
+                >
+                  <template #extra>
+                    <van-icon
+                      name="scan"
+                      size="20"
+                      class="text-primary cursor-pointer px-1"
+                      @click="triggerScanner"
+                    />
+                  </template>
+                </van-field>
+
+                <!-- 检验等级（字典 2232: A / B / C / DEFECTIVE） -->
+                <van-field name="grade" label="检验等级" required>
+                  <template #input>
+                    <van-radio-group
+                      v-model="form.grade"
+                      direction="horizontal"
+                      class="flex flex-wrap gap-2"
+                    >
+                      <van-radio name="A">一等品(A)</van-radio>
+                      <van-radio name="B">二等品(B)</van-radio>
+                      <van-radio name="C">三等品(C)</van-radio>
+                      <van-radio name="DEFECTIVE">等外品</van-radio>
+                    </van-radio-group>
+                  </template>
+                </van-field>
+
+                <!-- 实称重量 KG -->
+                <van-field
+                  v-model="form.measuredWeight"
+                  type="number"
+                  label="实称重量"
+                  placeholder="请输入实称重量"
+                  required
+                  :rules="[
+                    { required: true, message: '实称重量不能为空' },
+                    { validator: (val) => Number(val) > 0, message: '重量必须大于 0' }
+                  ]"
+                >
+                  <template #extra>
+                    <span class="text-gray-400 text-12px">kg</span>
+                  </template>
+                </van-field>
+
+                <!-- 实测米数 -->
+                <van-field
+                  v-model="form.lengthM"
+                  type="number"
+                  label="实测米数"
+                  placeholder="请输入实测米数"
+                  :rules="[
+                    { validator: (val) => !val || Number(val) > 0, message: '米数必须大于 0' }
+                  ]"
+                >
+                  <template #extra>
+                    <span class="text-gray-400 text-12px">m</span>
+                  </template>
+                </van-field>
+
+                <!-- 现场瑕疵照片（<=6 张） -->
+                <div class="px-4 py-2.5">
+                  <H5PhotoUploader
+                    v-model="form.photos"
+                    :max-count="6"
+                    directory="workshop/inspection"
+                  />
+                </div>
+
+                <!-- 备注 -->
+                <van-field
+                  v-model="form.remark"
+                  label="录检备注"
+                  placeholder="选填，现场瑕疵/布面情况说明"
+                  rows="2"
+                  autosize
+                  type="textarea"
+                  maxlength="200"
+                  show-word-limit
+                />
+              </van-cell-group>
+
+              <!-- 提交按钮与放弃修改按钮 -->
+              <div class="flex items-center space-x-2 pt-1">
+                <van-button
+                  v-if="currentScannedItem"
+                  v-hasPermi="['lunaerp:workshop:h5:inspection']"
+                  plain
+                  size="small"
+                  round
+                  type="default"
+                  class="flex-1"
+                  @click="resetFormToNew"
+                >
+                  取消改录
+                </van-button>
+                <van-button
+                  v-hasPermi="['lunaerp:workshop:h5:inspection']"
+                  type="primary"
+                  size="small"
+                  round
+                  block
+                  :loading="submitting"
+                  loading-text="正在保存..."
+                  native-type="submit"
+                  class="flex-2"
+                >
+                  {{ currentScannedItem ? '保存改录' : '保存录检明细' }}
+                </van-button>
+              </div>
+            </van-form>
+          </div>
         </div>
 
         <!-- 录检明细列表区域（含 photos 照片展示） -->
@@ -466,7 +656,7 @@
     </div>
 
     <!-- 底部/弹窗扫码组件 -->
-    <H5Scanner ref="scannerRef" @scan="handleTicketScan" />
+    <H5Scanner ref="scannerRef" @scan="handleScanResult" />
   </div>
 </template>
 
@@ -480,6 +670,7 @@ import {
   getInspection,
   ticketScan,
   saveInspectionItem,
+  H5_INSPECTION_ITEM_DUPLICATE,
   WorkshopInspectionDetailVO,
   WorkshopInspectionItemVO,
   WorkshopInspectionItemSaveReqVO
@@ -504,12 +695,25 @@ const suggestedPieceNo = ref<string>('')
 const currentScannedItem = ref<WorkshopInspectionItemVO | null>(null)
 
 // 录检表单上下文
+const LAST_VAT_NO_KEY = 'workshop:h5:inspection:lastVatNo'
+
+// 模式区分：成品或卷装走 ROLL 模式；胚布且非卷装走 GREIGE PIECE 模式
+const isRollMode = computed(
+  () =>
+    order.value?.packageMode === 'ROLL' ||
+    (order.value?.type === 'FINISHED' && order.value?.packageMode !== 'PIECE')
+)
+const isGreigePieceMode = computed(
+  () => order.value?.type === 'GREIGE' && order.value?.packageMode !== 'ROLL'
+)
+
 interface InspectionFormState {
-  pieceNo: string
+  rollNo?: string
+  pieceNo?: string
   vatNo: string
   grade: string
-  measuredWeight: number | string
-  lengthM: number | string
+  measuredWeight: string | number
+  lengthM: string | number
   remark: string
   photos: string[]
 }
@@ -518,6 +722,7 @@ const DRAFT_NS = 'inspection:greige:item'
 const submitting = ref(false)
 
 const defaultForm = (): InspectionFormState => ({
+  rollNo: '',
   pieceNo: '',
   vatNo: '',
   grade: 'A',
@@ -529,9 +734,47 @@ const defaultForm = (): InspectionFormState => ({
 
 const form = ref<InspectionFormState>(defaultForm())
 
-// 草稿缓存按 单据ID_布票ID 分键
+// 缸号记忆存取函数
+const saveLastVatNo = (vatNo: string) => {
+  if (!vatNo) return
+  try {
+    if (order.value?.id) {
+      localStorage.setItem(`${LAST_VAT_NO_KEY}_${order.value.id}`, vatNo)
+    }
+    localStorage.setItem(LAST_VAT_NO_KEY, vatNo)
+  } catch (e) {
+    console.warn('localStorage error', e)
+  }
+}
+
+const getLastVatNo = (): string => {
+  try {
+    if (order.value?.id) {
+      const perOrder = localStorage.getItem(`${LAST_VAT_NO_KEY}_${order.value.id}`)
+      if (perOrder) return perOrder
+    }
+    const globalVat = localStorage.getItem(LAST_VAT_NO_KEY)
+    if (globalVat) return globalVat
+    if (order.value?.items && order.value.items.length > 0) {
+      const lastItem = order.value.items[order.value.items.length - 1]
+      if (lastItem.vatNo) return lastItem.vatNo
+    }
+  } catch (e) {
+    console.warn('localStorage error', e)
+  }
+  return ''
+}
+
+// 草稿缓存按 单据ID_布票/卷号 分键
 const draftKey = computed(() => {
   if (!order.value?.id) return ''
+  if (isRollMode.value) {
+    const rollKey =
+      form.value.vatNo && form.value.rollNo
+        ? `${form.value.vatNo}_${form.value.rollNo}`
+        : 'roll_new'
+    return `${order.value.id}_${rollKey}`
+  }
   const ticketKey = currentWeavingTicketId.value || currentScannedTicket.value || 'new'
   return `${order.value.id}_${ticketKey}`
 })
@@ -540,21 +783,27 @@ const draftKey = computed(() => {
 watch(
   () => form.value,
   (newVal) => {
-    if (
-      !submitting.value &&
-      draftKey.value &&
-      currentScannedTicket.value &&
-      !currentScannedItem.value
-    ) {
-      saveDraft(DRAFT_NS, draftKey.value, newVal)
+    if (!submitting.value && draftKey.value && !currentScannedItem.value) {
+      if (isRollMode.value) {
+        if (newVal.vatNo || newVal.rollNo || newVal.measuredWeight) {
+          saveDraft(DRAFT_NS, draftKey.value, newVal)
+        }
+      } else {
+        if (currentScannedTicket.value) {
+          saveDraft(DRAFT_NS, draftKey.value, newVal)
+        }
+      }
     }
   },
   { deep: true }
 )
 
-const buildFormState = (source?: Partial<InspectionFormState>): InspectionFormState => ({
+const buildFormState = (
+  source?: Partial<InspectionFormState> & Partial<WorkshopInspectionItemVO>
+): InspectionFormState => ({
+  rollNo: source?.rollNo || '',
   pieceNo: source?.pieceNo || suggestedPieceNo.value || currentScannedTicket.value,
-  vatNo: source?.vatNo || '',
+  vatNo: source?.vatNo || (isRollMode.value ? getLastVatNo() : ''),
   grade: source?.grade || 'A',
   measuredWeight: source?.measuredWeight ?? '',
   lengthM: source?.lengthM ?? '',
@@ -572,13 +821,77 @@ const initFormWithCurrentState = () => {
   }
 }
 
-// 保存录检行（新建/改录）
-const handleSaveItem = async () => {
-  if (!order.value?.id) return
-  if (!currentWeavingTicketId.value) {
-    showToast({ type: 'fail', message: '未关联有效织造布票' })
+// 成品 ROLL 模式：查重与定位已有明细改录
+const checkAndLocateRoll = () => {
+  if (!isRollMode.value) return
+  const curVat = (form.value.vatNo || '').trim()
+  const curRoll = (form.value.rollNo || '').trim()
+  if (!curRoll || !curVat) {
+    if (currentItemId.value && !curRoll) {
+      currentItemId.value = null
+      currentScannedItem.value = null
+    }
     return
   }
+
+  const existItem = order.value?.items?.find(
+    (it) => (it.vatNo || '').trim() === curVat && (it.rollNo || '').trim() === curRoll
+  )
+
+  if (existItem) {
+    currentItemId.value = existItem.id
+    currentScannedItem.value = existItem
+    form.value.grade = existItem.grade || 'A'
+    form.value.measuredWeight = existItem.measuredWeight != null ? existItem.measuredWeight : ''
+    form.value.lengthM = existItem.lengthM != null ? existItem.lengthM : ''
+    form.value.remark = existItem.remark || ''
+    form.value.photos = existItem.photos ? [...existItem.photos] : []
+    showToast({
+      type: 'warning',
+      message: '已定位到已有卷号记录（改录模式）'
+    })
+  } else {
+    if (currentItemId.value != null) {
+      currentItemId.value = null
+      currentScannedItem.value = null
+      form.value.grade = 'A'
+      form.value.measuredWeight = ''
+      form.value.lengthM = ''
+      form.value.remark = ''
+      form.value.photos = []
+    }
+  }
+}
+
+const handleRollNoOrVatNoChange = () => {
+  if (isRollMode.value) {
+    if (form.value.vatNo) {
+      saveLastVatNo(form.value.vatNo.trim())
+    }
+    checkAndLocateRoll()
+  }
+}
+
+// 保存录检行（新建/改录，支持胚布 PIECE 与成品 ROLL）
+const handleSaveItem = async () => {
+  if (!order.value?.id) return
+
+  if (isRollMode.value) {
+    if (!form.value.vatNo || !form.value.vatNo.trim()) {
+      showToast({ type: 'fail', message: '缸号不能为空' })
+      return
+    }
+    if (!form.value.rollNo || !form.value.rollNo.trim()) {
+      showToast({ type: 'fail', message: '卷号不能为空' })
+      return
+    }
+  } else {
+    if (!currentWeavingTicketId.value) {
+      showToast({ type: 'fail', message: '未关联有效织造布票' })
+      return
+    }
+  }
+
   if (!form.value.grade) {
     showToast({ type: 'fail', message: '请选择检验等级' })
     return
@@ -594,8 +907,9 @@ const handleSaveItem = async () => {
     const payload: WorkshopInspectionItemSaveReqVO = {
       id: currentItemId.value || undefined,
       inspectionOrderId: order.value.id,
-      weavingTicketId: currentWeavingTicketId.value,
-      pieceNo: form.value.pieceNo || currentScannedTicket.value,
+      weavingTicketId: isRollMode.value ? undefined : currentWeavingTicketId.value || undefined,
+      pieceNo: isRollMode.value ? undefined : form.value.pieceNo || currentScannedTicket.value,
+      rollNo: isRollMode.value ? form.value.rollNo.trim() : undefined,
       vatNo: form.value.vatNo ? form.value.vatNo.trim() : undefined,
       grade: form.value.grade,
       measuredWeight: weightNum,
@@ -608,13 +922,62 @@ const handleSaveItem = async () => {
     if (draftKey.value) {
       clearDraft(DRAFT_NS, draftKey.value)
     }
+
+    if (isRollMode.value) {
+      saveLastVatNo(form.value.vatNo.trim())
+    }
+
     showToast({
       type: 'success',
       message: currentItemId.value ? '改录成功' : '录检成功'
     })
-    currentItemId.value = savedId
+
     await loadOrderDetail(false)
+
+    if (isRollMode.value) {
+      // 成功录检/改录后，保持缸号记忆，重置卷号及物理参数，准备录下一卷
+      currentItemId.value = null
+      currentScannedItem.value = null
+      form.value.rollNo = ''
+      form.value.measuredWeight = ''
+      form.value.lengthM = ''
+      form.value.remark = ''
+      form.value.photos = []
+      form.value.grade = 'A'
+    } else {
+      currentItemId.value = savedId
+    }
   } catch (err: any) {
+    const errCode = err?.code ?? err?.data?.code
+    if (errCode === H5_INSPECTION_ITEM_DUPLICATE) {
+      // 查重命中：不覆盖，携带该行数据定位改录
+      const duplicateItem: WorkshopInspectionItemVO | undefined =
+        err?.data?.data ||
+        err?.data ||
+        order.value?.items?.find(
+          (it) =>
+            (it.vatNo || '').trim() === (form.value.vatNo || '').trim() &&
+            (it.rollNo || '').trim() === (form.value.rollNo || '').trim()
+        )
+      if (duplicateItem) {
+        currentItemId.value = duplicateItem.id
+        currentScannedItem.value = duplicateItem
+        form.value.vatNo = duplicateItem.vatNo || form.value.vatNo
+        form.value.rollNo = duplicateItem.rollNo || form.value.rollNo
+        form.value.grade = duplicateItem.grade || 'A'
+        form.value.measuredWeight =
+          duplicateItem.measuredWeight != null ? duplicateItem.measuredWeight : ''
+        form.value.lengthM = duplicateItem.lengthM != null ? duplicateItem.lengthM : ''
+        form.value.remark = duplicateItem.remark || ''
+        form.value.photos = duplicateItem.photos ? [...duplicateItem.photos] : []
+        showToast({
+          type: 'warning',
+          message: '该缸号+卷号已存在，已定位到该行改录'
+        })
+        return
+      }
+    }
+
     showToast({
       type: 'fail',
       message: err?.message || err?.msg || '保存录检明细失败'
@@ -628,19 +991,62 @@ const handleSaveItem = async () => {
 const resetFormToNew = () => {
   currentScannedItem.value = null
   currentItemId.value = null
-  initFormWithCurrentState()
+  if (isRollMode.value) {
+    form.value.rollNo = ''
+    form.value.grade = 'A'
+    form.value.measuredWeight = ''
+    form.value.lengthM = ''
+    form.value.remark = ''
+    form.value.photos = []
+  } else {
+    initFormWithCurrentState()
+  }
 }
 
 const triggerScanner = () => {
   scannerRef.value?.openScanner?.()
 }
 
-// 判断明细卡片是否为当前扫码定位命中的行（基于实体 ID 精确判定）
+// 扫码统一分发
+const handleScanResult = (code: string) => {
+  if (isRollMode.value) {
+    handleRollScan(code)
+  } else {
+    handleTicketScan(code)
+  }
+}
+
+// 成品 ROLL 模式：扫码卷号识别与查重定位
+const handleRollScan = (code: string) => {
+  const cleanCode = (code || '').trim()
+  if (!cleanCode) return
+  form.value.rollNo = cleanCode
+  checkAndLocateRoll()
+  showToast({
+    type: 'success',
+    message: '已扫码卷号: ' + cleanCode
+  })
+}
+
+// 判断明细卡片是否为当前定位命中的行
 const isItemHighlighted = (item: WorkshopInspectionItemVO) => {
   if (currentItemId.value && item.id === currentItemId.value) {
     return true
   }
-  if (currentWeavingTicketId.value && item.weavingTicketId === currentWeavingTicketId.value) {
+  if (
+    !isRollMode.value &&
+    currentWeavingTicketId.value &&
+    item.weavingTicketId === currentWeavingTicketId.value
+  ) {
+    return true
+  }
+  if (
+    isRollMode.value &&
+    form.value.vatNo &&
+    form.value.rollNo &&
+    (item.vatNo || '').trim() === form.value.vatNo.trim() &&
+    (item.rollNo || '').trim() === form.value.rollNo.trim()
+  ) {
     return true
   }
   return false
@@ -793,6 +1199,13 @@ const loadOrderDetail = async (showLoading = true) => {
       return
     }
     order.value = res
+
+    if (isRollMode.value && !form.value.vatNo) {
+      const remembered = getLastVatNo()
+      if (remembered) {
+        form.value.vatNo = remembered
+      }
+    }
 
     // 匹配路由传参带来的扫码定位状态
     const scanTicket = (route.query.ticketCode as string) || (route.query.scanTicketCode as string)

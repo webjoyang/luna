@@ -736,8 +736,9 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
         validateExceptionPhotos(reqVO.getPhotos());
 
         // 4. 构建生产域保存 VO 并根据包装模式分化处理
-        boolean isPieceMode = "PIECE".equalsIgnoreCase(inspectionOrder.getPackageMode())
-                || "GREIGE".equalsIgnoreCase(inspectionOrder.getType());
+        boolean isRollMode = "ROLL".equalsIgnoreCase(inspectionOrder.getPackageMode())
+                || ("FINISHED".equalsIgnoreCase(inspectionOrder.getType()) && !"PIECE".equalsIgnoreCase(inspectionOrder.getPackageMode()));
+        boolean isPieceMode = !isRollMode;
         InspectionOrderItemSaveReqVO saveReqVO = new InspectionOrderItemSaveReqVO();
         saveReqVO.setId(reqVO.getId());
         saveReqVO.setInspectionOrderId(reqVO.getInspectionOrderId());
@@ -786,10 +787,40 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
 
             return inspectionOrderItemService.createInspectionOrderItem(saveReqVO);
         } else {
-            // 成品 ROLL 模式（预留兼容，16 号工单完整接入查重）
-            saveReqVO.setRollNo(reqVO.getRollNo());
-            saveReqVO.setPieceNo(reqVO.getPieceNo());
-            saveReqVO.setVatNo(reqVO.getVatNo());
+            // 成品 ROLL 模式（来自检验单内逐卷录）：vatNo、rollNo 必填
+            String vatNo = StrUtil.isNotBlank(reqVO.getVatNo()) ? reqVO.getVatNo().trim() : null;
+            String rollNo = StrUtil.isNotBlank(reqVO.getRollNo()) ? reqVO.getRollNo().trim() : null;
+            if (StrUtil.isBlank(vatNo)) {
+                throw ServiceExceptionUtil.exception(ErrorCodeConstants.INSPECTION_ORDER_VAT_NO_REQUIRED);
+            }
+            if (StrUtil.isBlank(rollNo)) {
+                throw ServiceExceptionUtil.exception(ErrorCodeConstants.INSPECTION_ORDER_ROLL_NO_REQUIRED);
+            }
+
+            // 保存前按 (inspectionOrderId, vatNo, rollNo) 查重，命中已存在行 → 不覆盖，返回 039-005 + 该行数据
+            InspectionOrderItemDO exist = inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndRollNo(
+                    reqVO.getInspectionOrderId(), vatNo, rollNo
+            );
+            if (exist != null) {
+                // 若为新建（id==null）或改录了其他行的缸号卷号（id!=exist.getId()），触发 039-005 查重拦截并携带该行数据
+                if (reqVO.getId() == null || !exist.getId().equals(reqVO.getId())) {
+                    throw ServiceExceptionUtil.exceptionWithData(
+                            WorkshopH5ErrorCodeConstants.H5_INSPECTION_ITEM_DUPLICATE,
+                            buildInspectionItemRespVO(exist)
+                    );
+                }
+            }
+
+            saveReqVO.setVatNo(vatNo);
+            saveReqVO.setRollNo(rollNo);
+            saveReqVO.setPieceNo(null);
+            if (StrUtil.isBlank(saveReqVO.getProductCode())) {
+                saveReqVO.setProductCode(inspectionOrder.getProductCode());
+            }
+            if (StrUtil.isBlank(saveReqVO.getProductName())) {
+                saveReqVO.setProductName(inspectionOrder.getProductName());
+            }
+
             if (saveReqVO.getId() != null) {
                 inspectionOrderItemService.updateInspectionOrderItem(saveReqVO);
                 return saveReqVO.getId();

@@ -308,4 +308,49 @@ describe('Workshop H5 API', () => {
     })
     expect(result).toBe(501)
   })
+
+  it('saveInspectionItem should support creating finished ROLL item with vatNo and rollNo', async () => {
+    vi.mocked(request.post).mockResolvedValueOnce(601)
+
+    const payload = {
+      inspectionOrderId: 102,
+      vatNo: 'GH-20261021-01',
+      rollNo: 'R001',
+      grade: 'A',
+      measuredWeight: 28.5,
+      lengthM: 110,
+      remark: '成品首卷合格',
+      photos: ['https://oss.example.com/roll1.jpg']
+    }
+
+    const result = await saveInspectionItem(payload)
+
+    expect(request.post).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/inspection/item/save',
+      data: payload
+    })
+    expect(result).toBe(601)
+  })
+
+  it('saveInspectionItem should support updating finished ROLL item with id', async () => {
+    vi.mocked(request.post).mockResolvedValueOnce(601)
+
+    const payload = {
+      id: 601,
+      inspectionOrderId: 102,
+      vatNo: 'GH-20261021-01',
+      rollNo: 'R001',
+      grade: 'B',
+      measuredWeight: 28.0,
+      lengthM: 108
+    }
+
+    const result = await saveInspectionItem(payload)
+
+    expect(request.post).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/inspection/item/save',
+      data: payload
+    })
+    expect(result).toBe(601)
+  })
 })

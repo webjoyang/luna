@@ -17,6 +17,7 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.item.vo.InspectionOrderItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.item.InspectionOrderItemService;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
@@ -2029,4 +2030,221 @@ class WorkshopH5ServiceImplTest {
         assertEquals("{{#reqVO.inspectionOrderId}}", logRecord.bizNo());
     }
 
+    @Test
+    @DisplayName("saveInspectionItem: 成品 ROLL 模式空 vatNo 抛出 010-002 缸号不能为空")
+    void testSaveInspectionItem_roll_blankVatNo_throws1010002() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("ROLL");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .rollNo("R001")
+                    .vatNo("   ")
+                    .grade("A")
+                    .measuredWeight(new java.math.BigDecimal("25.50"))
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO));
+            assertEquals(ErrorCodeConstants.INSPECTION_ORDER_VAT_NO_REQUIRED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 成品 ROLL 模式空 rollNo 抛出 010-002 卷号不能为空")
+    void testSaveInspectionItem_roll_blankRollNo_throws1010002() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("ROLL");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .rollNo("  ")
+                    .vatNo("GH-20261021-01")
+                    .grade("A")
+                    .measuredWeight(new java.math.BigDecimal("25.50"))
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO));
+            assertEquals(ErrorCodeConstants.INSPECTION_ORDER_ROLL_NO_REQUIRED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 成品 ROLL 查重同 (缸号,卷号) 二次保存抛出 039-005 且携带该行数据，不产生新行与不覆盖")
+    void testSaveInspectionItem_roll_duplicateVatAndRoll_throws039005_withData() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("ROLL");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            InspectionOrderItemDO existItem = new InspectionOrderItemDO();
+            existItem.setId(701L);
+            existItem.setInspectionOrderId(101L);
+            existItem.setVatNo("GH-001");
+            existItem.setRollNo("R001");
+            existItem.setGrade("A");
+            existItem.setMeasuredWeight(new java.math.BigDecimal("30.00"));
+            when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndRollNo(101L, "GH-001", "R001"))
+                    .thenReturn(existItem);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .vatNo("GH-001")
+                    .rollNo("R001")
+                    .grade("B")
+                    .measuredWeight(new java.math.BigDecimal("28.00"))
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_INSPECTION_ITEM_DUPLICATE.getCode(), ex.getCode());
+            assertNotNull(ex.getData());
+            assertTrue(ex.getData() instanceof WorkshopInspectionItemRespVO);
+            WorkshopInspectionItemRespVO itemResp = (WorkshopInspectionItemRespVO) ex.getData();
+            assertEquals(701L, itemResp.getId());
+            assertEquals("GH-001", itemResp.getVatNo());
+            assertEquals("R001", itemResp.getRollNo());
+
+            // 核心断言：不覆盖原行，不产生新行
+            verify(inspectionOrderItemService, never()).createInspectionOrderItem(any(InspectionOrderItemSaveReqVO.class));
+            verify(inspectionOrderItemService, never()).updateInspectionOrderItem(any(InspectionOrderItemSaveReqVO.class));
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 成品 ROLL 改录修改缸号卷号碰撞其他既有明细，抛出 039-005")
+    void testSaveInspectionItem_roll_updateDifferentItemCollision_throws039005() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("ROLL");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            InspectionOrderItemDO otherItem = new InspectionOrderItemDO();
+            otherItem.setId(701L);
+            otherItem.setInspectionOrderId(101L);
+            otherItem.setVatNo("GH-001");
+            otherItem.setRollNo("R001");
+            when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndRollNo(101L, "GH-001", "R001"))
+                    .thenReturn(otherItem);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .id(702L) // 改录的是 702 行，但改成的缸号卷号已被 701 占用
+                    .inspectionOrderId(101L)
+                    .vatNo("GH-001")
+                    .rollNo("R001")
+                    .grade("B")
+                    .measuredWeight(new java.math.BigDecimal("28.00"))
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_INSPECTION_ITEM_DUPLICATE.getCode(), ex.getCode());
+            assertEquals(701L, ((WorkshopInspectionItemRespVO) ex.getData()).getId());
+            verify(inspectionOrderItemService, never()).updateInspectionOrderItem(any(InspectionOrderItemSaveReqVO.class));
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 成品 ROLL 新建明细查重无冲突，成功委托 createInspectionOrderItem 并补齐快照")
+    void testSaveInspectionItem_roll_createNew_success() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("ROLL");
+            order.setProductCode("CP-TEST-01");
+            order.setProductName("精梳全棉");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndRollNo(101L, "GH-001", "R002"))
+                    .thenReturn(null);
+            when(inspectionOrderItemService.createInspectionOrderItem(any(InspectionOrderItemSaveReqVO.class)))
+                    .thenReturn(801L);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .vatNo("GH-001")
+                    .rollNo("R002")
+                    .grade("A")
+                    .measuredWeight(new java.math.BigDecimal("25.50"))
+                    .lengthM(new java.math.BigDecimal("100.00"))
+                    .remark("卷装合格")
+                    .photos(java.util.Collections.singletonList("https://oss.example.com/r002.jpg"))
+                    .build();
+
+            Long resultId = workshopH5Service.saveInspectionItem(reqVO);
+
+            assertEquals(801L, resultId);
+            org.mockito.ArgumentCaptor<InspectionOrderItemSaveReqVO> captor =
+                    org.mockito.ArgumentCaptor.forClass(InspectionOrderItemSaveReqVO.class);
+            verify(inspectionOrderItemService).createInspectionOrderItem(captor.capture());
+            InspectionOrderItemSaveReqVO captured = captor.getValue();
+            assertEquals("GH-001", captured.getVatNo());
+            assertEquals("R002", captured.getRollNo());
+            assertNull(captured.getPieceNo());
+            assertEquals("CP-TEST-01", captured.getProductCode());
+            assertEquals("精梳全棉", captured.getProductName());
+            assertEquals("A", captured.getGrade());
+            assertEquals(new java.math.BigDecimal("25.50"), captured.getMeasuredWeight());
+            assertEquals(new java.math.BigDecimal("100.00"), captured.getLengthM());
+            assertEquals("卷装合格", captured.getRemark());
+            assertEquals(1, captured.getPhotos().size());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 成品 ROLL 改录同明细保持或修改其他字段，委托 updateInspectionOrderItem")
+    void testSaveInspectionItem_roll_updateSameId_success() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("ROLL");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            InspectionOrderItemDO existItem = new InspectionOrderItemDO();
+            existItem.setId(701L);
+            existItem.setInspectionOrderId(101L);
+            existItem.setVatNo("GH-001");
+            existItem.setRollNo("R001");
+            when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndRollNo(101L, "GH-001", "R001"))
+                    .thenReturn(existItem);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .id(701L)
+                    .inspectionOrderId(101L)
+                    .vatNo("GH-001")
+                    .rollNo("R001")
+                    .grade("B")
+                    .measuredWeight(new java.math.BigDecimal("26.80"))
+                    .build();
+
+            Long resultId = workshopH5Service.saveInspectionItem(reqVO);
+
+            assertEquals(701L, resultId);
+            verify(inspectionOrderItemService).updateInspectionOrderItem(any(InspectionOrderItemSaveReqVO.class));
+            verify(inspectionOrderItemService, never()).createInspectionOrderItem(any(InspectionOrderItemSaveReqVO.class));
+        }
+    }
 }

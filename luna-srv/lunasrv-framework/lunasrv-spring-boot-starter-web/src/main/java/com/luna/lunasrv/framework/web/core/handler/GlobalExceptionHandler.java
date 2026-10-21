@@ -318,7 +318,11 @@ public class GlobalExceptionHandler {
         if (CommonResult.isSuccess(ex.getCode())) {
             return CommonResult.error(INTERNAL_SERVER_ERROR.getCode(), INTERNAL_SERVER_ERROR.getMsg());
         }
-        return CommonResult.error(ex.getCode(), ex.getMessage());
+        CommonResult<?> result = CommonResult.error(ex.getCode(), ex.getMessage());
+        if (ex.getData() != null) {
+            ((CommonResult<Object>) result).setData(ex.getData());
+        }
+        return result;
     }
 
     /**

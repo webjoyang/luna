@@ -22,6 +22,14 @@ public class ServiceExceptionUtil {
         return exception0(errorCode.getCode(), errorCode.getMsg());
     }
 
+    public static ServiceException exceptionWithData(ErrorCode errorCode, Object data) {
+        return new ServiceException(errorCode, data);
+    }
+
+    public static ServiceException exceptionWithData(ErrorCode errorCode, Object data, Object... params) {
+        return new ServiceException(errorCode.getCode(), doFormat(errorCode.getCode(), errorCode.getMsg(), params), data);
+    }
+
     public static ServiceException exception(ErrorCode errorCode, Object... params) {
         return exception0(errorCode.getCode(), errorCode.getMsg(), params);
     }

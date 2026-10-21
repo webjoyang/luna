@@ -334,6 +334,11 @@ export interface WorkshopInspectionItemSaveReqVO {
 }
 
 /**
+ * 车间移动 H5 录检查重错误码（039-005 该缸号+卷号已存在录检记录）
+ */
+export const H5_INSPECTION_ITEM_DUPLICATE = 1030039005
+
+/**
  * 保存检验单录检明细（新建/改录，支持胚布PIECE与成品ROLL）
  *
  * @param data 录检行保存入参
