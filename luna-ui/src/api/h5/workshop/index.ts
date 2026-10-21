@@ -314,3 +314,33 @@ export const ticketScan = (code: string) => {
     params: { code }
   })
 }
+
+/**
+ * 车间移动 H5 - 检验单录检行保存入参 VO
+ */
+export interface WorkshopInspectionItemSaveReqVO {
+  id?: number
+  inspectionOrderId: number
+  weavingTicketId?: number
+  pieceNo?: string
+  rollNo?: string
+  vatNo?: string
+  grade?: string
+  measuredWeight?: number
+  lengthM?: number
+  remark?: string
+  remarks?: string
+  photos?: string[]
+}
+
+/**
+ * 保存检验单录检明细（新建/改录，支持胚布PIECE与成品ROLL）
+ *
+ * @param data 录检行保存入参
+ */
+export const saveInspectionItem = (data: WorkshopInspectionItemSaveReqVO) => {
+  return request.post<number>({
+    url: '/lunaerp/h5/workshop/inspection/item/save',
+    data
+  })
+}

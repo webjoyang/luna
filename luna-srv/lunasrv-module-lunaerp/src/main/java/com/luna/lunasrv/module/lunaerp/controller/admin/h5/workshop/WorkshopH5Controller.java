@@ -13,6 +13,7 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.service.h5.workshop.WorkshopH5Service;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -108,6 +109,13 @@ public class WorkshopH5Controller {
     @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:inspection')")
     public CommonResult<WorkshopTicketScanRespVO> ticketScan(@RequestParam("code") String code) {
         return success(workshopH5Service.ticketScan(code));
+    }
+
+    @PostMapping("/inspection/item/save")
+    @Operation(summary = "保存检验单录检明细（新建/改录，支持胚布PIECE与成品ROLL）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:inspection')")
+    public CommonResult<Long> saveInspectionItem(@Valid @RequestBody WorkshopInspectionItemSaveReqVO reqVO) {
+        return success(workshopH5Service.saveInspectionItem(reqVO));
     }
 
 }

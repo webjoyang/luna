@@ -20,7 +20,8 @@ import {
   exceptionTicket,
   getInspectionPage,
   getInspection,
-  ticketScan
+  ticketScan,
+  saveInspectionItem
 } from '../index'
 
 describe('Workshop H5 API', () => {
@@ -261,5 +262,50 @@ describe('Workshop H5 API', () => {
     expect(result.inspectionOrderId).toBe(101)
     expect(result.item?.id).toBe(501)
     expect(result.item?.grade).toBe('A')
+  })
+
+  it('saveInspectionItem should call request.post with /lunaerp/h5/workshop/inspection/item/save and return id', async () => {
+    vi.mocked(request.post).mockResolvedValueOnce(501)
+
+    const payload = {
+      inspectionOrderId: 101,
+      weavingTicketId: 201,
+      pieceNo: 'BT-MTZZPB09190010101-0001',
+      grade: 'A',
+      measuredWeight: 25.5,
+      lengthM: 100,
+      remark: '布面平整',
+      photos: ['https://oss.example.com/p1.jpg']
+    }
+
+    const result = await saveInspectionItem(payload)
+
+    expect(request.post).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/inspection/item/save',
+      data: payload
+    })
+    expect(result).toBe(501)
+  })
+
+  it('saveInspectionItem should support updating existing item with id', async () => {
+    vi.mocked(request.post).mockResolvedValueOnce(501)
+
+    const payload = {
+      id: 501,
+      inspectionOrderId: 101,
+      weavingTicketId: 201,
+      pieceNo: 'BT-MTZZPB09190010101-0001',
+      grade: 'B',
+      measuredWeight: 26.0,
+      lengthM: 102
+    }
+
+    const result = await saveInspectionItem(payload)
+
+    expect(request.post).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/inspection/item/save',
+      data: payload
+    })
+    expect(result).toBe(501)
   })
 })

@@ -4,6 +4,7 @@ import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
@@ -21,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 
+import java.math.BigDecimal;
 import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -255,6 +257,39 @@ class WorkshopH5ControllerTest {
 
         PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
         assertNotNull(preAuthorize, "ticketScan 必须标注 @PreAuthorize");
+        assertEquals("@ss.hasPermission('lunaerp:workshop:h5:inspection')", preAuthorize.value());
+    }
+
+    @Test
+    @DisplayName("inspection/item/save: 委托 Service 并返回保存的明细ID")
+    void testSaveInspectionItem_success() {
+        WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                .inspectionOrderId(101L)
+                .weavingTicketId(201L)
+                .pieceNo("BT-001")
+                .grade("A")
+                .measuredWeight(new BigDecimal("25.50"))
+                .lengthM(new BigDecimal("100.00"))
+                .build();
+        when(workshopH5Service.saveInspectionItem(reqVO)).thenReturn(501L);
+
+        CommonResult<Long> result = workshopH5Controller.saveInspectionItem(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertEquals(501L, result.getData());
+        verify(workshopH5Service).saveInspectionItem(reqVO);
+    }
+
+    @Test
+    @DisplayName("inspection/item/save: 校验端点注解与权限表达式")
+    void testSaveInspectionItem_annotations() throws NoSuchMethodException {
+        Method method = WorkshopH5Controller.class.getMethod("saveInspectionItem", WorkshopInspectionItemSaveReqVO.class);
+        PostMapping postMapping = method.getAnnotation(PostMapping.class);
+        assertNotNull(postMapping, "saveInspectionItem 必须标注 @PostMapping");
+        assertArrayEquals(new String[]{"/inspection/item/save"}, postMapping.value());
+
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "saveInspectionItem 必须标注 @PreAuthorize");
         assertEquals("@ss.hasPermission('lunaerp:workshop:h5:inspection')", preAuthorize.value());
     }
 

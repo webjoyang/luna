@@ -20,6 +20,13 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.item.vo.InspectionOrderItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.item.InspectionOrderItemService;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.color.GreigeOrderColorDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.WeavingOrderService;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
@@ -89,6 +96,15 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
 
     @Resource
     private WeavingOrderService weavingOrderService;
+
+    @Resource
+    private InspectionOrderItemService inspectionOrderItemService;
+
+    @Resource
+    private GreigeOrderMapper greigeOrderMapper;
+
+    @Resource
+    private GreigeOrderColorMapper greigeOrderColorMapper;
 
     @Override
     public PageResult<WorkshopMyTaskRespVO> getMyTasksPage(WorkshopMyTasksPageReqVO reqVO) {
@@ -692,6 +708,135 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
                 .photos(item.getPhotos() != null ? item.getPhotos() : Collections.emptyList())
                 .createTime(item.getCreateTime())
                 .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "车间移动H5", subType = "录检行保存", bizNo = "{{#reqVO.inspectionOrderId}}", success = "保存检验单【{{#reqVO.inspectionOrderId}}】录检明细成功")
+    public Long saveInspectionItem(WorkshopInspectionItemSaveReqVO reqVO) {
+        // 1. 登录校验
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 校验所属检验单存在且状态可录（仅 DRAFT/ACTIVE 允许，COMPLETED/CANCELLED 抛 010-002）
+        if (reqVO.getInspectionOrderId() == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.INSPECTION_ORDER_NOT_EXISTS);
+        }
+        InspectionOrderDO inspectionOrder = inspectionOrderMapper.selectById(reqVO.getInspectionOrderId());
+        if (inspectionOrder == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.INSPECTION_ORDER_NOT_EXISTS);
+        }
+        if (!"DRAFT".equalsIgnoreCase(inspectionOrder.getStatus()) && !"ACTIVE".equalsIgnoreCase(inspectionOrder.getStatus())) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.INSPECTION_ORDER_STATUS_NOT_ALLOWED);
+        }
+
+        // 3. 照片校验守卫（≤6 张，非法或超量抛 039-008）
+        validateExceptionPhotos(reqVO.getPhotos());
+
+        // 4. 构建生产域保存 VO 并根据包装模式分化处理
+        boolean isPieceMode = "PIECE".equalsIgnoreCase(inspectionOrder.getPackageMode())
+                || "GREIGE".equalsIgnoreCase(inspectionOrder.getType());
+        InspectionOrderItemSaveReqVO saveReqVO = new InspectionOrderItemSaveReqVO();
+        saveReqVO.setId(reqVO.getId());
+        saveReqVO.setInspectionOrderId(reqVO.getInspectionOrderId());
+        saveReqVO.setGrade(reqVO.getGrade());
+        saveReqVO.setMeasuredWeight(reqVO.getMeasuredWeight());
+        saveReqVO.setLengthM(reqVO.getLengthM());
+        saveReqVO.setRemark(reqVO.getRemark());
+        saveReqVO.setPhotos(reqVO.getPhotos());
+
+        if (isPieceMode) {
+            // 胚布 PIECE 模式：weavingTicketId 必填带回
+            if (reqVO.getWeavingTicketId() == null) {
+                throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+            }
+            WeavingTicketDO ticket = weavingTicketMapper.selectById(reqVO.getWeavingTicketId());
+            if (ticket == null || "VOID".equalsIgnoreCase(ticket.getStatus())) {
+                throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+            }
+
+            // pieceNo 缺省=布票完整 code（可改，单内 (vatNo,pieceNo) 唯一性由既有 service 校验）
+            String pieceNo = StrUtil.isNotBlank(reqVO.getPieceNo()) ? reqVO.getPieceNo().trim() : ticket.getCode();
+            saveReqVO.setPieceNo(pieceNo);
+            saveReqVO.setWeavingTicketId(ticket.getId());
+            saveReqVO.setVatNo(reqVO.getVatNo());
+            saveReqVO.setRollNo(reqVO.getRollNo());
+
+            // 机台号/产品编码品名/颜色快照由服务端从布票→织造单/胚布单补齐，不信任也不采用客户端快照
+            populateItemSnapshots(saveReqVO, ticket);
+
+            // 改录判定：已传 id 直接改录；若未传 id 但单内已存在同 weavingTicketId 的明细，自动定位改录原行
+            if (saveReqVO.getId() != null) {
+                inspectionOrderItemService.updateInspectionOrderItem(saveReqVO);
+                return saveReqVO.getId();
+            }
+
+            List<InspectionOrderItemDO> existItems = inspectionOrderItemMapper.selectList(
+                    new LambdaQueryWrapperX<InspectionOrderItemDO>()
+                            .eq(InspectionOrderItemDO::getInspectionOrderId, reqVO.getInspectionOrderId())
+                            .eq(InspectionOrderItemDO::getWeavingTicketId, ticket.getId())
+            );
+            if (CollUtil.isNotEmpty(existItems)) {
+                saveReqVO.setId(existItems.get(0).getId());
+                inspectionOrderItemService.updateInspectionOrderItem(saveReqVO);
+                return saveReqVO.getId();
+            }
+
+            return inspectionOrderItemService.createInspectionOrderItem(saveReqVO);
+        } else {
+            // 成品 ROLL 模式（预留兼容，16 号工单完整接入查重）
+            saveReqVO.setRollNo(reqVO.getRollNo());
+            saveReqVO.setPieceNo(reqVO.getPieceNo());
+            saveReqVO.setVatNo(reqVO.getVatNo());
+            if (saveReqVO.getId() != null) {
+                inspectionOrderItemService.updateInspectionOrderItem(saveReqVO);
+                return saveReqVO.getId();
+            }
+            return inspectionOrderItemService.createInspectionOrderItem(saveReqVO);
+        }
+    }
+
+    private void populateItemSnapshots(InspectionOrderItemSaveReqVO saveReqVO, WeavingTicketDO ticket) {
+        String machineNo = StrUtil.isNotBlank(ticket.getActualMachine()) ? ticket.getActualMachine() : ticket.getPlannedMachine();
+        saveReqVO.setMachineNo(machineNo);
+
+        if (ticket.getWeavingOrderId() == null) {
+            return;
+        }
+        WeavingOrderDO weavingOrder = weavingOrderMapper.selectById(ticket.getWeavingOrderId());
+        if (weavingOrder == null) {
+            return;
+        }
+
+        String productCode = weavingOrder.getProductCode();
+        String productName = weavingOrder.getProductName();
+        String colorName = null;
+
+        if (weavingOrder.getGreigeOrderId() != null) {
+            GreigeOrderDO greigeOrder = greigeOrderMapper.selectById(weavingOrder.getGreigeOrderId());
+            if (greigeOrder != null) {
+                if (StrUtil.isBlank(productCode)) {
+                    productCode = greigeOrder.getProductCode();
+                }
+                if (StrUtil.isBlank(productName)) {
+                    productName = greigeOrder.getProductName();
+                }
+            }
+            List<GreigeOrderColorDO> colors = greigeOrderColorMapper.selectList(
+                    new LambdaQueryWrapperX<GreigeOrderColorDO>()
+                            .eq(GreigeOrderColorDO::getOrderId, weavingOrder.getGreigeOrderId())
+                            .orderByAsc(GreigeOrderColorDO::getLineNo)
+            );
+            if (CollUtil.isNotEmpty(colors)) {
+                colorName = colors.get(0).getColor();
+            }
+        }
+
+        saveReqVO.setProductCode(productCode);
+        saveReqVO.setProductName(productName);
+        saveReqVO.setColorName(colorName);
     }
 
 }

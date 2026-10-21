@@ -16,6 +16,13 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.item.vo.InspectionOrderItemSaveReqVO;
+import com.luna.lunasrv.module.lunaerp.service.production.inspectionorder.item.InspectionOrderItemService;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.color.GreigeOrderColorDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.WeavingOrderService;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
@@ -88,6 +95,15 @@ class WorkshopH5ServiceImplTest {
     @Mock
     private WeavingOrderService weavingOrderService;
 
+    @Mock
+    private InspectionOrderItemService inspectionOrderItemService;
+
+    @Mock
+    private GreigeOrderMapper greigeOrderMapper;
+
+    @Mock
+    private GreigeOrderColorMapper greigeOrderColorMapper;
+
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
@@ -96,7 +112,9 @@ class WorkshopH5ServiceImplTest {
                 WeavingOrderDO.class,
                 WeavingTicketDO.class,
                 InspectionOrderDO.class,
-                InspectionOrderItemDO.class
+                InspectionOrderItemDO.class,
+                GreigeOrderDO.class,
+                GreigeOrderColorDO.class
         );
     }
 
@@ -1632,6 +1650,383 @@ class WorkshopH5ServiceImplTest {
             ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-OTHER-TENANT"));
             assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex.getCode());
         }
+    }
+
+    // ==================== inspection/item/save 单元测试 ====================
+
+    @Test
+    @DisplayName("saveInspectionItem: 未登录用户调用抛出 401 UNAUTHORIZED")
+    void testSaveInspectionItem_unauthorized() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(null);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(201L)
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO));
+            assertEquals(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 检验单不存在抛出 010-000")
+    void testSaveInspectionItem_orderNotExists() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            when(inspectionOrderMapper.selectById(999L)).thenReturn(null);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(999L)
+                    .weavingTicketId(201L)
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO));
+            assertEquals(ErrorCodeConstants.INSPECTION_ORDER_NOT_EXISTS.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 检验单处于 COMPLETED 或 CANCELLED 状态抛出 010-002（改录仅允许 DRAFT/ACTIVE）")
+    void testSaveInspectionItem_orderStatusNotAllowed() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            // 1. COMPLETED
+            InspectionOrderDO completedOrder = new InspectionOrderDO();
+            completedOrder.setId(101L);
+            completedOrder.setStatus("COMPLETED");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(completedOrder);
+
+            WorkshopInspectionItemSaveReqVO reqVO1 = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(201L)
+                    .build();
+
+            ServiceException ex1 = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO1));
+            assertEquals(ErrorCodeConstants.INSPECTION_ORDER_STATUS_NOT_ALLOWED.getCode(), ex1.getCode());
+
+            // 2. CANCELLED
+            InspectionOrderDO cancelledOrder = new InspectionOrderDO();
+            cancelledOrder.setId(102L);
+            cancelledOrder.setStatus("CANCELLED");
+            when(inspectionOrderMapper.selectById(102L)).thenReturn(cancelledOrder);
+
+            WorkshopInspectionItemSaveReqVO reqVO2 = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(102L)
+                    .weavingTicketId(201L)
+                    .build();
+
+            ServiceException ex2 = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO2));
+            assertEquals(ErrorCodeConstants.INSPECTION_ORDER_STATUS_NOT_ALLOWED.getCode(), ex2.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 照片守卫 7 张超过 6 张限制抛出 039-008")
+    void testSaveInspectionItem_photosExceed_039_008() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("PIECE");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            List<String> sevenPhotos = List.of(
+                    "https://oss.example.com/1.jpg",
+                    "https://oss.example.com/2.jpg",
+                    "https://oss.example.com/3.jpg",
+                    "https://oss.example.com/4.jpg",
+                    "https://oss.example.com/5.jpg",
+                    "https://oss.example.com/6.jpg",
+                    "https://oss.example.com/7.jpg"
+            );
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(201L)
+                    .photos(sevenPhotos)
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_PHOTO_COUNT_EXCEED_OR_INVALID.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 照片包含非图片 URL 格式抛出 039-008")
+    void testSaveInspectionItem_photoInvalidFormat_039_008() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("PIECE");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(201L)
+                    .photos(List.of("https://oss.example.com/malicious.exe"))
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_PHOTO_COUNT_EXCEED_OR_INVALID.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 胚布 PIECE 模式下布票不存在或已作废(VOID)抛出 039-001")
+    void testSaveInspectionItem_piece_ticketNotExistsOrVoid() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("PIECE");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            // 1. ticketId 为空
+            WorkshopInspectionItemSaveReqVO nullTicketReq = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(null)
+                    .build();
+            ServiceException ex1 = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(nullTicketReq));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex1.getCode());
+
+            // 2. ticket 查无记录
+            when(weavingTicketMapper.selectById(201L)).thenReturn(null);
+            WorkshopInspectionItemSaveReqVO notExistsReq = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(201L)
+                    .build();
+            ServiceException ex2 = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(notExistsReq));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex2.getCode());
+
+            // 3. ticket 状态为 VOID
+            WeavingTicketDO voidTicket = WeavingTicketDO.builder().id(202L).status("VOID").build();
+            when(weavingTicketMapper.selectById(202L)).thenReturn(voidTicket);
+            WorkshopInspectionItemSaveReqVO voidReq = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(202L)
+                    .build();
+            ServiceException ex3 = assertThrows(ServiceException.class, () -> workshopH5Service.saveInspectionItem(voidReq));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex3.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 胚布 PIECE 模式空 vatNo 正常保存，机台号/产品编码品名/颜色快照由服务端补齐，委托 createInspectionOrderItem")
+    void testSaveInspectionItem_piece_greige_emptyVatNo_snapshotsAutoFilled_success() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            // 1. 检验单：GREIGE, PIECE, DRAFT
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("DRAFT");
+            order.setType("GREIGE");
+            order.setPackageMode("PIECE");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            // 2. 布票：ticket
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(201L)
+                    .code("BT-MTZZPB09190010101-0001")
+                    .status("COMPLETED")
+                    .weavingOrderId(501L)
+                    .actualMachine("LM-18")
+                    .plannedMachine("LM-16")
+                    .build();
+            when(weavingTicketMapper.selectById(201L)).thenReturn(ticket);
+
+            // 3. 织造单：weavingOrder -> greigeOrderId
+            WeavingOrderDO weavingOrder = new WeavingOrderDO();
+            weavingOrder.setId(501L);
+            weavingOrder.setProductCode("PROD-GREIGE-01");
+            weavingOrder.setProductName("纯棉精梳胚布");
+            weavingOrder.setGreigeOrderId(701L);
+            when(weavingOrderMapper.selectById(501L)).thenReturn(weavingOrder);
+
+            // 4. 胚布单与颜色：greigeOrder & greigeOrderColor
+            GreigeOrderDO greigeOrder = new GreigeOrderDO();
+            greigeOrder.setId(701L);
+            when(greigeOrderMapper.selectById(701L)).thenReturn(greigeOrder);
+
+            GreigeOrderColorDO colorDO = new GreigeOrderColorDO();
+            colorDO.setId(801L);
+            colorDO.setOrderId(701L);
+            colorDO.setLineNo(1);
+            colorDO.setColor("本白原色");
+            when(greigeOrderColorMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(List.of(colorDO));
+
+            // 5. 单内无既有明细
+            when(inspectionOrderItemMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Collections.emptyList());
+
+            // 6. Mock 生产域 service 返回新增 ID
+            when(inspectionOrderItemService.createInspectionOrderItem(any(InspectionOrderItemSaveReqVO.class))).thenReturn(9001L);
+
+            // 客户端提交：空 vatNo，未传 pieceNo（缺省为布票号），附带照片和实测重量
+            List<String> photos = List.of("https://oss.example.com/p1.jpg", "https://oss.example.com/p2.png");
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(201L)
+                    .pieceNo(null) // 缺省布票 code
+                    .vatNo(null)   // GREIGE+PIECE 允许空
+                    .grade("A")
+                    .measuredWeight(new java.math.BigDecimal("25.80"))
+                    .lengthM(new java.math.BigDecimal("102.50"))
+                    .remark("现场布面平整")
+                    .photos(photos)
+                    .build();
+
+            Long savedId = workshopH5Service.saveInspectionItem(reqVO);
+
+            assertEquals(9001L, savedId);
+
+            // 校验委托参数完整性与快照服务端权威补齐
+            ArgumentCaptor<InspectionOrderItemSaveReqVO> captor = ArgumentCaptor.forClass(InspectionOrderItemSaveReqVO.class);
+            verify(inspectionOrderItemService).createInspectionOrderItem(captor.capture());
+            InspectionOrderItemSaveReqVO savedReq = captor.getValue();
+
+            assertEquals(101L, savedReq.getInspectionOrderId());
+            assertEquals(201L, savedReq.getWeavingTicketId());
+            assertEquals("BT-MTZZPB09190010101-0001", savedReq.getPieceNo()); // 缺省布票号
+            assertNull(savedReq.getVatNo());                                  // 允许空
+            assertEquals("LM-18", savedReq.getMachineNo());                   // actualMachine 补齐
+            assertEquals("PROD-GREIGE-01", savedReq.getProductCode());       // 织造单补齐
+            assertEquals("纯棉精梳胚布", savedReq.getProductName());          // 织造单补齐
+            assertEquals("本白原色", savedReq.getColorName());                // 胚布单颜色补齐
+            assertEquals("A", savedReq.getGrade());
+            assertEquals(new java.math.BigDecimal("25.80"), savedReq.getMeasuredWeight());
+            assertEquals(new java.math.BigDecimal("102.50"), savedReq.getLengthM());
+            assertEquals("现场布面平整", savedReq.getRemark());
+            assertEquals(photos, savedReq.getPhotos());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 胚布 PIECE 重扫同票改录原行，未传 id 自动识别单内既有明细，委托 updateInspectionOrderItem")
+    void testSaveInspectionItem_piece_reScan_autoLocatesExistingItem_updates_success() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            // 1. 检验单 ACTIVE
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("PIECE");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            // 2. 布票 ticket
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(201L)
+                    .code("BT-MTZZPB09190010101-0001")
+                    .status("INSPECTED")
+                    .weavingOrderId(501L)
+                    .actualMachine("LM-18")
+                    .build();
+            when(weavingTicketMapper.selectById(201L)).thenReturn(ticket);
+
+            WeavingOrderDO weavingOrder = new WeavingOrderDO();
+            weavingOrder.setId(501L);
+            weavingOrder.setProductCode("PROD-01");
+            weavingOrder.setProductName("纯棉布");
+            when(weavingOrderMapper.selectById(501L)).thenReturn(weavingOrder);
+
+            // 3. 单内已存在同 weavingTicketId 的明细行（ID 为 555L）
+            InspectionOrderItemDO existItem = new InspectionOrderItemDO();
+            existItem.setId(555L);
+            existItem.setInspectionOrderId(101L);
+            existItem.setWeavingTicketId(201L);
+            existItem.setGrade("B");
+            when(inspectionOrderItemMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(List.of(existItem));
+
+            // 未传 id 改录
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .id(null)
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(201L)
+                    .pieceNo("BT-MTZZPB09190010101-0001-MOD") // 改录自定义匹号
+                    .grade("A")                                // 改为 A 级
+                    .measuredWeight(new java.math.BigDecimal("26.00"))
+                    .lengthM(new java.math.BigDecimal("105.00"))
+                    .remark("复检合格改录")
+                    .photos(List.of("https://oss.example.com/p3.jpg"))
+                    .build();
+
+            Long resultId = workshopH5Service.saveInspectionItem(reqVO);
+
+            assertEquals(555L, resultId); // 返回既有行 ID
+
+            ArgumentCaptor<InspectionOrderItemSaveReqVO> captor = ArgumentCaptor.forClass(InspectionOrderItemSaveReqVO.class);
+            verify(inspectionOrderItemService).updateInspectionOrderItem(captor.capture());
+            InspectionOrderItemSaveReqVO updatedReq = captor.getValue();
+
+            assertEquals(555L, updatedReq.getId());
+            assertEquals("BT-MTZZPB09190010101-0001-MOD", updatedReq.getPieceNo());
+            assertEquals("A", updatedReq.getGrade());
+            assertEquals(new java.math.BigDecimal("26.00"), updatedReq.getMeasuredWeight());
+            assertEquals(new java.math.BigDecimal("105.00"), updatedReq.getLengthM());
+            assertEquals("复检合格改录", updatedReq.getRemark());
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 显式指定 id 改录指定明细，委托 updateInspectionOrderItem 并返回该 id")
+    void testSaveInspectionItem_piece_explicitId_updates_success() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setStatus("ACTIVE");
+            order.setPackageMode("PIECE");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(201L)
+                    .code("BT-001")
+                    .status("INSPECTED")
+                    .weavingOrderId(501L)
+                    .plannedMachine("LM-02")
+                    .build();
+            when(weavingTicketMapper.selectById(201L)).thenReturn(ticket);
+
+            WeavingOrderDO weavingOrder = new WeavingOrderDO();
+            weavingOrder.setId(501L);
+            when(weavingOrderMapper.selectById(501L)).thenReturn(weavingOrder);
+
+            WorkshopInspectionItemSaveReqVO reqVO = WorkshopInspectionItemSaveReqVO.builder()
+                    .id(888L)
+                    .inspectionOrderId(101L)
+                    .weavingTicketId(201L)
+                    .grade("C")
+                    .build();
+
+            Long resultId = workshopH5Service.saveInspectionItem(reqVO);
+
+            assertEquals(888L, resultId);
+            verify(inspectionOrderItemService).updateInspectionOrderItem(any(InspectionOrderItemSaveReqVO.class));
+            verify(inspectionOrderItemService, never()).createInspectionOrderItem(any(InspectionOrderItemSaveReqVO.class));
+        }
+    }
+
+    @Test
+    @DisplayName("saveInspectionItem: 校验切面注解标注 @LogRecord(subType = '录检行保存')")
+    void testSaveInspectionItem_logRecordAnnotation() throws NoSuchMethodException {
+        java.lang.reflect.Method method = WorkshopH5ServiceImpl.class.getMethod("saveInspectionItem", WorkshopInspectionItemSaveReqVO.class);
+        LogRecord logRecord = method.getAnnotation(LogRecord.class);
+        assertNotNull(logRecord, "saveInspectionItem 必须标注 @LogRecord");
+        assertEquals("车间移动H5", logRecord.type());
+        assertEquals("录检行保存", logRecord.subType());
+        assertEquals("{{#reqVO.inspectionOrderId}}", logRecord.bizNo());
     }
 
 }

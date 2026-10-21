@@ -152,11 +152,11 @@
           <!-- 扫码定位到新行占位提示 -->
           <div
             v-if="currentScannedTicket && !currentScannedItem"
-            class="scan-hit-alert bg-amber-50 border border-amber-200 rounded-lg p-3 text-12px text-amber-900"
+            class="scan-hit-alert bg-amber-50 border border-amber-200 rounded-lg p-3 text-12px text-amber-900 mb-3"
           >
             <div class="flex items-center font-bold mb-1">
               <van-icon name="passed" color="#ed6a0c" class="mr-1" />
-              已自动交接建单！待录检新行占位
+              已自动交接建单！待录检新行
             </div>
             <div
               >布票编号：<span class="font-mono font-medium">{{ currentScannedTicket }}</span></div
@@ -166,19 +166,16 @@
                 suggestedPieceNo || currentScannedTicket
               }}</span></div
             >
-            <div class="text-amber-600 mt-1"
-              >（录检明细等级、重量、米数与拍照保存表单待 15 号工单接入）</div
-            >
           </div>
 
           <!-- 扫码定位到已有录检行提示 -->
           <div
             v-else-if="currentScannedTicket && currentScannedItem"
-            class="scan-hit-alert bg-blue-50 border border-blue-200 rounded-lg p-3 text-12px text-blue-900"
+            class="scan-hit-alert bg-blue-50 border border-blue-200 rounded-lg p-3 text-12px text-blue-900 mb-3"
           >
             <div class="flex items-center font-bold mb-1">
               <van-icon name="checked" color="#1989fa" class="mr-1" />
-              已定位到布票既有录检行
+              已定位到布票既有录检行（改录模式）
             </div>
             <div
               >布票编号：<span class="font-mono font-medium">{{ currentScannedTicket }}</span></div
@@ -188,14 +185,144 @@
                 currentScannedItem.pieceNo || currentScannedTicket
               }}</span></div
             >
-            <div class="text-blue-600 mt-1"
-              >（下方列表已高亮该明细，改录保存表单待 15 号工单接入）</div
-            >
           </div>
 
           <p v-else class="text-12px text-gray-500 bg-gray-50 rounded-lg p-2.5">
             扫描挡车工完工布票二维码，系统自动归一关联胚布检验单并定位录检行。
           </p>
+
+          <!-- 胚布录检表单（新建 / 改录） -->
+          <div
+            v-if="currentScannedTicket && !order.readonly"
+            class="inspection-form-card pt-3 border-t border-gray-100"
+          >
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-13px font-bold text-gray-900 flex items-center">
+                <van-icon :name="currentScannedItem ? 'edit' : 'add-o'" class="mr-1 text-primary" />
+                {{ currentScannedItem ? '改录原行明细' : '录入新行明细' }}
+              </span>
+              <van-tag :type="currentScannedItem ? 'primary' : 'warning'" size="small" round>
+                {{ currentScannedItem ? '改录' : '新建' }}
+              </van-tag>
+            </div>
+
+            <van-form @submit="handleSaveItem">
+              <van-cell-group
+                inset
+                class="!mx-0 mb-3 border border-gray-100 rounded-lg overflow-hidden"
+              >
+                <!-- 匹号（缺省布票号，可修改） -->
+                <van-field
+                  v-model="form.pieceNo"
+                  label="匹号"
+                  placeholder="请输入匹号（缺省布票码）"
+                  clearable
+                  :rules="[{ required: true, message: '匹号不能为空' }]"
+                />
+
+                <!-- 缸号（可填可空） -->
+                <van-field v-model="form.vatNo" label="缸号" placeholder="胚布可选填" clearable />
+
+                <!-- 检验等级（字典 2232: A / B / C / DEFECTIVE） -->
+                <van-field name="grade" label="检验等级" required>
+                  <template #input>
+                    <van-radio-group
+                      v-model="form.grade"
+                      direction="horizontal"
+                      class="flex flex-wrap gap-2"
+                    >
+                      <van-radio name="A">一等品(A)</van-radio>
+                      <van-radio name="B">二等品(B)</van-radio>
+                      <van-radio name="C">三等品(C)</van-radio>
+                      <van-radio name="DEFECTIVE">等外品</van-radio>
+                    </van-radio-group>
+                  </template>
+                </van-field>
+
+                <!-- 实称重量 KG -->
+                <van-field
+                  v-model="form.measuredWeight"
+                  type="number"
+                  label="实称重量"
+                  placeholder="请输入实称重量"
+                  required
+                  :rules="[
+                    { required: true, message: '实称重量不能为空' },
+                    { validator: (val) => Number(val) > 0, message: '重量必须大于 0' }
+                  ]"
+                >
+                  <template #extra>
+                    <span class="text-gray-400 text-12px">kg</span>
+                  </template>
+                </van-field>
+
+                <!-- 实测米数 -->
+                <van-field
+                  v-model="form.lengthM"
+                  type="number"
+                  label="实测米数"
+                  placeholder="请输入实测米数"
+                  :rules="[
+                    { validator: (val) => !val || Number(val) > 0, message: '米数必须大于 0' }
+                  ]"
+                >
+                  <template #extra>
+                    <span class="text-gray-400 text-12px">m</span>
+                  </template>
+                </van-field>
+
+                <!-- 现场瑕疵照片（<=6 张） -->
+                <div class="px-4 py-2.5">
+                  <H5PhotoUploader
+                    v-model="form.photos"
+                    :max-count="6"
+                    directory="workshop/inspection"
+                  />
+                </div>
+
+                <!-- 备注 -->
+                <van-field
+                  v-model="form.remark"
+                  label="录检备注"
+                  placeholder="选填，现场瑕疵/布面情况说明"
+                  rows="2"
+                  autosize
+                  type="textarea"
+                  maxlength="200"
+                  show-word-limit
+                />
+              </van-cell-group>
+
+              <!-- 提交按钮与放弃修改按钮 -->
+              <div class="flex items-center space-x-2 pt-1">
+                <van-button
+                  v-if="currentScannedItem"
+                  v-hasPermi="['lunaerp:workshop:h5:inspection']"
+                  plain
+                  size="small"
+                  round
+                  type="default"
+                  class="flex-1"
+                  @click="resetFormToNew"
+                >
+                  取消改录
+                </van-button>
+                <van-button
+                  v-hasPermi="['lunaerp:workshop:h5:inspection']"
+                  type="primary"
+                  size="small"
+                  round
+                  block
+                  :loading="submitting"
+                  loading-text="正在保存..."
+                  native-type="submit"
+                  class="flex-2"
+                >
+                  {{ currentScannedItem ? '保存改录' : '保存录检明细' }}
+                </van-button>
+              </div>
+            </van-form>
+          </div>
         </div>
 
         <!-- 成品模式骨架占位 -->
@@ -344,16 +471,20 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast, showImagePreview, showLoadingToast, closeToast } from 'vant'
 import H5Scanner from '../components/Scanner.vue'
+import H5PhotoUploader from '../components/PhotoUploader.vue'
 import {
   getInspection,
   ticketScan,
+  saveInspectionItem,
   WorkshopInspectionDetailVO,
-  WorkshopInspectionItemVO
+  WorkshopInspectionItemVO,
+  WorkshopInspectionItemSaveReqVO
 } from '@/api/h5/workshop'
+import { saveDraft, getDraft, clearDraft } from '@/utils/h5-draft'
 
 defineOptions({ name: 'H5InspectionOrder' })
 
@@ -371,6 +502,134 @@ const currentWeavingTicketId = ref<number | null>(null)
 const currentItemId = ref<number | null>(null)
 const suggestedPieceNo = ref<string>('')
 const currentScannedItem = ref<WorkshopInspectionItemVO | null>(null)
+
+// 录检表单上下文
+interface InspectionFormState {
+  pieceNo: string
+  vatNo: string
+  grade: string
+  measuredWeight: number | string
+  lengthM: number | string
+  remark: string
+  photos: string[]
+}
+
+const DRAFT_NS = 'inspection:greige:item'
+const submitting = ref(false)
+
+const defaultForm = (): InspectionFormState => ({
+  pieceNo: '',
+  vatNo: '',
+  grade: 'A',
+  measuredWeight: '',
+  lengthM: '',
+  remark: '',
+  photos: []
+})
+
+const form = ref<InspectionFormState>(defaultForm())
+
+// 草稿缓存按 单据ID_布票ID 分键
+const draftKey = computed(() => {
+  if (!order.value?.id) return ''
+  const ticketKey = currentWeavingTicketId.value || currentScannedTicket.value || 'new'
+  return `${order.value.id}_${ticketKey}`
+})
+
+// 自动同步草稿至 localStorage（新建模式未提交时）
+watch(
+  () => form.value,
+  (newVal) => {
+    if (
+      !submitting.value &&
+      draftKey.value &&
+      currentScannedTicket.value &&
+      !currentScannedItem.value
+    ) {
+      saveDraft(DRAFT_NS, draftKey.value, newVal)
+    }
+  },
+  { deep: true }
+)
+
+const buildFormState = (source?: Partial<InspectionFormState>): InspectionFormState => ({
+  pieceNo: source?.pieceNo || suggestedPieceNo.value || currentScannedTicket.value,
+  vatNo: source?.vatNo || '',
+  grade: source?.grade || 'A',
+  measuredWeight: source?.measuredWeight ?? '',
+  lengthM: source?.lengthM ?? '',
+  remark: source?.remark || '',
+  photos: source?.photos ? [...source.photos] : []
+})
+
+// 根据当前定位布票/已录行/草稿初始化表单
+const initFormWithCurrentState = () => {
+  if (currentScannedItem.value) {
+    form.value = buildFormState(currentScannedItem.value)
+  } else {
+    const draft = draftKey.value ? getDraft<InspectionFormState>(DRAFT_NS, draftKey.value) : null
+    form.value = buildFormState(draft || undefined)
+  }
+}
+
+// 保存录检行（新建/改录）
+const handleSaveItem = async () => {
+  if (!order.value?.id) return
+  if (!currentWeavingTicketId.value) {
+    showToast({ type: 'fail', message: '未关联有效织造布票' })
+    return
+  }
+  if (!form.value.grade) {
+    showToast({ type: 'fail', message: '请选择检验等级' })
+    return
+  }
+  const weightNum = Number(form.value.measuredWeight)
+  if (!form.value.measuredWeight || isNaN(weightNum) || weightNum <= 0) {
+    showToast({ type: 'fail', message: '实称重量必须大于 0' })
+    return
+  }
+
+  submitting.value = true
+  try {
+    const payload: WorkshopInspectionItemSaveReqVO = {
+      id: currentItemId.value || undefined,
+      inspectionOrderId: order.value.id,
+      weavingTicketId: currentWeavingTicketId.value,
+      pieceNo: form.value.pieceNo || currentScannedTicket.value,
+      vatNo: form.value.vatNo ? form.value.vatNo.trim() : undefined,
+      grade: form.value.grade,
+      measuredWeight: weightNum,
+      lengthM: form.value.lengthM ? Number(form.value.lengthM) : undefined,
+      remark: form.value.remark ? form.value.remark.trim() : undefined,
+      photos: form.value.photos && form.value.photos.length > 0 ? form.value.photos : []
+    }
+
+    const savedId = await saveInspectionItem(payload)
+    if (draftKey.value) {
+      clearDraft(DRAFT_NS, draftKey.value)
+    }
+    showToast({
+      type: 'success',
+      message: currentItemId.value ? '改录成功' : '录检成功'
+    })
+    currentItemId.value = savedId
+    await loadOrderDetail(false)
+  } catch (err: any) {
+    showToast({
+      type: 'fail',
+      message: err?.message || err?.msg || '保存录检明细失败'
+    })
+  } finally {
+    submitting.value = false
+  }
+}
+
+// 取消改录重置为新建
+const resetFormToNew = () => {
+  currentScannedItem.value = null
+  currentItemId.value = null
+  initFormWithCurrentState()
+}
 
 const triggerScanner = () => {
   scannerRef.value?.openScanner?.()
@@ -407,6 +666,7 @@ const handleTicketScan = async (code: string) => {
       currentItemId.value = res.item?.id || null
       suggestedPieceNo.value = res.suggestedPieceNo || cleanCode
       currentScannedItem.value = res.item || null
+      initFormWithCurrentState()
 
       if (res.inspectionOrderId !== order.value?.id) {
         // 如果扫描的布票归属于另一张检验单，自动路由至对应检验单
@@ -552,7 +812,14 @@ const loadOrderDetail = async (showLoading = true) => {
         )
         if (found) {
           currentScannedItem.value = found
+          currentItemId.value = found.id
         }
+      }
+      initFormWithCurrentState()
+    } else if (currentItemId.value && res.items && res.items.length > 0) {
+      const found = res.items.find((it) => it.id === currentItemId.value)
+      if (found) {
+        currentScannedItem.value = found
       }
     }
   } catch (err: any) {

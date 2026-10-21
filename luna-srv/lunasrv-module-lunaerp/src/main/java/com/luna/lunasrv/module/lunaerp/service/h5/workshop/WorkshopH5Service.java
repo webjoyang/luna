@@ -11,6 +11,7 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopT
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
 
 /**
@@ -81,5 +82,13 @@ public interface WorkshopH5Service {
      * @return 扫码定位编排响应（检验单ID、布票ID、建议匹号、已录检明细行）
      */
     WorkshopTicketScanRespVO ticketScan(String code);
+
+    /**
+     * 保存检验单录检明细（新建/改录，支持胚布 PIECE 与成品 ROLL）
+     *
+     * @param reqVO 录检行保存入参
+     * @return 录检明细ID
+     */
+    Long saveInspectionItem(WorkshopInspectionItemSaveReqVO reqVO);
 
 }
