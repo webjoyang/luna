@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Schema(description = "管理后台 - 生产管理-检验单录检明细创建/修改 Request VO")
 @Data
@@ -63,5 +64,8 @@ public class InspectionOrderItemSaveReqVO {
 
     @Schema(description = "备注", example = "无疵点")
     private String remark;
+
+    @Schema(description = "疵点照片 URL JSON 数组（车间 H5 录检上传，≤6 张，infra 文件服务）")
+    private List<String> photos;
 
 }

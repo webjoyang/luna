@@ -54,4 +54,14 @@ public class WorkshopH5SqlBootstrapTest extends BaseSqlBootstrapTest {
         assertTrue(sql.contains("COMMENT ON COLUMN lunaerp_production_weaving_ticket.exception_photos IS '异常现场照片 URL JSON 数组（车间 H5 异常登记上传，≤6 张，infra 文件服务）'"),
                 "必须包含标准的字段 COMMENT");
     }
+
+    @Test
+    @DisplayName("验证包含录检明细加疵点照片列 ALTER TABLE 与 COMMENT 且幂等可重复执行 (Issue 04)")
+    void testInspectionOrderItemPhotosColumnAlter() throws IOException {
+        String sql = loadSqlContent(SQL_FILE);
+        assertTrue(sql.contains("ALTER TABLE lunaerp_production_inspection_order_item"), "必须包含 ALTER TABLE lunaerp_production_inspection_order_item 语句");
+        assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS photos jsonb"), "必须包含 ADD COLUMN IF NOT EXISTS photos jsonb");
+        assertTrue(sql.contains("COMMENT ON COLUMN lunaerp_production_inspection_order_item.photos IS '疵点照片 URL JSON 数组（车间 H5 录检上传，≤6 张，infra 文件服务）'"),
+                "必须包含标准的字段 COMMENT");
+    }
 }

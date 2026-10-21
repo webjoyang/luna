@@ -23,7 +23,9 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.INSPECTION_ORDER_ITEM_NOT_EXISTS;
@@ -611,6 +613,76 @@ class InspectionOrderItemServiceImplTest {
 
         verify(inspectionOrderItemMapper).deleteById(ITEM_ID);
         verify(weavingTicketService).rollbackInspected(77L);
+    }
+
+    // ==================== 04 票：photos 字段链路测试 ====================
+
+    @Test
+    void createInspectionOrderItem_withPhotos_savesPhotosToDO() {
+        InspectionOrderRespVO order = buildOrder(ORDER_ID, "ACTIVE");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(order);
+        when(inspectionOrderItemMapper.selectCountByInspectionOrderId(ORDER_ID)).thenReturn(1L);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, VAT_NO, ROLL_NO);
+        List<String> photos = Arrays.asList("http://img.example.com/p1.jpg", "http://img.example.com/p2.jpg");
+        reqVO.setPhotos(photos);
+
+        inspectionOrderItemService.createInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).insert(captor.capture());
+        assertEquals(photos, captor.getValue().getPhotos());
+    }
+
+    @Test
+    void updateInspectionOrderItem_withPhotos_updatesPhotosInDO() {
+        InspectionOrderRespVO order = buildOrder(ORDER_ID, "ACTIVE");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(order);
+
+        InspectionOrderItemDO existing = buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(existing);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        List<String> photos = Collections.singletonList("http://img.example.com/p3.jpg");
+        reqVO.setPhotos(photos);
+
+        inspectionOrderItemService.updateInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).updateById(captor.capture());
+        assertEquals(photos, captor.getValue().getPhotos());
+    }
+
+    @Test
+    void updateInspectionOrderItem_withNullPhotos_updatesNullInDO() {
+        InspectionOrderRespVO order = buildOrder(ORDER_ID, "ACTIVE");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(order);
+
+        InspectionOrderItemDO existing = buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        existing.setPhotos(Arrays.asList("http://img.example.com/p1.jpg"));
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(existing);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        reqVO.setPhotos(null);
+
+        inspectionOrderItemService.updateInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).updateById(captor.capture());
+        assertNull(captor.getValue().getPhotos());
+    }
+
+    @Test
+    void getInspectionOrderItem_withPhotos_mapsPhotosToRespVO() {
+        InspectionOrderItemDO item = buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        List<String> photos = Arrays.asList("http://img.example.com/p1.jpg", "http://img.example.com/p2.jpg");
+        item.setPhotos(photos);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(item);
+
+        InspectionOrderItemRespVO respVO = inspectionOrderItemService.getInspectionOrderItem(ITEM_ID);
+
+        assertNotNull(respVO);
+        assertEquals(photos, respVO.getPhotos());
     }
 
     // ==================== VO 校验 ====================

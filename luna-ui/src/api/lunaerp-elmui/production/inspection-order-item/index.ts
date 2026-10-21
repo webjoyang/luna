@@ -18,6 +18,7 @@ export interface InspectionOrderItemVO {
   productName?: string
   pieceCount?: number
   weavingTicketId?: number
+  photos?: string[]
   remark?: string
   createTime?: Date | string
   updateTime?: Date | string
@@ -48,6 +49,7 @@ export interface InspectionOrderItemSaveReqVO {
   productName?: string
   pieceCount?: number
   weavingTicketId?: number
+  photos?: string[]
   remark?: string
 }
 

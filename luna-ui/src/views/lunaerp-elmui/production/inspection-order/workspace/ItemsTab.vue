@@ -85,6 +85,24 @@
             <span v-else>—</span>
           </template>
         </el-table-column>
+        <el-table-column label="疵点照片" width="100" align="center">
+          <template #default="{ row }">
+            <div v-if="row.photos && row.photos.length > 0" class="flex items-center justify-center gap-1">
+              <el-image
+                :src="row.photos[0]"
+                class="w-36px h-36px rounded border border-gray-200 cursor-pointer object-cover"
+                fit="cover"
+                preview-teleported
+                :preview-src-list="row.photos"
+                @click.stop
+              />
+              <span v-if="row.photos.length > 1" class="text-xs text-gray-500 font-mono">
+                +{{ row.photos.length }}
+              </span>
+            </div>
+            <span v-else class="text-gray-300">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="颜色" prop="colorName" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.colorName || '—' }}</template>
         </el-table-column>
@@ -285,6 +303,22 @@
           </el-col>
         </el-row>
 
+        <el-form-item v-if="formData.photos && formData.photos.length > 0" label="疵点照片">
+          <div class="flex items-center gap-2 flex-wrap">
+            <el-image
+              v-for="(url, idx) in formData.photos"
+              :key="idx"
+              :src="url"
+              class="w-54px h-54px rounded border border-gray-200 cursor-pointer object-cover"
+              fit="cover"
+              preview-teleported
+              :preview-src-list="formData.photos"
+              :initial-index="idx"
+            />
+          </div>
+          <div class="text-xs text-gray-400 mt-1">（现场 H5 录检上传，PC 仅供只读查看）</div>
+        </el-form-item>
+
         <el-form-item label="备注" prop="remark">
           <el-input
             v-model="formData.remark"
@@ -299,7 +333,14 @@
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="handleSubmit"
+          v-hasPermi="['lunaerp:production:inspection-order-item:create', 'lunaerp:production:inspection-order-item:update']"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -386,6 +427,7 @@ const formData = reactive<InspectionOrderItemSaveReqVO>({
   productName: '',
   pieceCount: 1,
   weavingTicketId: undefined,
+  photos: undefined,
   remark: ''
 })
 
@@ -449,6 +491,7 @@ const openFormDialog = (row?: InspectionOrderItemVO) => {
       productName: row.productName || props.defaultProductName || '',
       pieceCount: isPieceMode.value ? 1 : (row.pieceCount ?? 1),
       weavingTicketId: row.weavingTicketId,
+      photos: row.photos ? [...row.photos] : undefined,
       remark: row.remark || ''
     })
   } else {
@@ -469,6 +512,7 @@ const openFormDialog = (row?: InspectionOrderItemVO) => {
       productName: props.defaultProductName || '',
       pieceCount: 1,
       weavingTicketId: undefined,
+      photos: undefined,
       remark: ''
     })
   }
