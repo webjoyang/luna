@@ -4,11 +4,11 @@
 
 **Blocked by:** 01（错误码与术语已落，避免重复横切改动）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `infra_config` seed 键 `luna.workshop.default-warehouse-id`（空值占位，租户级参数），脚本可重复执行
-- [ ] `luna-ui/src/utils/dict.ts` 加既有字典的 H5 引用常量：异常类型 2244、检验等级 2232、布票状态、机台任务状态、领纱单状态、检验单状态（零新增字典，仅常量名暴露）
-- [ ] `luna-ui/package.json` 加 `vant@^4` + `html5-qrcode@^2`
-- [ ] `luna-ui/vite.config.ts` 加 `manualChunks`（vant、html5-qrcode 独立 split chunk）+ `unplugin-vue-components` VantResolver
-- [ ] 全局只在 `/h5` 子树引入 Vant 样式与移动 rem/viewport 约定（不引入 postcss-px-to-viewport，与门户 max-width 方案并存不冲突）
-- [ ] 移动子树禁止引用 `lunaerp-elmui/**` PC 组件与 ElementPlus 业务组件（van-/el- 前缀不冲突，但隔离依赖方向）
+- [x] `infra_config` seed 键 `luna.workshop.default-warehouse-id`（空值占位，租户级参数），脚本可重复执行
+- [x] `luna-ui/src/utils/dict.ts` 加既有字典的 H5 引用常量：异常类型 2244、检验等级 2232、布票状态、机台任务状态、领纱单状态、检验单状态（零新增字典，仅常量名暴露）
+- [x] `luna-ui/package.json` 加 `vant@^4` + `html5-qrcode@^2`
+- [x] `luna-ui/vite.config.ts` 加 `manualChunks`（vant、html5-qrcode 独立 split chunk）+ `unplugin-vue-components` VantResolver
+- [x] 全局只在 `/h5` 子树引入 Vant 样式与移动 rem/viewport 约定（不引入 postcss-px-to-viewport，与门户 max-width 方案并存不冲突）
+- [x] 移动子树禁止引用 `lunaerp-elmui/**` PC 组件与 ElementPlus 业务组件（van-/el- 前缀不冲突，但隔离依赖方向）
