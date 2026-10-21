@@ -5,6 +5,7 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTaskRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
 import com.luna.lunasrv.module.lunaerp.service.h5.workshop.WorkshopH5Service;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -14,6 +15,8 @@ import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -52,6 +55,14 @@ public class WorkshopH5Controller {
     @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:report')")
     public CommonResult<WorkshopTicketRespVO> getTicketByCode(@RequestParam("code") String code) {
         return success(workshopH5Service.getTicketByCode(code));
+    }
+
+    @PostMapping("/ticket/start")
+    @Operation(summary = "布票开工（含自助认领）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:report')")
+    public CommonResult<Boolean> startTicket(@Valid @RequestBody WorkshopTicketStartReqVO reqVO) {
+        workshopH5Service.startTicket(reqVO);
+        return success(true);
     }
 
 }

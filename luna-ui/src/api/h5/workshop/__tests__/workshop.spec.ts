@@ -12,7 +12,7 @@ vi.mock('@/config/axios', () => {
 })
 
 import request from '@/config/axios'
-import { getMyTasks, getTicketByCode } from '../index'
+import { getMyTasks, getTicketByCode, startTicket } from '../index'
 
 describe('Workshop H5 API', () => {
   beforeEach(() => {
@@ -96,5 +96,18 @@ describe('Workshop H5 API', () => {
     })
     expect(result).toEqual(mockTicket)
     expect(result.claimable).toBe(true)
+  })
+
+  it('startTicket should call request.post with /ticket/start and data', async () => {
+    vi.mocked(request.post).mockResolvedValueOnce(true)
+
+    const payload = { code: 'BT-001', actualMachine: 'LM02' }
+    const result = await startTicket(payload)
+
+    expect(request.post).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/ticket/start',
+      data: payload
+    })
+    expect(result).toBe(true)
   })
 })

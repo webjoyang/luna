@@ -4,6 +4,7 @@ import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTaskRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
 
 /**
  * 车间移动 H5 接入层编排服务
@@ -27,5 +28,12 @@ public interface WorkshopH5Service {
      * @return 布票卡精简出参
      */
     WorkshopTicketRespVO getTicketByCode(String code);
+
+    /**
+     * 布票开工（含未派工自助认领）
+     *
+     * @param reqVO 开工请求入参
+     */
+    void startTicket(WorkshopTicketStartReqVO reqVO);
 
 }

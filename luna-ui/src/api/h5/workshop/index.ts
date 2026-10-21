@@ -108,3 +108,29 @@ export const getTicketByCode = (code: string) => {
     params: { code }
   })
 }
+
+/**
+ * 车间移动 H5 - 布票开工 Request VO
+ */
+export interface WorkshopTicketStartReqVO {
+  /**
+   * 布票编号
+   */
+  code: string
+  /**
+   * 实际上机机台号（可选，缺省继承任务机台号）
+   */
+  actualMachine?: string
+}
+
+/**
+ * 布票开工（含自助认领）
+ *
+ * @param data 开工入参
+ */
+export const startTicket = (data: WorkshopTicketStartReqVO) => {
+  return request.post<boolean>({
+    url: '/lunaerp/h5/workshop/ticket/start',
+    data
+  })
+}

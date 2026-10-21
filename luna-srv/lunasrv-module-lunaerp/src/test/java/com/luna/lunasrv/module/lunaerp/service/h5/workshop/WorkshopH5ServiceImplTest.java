@@ -8,6 +8,11 @@ import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTaskRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketStartReqVO;
+import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.WeavingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.task.MachineTaskDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO;
@@ -53,6 +58,9 @@ class WorkshopH5ServiceImplTest {
 
     @Mock
     private WeavingTicketMapper weavingTicketMapper;
+
+    @Mock
+    private WeavingTicketService weavingTicketService;
 
     @BeforeEach
     void setUp() {
@@ -419,6 +427,230 @@ class WorkshopH5ServiceImplTest {
             assertEquals("YB2026-01", resp.getMaterialBatchNo());
             assertTrue(resp.getClaimable());
         }
+    }
+
+    // ==================== ticket/start 单元测试 ====================
+
+    @Test
+    @DisplayName("startTicket: 未登录工人调用抛出 401 UNAUTHORIZED")
+    void testStartTicket_unauthorized() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(null);
+
+            WorkshopTicketStartReqVO reqVO = WorkshopTicketStartReqVO.builder()
+                    .code("BT-TEST-001")
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.startTicket(reqVO));
+            assertEquals(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("startTicket: 布票编号为空抛出 039-001")
+    void testStartTicket_blankCode() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(1001L);
+
+            WorkshopTicketStartReqVO reqVO = WorkshopTicketStartReqVO.builder()
+                    .code("   ")
+                    .build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.startTicket(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("startTicket: 布票不存在或已作废(VOID)抛出 039-001")
+    void testStartTicket_notExistsOrVoid() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(1001L);
+
+            // 1. 布票查无此票
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(null);
+            WorkshopTicketStartReqVO reqVO = WorkshopTicketStartReqVO.builder().code("BT-NONE").build();
+            ServiceException ex1 = assertThrows(ServiceException.class, () -> workshopH5Service.startTicket(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex1.getCode());
+
+            // 2. 布票已作废
+            WeavingTicketDO voidTicket = WeavingTicketDO.builder().id(999L).code("BT-VOID").status("VOID").build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(voidTicket);
+            ServiceException ex2 = assertThrows(ServiceException.class, () -> workshopH5Service.startTicket(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex2.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("startTicket: 横向越权-工人 A 操作工人 B 的机台任务抛出 039-002")
+    void testStartTicket_assignedToOther_throws039_002() {
+        Long loginUserId = 1001L;
+        Long otherWorkerUserId = 2002L;
+
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(101L)
+                    .code("BT-OTHER-001")
+                    .machineTaskId(301L)
+                    .status("GENERATED")
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            MachineTaskDO task = MachineTaskDO.builder()
+                    .id(301L)
+                    .workerUserId(otherWorkerUserId)
+                    .workerName("李四")
+                    .build();
+            when(machineTaskMapper.selectById(301L)).thenReturn(task);
+
+            WorkshopTicketStartReqVO reqVO = WorkshopTicketStartReqVO.builder().code("BT-OTHER-001").build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.startTicket(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER.getCode(), ex.getCode());
+            verify(weavingTicketService, never()).startTicket(any());
+        }
+    }
+
+    @Test
+    @DisplayName("startTicket: 成功-已派工给登录人直接开工，workerUserId/workerName强制取登录人")
+    void testStartTicket_success_assignedToSelf() {
+        Long loginUserId = 1001L;
+        String loginNickname = "张三";
+
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+            securityMock.when(SecurityFrameworkUtils::getLoginUserNickname).thenReturn(loginNickname);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(102L)
+                    .code("BT-SELF-002")
+                    .machineTaskId(302L)
+                    .status("GENERATED")
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            MachineTaskDO task = MachineTaskDO.builder()
+                    .id(302L)
+                    .workerUserId(loginUserId)
+                    .workerName("张三")
+                    .build();
+            when(machineTaskMapper.selectById(302L)).thenReturn(task);
+
+            WorkshopTicketStartReqVO reqVO = WorkshopTicketStartReqVO.builder()
+                    .code("BT-SELF-002")
+                    .actualMachine("LM08")
+                    .build();
+
+            workshopH5Service.startTicket(reqVO);
+
+            // 验证未发生 machine_task 条件更新（已属于登录人）
+            verify(machineTaskMapper, never()).update(any(), any());
+
+            // 验证委托生产域 weavingTicketService.startTicket，且强制取登录人身份
+            ArgumentCaptor<WeavingTicketStartReqVO> captor = ArgumentCaptor.forClass(WeavingTicketStartReqVO.class);
+            verify(weavingTicketService).startTicket(captor.capture());
+            WeavingTicketStartReqVO passed = captor.getValue();
+            assertEquals(102L, passed.getId());
+            assertEquals("LM08", passed.getActualMachine());
+            assertEquals(loginUserId, passed.getWorkerUserId());
+            assertEquals(loginNickname, passed.getWorkerName());
+        }
+    }
+
+    @Test
+    @DisplayName("startTicket: 成功-未派工任务自助认领+开工（条件更新 WHERE worker_user_id IS NULL 成功）")
+    void testStartTicket_success_selfClaim() {
+        Long loginUserId = 1001L;
+        String loginNickname = "张三";
+
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+            securityMock.when(SecurityFrameworkUtils::getLoginUserNickname).thenReturn(loginNickname);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(103L)
+                    .code("BT-UNASSIGNED-003")
+                    .machineTaskId(303L)
+                    .status("GENERATED")
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            MachineTaskDO task = MachineTaskDO.builder()
+                    .id(303L)
+                    .workerUserId(null)
+                    .workerName(null)
+                    .build();
+            when(machineTaskMapper.selectById(303L)).thenReturn(task);
+
+            // 条件更新命中 1 行，代表成功认领
+            when(machineTaskMapper.update(any(MachineTaskDO.class), any(LambdaUpdateWrapper.class))).thenReturn(1);
+
+            WorkshopTicketStartReqVO reqVO = WorkshopTicketStartReqVO.builder()
+                    .code("BT-UNASSIGNED-003")
+                    .build();
+
+            workshopH5Service.startTicket(reqVO);
+
+            // 验证条件更新写为登录人
+            ArgumentCaptor<MachineTaskDO> taskCaptor = ArgumentCaptor.forClass(MachineTaskDO.class);
+            verify(machineTaskMapper).update(taskCaptor.capture(), any(LambdaUpdateWrapper.class));
+            assertEquals(loginUserId, taskCaptor.getValue().getWorkerUserId());
+            assertEquals(loginNickname, taskCaptor.getValue().getWorkerName());
+
+            // 验证委托生产域 weavingTicketService.startTicket
+            ArgumentCaptor<WeavingTicketStartReqVO> ticketCaptor = ArgumentCaptor.forClass(WeavingTicketStartReqVO.class);
+            verify(weavingTicketService).startTicket(ticketCaptor.capture());
+            assertEquals(103L, ticketCaptor.getValue().getId());
+            assertEquals(loginUserId, ticketCaptor.getValue().getWorkerUserId());
+            assertEquals(loginNickname, ticketCaptor.getValue().getWorkerName());
+            assertNull(ticketCaptor.getValue().getActualMachine());
+        }
+    }
+
+    @Test
+    @DisplayName("startTicket: 并发认领落败-条件更新返回 0 抛出 039-002")
+    void testStartTicket_selfClaim_concurrencyLoss_throws039_002() {
+        Long loginUserId = 1001L;
+
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(104L)
+                    .code("BT-RACE-004")
+                    .machineTaskId(304L)
+                    .status("GENERATED")
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            MachineTaskDO task = MachineTaskDO.builder()
+                    .id(304L)
+                    .workerUserId(null)
+                    .build();
+            when(machineTaskMapper.selectById(304L)).thenReturn(task);
+
+            // 模拟并发更新落败：已有其他工人抢先认领，更新行数为 0
+            when(machineTaskMapper.update(any(MachineTaskDO.class), any(LambdaUpdateWrapper.class))).thenReturn(0);
+
+            WorkshopTicketStartReqVO reqVO = WorkshopTicketStartReqVO.builder().code("BT-RACE-004").build();
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.startTicket(reqVO));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER.getCode(), ex.getCode());
+            verify(weavingTicketService, never()).startTicket(any());
+        }
+    }
+
+    @Test
+    @DisplayName("startTicket: 切面注解标注 @LogRecord 留痕")
+    void testStartTicket_hasLogRecordAnnotation() throws NoSuchMethodException {
+        java.lang.reflect.Method method = WorkshopH5ServiceImpl.class.getMethod("startTicket", WorkshopTicketStartReqVO.class);
+        LogRecord logRecord = method.getAnnotation(LogRecord.class);
+        assertNotNull(logRecord, "startTicket 必须标注 @LogRecord 切面注解");
+        assertEquals("车间移动H5", logRecord.type());
+        assertEquals("布票开工", logRecord.subType());
+        assertEquals("{{#reqVO.code}}", logRecord.bizNo());
     }
 
 }

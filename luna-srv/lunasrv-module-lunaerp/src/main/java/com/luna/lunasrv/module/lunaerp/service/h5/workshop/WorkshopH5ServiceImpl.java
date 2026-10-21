@@ -10,7 +10,12 @@ import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTaskRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStatusCountsVO;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketStartReqVO;
+import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.WeavingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.task.MachineTaskDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO;
@@ -21,6 +26,7 @@ import com.luna.lunasrv.module.lunaerp.enums.WorkshopH5ErrorCodeConstants;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.*;
@@ -51,6 +57,9 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
 
     @Resource
     private WeavingTicketMapper weavingTicketMapper;
+
+    @Resource
+    private WeavingTicketService weavingTicketService;
 
     @Override
     public PageResult<WorkshopMyTaskRespVO> getMyTasksPage(WorkshopMyTasksPageReqVO reqVO) {
@@ -198,6 +207,69 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
                 .completedAt(ticket.getCompletedAt())
                 .claimable(Boolean.TRUE)
                 .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "车间移动H5", subType = "布票开工", bizNo = "{{#reqVO.code}}", success = "布票【{{#reqVO.code}}】开工成功")
+    public void startTicket(WorkshopTicketStartReqVO reqVO) {
+        // 1. 强制取登录人用户ID与昵称，不信任前端传参
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+        String loginNickname = SecurityFrameworkUtils.getLoginUserNickname();
+
+        // 2. 校验参数
+        if (reqVO == null || StrUtil.isBlank(reqVO.getCode())) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+
+        // 3. 按布票编号查询有效布票（非 VOID）
+        WeavingTicketDO ticket = weavingTicketMapper.selectOne(
+                new LambdaQueryWrapperX<WeavingTicketDO>()
+                        .eq(WeavingTicketDO::getCode, reqVO.getCode().trim())
+        );
+        if (ticket == null || "VOID".equalsIgnoreCase(ticket.getStatus())) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+
+        // 4. 查询关联机台任务并进行挡车工权限与自助认领守卫
+        MachineTaskDO task = ticket.getMachineTaskId() != null
+                ? machineTaskMapper.selectById(ticket.getMachineTaskId())
+                : null;
+        if (task != null) {
+            if (task.getWorkerUserId() != null && !Objects.equals(task.getWorkerUserId(), loginUserId)) {
+                // 已派给其他挡车工，横向越权拦截
+                throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER);
+            }
+            if (task.getWorkerUserId() == null) {
+                // 未派工：自助认领，原子条件更新 WHERE worker_user_id IS NULL
+                MachineTaskDO updateTask = new MachineTaskDO();
+                updateTask.setWorkerUserId(loginUserId);
+                updateTask.setWorkerName(loginNickname);
+                int updated = machineTaskMapper.update(updateTask,
+                        new LambdaUpdateWrapper<MachineTaskDO>()
+                                .eq(MachineTaskDO::getId, task.getId())
+                                .isNull(MachineTaskDO::getWorkerUserId)
+                );
+                if (updated == 0) {
+                    // 并发落败：被其他工人抢先认领
+                    throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER);
+                }
+            }
+        } else if (ticket.getWorkerUserId() != null && !Objects.equals(ticket.getWorkerUserId(), loginUserId)) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER);
+        }
+
+        // 5. 委托生产域核心 Service 执行开工，workerUserId/workerName 强制绑定当前登录人
+        WeavingTicketStartReqVO startReqVO = WeavingTicketStartReqVO.builder()
+                .id(ticket.getId())
+                .actualMachine(StrUtil.isNotBlank(reqVO.getActualMachine()) ? reqVO.getActualMachine().trim() : null)
+                .workerUserId(loginUserId)
+                .workerName(loginNickname)
+                .build();
+        weavingTicketService.startTicket(startReqVO);
     }
 
     /**

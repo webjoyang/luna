@@ -185,7 +185,9 @@
         round
         class="flex-1"
         size="normal"
-        @click="handleActionPlaceholder('开工')"
+        :loading="startSubmitting"
+        :disabled="!canStart"
+        @click="handleStart"
       >
         <van-icon name="play-circle-o" class="mr-1" />
         {{ ticket.status === 'STARTED' ? '重新开工' : '开工' }}
@@ -207,8 +209,8 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showToast } from 'vant'
-import { getTicketByCode, type WorkshopTicketVO } from '@/api/h5/workshop'
+import { showConfirmDialog, showToast } from 'vant'
+import { getTicketByCode, startTicket, type WorkshopTicketVO } from '@/api/h5/workshop'
 import H5Scanner from './components/Scanner.vue'
 
 defineOptions({ name: 'H5Ticket' })
@@ -217,6 +219,7 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
+const startSubmitting = ref(false)
 const errorMessage = ref('')
 const ticket = ref<WorkshopTicketVO | null>(null)
 
@@ -241,6 +244,11 @@ const statusLabel = computed(() => {
 const statusTagType = computed(() => {
   if (!ticket.value?.status) return 'default'
   return STATUS_MAP[ticket.value.status]?.type || 'default'
+})
+
+const canStart = computed(() => {
+  if (!ticket.value?.status) return false
+  return ['GENERATED', 'STARTED', 'EXCEPTION'].includes(ticket.value.status)
 })
 
 const loadTicket = async (code: string) => {
@@ -274,6 +282,55 @@ const handleScanOther = (newCode: string) => {
     query: { code: newCode.trim() }
   })
   loadTicket(newCode)
+}
+
+const handleStart = async () => {
+  if (!ticket.value || startSubmitting.value) return
+  if (!canStart.value) {
+    showToast('当前布票状态不允许开工')
+    return
+  }
+
+  const isUnassigned = ticket.value.claimable && !ticket.value.workerUserId
+  try {
+    if (isUnassigned) {
+      await showConfirmDialog({
+        title: '自助认领并开工',
+        message: '当前机台任务尚未派工，开工将自动由您认领该任务并开始作业，是否确认开工？',
+        confirmButtonText: '确认认领并开工',
+        cancelButtonText: '取消'
+      })
+    } else {
+      await showConfirmDialog({
+        title: '确认开工',
+        message: `确认对布票【${ticket.value.code}】执行开工操作？`,
+        confirmButtonText: '确认开工',
+        cancelButtonText: '取消'
+      })
+    }
+  } catch {
+    // 用户取消确认
+    return
+  }
+
+  startSubmitting.value = true
+  try {
+    await startTicket({
+      code: ticket.value.code
+    })
+    showToast({
+      type: 'success',
+      message: isUnassigned ? '已成功认领并开工！' : '开工成功！'
+    })
+    await loadTicket(ticket.value.code)
+  } catch (err: any) {
+    showToast({
+      type: 'fail',
+      message: err?.msg || err?.message || '开工操作失败'
+    })
+  } finally {
+    startSubmitting.value = false
+  }
 }
 
 const handleActionPlaceholder = (actionName: string) => {
