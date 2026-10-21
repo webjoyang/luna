@@ -10,6 +10,16 @@
       @click-left="goBack"
     />
 
+    <!-- 顶部黄条提示：未配置默认仓库时显式提示管理员配置 -->
+    <van-notice-bar
+      v-if="requisition && shouldShowWarehouseWarning"
+      left-icon="warning-o"
+      color="#ed6a0c"
+      background="#fffbe8"
+      :text="warehouseWarningText"
+      class="text-12px"
+    />
+
     <!-- 内容区域 -->
     <div class="p-3">
       <!-- 1. 加载中状态 -->
@@ -65,16 +75,6 @@
         <!-- 仓库选择区 -->
         <div class="warehouse-card bg-white rounded-xl p-4 shadow-xs border border-gray-100">
           <div class="text-14px font-bold text-gray-900 mb-2">发纱仓库</div>
-
-          <!-- 未配置默认仓库提示 -->
-          <van-notice-bar
-            v-if="!requisition.defaultWarehouseId"
-            left-icon="warning-o"
-            color="#ed6a0c"
-            background="#fffbe8"
-            text="未配置车间默认发纱仓库，请手动选择发纱仓库"
-            class="rounded-lg shadow-xs mb-3 text-12px"
-          />
 
           <van-field
             v-model="selectedWarehouseName"
@@ -171,6 +171,7 @@
                     :placeholder="isItemCompleted(item) ? '已全部发纱' : '输入发纱量（KG）'"
                     class="bg-gray-50 rounded-lg p-2 text-13px flex-1"
                     clearable
+                    @update:model-value="() => onQtyChange(item.id)"
                   />
                   <van-button
                     v-hasPermi="['lunaerp:workshop:h5:dispatch']"
@@ -206,8 +207,18 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showToast } from 'vant'
-import { generateUUID } from '@/utils'
+import { showToast, showNotify } from 'vant'
+import { NETWORK_ERROR_MESSAGE } from '@/utils/h5-submit'
+import {
+  resolveDefaultWarehouse,
+  getRequisitionItemDraft,
+  getRequisitionDraft,
+  saveRequisitionItemDraft,
+  clearRequisitionItemDraft,
+  getOrCreateItemRequestId,
+  executeItemDispatch,
+  DEFAULT_WAREHOUSE_WARNING_MESSAGE
+} from './requisition-detail-helper'
 import {
   getRequisition,
   getWarehouseSimpleList,
@@ -227,9 +238,14 @@ const loading = ref(false)
 const errorMessage = ref('')
 const requisition = ref<WorkshopRequisitionDetailVO | null>(null)
 
-// 发纱操作状态
+// 默认仓库与顶部黄条提示
+const shouldShowWarehouseWarning = ref(false)
+const warehouseWarningText = ref(DEFAULT_WAREHOUSE_WARNING_MESSAGE)
+
+// 发纱操作状态与持久化 requestId 映射
 const dispatchQtyMap = ref<Record<number, string>>({})
 const dispatchLoadingMap = ref<Record<number, boolean>>({})
+const itemRequestIdMap = ref<Record<number, string>>({})
 
 // 仓库选择
 const warehouseList = ref<WorkshopWarehouseSimpleVO[]>([])
@@ -289,6 +305,26 @@ const goBack = () => {
   }
 }
 
+const onQtyChange = (itemId: number) => {
+  const reqId = requisition.value?.id
+  if (!reqId) return
+  const qty = dispatchQtyMap.value[itemId]
+  if (qty && qty.trim()) {
+    const requestId = getOrCreateItemRequestId(reqId, itemId)
+    itemRequestIdMap.value[itemId] = requestId
+    saveRequisitionItemDraft({
+      requisitionId: reqId,
+      itemId,
+      dispatchQty: qty,
+      requestId,
+      warehouseId: selectedWarehouseId.value
+    })
+  } else {
+    clearRequisitionItemDraft(reqId, itemId)
+    delete itemRequestIdMap.value[itemId]
+  }
+}
+
 const loadData = async () => {
   const idStr = route.query.id as string
   if (!idStr) {
@@ -313,17 +349,45 @@ const loadData = async () => {
     requisition.value = detailRes
     warehouseList.value = warehouseRes || []
 
-    // 默认仓库设置：优先保留已选手选仓库；未手选时若返回了有效 defaultWarehouseId 则预选
-    if (selectedWarehouseId.value) {
-      const matched = warehouseList.value.find((w) => w.id === selectedWarehouseId.value)
-      selectedWarehouseName.value = matched ? matched.name : `仓库 #${selectedWarehouseId.value}`
-    } else if (detailRes.defaultWarehouseId) {
-      selectedWarehouseId.value = detailRes.defaultWarehouseId
-      const matched = warehouseList.value.find((w) => w.id === detailRes.defaultWarehouseId)
-      selectedWarehouseName.value = matched ? matched.name : `仓库 #${detailRes.defaultWarehouseId}`
-    } else {
-      selectedWarehouseId.value = null
-      selectedWarehouseName.value = ''
+    // 默认仓库设置：取 luna.workshop.default-warehouse-id，存在且启用才预选；未配置或未启用则不预选，顶部黄条提示管理员配置
+    const whResult = resolveDefaultWarehouse({
+      defaultWarehouseId: detailRes.defaultWarehouseId,
+      warehouseList: warehouseList.value,
+      currentSelectedWarehouseId: selectedWarehouseId.value
+    })
+    selectedWarehouseId.value = whResult.selectedWarehouseId
+    selectedWarehouseName.value = whResult.selectedWarehouseName
+    shouldShowWarehouseWarning.value = whResult.shouldShowWarningBanner
+    warehouseWarningText.value = whResult.warningBannerText
+
+    // 断网重试 / 刷新恢复表单 localStorage 草稿（按 id 分键，重试沿用同一 requestId）
+    const reqDraft = getRequisitionDraft(requisitionId)
+    if (!selectedWarehouseId.value && reqDraft?.warehouseId) {
+      selectedWarehouseId.value = reqDraft.warehouseId
+      const matched = warehouseList.value.find((w) => w.id === reqDraft.warehouseId)
+      selectedWarehouseName.value = matched ? matched.name : `仓库 #${reqDraft.warehouseId}`
+    }
+
+    if (detailRes.items && detailRes.items.length > 0) {
+      detailRes.items.forEach((item) => {
+        // 若行项目已全部发纱完成，清理残留草稿
+        if (isItemCompleted(item)) {
+          clearRequisitionItemDraft(requisitionId, item.id)
+          delete dispatchQtyMap.value[item.id]
+          delete itemRequestIdMap.value[item.id]
+          return
+        }
+
+        const draft = getRequisitionItemDraft(requisitionId, item.id)
+        if (draft) {
+          if (draft.dispatchQty && !dispatchQtyMap.value[item.id]) {
+            dispatchQtyMap.value[item.id] = draft.dispatchQty
+          }
+          if (draft.requestId) {
+            itemRequestIdMap.value[item.id] = draft.requestId
+          }
+        }
+      })
     }
   } catch (e: any) {
     const msg = e?.message || '读取领纱单失败'
@@ -335,12 +399,21 @@ const loadData = async () => {
 }
 
 const handleDispatch = async (item: WorkshopRequisitionItemVO) => {
+  if (!requisition.value) return
+
+  // 1. 提交按钮提交中禁用防连点
+  if (dispatchLoadingMap.value[item.id]) {
+    return
+  }
+
+  // 2. warehouseId 必填校验（未配置或未预选时强制手选）
   if (!selectedWarehouseId.value) {
     showToast('请先选择发纱仓库')
     showWarehousePicker.value = true
     return
   }
 
+  // 3. 数量必填校验
   const qtyStr = dispatchQtyMap.value[item.id]
   const qty = Number(qtyStr)
   if (!qtyStr || isNaN(qty) || qty <= 0) {
@@ -348,27 +421,49 @@ const handleDispatch = async (item: WorkshopRequisitionItemVO) => {
     return
   }
 
-  dispatchLoadingMap.value[item.id] = true
-  try {
-    // 每次点击一次性生成全新 UUID 作为 requestId 确保幂等拦截
-    const requestId = generateUUID()
-    await dispatchRequisitionItem({
-      itemId: item.id,
-      warehouseId: selectedWarehouseId.value,
-      dispatchQty: qty,
-      requestId
+  // 4. 执行发纱出库（requestId 一次生成随表单持久化，重试沿用同一 id；与后端 @Idempotent 协同弱网双击只扣一次）
+  const result = await executeItemDispatch({
+    requisitionId: requisition.value.id,
+    itemId: item.id,
+    dispatchQty: qtyStr,
+    warehouseId: selectedWarehouseId.value,
+    dispatchApi: dispatchRequisitionItem,
+    submittingMap: dispatchLoadingMap.value
+  })
+
+  if (result.ignored) {
+    return
+  }
+
+  if (result.success) {
+    showNotify({
+      type: 'success',
+      message: '发纱出库成功',
+      duration: 2000
     })
-    showToast('发纱出库成功')
     dispatchQtyMap.value[item.id] = ''
+    delete itemRequestIdMap.value[item.id]
     // 重新拉取最新领纱单明细与已发数量，并更新余额
     await loadData()
     if (selectedWarehouseId.value) {
       await handleQueryBalance(item.yarnSpecId)
     }
-  } catch (e: any) {
-    showToast(e?.message || '发纱出库失败')
-  } finally {
-    dispatchLoadingMap.value[item.id] = false
+  } else {
+    // 网络错误与业务错误分色提示，网络错误文案"网络异常，单据未提交，可点重试"，不暗示已成功
+    const errInfo = result.errorInfo
+    if (errInfo?.isNetwork) {
+      showNotify({
+        type: 'warning',
+        message: NETWORK_ERROR_MESSAGE,
+        duration: 3500
+      })
+    } else {
+      showNotify({
+        type: 'danger',
+        message: errInfo?.message || '发纱出库失败',
+        duration: 2500
+      })
+    }
   }
 }
 
@@ -378,6 +473,27 @@ const onWarehouseConfirm = ({ selectedOptions }: any) => {
     selectedWarehouseName.value = selectedOptions[0].text
     // 切换仓库时清空原余额缓存
     itemBalanceMap.value = {}
+
+    // 同步更新已存草稿的 warehouseId
+    const reqId = requisition.value?.id
+    if (reqId) {
+      Object.keys(dispatchQtyMap.value).forEach((itemIdStr) => {
+        const itemId = Number(itemIdStr)
+        const qty = dispatchQtyMap.value[itemId]
+        if (qty && qty.trim()) {
+          const reqItemDraft = getRequisitionItemDraft(reqId, itemId)
+          const requestId = reqItemDraft?.requestId || getOrCreateItemRequestId(reqId, itemId)
+          itemRequestIdMap.value[itemId] = requestId
+          saveRequisitionItemDraft({
+            requisitionId: reqId,
+            itemId,
+            dispatchQty: qty,
+            requestId,
+            warehouseId: selectedWarehouseId.value
+          })
+        }
+      })
+    }
   }
   showWarehousePicker.value = false
 }
