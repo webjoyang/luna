@@ -1121,6 +1121,16 @@ const remainingRouter: AppRouteRecordRaw[] = [
     }
   },
   {
+    path: '/h5/inspection/order',
+    component: () => import('@/views/h5/inspection/order.vue'),
+    name: 'H5InspectionOrder',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '移动质检详情'
+    }
+  },
+  {
     path: '/h5/demo',
     component: () => import('@/views/h5/demo/index.vue'),
     name: 'H5Demo',

@@ -15,6 +15,14 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopT
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketExceptionReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStatusCountsVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.item.InspectionOrderItemMapper;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketStartReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketCompleteReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketExceptionReqVO;
@@ -56,6 +64,7 @@ import java.util.stream.Collectors;
 public class WorkshopH5ServiceImpl implements WorkshopH5Service {
 
     private static final List<String> DEFAULT_ACTIVE_STATUSES = List.of("PENDING", "IN_PROGRESS", "HALTED");
+    private static final List<String> DEFAULT_INSPECTION_STATUSES = List.of("DRAFT", "ACTIVE");
 
     @Resource
     private MachineTaskMapper machineTaskMapper;
@@ -68,6 +77,12 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
 
     @Resource
     private WeavingTicketService weavingTicketService;
+
+    @Resource
+    private InspectionOrderMapper inspectionOrderMapper;
+
+    @Resource
+    private InspectionOrderItemMapper inspectionOrderItemMapper;
 
     @Override
     public PageResult<WorkshopMyTaskRespVO> getMyTasksPage(WorkshopMyTasksPageReqVO reqVO) {
@@ -448,6 +463,153 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
                     .merge(ticket.getStatus(), 1, Integer::sum);
         }
         return resultMap;
+    }
+
+    @Override
+    public PageResult<WorkshopInspectionRespVO> getInspectionPage(WorkshopInspectionPageReqVO reqVO) {
+        // 1. 强制登录校验
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 解析状态过滤条件（缺省默认 DRAFT, ACTIVE）
+        List<String> statuses;
+        if (StrUtil.isNotBlank(reqVO.getStatus())) {
+            statuses = Arrays.stream(reqVO.getStatus().split(","))
+                    .map(String::trim)
+                    .filter(StrUtil::isNotBlank)
+                    .collect(Collectors.toList());
+            if (statuses.isEmpty()) {
+                statuses = DEFAULT_INSPECTION_STATUSES;
+            }
+        } else {
+            statuses = DEFAULT_INSPECTION_STATUSES;
+        }
+
+        // 3. 构建查询（租户隔离由框架自动追加，不按机台过滤）
+        LambdaQueryWrapperX<InspectionOrderDO> query = new LambdaQueryWrapperX<InspectionOrderDO>()
+                .in(InspectionOrderDO::getStatus, statuses)
+                .eqIfPresent(InspectionOrderDO::getType, StrUtil.isNotBlank(reqVO.getType()) ? reqVO.getType().trim() : null)
+                .orderByDesc(InspectionOrderDO::getOrderDate)
+                .orderByDesc(InspectionOrderDO::getId);
+        PageResult<InspectionOrderDO> pageResult = inspectionOrderMapper.selectPage(reqVO, query);
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+
+        // 4. 批量统计已录卷数/件数（防 N+1，coding-standards.md §2 batch* 规范）
+        List<Long> orderIds = pageResult.getList().stream()
+                .map(InspectionOrderDO::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        Map<Long, Integer> countMap = inspectionOrderItemMapper.selectCountMapByInspectionOrderIds(orderIds);
+
+        // 5. 组装 H5 精简 VO
+        List<WorkshopInspectionRespVO> voList = pageResult.getList().stream().map(order -> WorkshopInspectionRespVO.builder()
+                .id(order.getId())
+                .code(order.getCode())
+                .type(order.getType())
+                .packageMode(order.getPackageMode())
+                .status(order.getStatus())
+                .productId(order.getProductId())
+                .productCode(order.getProductCode())
+                .productName(order.getProductName())
+                .greigeOrderId(order.getGreigeOrderId())
+                .dyeingOrderId(order.getDyeingOrderId())
+                .inspectionFactoryId(order.getInspectionFactoryId())
+                .inspectionFactoryName(order.getInspectionFactoryName())
+                .salesContractId(order.getSalesContractId())
+                .contractNo(order.getContractNo())
+                .targetWeight(order.getTargetWeight())
+                .orderDate(order.getOrderDate())
+                .remark(order.getRemark())
+                .rollCount(countMap.getOrDefault(order.getId(), 0))
+                .createTime(order.getCreateTime())
+                .build()).collect(Collectors.toList());
+
+        return new PageResult<>(voList, pageResult.getTotal());
+    }
+
+    @Override
+    public WorkshopInspectionDetailRespVO getInspection(Long id) {
+        // 1. 强制登录校验
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 校验参数与单据存在性（租户隔离自动生效，跨租户构造 id 查无）
+        if (id == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.INSPECTION_ORDER_NOT_EXISTS);
+        }
+        InspectionOrderDO order = inspectionOrderMapper.selectById(id);
+        if (order == null) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.INSPECTION_ORDER_NOT_EXISTS);
+        }
+
+        // 3. 状态校验：仅 DRAFT/ACTIVE 可进，COMPLETED 只读；CANCELLED 抛 010-002
+        if ("CANCELLED".equalsIgnoreCase(order.getStatus())) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.INSPECTION_ORDER_STATUS_NOT_ALLOWED);
+        }
+        boolean readonly = "COMPLETED".equalsIgnoreCase(order.getStatus());
+
+        // 4. 查询录检明细（按 id 倒序展示最新录入）
+        List<InspectionOrderItemDO> itemDOList = inspectionOrderItemMapper.selectList(
+                new LambdaQueryWrapperX<InspectionOrderItemDO>()
+                        .eq(InspectionOrderItemDO::getInspectionOrderId, id)
+                        .orderByDesc(InspectionOrderItemDO::getId)
+        );
+
+        // 5. 组装明细 VO（含 photos 照片列表）
+        List<WorkshopInspectionItemRespVO> itemVOList = CollUtil.isEmpty(itemDOList)
+                ? Collections.emptyList()
+                : itemDOList.stream().map(item -> WorkshopInspectionItemRespVO.builder()
+                        .id(item.getId())
+                        .inspectionOrderId(item.getInspectionOrderId())
+                        .rollNo(item.getRollNo())
+                        .pieceNo(item.getPieceNo())
+                        .weavingTicketId(item.getWeavingTicketId())
+                        .vatNo(item.getVatNo())
+                        .measuredWeight(item.getMeasuredWeight())
+                        .lengthM(item.getLengthM())
+                        .machineNo(item.getMachineNo())
+                        .grade(item.getGrade())
+                        .colorName(item.getColorName())
+                        .colorNo(item.getColorNo())
+                        .styleNo(item.getStyleNo())
+                        .productCode(item.getProductCode())
+                        .productName(item.getProductName())
+                        .pieceCount(item.getPieceCount())
+                        .remark(item.getRemark())
+                        .photos(item.getPhotos() != null ? item.getPhotos() : Collections.emptyList())
+                        .createTime(item.getCreateTime())
+                        .build()).collect(Collectors.toList());
+
+        // 6. 组装单头+明细详情 VO
+        return WorkshopInspectionDetailRespVO.builder()
+                .id(order.getId())
+                .code(order.getCode())
+                .type(order.getType())
+                .packageMode(order.getPackageMode())
+                .status(order.getStatus())
+                .productId(order.getProductId())
+                .productCode(order.getProductCode())
+                .productName(order.getProductName())
+                .greigeOrderId(order.getGreigeOrderId())
+                .dyeingOrderId(order.getDyeingOrderId())
+                .inspectionFactoryId(order.getInspectionFactoryId())
+                .inspectionFactoryName(order.getInspectionFactoryName())
+                .salesContractId(order.getSalesContractId())
+                .contractNo(order.getContractNo())
+                .targetWeight(order.getTargetWeight())
+                .orderDate(order.getOrderDate())
+                .remark(order.getRemark())
+                .rollCount(itemVOList.size())
+                .readonly(readonly)
+                .items(itemVOList)
+                .createTime(order.getCreateTime())
+                .build();
     }
 
 }

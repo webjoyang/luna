@@ -200,3 +200,95 @@ export const exceptionTicket = (data: WorkshopTicketExceptionReqVO) => {
     data
   })
 }
+
+/**
+ * 车间移动 H5 - 检验单分页 Request VO
+ */
+export interface WorkshopInspectionPageReqVO {
+  pageNo?: number
+  pageSize?: number
+  status?: string
+  type?: string
+}
+
+/**
+ * 车间移动 H5 - 检验单精简出参 VO
+ */
+export interface WorkshopInspectionVO {
+  id: number
+  code: string
+  type: 'GREIGE' | 'FINISHED' | string
+  status: 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | string
+  packageMode?: 'ROLL' | 'PIECE' | string
+  productId?: number
+  productCode?: string
+  productName?: string
+  inspectionFactoryId?: number
+  inspectionFactoryName?: string
+  salesContractId?: number
+  contractNo?: string
+  targetWeight?: number
+  orderDate?: string
+  remark?: string
+  rollCount?: number
+  createTime?: string
+}
+
+/**
+ * 车间移动 H5 - 录检明细精简出参 VO
+ */
+export interface WorkshopInspectionItemVO {
+  id: number
+  inspectionOrderId: number
+  rollNo?: string
+  pieceNo?: string
+  weavingTicketId?: number
+  vatNo?: string
+  measuredWeight?: number
+  lengthM?: number
+  machineNo?: string
+  grade?: string
+  colorName?: string
+  colorNo?: string
+  styleNo?: string
+  productCode?: string
+  productName?: string
+  pieceCount?: number
+  remark?: string
+  photos?: string[]
+  createTime?: string
+}
+
+/**
+ * 车间移动 H5 - 检验单详情出参 VO（表头 + 明细列表 + 只读状态）
+ */
+export interface WorkshopInspectionDetailVO extends WorkshopInspectionVO {
+  readonly: boolean
+  items: WorkshopInspectionItemVO[]
+}
+
+/**
+ * 查询检验单列表（分页）
+ *
+ * 状态默认 DRAFT/ACTIVE、type 可选、分页；检验员可看全部租户内可录检单不按机台过滤
+ *
+ * @param params 分页与过滤参数
+ */
+export const getInspectionPage = (params?: WorkshopInspectionPageReqVO) => {
+  return request.get<{ list: WorkshopInspectionVO[]; total: number }>({
+    url: '/lunaerp/h5/workshop/inspection/page',
+    params
+  })
+}
+
+/**
+ * 查询检验单详情（表头+逐行含 photos；仅 DRAFT/ACTIVE 可进，COMPLETED 只读）
+ *
+ * @param id 检验单编号
+ */
+export const getInspection = (id: number) => {
+  return request.get<WorkshopInspectionDetailVO>({
+    url: '/lunaerp/h5/workshop/inspection/get',
+    params: { id }
+  })
+}

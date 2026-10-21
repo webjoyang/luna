@@ -9,6 +9,9 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopT
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketExceptionReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 import com.luna.lunasrv.module.lunaerp.service.h5.workshop.WorkshopH5Service;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -81,6 +84,21 @@ public class WorkshopH5Controller {
     public CommonResult<Boolean> exceptionTicket(@Valid @RequestBody WorkshopTicketExceptionReqVO reqVO) {
         workshopH5Service.exceptionTicket(reqVO);
         return success(true);
+    }
+
+    @GetMapping("/inspection/page")
+    @Operation(summary = "查询移动质检单列表（分页）")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:inspection')")
+    public CommonResult<PageResult<WorkshopInspectionRespVO>> getInspectionPage(@Valid WorkshopInspectionPageReqVO reqVO) {
+        return success(workshopH5Service.getInspectionPage(reqVO));
+    }
+
+    @GetMapping("/inspection/get")
+    @Operation(summary = "查询检验单详情（表头+逐行含照片）")
+    @Parameter(name = "id", description = "检验单编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:inspection')")
+    public CommonResult<WorkshopInspectionDetailRespVO> getInspection(@RequestParam("id") Long id) {
+        return success(workshopH5Service.getInspection(id));
     }
 
 }

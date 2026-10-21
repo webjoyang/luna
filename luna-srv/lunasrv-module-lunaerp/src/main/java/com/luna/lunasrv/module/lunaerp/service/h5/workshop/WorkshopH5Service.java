@@ -8,6 +8,9 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopT
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketExceptionReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
 
 /**
  * 车间移动 H5 接入层编排服务
@@ -53,5 +56,21 @@ public interface WorkshopH5Service {
      * @param reqVO 异常登记请求入参
      */
     void exceptionTicket(WorkshopTicketExceptionReqVO reqVO);
+
+    /**
+     * 获取移动质检单分页列表
+     *
+     * @param reqVO 分页查询条件
+     * @return 检验单列表分页
+     */
+    PageResult<WorkshopInspectionRespVO> getInspectionPage(WorkshopInspectionPageReqVO reqVO);
+
+    /**
+     * 查询检验单详情（表头+逐行含照片）
+     *
+     * @param id 检验单ID
+     * @return 检验单详情
+     */
+    WorkshopInspectionDetailRespVO getInspection(Long id);
 
 }

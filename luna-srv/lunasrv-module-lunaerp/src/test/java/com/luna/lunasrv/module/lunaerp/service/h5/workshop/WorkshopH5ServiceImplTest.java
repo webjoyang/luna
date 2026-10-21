@@ -12,6 +12,13 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopT
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketExceptionReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.item.InspectionOrderItemMapper;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketStartReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketCompleteReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketExceptionReqVO;
@@ -39,6 +46,7 @@ import org.mockito.MockitoAnnotations;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -68,10 +76,22 @@ class WorkshopH5ServiceImplTest {
     @Mock
     private WeavingTicketService weavingTicketService;
 
+    @Mock
+    private InspectionOrderMapper inspectionOrderMapper;
+
+    @Mock
+    private InspectionOrderItemMapper inspectionOrderItemMapper;
+
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        TableInfoTestHelper.initTableInfo(MachineTaskDO.class, WeavingOrderDO.class, WeavingTicketDO.class);
+        TableInfoTestHelper.initTableInfo(
+                MachineTaskDO.class,
+                WeavingOrderDO.class,
+                WeavingTicketDO.class,
+                InspectionOrderDO.class,
+                InspectionOrderItemDO.class
+        );
     }
 
     @Test
@@ -1077,6 +1097,209 @@ class WorkshopH5ServiceImplTest {
         assertEquals("车间移动H5", logRecord.type());
         assertEquals("布票异常登记", logRecord.subType());
         assertEquals("{{#reqVO.code}}", logRecord.bizNo());
+    }
+
+    // ==========================================
+    // 移动质检单分页与详情单测（Issue 13）
+    // ==========================================
+
+    @Test
+    @DisplayName("getInspectionPage: 未登录抛出 UNAUTHORIZED (401)")
+    void testGetInspectionPage_unauthorized() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(null);
+
+            WorkshopInspectionPageReqVO reqVO = new WorkshopInspectionPageReqVO();
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.getInspectionPage(reqVO));
+            assertEquals(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("getInspectionPage: 缺省过滤 DRAFT/ACTIVE 状态，批量统计 rollCount 进度")
+    void testGetInspectionPage_defaultStatusAndBatchProgress() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order1 = new InspectionOrderDO();
+            order1.setId(101L);
+            order1.setCode("INS-20261021-001");
+            order1.setType("GREIGE");
+            order1.setStatus("ACTIVE");
+            order1.setPackageMode("PIECE");
+            order1.setProductId(51L);
+            order1.setProductCode("P001");
+            order1.setProductName("全棉汗布");
+            order1.setInspectionFactoryName("一号车间");
+            order1.setOrderDate(LocalDate.of(2026, 10, 21));
+            order1.setTargetWeight(new BigDecimal("500.00"));
+
+            InspectionOrderDO order2 = new InspectionOrderDO();
+            order2.setId(102L);
+            order2.setCode("INS-20261021-002");
+            order2.setType("FINISHED");
+            order2.setStatus("DRAFT");
+            order2.setPackageMode("ROLL");
+            order2.setProductId(52L);
+            order2.setProductCode("P002");
+            order2.setProductName("斜纹布");
+            order2.setInspectionFactoryName("二号车间");
+            order2.setOrderDate(LocalDate.of(2026, 10, 21));
+
+            PageResult<InspectionOrderDO> pageDO = new PageResult<>(List.of(order1, order2), 2L);
+            when(inspectionOrderMapper.selectPage(any(WorkshopInspectionPageReqVO.class), any())).thenReturn(pageDO);
+            when(inspectionOrderItemMapper.selectCountMapByInspectionOrderIds(List.of(101L, 102L)))
+                    .thenReturn(java.util.Map.of(101L, 8, 102L, 0));
+
+            WorkshopInspectionPageReqVO reqVO = new WorkshopInspectionPageReqVO();
+            PageResult<WorkshopInspectionRespVO> result = workshopH5Service.getInspectionPage(reqVO);
+
+            assertNotNull(result);
+            assertEquals(2L, result.getTotal());
+            assertEquals(2, result.getList().size());
+
+            WorkshopInspectionRespVO vo1 = result.getList().get(0);
+            assertEquals(101L, vo1.getId());
+            assertEquals("INS-20261021-001", vo1.getCode());
+            assertEquals("ACTIVE", vo1.getStatus());
+            assertEquals("GREIGE", vo1.getType());
+            assertEquals(8, vo1.getRollCount());
+
+            WorkshopInspectionRespVO vo2 = result.getList().get(1);
+            assertEquals(102L, vo2.getId());
+            assertEquals("INS-20261021-002", vo2.getCode());
+            assertEquals("DRAFT", vo2.getStatus());
+            assertEquals(0, vo2.getRollCount());
+        }
+    }
+
+    @Test
+    @DisplayName("getInspectionPage: 空列表时返回空分页")
+    void testGetInspectionPage_empty() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            when(inspectionOrderMapper.selectPage(any(WorkshopInspectionPageReqVO.class), any()))
+                    .thenReturn(PageResult.empty(0L));
+
+            WorkshopInspectionPageReqVO reqVO = new WorkshopInspectionPageReqVO();
+            PageResult<WorkshopInspectionRespVO> result = workshopH5Service.getInspectionPage(reqVO);
+
+            assertNotNull(result);
+            assertEquals(0L, result.getTotal());
+            assertTrue(result.getList().isEmpty());
+            verify(inspectionOrderItemMapper, never()).selectCountMapByInspectionOrderIds(any());
+        }
+    }
+
+    @Test
+    @DisplayName("getInspection: 未登录抛出 UNAUTHORIZED (401)")
+    void testGetInspection_unauthorized() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(null);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.getInspection(101L));
+            assertEquals(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("getInspection: 单据不存在或跨租户隔离落空抛 010-000")
+    void testGetInspection_notExists() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            when(inspectionOrderMapper.selectById(999L)).thenReturn(null);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.getInspection(999L));
+            assertEquals(ErrorCodeConstants.INSPECTION_ORDER_NOT_EXISTS.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("getInspection: CANCELLED 状态不允许进入抛 010-002")
+    void testGetInspection_cancelled() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(103L);
+            order.setStatus("CANCELLED");
+            when(inspectionOrderMapper.selectById(103L)).thenReturn(order);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.getInspection(103L));
+            assertEquals(ErrorCodeConstants.INSPECTION_ORDER_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("getInspection: ACTIVE 状态可进可改 (readonly=false)，包含表头与 photos 明细行")
+    void testGetInspection_active_editable() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(101L);
+            order.setCode("INS-20261021-001");
+            order.setType("GREIGE");
+            order.setStatus("ACTIVE");
+            order.setPackageMode("PIECE");
+            order.setProductCode("P001");
+            order.setProductName("全棉汗布");
+            when(inspectionOrderMapper.selectById(101L)).thenReturn(order);
+
+            InspectionOrderItemDO item1 = new InspectionOrderItemDO();
+            item1.setId(501L);
+            item1.setInspectionOrderId(101L);
+            item1.setPieceNo("BT-001");
+            item1.setGrade("A");
+            item1.setMeasuredWeight(new BigDecimal("25.30"));
+            item1.setPhotos(List.of("https://oss.example.com/p1.jpg", "https://oss.example.com/p2.jpg"));
+
+            when(inspectionOrderItemMapper.selectList(any())).thenReturn(List.of(item1));
+
+            WorkshopInspectionDetailRespVO detail = workshopH5Service.getInspection(101L);
+
+            assertNotNull(detail);
+            assertEquals(101L, detail.getId());
+            assertEquals("INS-20261021-001", detail.getCode());
+            assertEquals("ACTIVE", detail.getStatus());
+            assertFalse(detail.getReadonly(), "ACTIVE 态应为可改状态 (readonly=false)");
+            assertEquals(1, detail.getRollCount());
+            assertEquals(1, detail.getItems().size());
+            assertEquals("BT-001", detail.getItems().get(0).getPieceNo());
+            assertEquals(2, detail.getItems().get(0).getPhotos().size());
+            assertEquals("https://oss.example.com/p1.jpg", detail.getItems().get(0).getPhotos().get(0));
+        }
+    }
+
+    @Test
+    @DisplayName("getInspection: COMPLETED 状态进入为只读模式 (readonly=true)")
+    void testGetInspection_completed_readonly() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(102L);
+            order.setCode("INS-20261021-002");
+            order.setType("FINISHED");
+            order.setStatus("COMPLETED");
+            order.setPackageMode("ROLL");
+            order.setProductCode("P002");
+            order.setProductName("涤纶斜纹");
+            when(inspectionOrderMapper.selectById(102L)).thenReturn(order);
+
+            when(inspectionOrderItemMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+            WorkshopInspectionDetailRespVO detail = workshopH5Service.getInspection(102L);
+
+            assertNotNull(detail);
+            assertEquals(102L, detail.getId());
+            assertEquals("COMPLETED", detail.getStatus());
+            assertTrue(detail.getReadonly(), "COMPLETED 态必须为只读模式 (readonly=true)");
+            assertEquals(0, detail.getRollCount());
+            assertTrue(detail.getItems().isEmpty());
+        }
     }
 
 }

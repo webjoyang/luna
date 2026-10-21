@@ -1,6 +1,10 @@
 package com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop;
 
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
+import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketCompleteRespVO;
@@ -13,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 
 import java.lang.reflect.Method;
@@ -141,6 +146,79 @@ class WorkshopH5ControllerTest {
         PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
         assertNotNull(preAuthorize, "exceptionTicket 必须标注 @PreAuthorize");
         assertEquals("@ss.hasPermission('lunaerp:workshop:h5:report')", preAuthorize.value());
+    }
+
+    @Test
+    @DisplayName("inspection/page: 委托 Service 并返回分页列表")
+    void testGetInspectionPage_success() {
+        WorkshopInspectionPageReqVO reqVO = new WorkshopInspectionPageReqVO();
+        reqVO.setStatus("DRAFT,ACTIVE");
+        WorkshopInspectionRespVO respVO = WorkshopInspectionRespVO.builder()
+                .id(101L)
+                .code("INS-20261021-001")
+                .type("GREIGE")
+                .status("ACTIVE")
+                .rollCount(3)
+                .build();
+        PageResult<WorkshopInspectionRespVO> pageResult = new PageResult<>(java.util.List.of(respVO), 1L);
+        when(workshopH5Service.getInspectionPage(reqVO)).thenReturn(pageResult);
+
+        CommonResult<PageResult<WorkshopInspectionRespVO>> result = workshopH5Controller.getInspectionPage(reqVO);
+
+        assertTrue(result.isSuccess());
+        assertNotNull(result.getData());
+        assertEquals(1, result.getData().getList().size());
+        assertEquals("INS-20261021-001", result.getData().getList().get(0).getCode());
+        verify(workshopH5Service).getInspectionPage(reqVO);
+    }
+
+    @Test
+    @DisplayName("inspection/page: 校验端点注解与权限表达式")
+    void testGetInspectionPage_annotations() throws NoSuchMethodException {
+        Method method = WorkshopH5Controller.class.getMethod("getInspectionPage", WorkshopInspectionPageReqVO.class);
+        GetMapping getMapping = method.getAnnotation(GetMapping.class);
+        assertNotNull(getMapping, "getInspectionPage 必须标注 @GetMapping");
+        assertArrayEquals(new String[]{"/inspection/page"}, getMapping.value());
+
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "getInspectionPage 必须标注 @PreAuthorize");
+        assertEquals("@ss.hasPermission('lunaerp:workshop:h5:inspection')", preAuthorize.value());
+    }
+
+    @Test
+    @DisplayName("inspection/get: 委托 Service 并返回详情")
+    void testGetInspection_success() {
+        Long id = 101L;
+        WorkshopInspectionDetailRespVO detailVO = WorkshopInspectionDetailRespVO.builder()
+                .id(id)
+                .code("INS-20261021-001")
+                .type("GREIGE")
+                .status("ACTIVE")
+                .readonly(false)
+                .items(java.util.Collections.emptyList())
+                .build();
+        when(workshopH5Service.getInspection(id)).thenReturn(detailVO);
+
+        CommonResult<WorkshopInspectionDetailRespVO> result = workshopH5Controller.getInspection(id);
+
+        assertTrue(result.isSuccess());
+        assertNotNull(result.getData());
+        assertEquals(id, result.getData().getId());
+        assertFalse(result.getData().getReadonly());
+        verify(workshopH5Service).getInspection(id);
+    }
+
+    @Test
+    @DisplayName("inspection/get: 校验端点注解与权限表达式")
+    void testGetInspection_annotations() throws NoSuchMethodException {
+        Method method = WorkshopH5Controller.class.getMethod("getInspection", Long.class);
+        GetMapping getMapping = method.getAnnotation(GetMapping.class);
+        assertNotNull(getMapping, "getInspection 必须标注 @GetMapping");
+        assertArrayEquals(new String[]{"/inspection/get"}, getMapping.value());
+
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "getInspection 必须标注 @PreAuthorize");
+        assertEquals("@ss.hasPermission('lunaerp:workshop:h5:inspection')", preAuthorize.value());
     }
 
 }

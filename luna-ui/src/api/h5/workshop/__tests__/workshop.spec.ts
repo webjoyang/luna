@@ -12,7 +12,15 @@ vi.mock('@/config/axios', () => {
 })
 
 import request from '@/config/axios'
-import { getMyTasks, getTicketByCode, startTicket, completeTicket, exceptionTicket } from '../index'
+import {
+  getMyTasks,
+  getTicketByCode,
+  startTicket,
+  completeTicket,
+  exceptionTicket,
+  getInspectionPage,
+  getInspection
+} from '../index'
 
 describe('Workshop H5 API', () => {
   beforeEach(() => {
@@ -141,5 +149,67 @@ describe('Workshop H5 API', () => {
       data: payload
     })
     expect(result).toBe(true)
+  })
+
+  it('getInspectionPage should call request.get with correct url and params', async () => {
+    const mockPageResp = {
+      list: [
+        {
+          id: 101,
+          code: 'INS-20261021-001',
+          type: 'GREIGE',
+          status: 'ACTIVE',
+          productName: '全棉汗布',
+          productCode: 'P20261001',
+          packageMode: 'PIECE',
+          inspectionFactoryName: '一号质检车间',
+          rollCount: 5
+        }
+      ],
+      total: 1
+    }
+    vi.mocked(request.get).mockResolvedValueOnce(mockPageResp)
+
+    const params = { pageNo: 1, pageSize: 20, status: 'DRAFT,ACTIVE', type: 'GREIGE' }
+    const result = await getInspectionPage(params)
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/inspection/page',
+      params
+    })
+    expect(result).toEqual(mockPageResp)
+    expect(result.list[0].rollCount).toBe(5)
+  })
+
+  it('getInspection should call request.get with id param and return details with items and photos', async () => {
+    const mockDetailResp = {
+      id: 101,
+      code: 'INS-20261021-001',
+      type: 'GREIGE',
+      status: 'ACTIVE',
+      productName: '全棉汗布',
+      readonly: false,
+      items: [
+        {
+          id: 501,
+          inspectionOrderId: 101,
+          pieceNo: 'BT-001',
+          grade: 'A',
+          measuredWeight: 25.5,
+          photos: ['https://oss.example.com/p1.jpg']
+        }
+      ]
+    }
+    vi.mocked(request.get).mockResolvedValueOnce(mockDetailResp)
+
+    const result = await getInspection(101)
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/inspection/get',
+      params: { id: 101 }
+    })
+    expect(result).toEqual(mockDetailResp)
+    expect(result.readonly).toBe(false)
+    expect(result.items[0].photos).toHaveLength(1)
   })
 })
