@@ -83,10 +83,7 @@ export interface WeavingTicketPageParam {
 
 // 按机台任务批量生成布票
 export const createWeavingTickets = (data: WeavingTicketCreateReqVO) => {
-  return request.post<WeavingTicketVO[]>({
-    url: '/lunaerp/production/weaving-order-ticket/create',
-    data
-  })
+  return request.post<WeavingTicketVO[]>({ url: '/lunaerp/production/weaving-order-ticket/create', data })
 }
 
 // 布票开工（单张/批量）
@@ -111,16 +108,12 @@ export const voidWeavingTicket = (data: WeavingTicketVoidReqVO) => {
 
 // 获得布票详情
 export const getWeavingTicket = (id: number) => {
-  return request.get<WeavingTicketVO>({
-    url: `/lunaerp/production/weaving-order-ticket/get?id=${id}`
-  })
+  return request.get<WeavingTicketVO>({ url: `/lunaerp/production/weaving-order-ticket/get?id=${id}` })
 }
 
 // 按布票编号获得布票详情（扫码枪录入）
 export const getWeavingTicketByCode = (code: string) => {
-  return request.get<WeavingTicketVO>({
-    url: `/lunaerp/production/weaving-order-ticket/get-by-code?code=${encodeURIComponent(code)}`
-  })
+  return request.get<WeavingTicketVO>({ url: `/lunaerp/production/weaving-order-ticket/get-by-code?code=${encodeURIComponent(code)}` })
 }
 
 // 查询布票分页
@@ -150,7 +143,5 @@ export interface WeavingTicketPrintVO {
 
 // 获得布票打印数据（独立 VO，豁免脱敏，含拼好的 qrUrl）
 export const getWeavingTicketPrintData = (id: number | string) => {
-  return request.get<WeavingTicketPrintVO>({
-    url: `/lunaerp/production/weaving-ticket/${id}/print-data`
-  })
+  return request.get<WeavingTicketPrintVO>({ url: `/lunaerp/production/weaving-ticket/${id}/print-data` })
 }

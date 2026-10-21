@@ -582,6 +582,27 @@ class WeavingTicketServiceImplTest {
     }
 
     @Test
+    void testVoidTicket_fromException_preservesExceptionPhotos() {
+        WeavingTicketDO ticket = buildTicket(1L, "EXCEPTION");
+        List<String> photos = Arrays.asList("https://oss.example.com/p1.jpg", "https://oss.example.com/p2.jpg");
+        ticket.setExceptionPhotos(photos);
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        WeavingTicketVoidReqVO req = WeavingTicketVoidReqVO.builder()
+                .id(1L)
+                .voidReason("异常严重无法修复，直接作废")
+                .build();
+
+        weavingTicketService.voidTicket(req);
+
+        ArgumentCaptor<WeavingTicketDO> captor = ArgumentCaptor.forClass(WeavingTicketDO.class);
+        verify(weavingTicketMapper).updateById(captor.capture());
+        WeavingTicketDO updated = captor.getValue();
+        assertEquals("VOID", updated.getStatus());
+        assertEquals(photos, updated.getExceptionPhotos());
+    }
+
+    @Test
     void testVoidTicket_fromCompleted_throws111() {
         WeavingTicketDO ticket = buildTicket(1L, "COMPLETED");
         when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);

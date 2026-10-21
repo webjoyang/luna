@@ -354,6 +354,7 @@ public class WeavingTicketServiceImpl implements WeavingTicketService {
             updateTicket.setStatus(STATUS_VOID);
             updateTicket.setVoidReason(voidReason);
             updateTicket.setVoidedAt(voidedAt);
+            updateTicket.setExceptionPhotos(ticket.getExceptionPhotos());
 
             weavingTicketMapper.updateById(updateTicket);
             affectedTaskIds.add(ticket.getMachineTaskId());
