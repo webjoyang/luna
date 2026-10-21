@@ -4,12 +4,12 @@
 
 **Blocked by:** 01（错误码已落）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] ALTER `lunaerp_production_inspection_order_item` ADD COLUMN IF NOT EXISTS `photos` jsonb
-- [ ] COMMENT ON COLUMN `lunaerp_production_inspection_order_item.photos` IS '疵点照片 URL JSON 数组（车间 H5 录检上传，≤6 张，infra 文件服务）'
-- [ ] `InspectionOrderItemDO` 加 `List<String> photos`，使用 MyBatis JacksonTypeHandler
-- [ ] `InspectionOrderItemSaveReqVO` 加 `private List<String> photos`（可空）
-- [ ] `InspectionOrderItemRespVO` 加 `private List<String> photos`
-- [ ] PC ItemsTab 只读展示 `photos` 缩略图（点击看大图），PC 不提供上传入口（一期照片仅现场产生）
-- [ ] 脚本幂等可重复执行
+- [x] ALTER `lunaerp_production_inspection_order_item` ADD COLUMN IF NOT EXISTS `photos` jsonb
+- [x] COMMENT ON COLUMN `lunaerp_production_inspection_order_item.photos` IS '疵点照片 URL JSON 数组（车间 H5 录检上传，≤6 张，infra 文件服务）'
+- [x] `InspectionOrderItemDO` 加 `List<String> photos`，使用 MyBatis JacksonTypeHandler
+- [x] `InspectionOrderItemSaveReqVO` 加 `private List<String> photos`（可空）
+- [x] `InspectionOrderItemRespVO` 加 `private List<String> photos`
+- [x] PC ItemsTab 只读展示 `photos` 缩略图（点击看大图），PC 不提供上传入口（一期照片仅现场产生）
+- [x] 脚本幂等可重复执行
