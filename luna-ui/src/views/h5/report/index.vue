@@ -2,7 +2,7 @@
   <div class="h5-report-tab-page min-h-screen bg-gray-50 pb-20">
     <!-- 1. 顶部 Header -->
     <div class="header-card bg-white px-4 pt-4 pb-3 shadow-xs border-b border-gray-100">
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between mb-3">
         <div>
           <h1 class="text-18px font-bold text-gray-900">车间报工</h1>
           <p class="text-12px text-gray-500 mt-0.5">我的机台任务与布票扫码报工</p>
@@ -15,25 +15,13 @@
         </div>
       </div>
 
-      <!-- 2. 大扫码按钮区 (Prominent Big Scan Button) -->
-      <div
-        class="scan-banner mt-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-4 text-white shadow-sm flex items-center justify-between"
-      >
-        <div class="flex-1 mr-3">
-          <div class="text-16px font-bold flex items-center">
-            <van-icon name="scan" class="text-20px mr-1.5" />
-            <span>布票扫码报工</span>
-          </div>
-          <div class="text-12px text-white/80 mt-1"> 支持机台扫码、摄像头识别与扫码枪键盘回车 </div>
-        </div>
-        <van-button
-          round
-          size="normal"
-          class="!bg-white !text-blue-600 !border-0 font-bold px-4 shadow-sm"
-          @click="handleOpenScanner"
-        >
-          立即扫码
-        </van-button>
+      <!-- 2. 常驻扫码与键盘楔入区（Spec §4.3: 摄像头与常驻自动聚焦输入框双路径） -->
+      <div class="scan-section mb-1">
+        <H5Scanner
+          placeholder="扫码或输入布票编号回车"
+          default-mode="qr"
+          @scan="handleScannedCode"
+        />
       </div>
     </div>
 
@@ -71,8 +59,8 @@
                 }}</span>
                 <span class="text-11px text-gray-400 font-mono">{{ task.code }}</span>
               </div>
-              <van-tag :type="getStatusTagType(task.status)" round size="medium">
-                {{ getStatusLabel(task.status) }}
+              <van-tag :type="getStatusConfig(task.status).type" round size="medium">
+                {{ getStatusConfig(task.status).label }}
               </van-tag>
             </div>
 
@@ -123,7 +111,7 @@
               />
             </div>
 
-            <!-- 布票状态统计细项 -->
+            <!-- 布票状态统计细项（待开工/进行中/已完工/已检验/已入库/异常） -->
             <div
               v-if="task.ticketCounts"
               class="ticket-status-row flex flex-wrap gap-1.5 pt-2 text-11px"
@@ -141,25 +129,16 @@
                 >已检验 {{ task.ticketCounts.inspected }}</span
               >
               <span
+                v-if="task.ticketCounts.stocked > 0"
+                class="bg-teal-50 text-teal-700 px-1.5 py-0.5 rounded"
+                >已入库 {{ task.ticketCounts.stocked }}</span
+              >
+              <span
                 v-if="task.ticketCounts.exception > 0"
                 class="bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-medium"
               >
                 异常 {{ task.ticketCounts.exception }}
               </span>
-            </div>
-
-            <!-- 操作按钮 -->
-            <div class="card-action pt-3 mt-1 flex justify-end">
-              <van-button
-                size="small"
-                type="primary"
-                plain
-                round
-                icon="scan"
-                @click="handleOpenScanner"
-              >
-                扫码此任务报工
-              </van-button>
             </div>
           </div>
 
@@ -172,21 +151,6 @@
         </van-list>
       </van-pull-refresh>
     </div>
-
-    <!-- 5. 扫码弹层（嵌入 H5Scanner 支持摄像头扫码与键盘回车双路径） -->
-    <van-popup
-      v-model:show="showScannerPopup"
-      position="bottom"
-      round
-      closeable
-      :style="{ height: '80%' }"
-    >
-      <div class="scanner-popup-content p-4 pt-10">
-        <h3 class="text-16px font-bold text-gray-900 mb-1">扫描布票二维码 / 条码</h3>
-        <p class="text-12px text-gray-500 mb-4">扫码后将自动跳转至布票报工详情与开工流程</p>
-        <H5Scanner placeholder="扫描或输入布票编号" default-mode="qr" @scan="handleScannedCode" />
-      </div>
-    </van-popup>
   </div>
 </template>
 
@@ -217,16 +181,8 @@ const refreshing = ref(false)
 const pageNo = ref(1)
 const pageSize = 10
 
-// 扫码弹层
-const showScannerPopup = ref(false)
-
-const handleOpenScanner = () => {
-  showScannerPopup.value = true
-}
-
 const handleScannedCode = (code: string) => {
   if (!code || !code.trim()) return
-  showScannerPopup.value = false
   // 跳转到冻结的布票扫码落地路由
   router.push({
     path: '/h5/scan/weaving-ticket',
@@ -234,35 +190,22 @@ const handleScannedCode = (code: string) => {
   })
 }
 
-// 状态标签转换
-const getStatusLabel = (status?: string) => {
-  switch (status) {
-    case 'PENDING':
-      return '待排产'
-    case 'IN_PROGRESS':
-      return '进行中'
-    case 'HALTED':
-      return '已暂停'
-    case 'COMPLETED':
-      return '已完工'
-    default:
-      return status || '待排产'
-  }
+// 统一状态配置映射（消除 Repeated Switches）
+const TASK_STATUS_CONFIG: Record<
+  string,
+  { label: string; type: 'warning' | 'primary' | 'danger' | 'success' | 'default' }
+> = {
+  PENDING: { label: '待排产', type: 'warning' },
+  IN_PROGRESS: { label: '进行中', type: 'primary' },
+  HALTED: { label: '已暂停', type: 'danger' },
+  COMPLETED: { label: '已完工', type: 'success' }
 }
 
-const getStatusTagType = (status?: string) => {
-  switch (status) {
-    case 'PENDING':
-      return 'warning'
-    case 'IN_PROGRESS':
-      return 'primary'
-    case 'HALTED':
-      return 'danger'
-    case 'COMPLETED':
-      return 'success'
-    default:
-      return 'default'
+const getStatusConfig = (status?: string) => {
+  if (!status || !TASK_STATUS_CONFIG[status]) {
+    return { label: status || '待排产', type: 'default' as const }
   }
+  return TASK_STATUS_CONFIG[status]
 }
 
 // 进度计算

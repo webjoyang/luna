@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
  * 规范守卫：
  * 1. 强制数据范围：基于当前登录用户 ID 硬过滤，严禁信任或采用客户端传入的 workerId；
  * 2. 成功出参使用 H5 精简 VO，严格过滤成本、单价、内部备注等非现场信息；
- * 3. 读链路批量抽取快照（防 N+1），写链路一律委托生产域核心 Service。
+ * 3. 读链路批量抽取快照（防 N+1，batch* 前缀方法封装），写链路一律委托生产域核心 Service。
  *
  * @author luna
  */
@@ -82,52 +82,25 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
             return PageResult.empty(pageResult.getTotal());
         }
 
-        // 4. 批量查询织造单快照（防 N+1）
+        // 4. 批量查询织造单快照（防 N+1，符合 coding-standards.md §2 batch* 命名规范）
         Set<Long> orderIds = pageResult.getList().stream()
                 .map(MachineTaskDO::getWeavingOrderId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<Long, WeavingOrderDO> orderMap = CollUtil.isEmpty(orderIds)
-                ? Collections.emptyMap()
-                : weavingOrderMapper.selectBatchIds(orderIds).stream()
-                    .collect(Collectors.toMap(WeavingOrderDO::getId, o -> o, (a, b) -> a));
+        Map<Long, WeavingOrderDO> orderMap = batchLoadWeavingOrders(orderIds);
 
         // 5. 批量查询关联布票各状态计数（防 N+1，仅投影 machineTaskId 与 status）
         List<Long> taskIds = pageResult.getList().stream()
                 .map(MachineTaskDO::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
-        Map<Long, Map<String, Integer>> taskStatusCountsMap = new HashMap<>();
-        if (CollUtil.isNotEmpty(taskIds)) {
-            List<WeavingTicketDO> tickets = weavingTicketMapper.selectList(
-                    new LambdaQueryWrapperX<WeavingTicketDO>()
-                            .in(WeavingTicketDO::getMachineTaskId, taskIds)
-                            .select(WeavingTicketDO::getMachineTaskId, WeavingTicketDO::getStatus)
-            );
-            for (WeavingTicketDO ticket : tickets) {
-                if (ticket.getMachineTaskId() == null || ticket.getStatus() == null) {
-                    continue;
-                }
-                taskStatusCountsMap
-                        .computeIfAbsent(ticket.getMachineTaskId(), k -> new HashMap<>())
-                        .merge(ticket.getStatus(), 1, Integer::sum);
-            }
-        }
+        Map<Long, Map<String, Integer>> taskStatusCountsMap = batchLoadTicketStatusCounts(taskIds);
 
         // 6. 组装 H5 精简 VO
         List<WorkshopMyTaskRespVO> voList = pageResult.getList().stream().map(task -> {
             WeavingOrderDO order = orderMap.get(task.getWeavingOrderId());
             Map<String, Integer> counts = taskStatusCountsMap.getOrDefault(task.getId(), Collections.emptyMap());
-            WorkshopTicketStatusCountsVO ticketCounts = WorkshopTicketStatusCountsVO.builder()
-                    .generated(counts.getOrDefault("GENERATED", 0))
-                    .started(counts.getOrDefault("STARTED", 0))
-                    .completed(counts.getOrDefault("COMPLETED", 0))
-                    .inspected(counts.getOrDefault("INSPECTED", 0))
-                    .stocked(counts.getOrDefault("STOCKED", 0))
-                    .exception(counts.getOrDefault("EXCEPTION", 0))
-                    .voided(counts.getOrDefault("VOID", 0))
-                    .total(counts.values().stream().mapToInt(Integer::intValue).sum())
-                    .build();
+            WorkshopTicketStatusCountsVO ticketCounts = WorkshopTicketStatusCountsVO.fromStatusCounts(counts);
 
             return WorkshopMyTaskRespVO.builder()
                     .id(task.getId())
@@ -150,6 +123,41 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
         }).collect(Collectors.toList());
 
         return new PageResult<>(voList, pageResult.getTotal());
+    }
+
+    /**
+     * 批量加载织造单快照（coding-standards.md §2 batch* 规范）
+     */
+    private Map<Long, WeavingOrderDO> batchLoadWeavingOrders(Collection<Long> orderIds) {
+        if (CollUtil.isEmpty(orderIds)) {
+            return Collections.emptyMap();
+        }
+        return weavingOrderMapper.selectBatchIds(orderIds).stream()
+                .collect(Collectors.toMap(WeavingOrderDO::getId, o -> o, (a, b) -> a));
+    }
+
+    /**
+     * 批量查询机台任务的布票各状态计数（coding-standards.md §2 batch* 规范）
+     */
+    private Map<Long, Map<String, Integer>> batchLoadTicketStatusCounts(Collection<Long> taskIds) {
+        if (CollUtil.isEmpty(taskIds)) {
+            return Collections.emptyMap();
+        }
+        List<WeavingTicketDO> tickets = weavingTicketMapper.selectList(
+                new LambdaQueryWrapperX<WeavingTicketDO>()
+                        .in(WeavingTicketDO::getMachineTaskId, taskIds)
+                        .select(WeavingTicketDO::getMachineTaskId, WeavingTicketDO::getStatus)
+        );
+        Map<Long, Map<String, Integer>> resultMap = new HashMap<>();
+        for (WeavingTicketDO ticket : tickets) {
+            if (ticket.getMachineTaskId() == null || ticket.getStatus() == null) {
+                continue;
+            }
+            resultMap
+                    .computeIfAbsent(ticket.getMachineTaskId(), k -> new HashMap<>())
+                    .merge(ticket.getStatus(), 1, Integer::sum);
+        }
+        return resultMap;
     }
 
 }

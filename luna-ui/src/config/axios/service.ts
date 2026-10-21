@@ -57,7 +57,7 @@ const service: AxiosInstance = axios.create({
 service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // lunaerp 模块不需要 /admin-api 前缀，直接使用 VITE_BASE_URL
-    if (config.url?.startsWith('/lunaerp')) {
+    if (config.url?.startsWith('/lunaerp') && !config.url?.startsWith('/lunaerp/h5')) {
       config.baseURL = import.meta.env.VITE_BASE_URL || ''
     }
     // 是否需要设置 token；命中白名单的接口（如 /login）不带 token
@@ -240,16 +240,10 @@ service.interceptors.response.use(
   },
   (error: AxiosError) => {
     console.log('err' + error) // for debug
-    if (
-      error.response?.status === 403 ||
-      (error.response?.data as any)?.code === 403
-    ) {
+    if (error.response?.status === 403 || (error.response?.data as any)?.code === 403) {
       return handleForbidden(error.config)
     }
-    if (
-      error.response?.status === 401 ||
-      (error.response?.data as any)?.code === 401
-    ) {
+    if (error.response?.status === 401 || (error.response?.data as any)?.code === 401) {
       return handleAuthorized()
     }
     let { message } = error
@@ -298,7 +292,7 @@ export const handleAuthorized = () => {
   const currentPath =
     typeof window !== 'undefined'
       ? window.location.pathname + window.location.search
-      : ((router?.currentRoute?.value?.fullPath as string) || '')
+      : (router?.currentRoute?.value?.fullPath as string) || ''
   const isH5 = currentPath.startsWith('/h5')
 
   if (isH5) {

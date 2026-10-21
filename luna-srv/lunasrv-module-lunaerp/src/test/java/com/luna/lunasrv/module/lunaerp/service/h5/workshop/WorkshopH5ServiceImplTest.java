@@ -1,7 +1,5 @@
 package com.luna.lunasrv.module.lunaerp.service.h5.workshop;
 
-import com.baomidou.mybatisplus.core.MybatisConfiguration;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.exception.enums.GlobalErrorCodeConstants;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
@@ -15,7 +13,7 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ti
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.WeavingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
-import org.apache.ibatis.builder.MapperBuilderAssistant;
+import com.luna.lunasrv.module.lunaerp.support.TableInfoTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,7 +24,7 @@ import org.mockito.MockedStatic;
 import org.mockito.MockitoAnnotations;
 
 import java.time.LocalDate;
-import java.util.Collections;
+import java.util.Collection;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -56,13 +54,11 @@ class WorkshopH5ServiceImplTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), MachineTaskDO.class);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), WeavingOrderDO.class);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), WeavingTicketDO.class);
+        TableInfoTestHelper.initTableInfo(MachineTaskDO.class, WeavingOrderDO.class, WeavingTicketDO.class);
     }
 
     @Test
-    @DisplayName("my-tasks: 正常获取我的机台任务分页，附带织造单快照与布票状态计数")
+    @DisplayName("my-tasks: 正常获取我的机台任务分页，附带织造单快照与布票状态计数（total 排除作废票）")
     void testGetMyTasksPage_success() {
         Long workerUserId = 1001L;
         try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
@@ -113,17 +109,18 @@ class WorkshopH5ServiceImplTest {
             order2.setProductName("32支涤棉混纺布");
             order2.setProductCode("PRD-TC-32S");
 
-            when(weavingOrderMapper.selectBatchIds(any())).thenReturn(List.of(order1, order2));
+            when(weavingOrderMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(order1, order2));
 
-            // 3. Mock 布票投影统计
+            // 3. Mock 布票投影统计（含 VOID 作废票和 STOCKED 入库票）
             WeavingTicketDO ticket1 = WeavingTicketDO.builder().machineTaskId(10L).status("GENERATED").build();
             WeavingTicketDO ticket2 = WeavingTicketDO.builder().machineTaskId(10L).status("STARTED").build();
             WeavingTicketDO ticket3 = WeavingTicketDO.builder().machineTaskId(10L).status("COMPLETED").build();
-            WeavingTicketDO ticket4 = WeavingTicketDO.builder().machineTaskId(10L).status("COMPLETED").build();
+            WeavingTicketDO ticket4 = WeavingTicketDO.builder().machineTaskId(10L).status("STOCKED").build();
+            WeavingTicketDO ticketVoid = WeavingTicketDO.builder().machineTaskId(10L).status("VOID").build();
             WeavingTicketDO ticket5 = WeavingTicketDO.builder().machineTaskId(11L).status("EXCEPTION").build();
 
             when(weavingTicketMapper.selectList(any(LambdaQueryWrapperX.class)))
-                    .thenReturn(List.of(ticket1, ticket2, ticket3, ticket4, ticket5));
+                    .thenReturn(List.of(ticket1, ticket2, ticket3, ticket4, ticketVoid, ticket5));
 
             // 4. 调用
             WorkshopMyTasksPageReqVO reqVO = new WorkshopMyTasksPageReqVO();
@@ -149,10 +146,13 @@ class WorkshopH5ServiceImplTest {
             assertEquals("IN_PROGRESS", vo1.getStatus());
 
             assertNotNull(vo1.getTicketCounts());
+            // total 严格排除 VOID 票：1 GENERATED + 1 STARTED + 1 COMPLETED + 1 STOCKED = 4
             assertEquals(4, vo1.getTicketCounts().getTotal());
             assertEquals(1, vo1.getTicketCounts().getGenerated());
             assertEquals(1, vo1.getTicketCounts().getStarted());
-            assertEquals(2, vo1.getTicketCounts().getCompleted());
+            assertEquals(1, vo1.getTicketCounts().getCompleted());
+            assertEquals(1, vo1.getTicketCounts().getStocked());
+            assertEquals(1, vo1.getTicketCounts().getVoided());
             assertEquals(0, vo1.getTicketCounts().getInspected());
 
             WorkshopMyTaskRespVO vo2 = result.getList().get(1);
