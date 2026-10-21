@@ -217,6 +217,18 @@ COMMENT ON COLUMN lunaerp_production_inspection_order_item.photos
 - 拍照：`<van-uploader>` 或 `<input type=file accept="image/*" capture="environment">`，多张 ≤6；统一压缩工具（canvas 长边 ≤1920、JPEG ≤2MB）后 `POST /admin-api/infra/file/upload`（multipart，携带同一 token），拿 URL 再随业务表单提交；上传失败可单独重传，不阻塞表单其余字段；
 - 企微/钉钉/手机 Safari/Chrome 均使用系统 WebView 标准能力，无 JS-SDK 依赖。
 
+#### 4.3.1 扫码终端上线与运维部署说明（摄像头 HTTPS 与键盘楔入双路径）
+
+1. **浏览器安全策略与摄像头约束**：
+   - 现代移动端浏览器（Safari / Chrome / 企微 / 钉钉内置 WebView）严格遵循 W3C Secure Contexts 规范，`navigator.mediaDevices.getUserMedia` 仅在安全上下文（HTTPS 或 `localhost` / `127.0.0.1`）开放；
+   - 在局域网纯 HTTP（如 `http://192.168.*.*`、`http://10.*.*.*`）部署时，H5 扫码组件根据 `isSecureContext=false` 与 `protocol=http:` 自动隐藏摄像头取景入口，避免抛出 `NotAllowedError` 或导致页面卡死；
+2. **常驻键盘楔入作为一等公民**：
+   - 工厂常见工业安卓 PDA（激光/红外头扫）及 USB 扫码枪，输出均配置为键盘楔入（Keyboard Wedge）附加回车后缀（`\r` 或 `\n`）；
+   - 常驻自动聚焦输入框与软回车按钮是纯 HTTP 局域网环境下的 100% 可用保证路径；
+3. **车间现场推荐部署案**：
+   - **方案 A（手机/平板触摸摄像头扫码）**：Nginx 配置内网 HTTPS 域名或自建 CA 签发证书（手机安装信任证书），开放 443 端口，工人即可使用手机自带摄像头扫码（支持布票二维码与一维 Code128 切换）；
+   - **方案 B（工业 PDA / 扫码枪作业）**：沿用内网纯 HTTP 部署，PDA 头扫即用，无需配置证书，免除终端证书信任与更新维护成本。
+
 ### 4.4 弱网交互
 
 - 所有提交按钮提交中禁用防连点；业务错误（状态码/守卫）与网络错误分色提示（网络错误文案"网络异常，单据未提交，可点重试"，不暗示已成功）；
