@@ -4,14 +4,14 @@
 
 **Blocked by:** 06（H5Layout 已就位）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] GET `/lunaerp/h5/workshop/requisition/page`（领纱单→织造单→机台任务 EXISTS `worker_user_id=登录人` 去重；状态默认 ACTIVE/PARTIAL；DISPATCHED/CLOSED/DRAFT 不列）
-- [ ] GET `/lunaerp/h5/workshop/requisition/get`（id；归属校验同上不符 039-006；返回单头+逐行规格名/需求/已发/单位+默认仓库 id）
-- [ ] GET `/lunaerp/h5/workshop/warehouse/simple-list`（启用中仓库 id+name H5 精简 VO）
-- [ ] GET `/lunaerp/h5/workshop/yarn-balance`（warehouseId, yarnSpecId；复用既有余额查询 service 与 PC 端点同源）
-- [ ] `@PreAuthorize lunaerp:workshop:h5:dispatch`
-- [ ] 前端 `src/views/h5/requisition.vue`（Tab 领纱：我的待领纱单列表）
-- [ ] 前端 `src/views/h5/requisition/detail.vue` 骨架（逐行填量、改仓/查余额入口占位，18 填充发纱表单）
-- [ ] 测试：横向越权操作 B 的领纱单 → 039-006；纵向越权无 dispatch 权限调端点 → 403；租户隔离跨租户构造 id → 查无
-- [ ] demo：待领纱单只列自己任务→进单看详情
+- [x] GET `/lunaerp/h5/workshop/requisition/page`（领纱单→织造单→机台任务 EXISTS `worker_user_id=登录人` 去重；状态默认 ACTIVE/PARTIAL；DISPATCHED/CLOSED/DRAFT 不列）
+- [x] GET `/lunaerp/h5/workshop/requisition/get`（id；归属校验同上不符 039-006；返回单头+逐行规格名/需求/已发/单位+默认仓库 id）
+- [x] GET `/lunaerp/h5/workshop/warehouse/simple-list`（启用中仓库 id+name H5 精简 VO）
+- [x] GET `/lunaerp/h5/workshop/yarn-balance`（warehouseId, yarnSpecId；复用既有余额查询 service 与 PC 端点同源）
+- [x] `@PreAuthorize lunaerp:workshop:h5:dispatch`
+- [x] 前端 `src/views/h5/requisition.vue`（Tab 领纱：我的待领纱单列表）
+- [x] 前端 `src/views/h5/requisition/detail.vue` 骨架（逐行填量、改仓/查余额入口占位，18 填充发纱表单）
+- [x] 测试：横向越权操作 B 的领纱单 → 039-006；纵向越权无 dispatch 权限调端点 → 403；租户隔离跨租户构造 id → 查无
+- [x] demo：待领纱单只列自己任务→进单看详情
