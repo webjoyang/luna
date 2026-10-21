@@ -7,12 +7,14 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTaskRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.WeavingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.task.MachineTaskDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ticket.WeavingTicketDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.WeavingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
+import com.luna.lunasrv.module.lunaerp.enums.WorkshopH5ErrorCodeConstants;
 import com.luna.lunasrv.module.lunaerp.support.TableInfoTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.MockitoAnnotations;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -222,6 +225,199 @@ class WorkshopH5ServiceImplTest {
             assertTrue(result.getList().isEmpty());
             verifyNoInteractions(weavingOrderMapper);
             verifyNoInteractions(weavingTicketMapper);
+        }
+    }
+
+    // ==================== ticket/get-by-code 扫码定位端点测试 ====================
+
+    @Test
+    @DisplayName("get-by-code: 未登录时抛出 401 UNAUTHORIZED")
+    void testGetTicketByCode_unauthorized() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(null);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.getTicketByCode("BT-001"));
+            assertEquals(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("get-by-code: code 为空时抛出 039-001 布票不存在或已作废")
+    void testGetTicketByCode_blankCode() {
+        Long workerUserId = 1001L;
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(workerUserId);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.getTicketByCode("   "));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("get-by-code: 布票不存在时抛出 039-001 布票不存在或已作废")
+    void testGetTicketByCode_notExists() {
+        Long workerUserId = 1001L;
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(workerUserId);
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(null);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.getTicketByCode("BT-NOT-EXISTS"));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("get-by-code: 布票已作废(VOID)时抛出 039-001 布票不存在或已作废")
+    void testGetTicketByCode_voidTicket() {
+        Long workerUserId = 1001L;
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(workerUserId);
+
+            WeavingTicketDO voidTicket = WeavingTicketDO.builder()
+                    .id(101L)
+                    .code("BT-VOID-001")
+                    .status("VOID")
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(voidTicket);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.getTicketByCode("BT-VOID-001"));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("get-by-code: 横向越权-机台任务已派给其他挡车工时抛出 039-002")
+    void testGetTicketByCode_assignedToOtherWorker() {
+        Long loginUserId = 1001L;
+        Long otherWorkerUserId = 1002L;
+
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(101L)
+                    .code("BT-OTHER-001")
+                    .weavingOrderId(201L)
+                    .machineTaskId(301L)
+                    .status("GENERATED")
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            MachineTaskDO task = MachineTaskDO.builder()
+                    .id(301L)
+                    .code("MT-001")
+                    .workerUserId(otherWorkerUserId)
+                    .workerName("李四")
+                    .build();
+            when(machineTaskMapper.selectById(301L)).thenReturn(task);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.getTicketByCode("BT-OTHER-001"));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("get-by-code: 成功-未派工任务返回 claimable=true 且 workerUserId=null")
+    void testGetTicketByCode_unassignedClaimable() {
+        Long loginUserId = 1001L;
+
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(102L)
+                    .code("BT-UNASSIGNED-001")
+                    .weavingOrderId(201L)
+                    .machineTaskId(302L)
+                    .plannedMachine("LM02")
+                    .plannedWeight(new BigDecimal("25.00"))
+                    .status("GENERATED")
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            MachineTaskDO task = MachineTaskDO.builder()
+                    .id(302L)
+                    .code("MT-002")
+                    .loomId(2L)
+                    .loomNo("LM02")
+                    .workerUserId(null)
+                    .workerName(null)
+                    .build();
+            when(machineTaskMapper.selectById(302L)).thenReturn(task);
+
+            WeavingOrderDO order = new WeavingOrderDO();
+            order.setId(201L);
+            order.setCode("ZZ-2026-01");
+            order.setProductCode("PRD-01");
+            order.setProductName("40S 纯棉单面汗布");
+            order.setComposition("100% 棉");
+            order.setGsm("180g/m²");
+            order.setWidth("185cm");
+            when(weavingOrderMapper.selectById(201L)).thenReturn(order);
+
+            WorkshopTicketRespVO resp = workshopH5Service.getTicketByCode("BT-UNASSIGNED-001");
+
+            assertNotNull(resp);
+            assertEquals(102L, resp.getId());
+            assertEquals("BT-UNASSIGNED-001", resp.getCode());
+            assertEquals("GENERATED", resp.getStatus());
+            assertEquals("ZZ-2026-01", resp.getWeavingOrderCode());
+            assertEquals("MT-002", resp.getMachineTaskCode());
+            assertEquals("LM02", resp.getLoomNo());
+            assertEquals("40S 纯棉单面汗布", resp.getProductName());
+            assertNull(resp.getWorkerUserId());
+            assertNull(resp.getWorkerName());
+            assertTrue(resp.getClaimable());
+        }
+    }
+
+    @Test
+    @DisplayName("get-by-code: 成功-已派工给登录人返回 claimable=true 且携带挡车工快照")
+    void testGetTicketByCode_success_assignedToSelf() {
+        Long loginUserId = 1001L;
+
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(103L)
+                    .code("BT-SELF-001")
+                    .weavingOrderId(201L)
+                    .machineTaskId(303L)
+                    .plannedMachine("LM03")
+                    .plannedWeight(new BigDecimal("26.50"))
+                    .status("STARTED")
+                    .materialBatchNo("YB2026-01")
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            MachineTaskDO task = MachineTaskDO.builder()
+                    .id(303L)
+                    .code("MT-003")
+                    .loomId(3L)
+                    .loomNo("LM03")
+                    .workerUserId(loginUserId)
+                    .workerName("张三")
+                    .build();
+            when(machineTaskMapper.selectById(303L)).thenReturn(task);
+
+            WeavingOrderDO order = new WeavingOrderDO();
+            order.setId(201L);
+            order.setCode("ZZ-2026-01");
+            order.setProductCode("PRD-01");
+            order.setProductName("40S 纯棉单面汗布");
+            when(weavingOrderMapper.selectById(201L)).thenReturn(order);
+
+            WorkshopTicketRespVO resp = workshopH5Service.getTicketByCode("BT-SELF-001");
+
+            assertNotNull(resp);
+            assertEquals(103L, resp.getId());
+            assertEquals("BT-SELF-001", resp.getCode());
+            assertEquals("STARTED", resp.getStatus());
+            assertEquals(loginUserId, resp.getWorkerUserId());
+            assertEquals("张三", resp.getWorkerName());
+            assertEquals("YB2026-01", resp.getMaterialBatchNo());
+            assertTrue(resp.getClaimable());
         }
     }
 

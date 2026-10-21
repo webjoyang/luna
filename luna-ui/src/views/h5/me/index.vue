@@ -32,6 +32,27 @@
           </template>
         </van-cell>
       </van-cell-group>
+
+      <van-cell-group inset class="!mx-0 mb-4 shadow-sm">
+        <van-cell
+          title="扫码落点默认分流"
+          :value="scanLandingChoiceDisplay"
+          :is-link="!!scanLandingChoice"
+          @click="scanLandingChoice ? handleResetScanLandingChoice() : undefined"
+        >
+          <template v-if="scanLandingChoice" #right-icon>
+            <van-button
+              size="mini"
+              type="primary"
+              plain
+              class="ml-2"
+              @click.stop="handleResetScanLandingChoice"
+            >
+              重置
+            </van-button>
+          </template>
+        </van-cell>
+      </van-cell-group>
     </div>
 
     <div class="space-y-3 pt-6 pb-4">
@@ -44,16 +65,42 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { showConfirmDialog } from 'vant'
+import { showConfirmDialog, showToast } from 'vant'
 import { useUserStoreWithOut } from '@/store/modules/user'
 import { H5_PERMISSIONS, hasWorkshopPermission, hasSuperPermission } from '@/utils/h5Auth'
+import {
+  getSavedScanLandingChoice,
+  resetSavedScanLandingChoice,
+  type ScanLandingChoice
+} from '@/views/h5/scan/scan-landing-helper'
 
 defineOptions({ name: 'H5Me' })
 
 const router = useRouter()
 const userStore = useUserStoreWithOut()
+
+const scanLandingChoice = ref<ScanLandingChoice | null>(getSavedScanLandingChoice())
+
+const scanLandingChoiceDisplay = computed(() => {
+  if (scanLandingChoice.value === 'report') return '车间报工'
+  if (scanLandingChoice.value === 'inspection') return '移动质检'
+  return '未设置（每次询问）'
+})
+
+const handleResetScanLandingChoice = () => {
+  showConfirmDialog({
+    title: '重置扫码分流偏好',
+    message: '确定要清除当前扫码默认分流偏好吗？重置后双角色用户扫码将重新弹出选择。'
+  })
+    .then(() => {
+      resetSavedScanLandingChoice()
+      scanLandingChoice.value = null
+      showToast('已重置扫码默认分流设置')
+    })
+    .catch(() => {})
+}
 
 const user = computed(() => userStore.getUser)
 const isSuper = computed(() => hasSuperPermission(userStore.permissions))

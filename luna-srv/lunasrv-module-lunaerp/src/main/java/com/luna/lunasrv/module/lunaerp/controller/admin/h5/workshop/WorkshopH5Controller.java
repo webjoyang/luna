@@ -4,8 +4,10 @@ import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTaskRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
 import com.luna.lunasrv.module.lunaerp.service.h5.workshop.WorkshopH5Service;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
@@ -13,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
@@ -41,6 +44,14 @@ public class WorkshopH5Controller {
     @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:report')")
     public CommonResult<PageResult<WorkshopMyTaskRespVO>> getMyTasks(@Valid WorkshopMyTasksPageReqVO reqVO) {
         return success(workshopH5Service.getMyTasksPage(reqVO));
+    }
+
+    @GetMapping("/ticket/get-by-code")
+    @Operation(summary = "按布票编码查询布票卡（扫码/手输定位）")
+    @Parameter(name = "code", description = "布票编号", required = true, example = "BT-MTZZPB09190010101-0001")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:report')")
+    public CommonResult<WorkshopTicketRespVO> getTicketByCode(@RequestParam("code") String code) {
+        return success(workshopH5Service.getTicketByCode(code));
     }
 
 }

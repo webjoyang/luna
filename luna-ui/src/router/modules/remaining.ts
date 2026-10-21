@@ -1101,6 +1101,16 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/h5/ticket',
+    component: () => import('@/views/h5/ticket.vue'),
+    name: 'H5Ticket',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '布票报工卡'
+    }
+  },
+  {
     path: '/h5/scan/weaving-ticket',
     component: () => import('@/views/h5/scan/weaving-ticket.vue'),
     name: 'H5ScanWeavingTicket',

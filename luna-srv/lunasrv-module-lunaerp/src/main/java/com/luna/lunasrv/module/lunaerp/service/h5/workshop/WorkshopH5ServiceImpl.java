@@ -9,6 +9,7 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTaskRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopMyTasksPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStatusCountsVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.WeavingOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.task.MachineTaskDO;
@@ -16,6 +17,7 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ti
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.WeavingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
+import com.luna.lunasrv.module.lunaerp.enums.WorkshopH5ErrorCodeConstants;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -123,6 +125,79 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
         }).collect(Collectors.toList());
 
         return new PageResult<>(voList, pageResult.getTotal());
+    }
+
+    @Override
+    public WorkshopTicketRespVO getTicketByCode(String code) {
+        // 1. 强制取登录人用户ID，不信任前端传参
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 校验参数
+        if (StrUtil.isBlank(code)) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+
+        // 3. 按布票编号查询有效布票（未删除）
+        WeavingTicketDO ticket = weavingTicketMapper.selectOne(
+                new LambdaQueryWrapperX<WeavingTicketDO>()
+                        .eq(WeavingTicketDO::getCode, code.trim())
+        );
+        if (ticket == null || "VOID".equalsIgnoreCase(ticket.getStatus())) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+
+        // 4. 查询关联机台任务并进行挡车工权限与自助认领守卫
+        MachineTaskDO task = ticket.getMachineTaskId() != null
+                ? machineTaskMapper.selectById(ticket.getMachineTaskId())
+                : null;
+        if (task != null && task.getWorkerUserId() != null && !Objects.equals(task.getWorkerUserId(), loginUserId)) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER);
+        }
+        if (task == null && ticket.getWorkerUserId() != null && !Objects.equals(ticket.getWorkerUserId(), loginUserId)) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER);
+        }
+
+        // 5. 查询关联织造单快照
+        WeavingOrderDO order = ticket.getWeavingOrderId() != null
+                ? weavingOrderMapper.selectById(ticket.getWeavingOrderId())
+                : null;
+
+        // 6. 确定挡车工归属与认领标志（任务 worker 为空或=登录人，claimable=true）
+        Long workerUserId = task != null && task.getWorkerUserId() != null ? task.getWorkerUserId() : ticket.getWorkerUserId();
+        String workerName = task != null && task.getWorkerName() != null ? task.getWorkerName() : ticket.getWorkerName();
+
+        // 7. 组装并返回 H5 精简布票卡 VO
+        return WorkshopTicketRespVO.builder()
+                .id(ticket.getId())
+                .code(ticket.getCode())
+                .weavingOrderId(ticket.getWeavingOrderId())
+                .weavingOrderCode(order != null ? order.getCode() : null)
+                .machineTaskId(ticket.getMachineTaskId())
+                .machineTaskCode(task != null ? task.getCode() : null)
+                .loomId(task != null ? task.getLoomId() : null)
+                .loomNo(task != null ? task.getLoomNo() : ticket.getPlannedMachine())
+                .plannedMachine(ticket.getPlannedMachine())
+                .actualMachine(ticket.getActualMachine())
+                .productName(order != null ? order.getProductName() : null)
+                .productCode(order != null ? order.getProductCode() : null)
+                .composition(order != null ? order.getComposition() : null)
+                .gsm(order != null ? order.getGsm() : null)
+                .width(order != null ? order.getWidth() : null)
+                .plannedWeight(ticket.getPlannedWeight())
+                .workerUserId(workerUserId)
+                .workerName(workerName)
+                .materialBatchNo(ticket.getMaterialBatchNo())
+                .status(ticket.getStatus())
+                .exceptionType(ticket.getExceptionType())
+                .exceptionNote(ticket.getExceptionNote())
+                .exceptionPhotos(ticket.getExceptionPhotos())
+                .startedAt(ticket.getStartedAt())
+                .completedAt(ticket.getCompletedAt())
+                .claimable(Boolean.TRUE)
+                .build();
     }
 
     /**

@@ -56,3 +56,55 @@ export const getMyTasks = (params?: WorkshopMyTasksPageReqVO) => {
     params
   })
 }
+
+/**
+ * 车间移动 H5 - 布票精简卡片出参 VO
+ */
+export interface WorkshopTicketVO {
+  id: number
+  code: string
+  weavingOrderId?: number
+  weavingOrderCode?: string
+  machineTaskId?: number
+  machineTaskCode?: string
+  loomId?: number
+  loomNo?: string
+  plannedMachine?: string
+  actualMachine?: string
+  productName?: string
+  productCode?: string
+  composition?: string
+  gsm?: string
+  width?: string
+  plannedWeight?: number
+  workerUserId?: number
+  workerName?: string
+  materialBatchNo?: string
+  status:
+    | 'GENERATED'
+    | 'STARTED'
+    | 'COMPLETED'
+    | 'INSPECTED'
+    | 'STOCKED'
+    | 'EXCEPTION'
+    | 'VOID'
+    | string
+  exceptionType?: string
+  exceptionNote?: string
+  exceptionPhotos?: string[]
+  startedAt?: string
+  completedAt?: string
+  claimable?: boolean
+}
+
+/**
+ * 按布票编号查询布票卡片详情（扫码/手输定位）
+ *
+ * @param code 布票编号
+ */
+export const getTicketByCode = (code: string) => {
+  return request.get<WorkshopTicketVO>({
+    url: '/lunaerp/h5/workshop/ticket/get-by-code',
+    params: { code }
+  })
+}

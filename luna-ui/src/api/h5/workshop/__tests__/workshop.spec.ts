@@ -12,7 +12,7 @@ vi.mock('@/config/axios', () => {
 })
 
 import request from '@/config/axios'
-import { getMyTasks } from '../index'
+import { getMyTasks, getTicketByCode } from '../index'
 
 describe('Workshop H5 API', () => {
   beforeEach(() => {
@@ -69,5 +69,32 @@ describe('Workshop H5 API', () => {
       params: undefined
     })
     expect(result).toEqual({ list: [], total: 0 })
+  })
+
+  it('getTicketByCode should call request.get with correct url and code param', async () => {
+    const mockTicket = {
+      id: 101,
+      code: 'BT-001',
+      weavingOrderId: 201,
+      weavingOrderCode: 'ZZ-001',
+      machineTaskId: 301,
+      machineTaskCode: 'MT-001',
+      loomNo: 'LM01',
+      productName: '40S 纯棉单面汗布',
+      plannedWeight: 25.0,
+      status: 'GENERATED',
+      claimable: true
+    }
+
+    vi.mocked(request.get).mockResolvedValueOnce(mockTicket)
+
+    const result = await getTicketByCode('BT-001')
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/ticket/get-by-code',
+      params: { code: 'BT-001' }
+    })
+    expect(result).toEqual(mockTicket)
+    expect(result.claimable).toBe(true)
   })
 })
