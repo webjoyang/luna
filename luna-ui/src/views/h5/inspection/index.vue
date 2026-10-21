@@ -173,16 +173,17 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { showToast } from 'vant'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { showToast, showLoadingToast, closeToast } from 'vant'
 import { useUserStore } from '@/store/modules/user'
 import H5Scanner from '../components/Scanner.vue'
-import { getInspectionPage, WorkshopInspectionVO } from '@/api/h5/workshop'
+import { getInspectionPage, ticketScan, WorkshopInspectionVO } from '@/api/h5/workshop'
 
 defineOptions({ name: 'H5Inspection' })
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 // 当前登录质检员姓名
@@ -300,7 +301,7 @@ const onLoad = () => {
 }
 
 // 扫码处理
-const handleScannedCode = (code: string) => {
+const handleScannedCode = async (code: string) => {
   const cleanCode = (code || '').trim()
   if (!cleanCode) return
 
@@ -311,12 +312,48 @@ const handleScannedCode = (code: string) => {
     return
   }
 
-  // 否则提示布票扫码录检编排（后续 14 号工单接入 ticket-scan）
-  showToast({
-    message: `已扫描: ${cleanCode}\n胚布扫码录检与自动交接待 14 号工单接入`,
-    duration: 3000
+  // 胚布扫码定位编排（Issue 14 ticket-scan 自动交接建单并定位录检行）
+  showLoadingToast({
+    message: '正在识别布票并交接...',
+    forbidClick: true,
+    duration: 0
   })
+
+  try {
+    const res = await ticketScan(cleanCode)
+    closeToast()
+    if (res && res.inspectionOrderId) {
+      showToast({
+        type: 'success',
+        message: res.item ? '已定位到已录检明细' : '已自动交接建单，定位录检行'
+      })
+      router.push({
+        path: '/h5/inspection/order',
+        query: {
+          id: res.inspectionOrderId,
+          ticketCode: cleanCode,
+          ticketId: res.weavingTicketId,
+          itemId: res.item?.id,
+          suggestedPieceNo: res.suggestedPieceNo || cleanCode
+        }
+      })
+    }
+  } catch (err: any) {
+    closeToast()
+    showToast({
+      type: 'fail',
+      message: err?.message || '布票扫码识别失败'
+    })
+  }
 }
+
+// 页面加载时若 URL 携带 ?code= 则自动触发扫码定位编排
+onMounted(() => {
+  const codeParam = route.query.code as string
+  if (codeParam && codeParam.trim()) {
+    handleScannedCode(codeParam.trim())
+  }
+})
 
 // 点击卡片进入详情
 const goToDetail = (id: number) => {

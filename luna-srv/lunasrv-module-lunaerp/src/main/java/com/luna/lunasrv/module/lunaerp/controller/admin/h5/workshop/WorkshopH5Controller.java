@@ -12,6 +12,7 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopT
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
 import com.luna.lunasrv.module.lunaerp.service.h5.workshop.WorkshopH5Service;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -99,6 +100,14 @@ public class WorkshopH5Controller {
     @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:inspection')")
     public CommonResult<WorkshopInspectionDetailRespVO> getInspection(@RequestParam("id") Long id) {
         return success(workshopH5Service.getInspection(id));
+    }
+
+    @GetMapping("/inspection/ticket-scan")
+    @Operation(summary = "胚布扫码定位编排（自动交接检验单并定位录检行）")
+    @Parameter(name = "code", description = "布票码", required = true, example = "BT-MTZZPB09190010101-0001")
+    @PreAuthorize("@ss.hasPermission('lunaerp:workshop:h5:inspection')")
+    public CommonResult<WorkshopTicketScanRespVO> ticketScan(@RequestParam("code") String code) {
+        return success(workshopH5Service.ticketScan(code));
     }
 
 }

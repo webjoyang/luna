@@ -117,8 +117,90 @@
           </div>
         </div>
 
-        <!-- 模式入口骨架占位（Spec §3.2 & Issue 13: 胚布/成品两种模式入口占位，14/15/16 填充） -->
+        <!-- 胚布扫码录检入口与占位卡片 -->
         <div
+          v-if="order.type === 'GREIGE'"
+          class="mode-action-card bg-white rounded-xl p-4 shadow-xs border border-primary/30"
+        >
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center space-x-2">
+              <div
+                class="w-8 h-8 rounded-full bg-blue-50 text-primary flex items-center justify-center"
+              >
+                <van-icon name="scan" size="18" />
+              </div>
+              <div>
+                <span class="text-14px font-bold text-gray-900">胚布扫码录检</span>
+                <span class="text-11px text-primary block mt-0.5">
+                  已接入 14 号 ticket-scan 自动交接编排
+                </span>
+              </div>
+            </div>
+            <van-button
+              v-hasPermi="['lunaerp:workshop:h5:inspection']"
+              v-if="!order.readonly"
+              type="primary"
+              size="small"
+              icon="scan"
+              round
+              @click="triggerScanner"
+            >
+              扫布票码
+            </van-button>
+          </div>
+
+          <!-- 扫码定位到新行占位提示 -->
+          <div
+            v-if="currentScannedTicket && !currentScannedItem"
+            class="scan-hit-alert bg-amber-50 border border-amber-200 rounded-lg p-3 text-12px text-amber-900"
+          >
+            <div class="flex items-center font-bold mb-1">
+              <van-icon name="passed" color="#ed6a0c" class="mr-1" />
+              已自动交接建单！待录检新行占位
+            </div>
+            <div
+              >布票编号：<span class="font-mono font-medium">{{ currentScannedTicket }}</span></div
+            >
+            <div
+              >建议匹号：<span class="font-mono font-medium">{{
+                suggestedPieceNo || currentScannedTicket
+              }}</span></div
+            >
+            <div class="text-amber-600 mt-1"
+              >（录检明细等级、重量、米数与拍照保存表单待 15 号工单接入）</div
+            >
+          </div>
+
+          <!-- 扫码定位到已有录检行提示 -->
+          <div
+            v-else-if="currentScannedTicket && currentScannedItem"
+            class="scan-hit-alert bg-blue-50 border border-blue-200 rounded-lg p-3 text-12px text-blue-900"
+          >
+            <div class="flex items-center font-bold mb-1">
+              <van-icon name="checked" color="#1989fa" class="mr-1" />
+              已定位到布票既有录检行
+            </div>
+            <div
+              >布票编号：<span class="font-mono font-medium">{{ currentScannedTicket }}</span></div
+            >
+            <div
+              >匹号：<span class="font-mono font-medium">{{
+                currentScannedItem.pieceNo || currentScannedTicket
+              }}</span></div
+            >
+            <div class="text-blue-600 mt-1"
+              >（下方列表已高亮该明细，改录保存表单待 15 号工单接入）</div
+            >
+          </div>
+
+          <p v-else class="text-12px text-gray-500 bg-gray-50 rounded-lg p-2.5">
+            扫描挡车工完工布票二维码，系统自动归一关联胚布检验单并定位录检行。
+          </p>
+        </div>
+
+        <!-- 成品模式骨架占位 -->
+        <div
+          v-else
           class="mode-placeholder-card bg-white rounded-xl p-4 shadow-xs border border-dashed border-primary/40"
         >
           <div class="flex items-center justify-between mb-2">
@@ -126,31 +208,19 @@
               <div
                 class="w-8 h-8 rounded-full bg-blue-50 text-primary flex items-center justify-center"
               >
-                <van-icon :name="order.type === 'GREIGE' ? 'scan' : 'edit'" size="18" />
+                <van-icon name="edit" size="18" />
               </div>
               <div>
-                <span class="text-14px font-bold text-gray-900">
-                  {{ order.type === 'GREIGE' ? '胚布扫码录检' : '成品逐卷录检' }}
-                </span>
+                <span class="text-14px font-bold text-gray-900">成品逐卷录检</span>
                 <span class="text-11px text-primary block mt-0.5">
-                  {{
-                    order.type === 'GREIGE'
-                      ? '模式入口骨架（待 14/15 号 Ticket 接入）'
-                      : '模式入口骨架（待 16 号 Ticket 接入）'
-                  }}
+                  模式入口骨架（待 16 号 Ticket 接入）
                 </span>
               </div>
             </div>
-            <van-tag type="primary" plain round size="small">
-              {{ order.type === 'GREIGE' ? 'PIECE' : 'ROLL' }}
-            </van-tag>
+            <van-tag type="primary" plain round size="small">ROLL</van-tag>
           </div>
           <p class="text-12px text-gray-500 bg-gray-50 rounded-lg p-2.5">
-            {{
-              order.type === 'GREIGE'
-                ? '支持现场扫布票二维码自动交接、录入匹号、等级、实称重量与瑕疵照片。'
-                : '支持现场逐卷录入缸号、卷号、等级、实称重量、米数与瑕疵照片。'
-            }}
+            支持现场逐卷录入缸号、卷号、等级、实称重量、米数与瑕疵照片。
           </p>
         </div>
 
@@ -171,7 +241,12 @@
             <div
               v-for="(item, index) in order.items"
               :key="item.id || index"
-              class="item-card bg-white rounded-xl p-3.5 shadow-xs border border-gray-100"
+              :class="[
+                'item-card bg-white rounded-xl p-3.5 shadow-xs border transition-all',
+                isItemHighlighted(item)
+                  ? 'border-primary ring-2 ring-primary/20 bg-blue-50/20'
+                  : 'border-gray-100'
+              ]"
             >
               <!-- 头部：卷号/匹号 + 等级 -->
               <div class="flex items-center justify-between pb-2 border-b border-gray-100">
@@ -262,14 +337,23 @@
         </div>
       </div>
     </div>
+
+    <!-- 底部/弹窗扫码组件 -->
+    <H5Scanner ref="scannerRef" @scan="handleTicketScan" />
   </div>
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showToast, showImagePreview } from 'vant'
-import { getInspection, WorkshopInspectionDetailVO } from '@/api/h5/workshop'
+import { showToast, showImagePreview, showLoadingToast, closeToast } from 'vant'
+import H5Scanner from '../components/Scanner.vue'
+import {
+  getInspection,
+  ticketScan,
+  WorkshopInspectionDetailVO,
+  WorkshopInspectionItemVO
+} from '@/api/h5/workshop'
 
 defineOptions({ name: 'H5InspectionOrder' })
 
@@ -279,6 +363,79 @@ const router = useRouter()
 const loading = ref(false)
 const errorMessage = ref('')
 const order = ref<WorkshopInspectionDetailVO | null>(null)
+
+// 扫码定位上下文
+const scannerRef = ref()
+const currentScannedTicket = ref<string>('')
+const currentWeavingTicketId = ref<number | null>(null)
+const currentItemId = ref<number | null>(null)
+const suggestedPieceNo = ref<string>('')
+const currentScannedItem = ref<WorkshopInspectionItemVO | null>(null)
+
+const triggerScanner = () => {
+  scannerRef.value?.openScanner?.()
+}
+
+// 判断明细卡片是否为当前扫码定位命中的行（基于实体 ID 精确判定）
+const isItemHighlighted = (item: WorkshopInspectionItemVO) => {
+  if (currentItemId.value && item.id === currentItemId.value) {
+    return true
+  }
+  if (currentWeavingTicketId.value && item.weavingTicketId === currentWeavingTicketId.value) {
+    return true
+  }
+  return false
+}
+
+// 内部扫码布票处理
+const handleTicketScan = async (code: string) => {
+  const cleanCode = (code || '').trim()
+  if (!cleanCode) return
+
+  showLoadingToast({
+    message: '正在识别布票并定位...',
+    forbidClick: true,
+    duration: 0
+  })
+
+  try {
+    const res = await ticketScan(cleanCode)
+    closeToast()
+    if (res) {
+      currentScannedTicket.value = cleanCode
+      currentWeavingTicketId.value = res.weavingTicketId || null
+      currentItemId.value = res.item?.id || null
+      suggestedPieceNo.value = res.suggestedPieceNo || cleanCode
+      currentScannedItem.value = res.item || null
+
+      if (res.inspectionOrderId !== order.value?.id) {
+        // 如果扫描的布票归属于另一张检验单，自动路由至对应检验单
+        router.push({
+          path: '/h5/inspection/order',
+          query: {
+            id: res.inspectionOrderId,
+            ticketCode: cleanCode,
+            ticketId: res.weavingTicketId,
+            itemId: res.item?.id,
+            suggestedPieceNo: res.suggestedPieceNo || cleanCode
+          }
+        })
+      } else {
+        await loadOrderDetail(false)
+        showToast({
+          type: 'success',
+          message: res.item ? '已定位到已录检明细' : '已自动交接，定位待录检行'
+        })
+      }
+    }
+  } catch (err: any) {
+    closeToast()
+    showToast({
+      type: 'fail',
+      message: err?.message || '布票扫码识别失败'
+    })
+  }
+}
 
 // 状态映射
 const getStatusLabel = (status?: string) => {
@@ -356,7 +513,7 @@ const handlePreviewPhotos = (photos?: string[], startPosition = 0) => {
 }
 
 // 加载检验单数据
-const loadOrderDetail = async () => {
+const loadOrderDetail = async (showLoading = true) => {
   const idStr = route.query.id as string
   if (!idStr || isNaN(Number(idStr))) {
     errorMessage.value = '未指定检验单编号，请从列表进入'
@@ -364,7 +521,9 @@ const loadOrderDetail = async () => {
   }
 
   const orderId = Number(idStr)
-  loading.value = true
+  if (showLoading) {
+    loading.value = true
+  }
   errorMessage.value = ''
 
   try {
@@ -374,12 +533,46 @@ const loadOrderDetail = async () => {
       return
     }
     order.value = res
+
+    // 匹配路由传参带来的扫码定位状态
+    const scanTicket = (route.query.ticketCode as string) || (route.query.scanTicketCode as string)
+    const ticketIdStr = route.query.ticketId as string
+    const itemIdStr = route.query.itemId as string
+    if (scanTicket) {
+      currentScannedTicket.value = scanTicket
+      suggestedPieceNo.value = (route.query.suggestedPieceNo as string) || scanTicket
+      currentWeavingTicketId.value = ticketIdStr ? Number(ticketIdStr) : null
+      currentItemId.value = itemIdStr ? Number(itemIdStr) : null
+
+      if (res.items && res.items.length > 0) {
+        const found = res.items.find(
+          (it) =>
+            (currentItemId.value && it.id === currentItemId.value) ||
+            (currentWeavingTicketId.value && it.weavingTicketId === currentWeavingTicketId.value)
+        )
+        if (found) {
+          currentScannedItem.value = found
+        }
+      }
+    }
   } catch (err: any) {
     errorMessage.value = err?.message || '读取检验单详情失败'
   } finally {
-    loading.value = false
+    if (showLoading) {
+      loading.value = false
+    }
   }
 }
+
+// 监听路由 id 变化，支持由当前单跳入另一张检验单时重新加载
+watch(
+  () => route.query.id,
+  (newId, oldId) => {
+    if (newId && newId !== oldId) {
+      loadOrderDetail()
+    }
+  }
+)
 
 // 返回列表页
 const goBack = () => {

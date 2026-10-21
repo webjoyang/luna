@@ -11,6 +11,7 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopT
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
 
 /**
  * 车间移动 H5 接入层编排服务
@@ -72,5 +73,13 @@ public interface WorkshopH5Service {
      * @return 检验单详情
      */
     WorkshopInspectionDetailRespVO getInspection(Long id);
+
+    /**
+     * 胚布扫码定位编排（自动交接检验单并定位录检行）
+     *
+     * @param code 布票码
+     * @return 扫码定位编排响应（检验单ID、布票ID、建议匹号、已录检明细行）
+     */
+    WorkshopTicketScanRespVO ticketScan(String code);
 
 }

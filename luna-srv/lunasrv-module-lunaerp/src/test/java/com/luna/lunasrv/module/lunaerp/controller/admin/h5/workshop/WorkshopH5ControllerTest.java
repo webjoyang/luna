@@ -3,6 +3,7 @@ package com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop;
 import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketStartReqVO;
@@ -218,6 +219,42 @@ class WorkshopH5ControllerTest {
 
         PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
         assertNotNull(preAuthorize, "getInspection 必须标注 @PreAuthorize");
+        assertEquals("@ss.hasPermission('lunaerp:workshop:h5:inspection')", preAuthorize.value());
+    }
+
+    @Test
+    @DisplayName("inspection/ticket-scan: 委托 Service 并返回扫码定位编排结果")
+    void testTicketScan_success() {
+        String code = "BT-001";
+        WorkshopTicketScanRespVO scanRespVO = WorkshopTicketScanRespVO.builder()
+                .inspectionOrderId(101L)
+                .weavingTicketId(201L)
+                .suggestedPieceNo("BT-001")
+                .item(null)
+                .build();
+        when(workshopH5Service.ticketScan(code)).thenReturn(scanRespVO);
+
+        CommonResult<WorkshopTicketScanRespVO> result = workshopH5Controller.ticketScan(code);
+
+        assertTrue(result.isSuccess());
+        assertNotNull(result.getData());
+        assertEquals(101L, result.getData().getInspectionOrderId());
+        assertEquals(201L, result.getData().getWeavingTicketId());
+        assertEquals("BT-001", result.getData().getSuggestedPieceNo());
+        assertNull(result.getData().getItem());
+        verify(workshopH5Service).ticketScan(code);
+    }
+
+    @Test
+    @DisplayName("inspection/ticket-scan: 校验端点注解与权限表达式")
+    void testTicketScan_annotations() throws NoSuchMethodException {
+        Method method = WorkshopH5Controller.class.getMethod("ticketScan", String.class);
+        GetMapping getMapping = method.getAnnotation(GetMapping.class);
+        assertNotNull(getMapping, "ticketScan 必须标注 @GetMapping");
+        assertArrayEquals(new String[]{"/inspection/ticket-scan"}, getMapping.value());
+
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "ticketScan 必须标注 @PreAuthorize");
         assertEquals("@ss.hasPermission('lunaerp:workshop:h5:inspection')", preAuthorize.value());
     }
 

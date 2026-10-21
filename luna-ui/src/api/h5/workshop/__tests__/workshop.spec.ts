@@ -19,7 +19,8 @@ import {
   completeTicket,
   exceptionTicket,
   getInspectionPage,
-  getInspection
+  getInspection,
+  ticketScan
 } from '../index'
 
 describe('Workshop H5 API', () => {
@@ -211,5 +212,54 @@ describe('Workshop H5 API', () => {
     expect(result).toEqual(mockDetailResp)
     expect(result.readonly).toBe(false)
     expect(result.items[0].photos).toHaveLength(1)
+  })
+
+  it('ticketScan should call request.get with correct url and code param (first scan, item null)', async () => {
+    const mockScanResp = {
+      inspectionOrderId: 101,
+      weavingTicketId: 201,
+      suggestedPieceNo: 'BT-MTZZPB09190010101-0001',
+      item: null
+    }
+    vi.mocked(request.get).mockResolvedValueOnce(mockScanResp)
+
+    const result = await ticketScan('BT-MTZZPB09190010101-0001')
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/inspection/ticket-scan',
+      params: { code: 'BT-MTZZPB09190010101-0001' }
+    })
+    expect(result).toEqual(mockScanResp)
+    expect(result.inspectionOrderId).toBe(101)
+    expect(result.weavingTicketId).toBe(201)
+    expect(result.suggestedPieceNo).toBe('BT-MTZZPB09190010101-0001')
+    expect(result.item).toBeNull()
+  })
+
+  it('ticketScan should call request.get with correct url and return existing item for re-scan', async () => {
+    const mockScanResp = {
+      inspectionOrderId: 101,
+      weavingTicketId: 201,
+      suggestedPieceNo: 'BT-MTZZPB09190010101-0001',
+      item: {
+        id: 501,
+        inspectionOrderId: 101,
+        pieceNo: 'BT-MTZZPB09190010101-0001',
+        grade: 'A',
+        measuredWeight: 26.5,
+        photos: ['https://oss.example.com/p1.jpg']
+      }
+    }
+    vi.mocked(request.get).mockResolvedValueOnce(mockScanResp)
+
+    const result = await ticketScan('BT-MTZZPB09190010101-0001')
+
+    expect(request.get).toHaveBeenCalledWith({
+      url: '/lunaerp/h5/workshop/inspection/ticket-scan',
+      params: { code: 'BT-MTZZPB09190010101-0001' }
+    })
+    expect(result.inspectionOrderId).toBe(101)
+    expect(result.item?.id).toBe(501)
+    expect(result.item?.grade).toBe('A')
   })
 })

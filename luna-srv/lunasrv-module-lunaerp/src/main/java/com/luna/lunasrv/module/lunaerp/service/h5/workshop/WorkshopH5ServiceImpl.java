@@ -19,6 +19,9 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopI
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
+import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.WeavingOrderService;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
@@ -83,6 +86,9 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
 
     @Resource
     private InspectionOrderItemMapper inspectionOrderItemMapper;
+
+    @Resource
+    private WeavingOrderService weavingOrderService;
 
     @Override
     public PageResult<WorkshopMyTaskRespVO> getMyTasksPage(WorkshopMyTasksPageReqVO reqVO) {
@@ -564,27 +570,7 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
         // 5. 组装明细 VO（含 photos 照片列表）
         List<WorkshopInspectionItemRespVO> itemVOList = CollUtil.isEmpty(itemDOList)
                 ? Collections.emptyList()
-                : itemDOList.stream().map(item -> WorkshopInspectionItemRespVO.builder()
-                        .id(item.getId())
-                        .inspectionOrderId(item.getInspectionOrderId())
-                        .rollNo(item.getRollNo())
-                        .pieceNo(item.getPieceNo())
-                        .weavingTicketId(item.getWeavingTicketId())
-                        .vatNo(item.getVatNo())
-                        .measuredWeight(item.getMeasuredWeight())
-                        .lengthM(item.getLengthM())
-                        .machineNo(item.getMachineNo())
-                        .grade(item.getGrade())
-                        .colorName(item.getColorName())
-                        .colorNo(item.getColorNo())
-                        .styleNo(item.getStyleNo())
-                        .productCode(item.getProductCode())
-                        .productName(item.getProductName())
-                        .pieceCount(item.getPieceCount())
-                        .remark(item.getRemark())
-                        .photos(item.getPhotos() != null ? item.getPhotos() : Collections.emptyList())
-                        .createTime(item.getCreateTime())
-                        .build()).collect(Collectors.toList());
+                : itemDOList.stream().map(this::buildInspectionItemRespVO).collect(Collectors.toList());
 
         // 6. 组装单头+明细详情 VO
         return WorkshopInspectionDetailRespVO.builder()
@@ -609,6 +595,102 @@ public class WorkshopH5ServiceImpl implements WorkshopH5Service {
                 .readonly(readonly)
                 .items(itemVOList)
                 .createTime(order.getCreateTime())
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public WorkshopTicketScanRespVO ticketScan(String code) {
+        // 1. 强制登录校验
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            throw ServiceExceptionUtil.exception(GlobalErrorCodeConstants.UNAUTHORIZED);
+        }
+
+        // 2. 规则 ① 按 code 查布票（不存在/VOID → 039-001）
+        if (StrUtil.isBlank(code)) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+        WeavingTicketDO ticket = weavingTicketMapper.selectOne(
+                new LambdaQueryWrapperX<WeavingTicketDO>()
+                        .eq(WeavingTicketDO::getCode, code.trim())
+        );
+        if (ticket == null || "VOID".equalsIgnoreCase(ticket.getStatus())) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS);
+        }
+
+        // 状态必须 COMPLETED/INSPECTED/STOCKED 之一，未完工 → 039-003，其余不可录态 → 039-004
+        String status = ticket.getStatus();
+        if ("GENERATED".equalsIgnoreCase(status) || "STARTED".equalsIgnoreCase(status)) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_TICKET_NOT_COMPLETED);
+        }
+        if (!"COMPLETED".equalsIgnoreCase(status) && !"INSPECTED".equalsIgnoreCase(status) && !"STOCKED".equalsIgnoreCase(status)) {
+            throw ServiceExceptionUtil.exception(WorkshopH5ErrorCodeConstants.H5_TICKET_STATUS_NOT_ALLOW_INSPECTION);
+        }
+
+        // 3. 规则 ② 内部直接调 weavingOrderService.handoffInspection(ticket.weavingOrderId)
+        // 幂等：已交接复用，按胚布单归一 find-or-create 仅建检验单表头，ADR-0025
+        // H5 Service 调用绕过 Web 权限点，不要求检验员具备 :handoff-inspection
+        WeavingOrderHandoffInspectionRespVO handoffResp = weavingOrderService.handoffInspection(ticket.getWeavingOrderId());
+        Long inspectionOrderId = handoffResp.getInspectionOrderId();
+
+        // 4. 规则 ④ 该检验单已 COMPLETED/CANCELLED → 010-002
+        InspectionOrderDO inspectionOrder = inspectionOrderMapper.selectById(inspectionOrderId);
+        if (inspectionOrder != null && ("COMPLETED".equalsIgnoreCase(inspectionOrder.getStatus()) || "CANCELLED".equalsIgnoreCase(inspectionOrder.getStatus()))) {
+            throw ServiceExceptionUtil.exception(ErrorCodeConstants.INSPECTION_ORDER_STATUS_NOT_ALLOWED);
+        }
+
+        // 5. 规则 ③ 按 weavingTicketId 查录检行：存在 → 返回 {inspectionOrderId, item} 供改录；不存在 → 返回 {inspectionOrderId, item:null, suggestedPieceNo: 布票code}
+        List<InspectionOrderItemDO> items = inspectionOrderItemMapper.selectList(
+                new LambdaQueryWrapperX<InspectionOrderItemDO>()
+                        .eq(InspectionOrderItemDO::getInspectionOrderId, inspectionOrderId)
+                        .eq(InspectionOrderItemDO::getWeavingTicketId, ticket.getId())
+                        .orderByDesc(InspectionOrderItemDO::getId)
+        );
+
+        if (CollUtil.isNotEmpty(items)) {
+            InspectionOrderItemDO item = items.get(0);
+            WorkshopInspectionItemRespVO itemVO = buildInspectionItemRespVO(item);
+            return WorkshopTicketScanRespVO.builder()
+                    .inspectionOrderId(inspectionOrderId)
+                    .weavingTicketId(ticket.getId())
+                    .suggestedPieceNo(null)
+                    .item(itemVO)
+                    .build();
+        }
+
+        return WorkshopTicketScanRespVO.builder()
+                .inspectionOrderId(inspectionOrderId)
+                .weavingTicketId(ticket.getId())
+                .suggestedPieceNo(ticket.getCode())
+                .item(null)
+                .build();
+    }
+
+    private WorkshopInspectionItemRespVO buildInspectionItemRespVO(InspectionOrderItemDO item) {
+        if (item == null) {
+            return null;
+        }
+        return WorkshopInspectionItemRespVO.builder()
+                .id(item.getId())
+                .inspectionOrderId(item.getInspectionOrderId())
+                .rollNo(item.getRollNo())
+                .pieceNo(item.getPieceNo())
+                .weavingTicketId(item.getWeavingTicketId())
+                .vatNo(item.getVatNo())
+                .measuredWeight(item.getMeasuredWeight())
+                .lengthM(item.getLengthM())
+                .machineNo(item.getMachineNo())
+                .grade(item.getGrade())
+                .colorName(item.getColorName())
+                .colorNo(item.getColorNo())
+                .styleNo(item.getStyleNo())
+                .productCode(item.getProductCode())
+                .productName(item.getProductName())
+                .pieceCount(item.getPieceCount())
+                .remark(item.getRemark())
+                .photos(item.getPhotos() != null ? item.getPhotos() : Collections.emptyList())
+                .createTime(item.getCreateTime())
                 .build();
     }
 

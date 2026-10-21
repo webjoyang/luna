@@ -292,3 +292,25 @@ export const getInspection = (id: number) => {
     params: { id }
   })
 }
+
+/**
+ * 车间移动 H5 - 胚布扫码定位编排出参 VO
+ */
+export interface WorkshopTicketScanRespVO {
+  inspectionOrderId: number
+  weavingTicketId: number
+  suggestedPieceNo?: string
+  item?: WorkshopInspectionItemVO | null
+}
+
+/**
+ * 胚布扫码定位编排（按布票码自动交接检验单并定位录检行）
+ *
+ * @param code 布票码
+ */
+export const ticketScan = (code: string) => {
+  return request.get<WorkshopTicketScanRespVO>({
+    url: '/lunaerp/h5/workshop/inspection/ticket-scan',
+    params: { code }
+  })
+}

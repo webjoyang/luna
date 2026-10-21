@@ -15,6 +15,9 @@ import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopT
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopInspectionDetailRespVO;
+import com.luna.lunasrv.module.lunaerp.controller.admin.h5.workshop.vo.WorkshopTicketScanRespVO;
+import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.WeavingOrderService;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.vo.WeavingOrderHandoffInspectionRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.InspectionOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item.InspectionOrderItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
@@ -81,6 +84,9 @@ class WorkshopH5ServiceImplTest {
 
     @Mock
     private InspectionOrderItemMapper inspectionOrderItemMapper;
+
+    @Mock
+    private WeavingOrderService weavingOrderService;
 
     @BeforeEach
     void setUp() {
@@ -1299,6 +1305,332 @@ class WorkshopH5ServiceImplTest {
             assertTrue(detail.getReadonly(), "COMPLETED 态必须为只读模式 (readonly=true)");
             assertEquals(0, detail.getRollCount());
             assertTrue(detail.getItems().isEmpty());
+        }
+    }
+
+    // ================== ticketScan (Issue 14 胚布扫码定位编排) ==================
+
+    @Test
+    @DisplayName("ticketScan: 未登录抛 UNAUTHORIZED")
+    void testTicketScan_unauthorized() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(null);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-001"));
+            assertEquals(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: code 为空抛 039-001")
+    void testTicketScan_blankCode() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            ServiceException ex1 = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan(null));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex1.getCode());
+
+            ServiceException ex2 = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("   "));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex2.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: 布票不存在或已作废(VOID)抛 039-001")
+    void testTicketScan_ticketNotExistsOrVoid() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            // 1. 布票不存在
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(null);
+            ServiceException ex1 = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-NOT-EXISTS"));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex1.getCode());
+
+            // 2. 布票已作废 (VOID)
+            WeavingTicketDO voidTicket = WeavingTicketDO.builder()
+                    .id(201L)
+                    .code("BT-VOID-001")
+                    .status("VOID")
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(voidTicket);
+            ServiceException ex2 = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-VOID-001"));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex2.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: 布票尚未完工(GENERATED/STARTED)抛 039-003")
+    void testTicketScan_ticketNotCompleted() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            // 1. GENERATED
+            WeavingTicketDO genTicket = WeavingTicketDO.builder()
+                    .id(201L)
+                    .code("BT-GEN-001")
+                    .status("GENERATED")
+                    .weavingOrderId(101L)
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(genTicket);
+            ServiceException ex1 = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-GEN-001"));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_TICKET_NOT_COMPLETED.getCode(), ex1.getCode());
+
+            // 2. STARTED
+            WeavingTicketDO startTicket = WeavingTicketDO.builder()
+                    .id(202L)
+                    .code("BT-START-002")
+                    .status("STARTED")
+                    .weavingOrderId(101L)
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(startTicket);
+            ServiceException ex2 = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-START-002"));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_TICKET_NOT_COMPLETED.getCode(), ex2.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: 布票其余不可录态(EXCEPTION)抛 039-004")
+    void testTicketScan_ticketStatusNotAllow() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            WeavingTicketDO excTicket = WeavingTicketDO.builder()
+                    .id(203L)
+                    .code("BT-EXC-003")
+                    .status("EXCEPTION")
+                    .weavingOrderId(101L)
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(excTicket);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-EXC-003"));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_TICKET_STATUS_NOT_ALLOW_INSPECTION.getCode(), ex.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: 首扫完工票自动交接建单，返回检验单ID+布票建议匹号，item 为 null")
+    void testTicketScan_firstScan_autoHandoff_noExistingItem() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(301L)
+                    .code("BT-COMP-001")
+                    .status("COMPLETED")
+                    .weavingOrderId(501L)
+                    .workerUserId(9999L) // 挡车工非当前质检员
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            // Mock handoffInspection 返回创建的检验单 601L
+            WeavingOrderHandoffInspectionRespVO handoffResp = WeavingOrderHandoffInspectionRespVO.builder()
+                    .inspectionOrderId(601L)
+                    .inspectionOrderCode("INS-20261021-001")
+                    .created(true)
+                    .reused(false)
+                    .build();
+            when(weavingOrderService.handoffInspection(501L)).thenReturn(handoffResp);
+
+            // Mock 检验单为 DRAFT
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(601L);
+            order.setStatus("DRAFT");
+            when(inspectionOrderMapper.selectById(601L)).thenReturn(order);
+
+            // Mock 录检明细尚无记录
+            when(inspectionOrderItemMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Collections.emptyList());
+
+            WorkshopTicketScanRespVO result = workshopH5Service.ticketScan("BT-COMP-001");
+
+            assertNotNull(result);
+            assertEquals(601L, result.getInspectionOrderId());
+            assertEquals(301L, result.getWeavingTicketId());
+            assertEquals("BT-COMP-001", result.getSuggestedPieceNo());
+            assertNull(result.getItem(), "首扫尚未录检，item 应为 null");
+            verify(weavingOrderService).handoffInspection(501L);
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: 连扫两次同一票（重放同票），复用同一检验单，已录检明细存在返回 item 供改录")
+    void testTicketScan_rescanSameTicket_hasExistingItem() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(301L)
+                    .code("BT-COMP-001")
+                    .status("INSPECTED")
+                    .weavingOrderId(501L)
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            // Mock handoffInspection 幂等复用检验单 601L
+            WeavingOrderHandoffInspectionRespVO handoffResp = WeavingOrderHandoffInspectionRespVO.builder()
+                    .inspectionOrderId(601L)
+                    .created(false)
+                    .reused(true)
+                    .build();
+            when(weavingOrderService.handoffInspection(501L)).thenReturn(handoffResp);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(601L);
+            order.setStatus("ACTIVE");
+            when(inspectionOrderMapper.selectById(601L)).thenReturn(order);
+
+            // Mock 该布票已录检的明细行
+            InspectionOrderItemDO existingItem = new InspectionOrderItemDO();
+            existingItem.setId(801L);
+            existingItem.setInspectionOrderId(601L);
+            existingItem.setWeavingTicketId(301L);
+            existingItem.setPieceNo("BT-COMP-001");
+            existingItem.setGrade("A");
+            existingItem.setMeasuredWeight(new BigDecimal("26.80"));
+            existingItem.setLengthM(new BigDecimal("105.00"));
+            existingItem.setPhotos(List.of("https://oss.example.com/item1.jpg"));
+            when(inspectionOrderItemMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(List.of(existingItem));
+
+            WorkshopTicketScanRespVO result = workshopH5Service.ticketScan("BT-COMP-001");
+
+            assertNotNull(result);
+            assertEquals(601L, result.getInspectionOrderId());
+            assertEquals(301L, result.getWeavingTicketId());
+            assertNull(result.getSuggestedPieceNo(), "重放已录检票，Spec 规定仅返回 {inspectionOrderId, item}，suggestedPieceNo 为 null");
+            assertNotNull(result.getItem(), "重放已录检票，应返回已有 item 供改录");
+            assertEquals(801L, result.getItem().getId());
+            assertEquals("A", result.getItem().getGrade());
+            assertEquals(new BigDecimal("26.80"), result.getItem().getMeasuredWeight());
+            assertEquals(1, result.getItem().getPhotos().size());
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: 连扫同织造单第二票，复用同一检验单、不重复建单，未录检返回 item=null")
+    void testTicketScan_secondTicket_sameOrder_noItem() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            WeavingTicketDO ticket2 = WeavingTicketDO.builder()
+                    .id(302L)
+                    .code("BT-COMP-002")
+                    .status("COMPLETED")
+                    .weavingOrderId(501L)
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket2);
+
+            // 同织造单，交接返回相同检验单 601L
+            WeavingOrderHandoffInspectionRespVO handoffResp = WeavingOrderHandoffInspectionRespVO.builder()
+                    .inspectionOrderId(601L)
+                    .created(false)
+                    .reused(true)
+                    .build();
+            when(weavingOrderService.handoffInspection(501L)).thenReturn(handoffResp);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(601L);
+            order.setStatus("ACTIVE");
+            when(inspectionOrderMapper.selectById(601L)).thenReturn(order);
+
+            // 第二票未录检
+            when(inspectionOrderItemMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Collections.emptyList());
+
+            WorkshopTicketScanRespVO result = workshopH5Service.ticketScan("BT-COMP-002");
+
+            assertNotNull(result);
+            assertEquals(601L, result.getInspectionOrderId());
+            assertEquals(302L, result.getWeavingTicketId());
+            assertEquals("BT-COMP-002", result.getSuggestedPieceNo());
+            assertNull(result.getItem());
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: 该检验单已 COMPLETED/CANCELLED 抛 010-002")
+    void testTicketScan_inspectionOrder_completedOrCancelled() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(301L)
+                    .code("BT-COMP-001")
+                    .status("COMPLETED")
+                    .weavingOrderId(501L)
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            WeavingOrderHandoffInspectionRespVO handoffResp = WeavingOrderHandoffInspectionRespVO.builder()
+                    .inspectionOrderId(601L)
+                    .build();
+            when(weavingOrderService.handoffInspection(501L)).thenReturn(handoffResp);
+
+            // 1. 已 COMPLETED
+            InspectionOrderDO completedOrder = new InspectionOrderDO();
+            completedOrder.setId(601L);
+            completedOrder.setStatus("COMPLETED");
+            when(inspectionOrderMapper.selectById(601L)).thenReturn(completedOrder);
+
+            ServiceException ex1 = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-COMP-001"));
+            assertEquals(ErrorCodeConstants.INSPECTION_ORDER_STATUS_NOT_ALLOWED.getCode(), ex1.getCode());
+
+            // 2. 已 CANCELLED
+            InspectionOrderDO cancelledOrder = new InspectionOrderDO();
+            cancelledOrder.setId(601L);
+            cancelledOrder.setStatus("CANCELLED");
+            when(inspectionOrderMapper.selectById(601L)).thenReturn(cancelledOrder);
+
+            ServiceException ex2 = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-COMP-001"));
+            assertEquals(ErrorCodeConstants.INSPECTION_ORDER_STATUS_NOT_ALLOWED.getCode(), ex2.getCode());
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: 质检不受机台任务挡车工归属限制，任意质检员均可扫码交接定位")
+    void testTicketScan_noWorkerRestriction_inspectorCanScan() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            // 当前登录质检员为 7777L
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(7777L);
+
+            // 布票上的挡车工为 8888L，两者不同
+            WeavingTicketDO ticket = WeavingTicketDO.builder()
+                    .id(301L)
+                    .code("BT-COMP-001")
+                    .status("COMPLETED")
+                    .weavingOrderId(501L)
+                    .workerUserId(8888L)
+                    .build();
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(ticket);
+
+            WeavingOrderHandoffInspectionRespVO handoffResp = WeavingOrderHandoffInspectionRespVO.builder()
+                    .inspectionOrderId(601L)
+                    .created(false)
+                    .reused(true)
+                    .build();
+            when(weavingOrderService.handoffInspection(501L)).thenReturn(handoffResp);
+
+            InspectionOrderDO order = new InspectionOrderDO();
+            order.setId(601L);
+            order.setStatus("ACTIVE");
+            when(inspectionOrderMapper.selectById(601L)).thenReturn(order);
+            when(inspectionOrderItemMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Collections.emptyList());
+
+            // 不受机台任务挡车工归属校验影响，顺利返回
+            WorkshopTicketScanRespVO result = workshopH5Service.ticketScan("BT-COMP-001");
+            assertNotNull(result);
+            assertEquals(601L, result.getInspectionOrderId());
+        }
+    }
+
+    @Test
+    @DisplayName("ticketScan: 跨租户布票隔离，查无布票抛 039-001")
+    void testTicketScan_crossTenant_isolated() {
+        try (MockedStatic<SecurityFrameworkUtils> securityMock = mockStatic(SecurityFrameworkUtils.class)) {
+            securityMock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(2001L);
+
+            // MyBatis-Plus 租户插件自动附加 tenant_id 过滤，跨租户查询返回 null
+            when(weavingTicketMapper.selectOne(any(LambdaQueryWrapperX.class))).thenReturn(null);
+
+            ServiceException ex = assertThrows(ServiceException.class, () -> workshopH5Service.ticketScan("BT-OTHER-TENANT"));
+            assertEquals(WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode(), ex.getCode());
         }
     }
 
