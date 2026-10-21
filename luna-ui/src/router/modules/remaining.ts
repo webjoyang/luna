@@ -1109,6 +1109,16 @@ const remainingRouter: AppRouteRecordRaw[] = [
       noTagsView: true,
       title: '布票扫码报工'
     }
+  },
+  {
+    path: '/h5/demo',
+    component: () => import('@/views/h5/demo/index.vue'),
+    name: 'H5Demo',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: 'H5 拍照压缩与弱网交互 Demo'
+    }
   }
 ]
 
