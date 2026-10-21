@@ -16,9 +16,9 @@ W4 同时落两个移动端：14 号客户门户（外部客户免登、4–6 �
 
 ## 决策
 
-1. **车间 H5 栖身 luna-ui 单工程，独立 `/h5/**` 路由树**：自带 H5Layout（Vant Tabbar），不嵌 PC 菜单框架；全部路由懒加载，Vant 与 html5-qrcode 独立 chunk；移动子树禁止引用 PC 业务组件。与 14 号门户 `/portal/**` 同一工程落点，互相同构。
-2. **组件库按交互复杂度分化**：车间 H5 引入 **Vant 4**（Tabbar/Toast/Dialog/Uploader 等移动组件）+ **html5-qrcode**（二维码与 Code128 摄像头扫码，不可用时降级）；客户门户保持零新依赖（ElementPlus+自定义 CSS，max-width 480px）。两条移动路由树的组件依赖互不污染。
-3. **鉴权域与门户刻意不同**：H5 端点走 `/admin-api/lunaerp/h5/workshop/**` 标准员工 token（账号密码登录、与 PC 同源共享 token）；门户走 `/app-api/lunaerp/portal/**` + 自研门户令牌 Filter（ADR-0044）。**共享工程模式，不共享凭证机制**。
+1. **车间 H5 栖身 luna-ui 单工程，独立 `/h5/**` 路由树**：自带 H5Layout（Vant Tabbar），不嵌 PC 菜单框架；全部路由懒加载，Vant 与 html5-qrcode 独立 chunk；移动子树禁止引用 PC 业务组件。与 14 号门户 `/portal/**`（ADR-0044）同一工程落点，互相同构——共享「单工程独立路由区/独立布局/懒加载/自有 401 分支」工程模式（H5 鉴权失效 401 走专属移动登录页 `/h5/login` 重登，区别于 PC 端弹窗与门户端着陆失效页）。
+2. **组件库按交互复杂度分化**：车间 H5 引入 **Vant 4**（Tabbar/Toast/Dialog/Uploader 等移动组件，原生适配现场触摸与移动体验）+ **html5-qrcode**（二维码与 Code128 摄像头扫码，不可用时优雅降级）；客户门户保持零新依赖（ElementPlus+自定义 CSS，max-width 480px）。移动子树与 PC 端组件库物理隔离，严禁在移动子树内引用 PC 业务组件。
+3. **鉴权域与门户刻意不同（同模式异凭证）**：H5 端点走 `/admin-api/lunaerp/h5/workshop/**` 标准员工 token（账号密码登录、与 PC 同源共享 token，芋道标准 AdminSecurityFilter 与 RBAC 鉴权体系）；门户走 `/app-api/lunaerp/portal/**` + 自研门户令牌 Filter（ADR-0044）。**共享工程模式，刻意不同身份凭证机制（admin token vs 门户令牌）**。
 4. **键盘楔入为一等公民**：每个扫码页常驻自动聚焦输入框+回车触发（PDA 头扫/USB 扫码枪路径），摄像头仅为 HTTPS/localhost 安全上下文下的增强路径；`http://192.168.*` 车间局域网降级为纯楔入，不因 getUserMedia 被禁而阻断业务。
 5. **接入层独立、业务规则零复制**：新增 `lunaerp.h5.workshop` 接入包做登录人范围过滤、扫码编排（含胚布自动交接）、H5 VO 裁剪与发纱幂等包装；所有写库经既有生产域 Service（布票状态机、检验明细、领纱发纱），H5 层不持有任何业务状态机。
 

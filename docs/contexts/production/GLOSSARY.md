@@ -309,8 +309,20 @@ _避免_：染缸（设备语义）、缸（口语可用）。
 车间现场员工用手机/PDA 在浏览器或企微/钉钉 WebView 内使用的移动触点，承载三类现场动作：**扫码报工**（挡车工扫布票二维码开工/完工/异常登记）、**移动质检**（检验员胚布扫布票码、成品按检验单逐卷录检）、**移动发纱**（机台领纱单逐行确认发纱）。身份复用 system 员工账号（账号密码登录，非外部免登）；数据范围按登录人硬过滤——挡车工只能操作派给自己的机台任务与布票，未派工任务允许扫票**自助认领**；检验员不受机台归属限制。H5 是既有单据的接入通道，不产生新单据/新状态机：报工写布票、录检写检验单明细、发纱写领纱明细与库存流水，业务规则全部复用既有 Service。异常照片挂布票、疵点照片挂录检明细（各 ≤6 张 infra 文件 URL）。工程形态见 ADR-0045（luna-ui 内独立 `/h5/**` 路由树+Vant，与 14 号客户门户同栖单工程但凭证机制不同）。
 _避免_：车间 App、小程序（Q6=A 否决原生端）、扫码报工系统（它是通道不是独立系统）。
 
+**布票异常照片 (TicketExceptionPhotos)**：
+布票登记异常时现场拍摄并上传的佐证照片（落 `lunaerp_production_weaving_ticket.exception_photos` jsonb 列，存储图片 URL 数组，≤6 张且仅允许图片类型）。随异常登记原子覆盖落库，PC 织造单布票工作台 Tab 与 H5 详情均只读可见。
+
+**录检疵点照片 (InspectionDefectPhotos)**：
+检验员在移动录检明细时拍摄并上传的现场疵点佐证照片（落 `lunaerp_production_inspection_item.photos` jsonb 列，存储图片 URL 数组，≤6 张且仅允许图片类型）。随录检行保存/更新落库，PC 检验单明细抽屉与 H5 录检页只读可见。
+
 **自助认领 (Self-claim)**：
 挡车工扫到一张派工对象为空（机台任务 `workerUserId` 为空）的布票并点开工时，系统把该任务的挡车工条件更新为登录人（`WHERE worker_user_id IS NULL`，并发只一人成功），随即完成开工的派工动作。任务已派给他人时他人扫码被拦截，改派必须由领班在 PC 操作。自助认领只解决"派工没录全"的现场现实，不改变机台任务作为派工载体的模型。
+
+**移动发纱 (MobileYarnDispatch)**：
+挡车工在 H5 查看分配给本人的机台领纱单，由仓管或挡车工现场核对规格与需求后，逐行填写实发数量并调用发纱接口完成库存扣减。后端复用既有领纱发纱 Service 与库存出库逻辑，附加 `requestId` 与 `@Idempotent` 幂等守卫防止现场网络重试造成重复扣库。
+
+**默认仓库 (DefaultWarehouse)**：
+车间发纱时缺省选中的出库仓库，通过配置项 `luna.workshop.default-warehouse-id` 注入默认仓库 ID。H5 领纱详情端点返回该默认仓库；若未配置或仓库不可用，前端在选择器侧引导工人手动选择启用中的原料仓，不阻断业务（保留段错误码 039-007）。
 
 **胚布扫码自动交接 (Scan-triggered handoff)**：
 检验员在 H5 扫完工布票录检时，若该票所属织造单尚未在 PC 做"完工交接检验"，H5 后端以服务内调用幂等完成 find-or-create 胚布检验单表头（规则同 ADR-0025 交接：按胚布单归一、要求有完工票），再按 `weavingTicketId` 定位或新建录检行（PIECE 匹号缺省取布票完整 code，胚布缸号可空）。移动端点不要求检验员持有 PC 的交接权限码；交接仍是织造单侧的幂等动作，H5 只是触发者。
@@ -344,7 +356,7 @@ _避免_：合同转生产、合同下推（下推含自动审批/同步状态�
 
 排产与齐套落 `production` 子包，零新表（ADR-0041）：后端新增 `production.scheduling`（甘特/待排池/跨单分页只读查询，复用机台任务/织机/织造单 Mapper；冲突校验写在既有 `production.weavingorder.task` 的 MachineTaskService 内）与 `production.materialcheck`（齐套只读试算，复用配比 BOM、库存台账、纱线采购单聚合）；排缸日历为 `production.progressfeedback` 内新增只读端点。前端视图 `luna-ui/src/views/lunaerp-elmui/production/scheduling/`（排产中心：甘特+待排池+跨单任务列表，甘特用 MIT 库 vue-ganttastic）、`production/material-check/`（齐套检查页）；排缸日历组件内嵌 `production/progress-feedback/`。菜单挂 10200 生产管理：**10510 排产中心**（query 复用 `lunaerp:production:weaving-order-task:query`，不另设按钮位，派工/改期复用机台任务 create/update）、**10520 齐套检查**（权限码 `lunaerp:production:material-check:query`，纯只读单菜单）；排缸日历不占菜单不加权限。URL 前缀 `/lunaerp/production/{weaving-order-task/gantt|weaving-order-task/pending-pool|material-check|progress-feedback/calendar}`。SQL 仅菜单授权：`luna-srv/sql/postgresql/lunaerp-production-scheduling-material-check.sql`。spec 见 `.scratch/scheduling-material-check/spec.md`。
 
-车间移动 H5 落**横切接入层**而非生产域新子包：后端 `com.luna.lunasrv.module.lunaerp.{controller.admin.h5.workshop, service.h5.workshop}`（H5 编排 Service + H5 专属 VO，写库全部调既有生产域 Service，零业务规则复制）；前端视图 `src/views/h5/`（Vant 4 + H5Layout，非 elmui 临时区）、API `src/api/h5/workshop/`，路由 `/h5/**` 独立移动路由树。URL 前缀 `/lunaerp/h5/workshop`（网关后 `/admin-api/lunaerp/h5/workshop/**`，标准员工 admin 鉴权），权限码三个：`lunaerp:workshop:h5:report`（移动报工）/ `lunaerp:workshop:h5:inspection`（移动质检）/ `lunaerp:workshop:h5:dispatch`（移动发纱）；错误码段 `1-030-039-xxx`；零新表（布票加 `exception_photos`、录检明细加 `photos` 两 jsonb 列），零新字典；SQL（隐藏菜单 10530 容器+10531–10533 按钮、seed `workshop_worker`/`workshop_inspector` 两角色、2 处 ALTER）：`luna-srv/sql/postgresql/lunaerp-workshop-h5.sql`。工程形态见 ADR-0045；spec 见 `.scratch/workshop-h5/spec.md`。
+车间移动 H5 落**横切接入层**而非生产域新子包：后端 `com.luna.lunasrv.module.lunaerp.{controller.admin.h5.workshop, service.h5.workshop}`（H5 编排 Service + H5 专属 VO，写库全部调既有生产域 Service，零业务规则复制；**H5 层不持有业务状态机，只做登录人身份注入、本人范围过滤、扫码定位/自动交接编排、H5 专属 VO 与幂等包装**）；前端视图 `src/views/h5/`（Vant 4 + H5Layout，非 elmui 临时区）、API `src/api/h5/workshop/`，路由 `/h5/**` 独立移动路由树。URL 前缀 `/lunaerp/h5/workshop`（网关后 `/admin-api/lunaerp/h5/workshop/**`，标准员工 admin 鉴权），权限码三个：`lunaerp:workshop:h5:report`（移动报工）/ `lunaerp:workshop:h5:inspection`（移动质检）/ `lunaerp:workshop:h5:dispatch`（移动发纱）；错误码段 `1-030-039-xxx`；零新表（布票加 `exception_photos`、录检明细加 `photos` 两 jsonb 列），零新字典；SQL（隐藏菜单 10530 容器+10531–10533 按钮、seed `workshop_worker`/`workshop_inspector` 两角色、2 处 ALTER）：`luna-srv/sql/postgresql/lunaerp-workshop-h5.sql`。工程形态见 ADR-0045；spec 见 `.scratch/workshop-h5/spec.md`。
 
 ## 字典
 

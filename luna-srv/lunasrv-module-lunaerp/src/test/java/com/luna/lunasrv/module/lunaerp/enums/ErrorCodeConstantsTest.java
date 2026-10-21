@@ -350,6 +350,47 @@ public class ErrorCodeConstantsTest {
         assertEquals(1_030_037_013, ErrorCodeConstants.SALES_RETURN_CURRENCY_MISMATCH.getCode());
         assertEquals(1_030_037_014, ErrorCodeConstants.SALES_RETURN_EXCHANGE_RATE_MISSING.getCode());
     }
+
+    @Test
+    void testWorkshopH5ErrorCodes() {
+        // 车间移动 H5 1-030-039-001 ~ 009
+        assertEquals(1_030_039_001, WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode());
+        assertEquals("布票不存在或已作废", WorkshopH5ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getMsg());
+        assertEquals(1_030_039_001, ErrorCodeConstants.H5_WEAVING_TICKET_NOT_EXISTS.getCode());
+
+        assertEquals(1_030_039_002, WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER.getCode());
+        assertEquals("该机台任务已派给其他挡车工，无权操作", WorkshopH5ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER.getMsg());
+        assertEquals(1_030_039_002, ErrorCodeConstants.H5_MACHINE_TASK_ASSIGNED_TO_OTHER.getCode());
+
+        assertEquals(1_030_039_003, WorkshopH5ErrorCodeConstants.H5_TICKET_NOT_COMPLETED.getCode());
+        assertEquals("布票尚未完工，不能扫码质检", WorkshopH5ErrorCodeConstants.H5_TICKET_NOT_COMPLETED.getMsg());
+        assertEquals(1_030_039_003, ErrorCodeConstants.H5_TICKET_NOT_COMPLETED.getCode());
+
+        assertEquals(1_030_039_004, WorkshopH5ErrorCodeConstants.H5_TICKET_STATUS_NOT_ALLOW_INSPECTION.getCode());
+        assertEquals("布票当前状态不可录检", WorkshopH5ErrorCodeConstants.H5_TICKET_STATUS_NOT_ALLOW_INSPECTION.getMsg());
+        assertEquals(1_030_039_004, ErrorCodeConstants.H5_TICKET_STATUS_NOT_ALLOW_INSPECTION.getCode());
+
+        assertEquals(1_030_039_005, WorkshopH5ErrorCodeConstants.H5_INSPECTION_ITEM_DUPLICATE.getCode());
+        assertEquals("该缸号+卷号已存在录检记录", WorkshopH5ErrorCodeConstants.H5_INSPECTION_ITEM_DUPLICATE.getMsg());
+        assertEquals(1_030_039_005, ErrorCodeConstants.H5_INSPECTION_ITEM_DUPLICATE.getCode());
+
+        assertEquals(1_030_039_006, WorkshopH5ErrorCodeConstants.H5_YARN_REQUISITION_NOT_OWNED.getCode());
+        assertEquals("领纱单不属于你的机台任务，无权操作", WorkshopH5ErrorCodeConstants.H5_YARN_REQUISITION_NOT_OWNED.getMsg());
+        assertEquals(1_030_039_006, ErrorCodeConstants.H5_YARN_REQUISITION_NOT_OWNED.getCode());
+
+        assertEquals(1_030_039_007, WorkshopH5ErrorCodeConstants.H5_DEFAULT_WAREHOUSE_NOT_CONFIGURED.getCode());
+        assertEquals("未配置车间默认发纱仓库", WorkshopH5ErrorCodeConstants.H5_DEFAULT_WAREHOUSE_NOT_CONFIGURED.getMsg());
+        assertEquals(1_030_039_007, ErrorCodeConstants.H5_DEFAULT_WAREHOUSE_NOT_CONFIGURED.getCode());
+
+        assertEquals(1_030_039_008, WorkshopH5ErrorCodeConstants.H5_PHOTO_COUNT_EXCEED_OR_INVALID.getCode());
+        assertEquals("照片数量超过 6 张或含非图片文件", WorkshopH5ErrorCodeConstants.H5_PHOTO_COUNT_EXCEED_OR_INVALID.getMsg());
+        assertEquals(1_030_039_008, ErrorCodeConstants.H5_PHOTO_COUNT_EXCEED_OR_INVALID.getCode());
+
+        assertEquals(1_030_039_009, WorkshopH5ErrorCodeConstants.H5_RESERVED_009.getCode());
+        assertEquals("预留", WorkshopH5ErrorCodeConstants.H5_RESERVED_009.getMsg());
+        assertEquals(1_030_039_009, ErrorCodeConstants.H5_RESERVED_009.getCode());
+    }
 }
+
 
 

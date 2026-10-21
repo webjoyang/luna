@@ -29,8 +29,9 @@ import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
  *                  与 1-030-036-xxx 段（排产与齐套）
  *                  与 1-030-037-xxx 段（销售退货，见 SalesReturnErrorCodeConstants）
  *                  与 1-030-038-xxx 段（客户门户，见 PortalErrorCodeConstants）
+ *                  与 1-030-039-xxx 段（车间移动 H5，见 WorkshopH5ErrorCodeConstants）
  */
-public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ColorInstructionErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, FinanceErrorCodeConstants, SalesReturnErrorCodeConstants, PortalErrorCodeConstants {
+public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ColorInstructionErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, FinanceErrorCodeConstants, SalesReturnErrorCodeConstants, PortalErrorCodeConstants, WorkshopH5ErrorCodeConstants {
 
     // ========== 产品模块 1-030-001-000 ==========
     ErrorCode PRODUCT_NOT_EXISTS = new ErrorCode(1_030_001_000, "产品不存在");
@@ -220,4 +221,5 @@ public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalEr
     ErrorCode MACHINE_TASK_TIME_CONFLICT = new ErrorCode(1_030_036_000, "织机【{}】在 {}~{} 已排任务【{}】，计划时段冲突，请改期或转机");
 
 }
+
 
