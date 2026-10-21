@@ -4,19 +4,19 @@
 
 **Blocked by:** 01（错误码已落）
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `InspectionOrderItemSaveReqVO.vatNo` 去掉 `@NotBlank` 注解
-- [ ] Service 层条件校验：检验单 `type=FINISHED` 或 `packageMode=ROLL` 时 vatNo 必填（不变）；`type=GREIGE AND packageMode=PIECE` 时 vatNo 可空
-- [ ] PC 同步生效：保存空缸号不再报错（GREIGE+PIECE 场景）
-- [ ] SQL `luna-srv/sql/postgresql/lunaerp-workshop-h5.sql` 可重复执行
-- [ ] 菜单 10530（`visible=0` 隐藏容器，`parent=10200`，无 component/path 占位）
-- [ ] 菜单 10531 按钮 `lunaerp:workshop:h5:report`（移动报工）
-- [ ] 菜单 10532 按钮 `lunaerp:workshop:h5:inspection`（移动质检）
-- [ ] 菜单 10533 按钮 `lunaerp:workshop:h5:dispatch`（移动发纱）
-- [ ] 角色 `workshop_worker`（车间工人，授权 10531+10533）DO 块按 code 幂等 upsert，不固定 id，`tenant_id=1`
-- [ ] 角色 `workshop_inspector`（车间检验员，授权 10532）DO 块按 code 幂等 upsert，不固定 id，`tenant_id=1`
-- [ ] `super_admin`/`admin` 自动获全部 H5 权限（既有无视菜单授权逻辑，SQL 同步插 role_menu 保持 get-permission-info 一致）
-- [ ] 一人可双角色；挡车工身份仍由机台任务 `worker_user_id` 关联（system_users + LUNA_WORKER 岗位，ADR-0021），岗位与角色正交
-- [ ] 多租户环境：seed 仅租户 1；新租户由租户管理员在系统管理复制角色或自行创建（一期私有化买断单租户为主，不做租户模板自动化）
-- [ ] 脚本幂等可重复执行（事务内 DELETE 再 INSERT 或 ON CONFLICT）
+- [x] `InspectionOrderItemSaveReqVO.vatNo` 去掉 `@NotBlank` 注解
+- [x] Service 层条件校验：检验单 `type=FINISHED` 或 `packageMode=ROLL` 时 vatNo 必填（不变）；`type=GREIGE AND packageMode=PIECE` 时 vatNo 可空
+- [x] PC 同步生效：保存空缸号不再报错（GREIGE+PIECE 场景）
+- [x] SQL `luna-srv/sql/postgresql/lunaerp-workshop-h5.sql` 可重复执行
+- [x] 菜单 10530（`visible=0` 隐藏容器，`parent=10200`，无 component/path 占位）
+- [x] 菜单 10531 按钮 `lunaerp:workshop:h5:report`（移动报工）
+- [x] 菜单 10532 按钮 `lunaerp:workshop:h5:inspection`（移动质检）
+- [x] 菜单 10533 按钮 `lunaerp:workshop:h5:dispatch`（移动发纱）
+- [x] 角色 `workshop_worker`（车间工人，授权 10531+10533）DO 块按 code 幂等 upsert，不固定 id，`tenant_id=1`
+- [x] 角色 `workshop_inspector`（车间检验员，授权 10532）DO 块按 code 幂等 upsert，不固定 id，`tenant_id=1`
+- [x] `super_admin`/`admin` 自动获全部 H5 权限（既有无视菜单授权逻辑，SQL 同步插 role_menu 保持 get-permission-info 一致）
+- [x] 一人可双角色；挡车工身份仍由机台任务 `worker_user_id` 关联（system_users + LUNA_WORKER 岗位，ADR-0021），岗位与角色正交
+- [x] 多租户环境：seed 仅租户 1；新租户由租户管理员在系统管理复制角色或自行创建（一期私有化买断单租户为主，不做租户模板自动化）
+- [x] 脚本幂等可重复执行（事务内 DELETE 再 INSERT 或 ON CONFLICT）
