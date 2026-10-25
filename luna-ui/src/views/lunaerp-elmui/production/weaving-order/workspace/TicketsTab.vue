@@ -90,6 +90,16 @@
         </span>
         <el-button
           type="primary"
+          size="small"
+          :disabled="selectedRows.length === 0"
+          @click="handleBatchPrint"
+          v-hasPermi="['lunaerp:production:weaving-ticket:print']"
+        >
+          <Icon icon="ep:printer" class="mr-1" />
+          打印布票（批量勾选）
+        </el-button>
+        <el-button
+          type="primary"
           plain
           size="small"
           :disabled="selectedRows.length === 0"
@@ -191,6 +201,27 @@
           <span v-else>-</span>
         </template>
       </el-table-column>
+      <el-table-column label="异常照片" width="100" align="center">
+        <template #default="{ row }">
+          <div
+            v-if="row.exceptionPhotos && row.exceptionPhotos.length > 0"
+            class="flex items-center justify-center gap-1"
+          >
+            <el-image
+              :src="row.exceptionPhotos[0]"
+              class="w-36px h-36px rounded border border-gray-200 cursor-pointer object-cover"
+              fit="cover"
+              preview-teleported
+              :preview-src-list="row.exceptionPhotos"
+              @click.stop
+            />
+            <span v-if="row.exceptionPhotos.length > 1" class="text-xs text-gray-500 font-mono">
+              +{{ row.exceptionPhotos.length }}
+            </span>
+          </div>
+          <span v-else class="text-gray-300">—</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="startedAt" label="开工时间" width="150" align="center">
         <template #default="{ row }">
           <span class="text-12px">{{ formatDateTime(row.startedAt) }}</span>
@@ -209,8 +240,17 @@
           <span v-else>-</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" align="center" fixed="right">
+      <el-table-column label="操作" width="240" align="center" fixed="right">
         <template #default="{ row }">
+          <!-- 打印：受权限控制 -->
+          <el-button
+            type="primary"
+            link
+            @click="handleSinglePrint(row)"
+            v-hasPermi="['lunaerp:production:weaving-ticket:print']"
+          >
+            打印
+          </el-button>
           <!-- 开工：允许 GENERATED / STARTED / EXCEPTION -->
           <el-button
             v-if="['GENERATED', 'STARTED', 'EXCEPTION'].includes(row.status)"
@@ -403,6 +443,24 @@
         <el-form-item label="异常说明" prop="exceptionNote">
           <el-input v-model="exceptionForm.exceptionNote" type="textarea" :rows="3" placeholder="请输入异常详细情况" />
         </el-form-item>
+        <el-form-item
+          v-if="!isBatchMode && currentOperatingTicket?.exceptionPhotos && currentOperatingTicket.exceptionPhotos.length > 0"
+          label="现场照片"
+        >
+          <div class="flex items-center gap-2 flex-wrap">
+            <el-image
+              v-for="(url, idx) in currentOperatingTicket.exceptionPhotos"
+              :key="idx"
+              :src="url"
+              class="w-54px h-54px rounded border border-gray-200 cursor-pointer object-cover"
+              fit="cover"
+              preview-teleported
+              :preview-src-list="currentOperatingTicket.exceptionPhotos"
+              :initial-index="idx"
+            />
+          </div>
+          <div class="text-xs text-gray-400 mt-1">（现场 H5 报工上传，PC 仅供只读查看）</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <div class="flex justify-end gap-2">
@@ -441,6 +499,12 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 统一打印分发器 -->
+    <PrintDispatcher
+      ref="printDispatcherRef"
+      biz-type="WEAVING_TICKET"
+    />
   </div>
 </template>
 
@@ -449,6 +513,7 @@ import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
 import dayjs from 'dayjs'
+import { PrintDispatcher } from '@/components/Print'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { handoffInspection } from '@/api/lunaerp-elmui/production/weaving-order'
 import {
@@ -588,8 +653,26 @@ const loadWorkers = async () => {
   }
 }
 
+const printDispatcherRef = ref<InstanceType<typeof PrintDispatcher> | null>(null)
+
 const handleSelectionChange = (rows: WeavingTicketVO[]) => {
   selectedRows.value = rows
+}
+
+// 批量打印布票标签
+const handleBatchPrint = () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先勾选需要打印的布票')
+    return
+  }
+  const bizIds = selectedRows.value.map((r) => r.id!).filter(Boolean)
+  printDispatcherRef.value?.open({ bizIds })
+}
+
+// 单张打印布票标签
+const handleSinglePrint = (row: WeavingTicketVO) => {
+  if (!row.id) return
+  printDispatcherRef.value?.open({ bizId: row.id })
 }
 
 const handleQuery = () => {

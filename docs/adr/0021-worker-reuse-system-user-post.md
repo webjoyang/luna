@@ -10,7 +10,7 @@
 
 - lunaerp 没有 HR/员工主数据，也没有机台（织机）主数据与机台任务实体；
 - 参考系统靠"入库明细机台号 → 机台当前任务 → 任务上的挡车工"反查责任人，这条解析链在新项目完全不存在；
-- system 域有 yudao 自带的 `system_users`（用户）+ `system_post`（岗位）+ `system_user_post`（用户岗位关联），前端有现成的人员选择组件；销售合同的业务员已开"业务字段关联 system User"先例（`salespersonUserId`，CONTEXT.md 业务员条）。
+- system 域有 yudao 自带的 `system_users`（用户）+ `system_post`（岗位）+ `system_user_post`（用户岗位关联），前端有现成的人员选择组件；销售合同的业务员已开"业务字段关联 system User"先例（`salespersonUserId`，GLOSSARY.md 业务员条）。
 
 用户决策：挡车工就是"员工（人员）表里岗位为挡车工的那批人"，人员与系统账号共用同一套表，不为本功能新建员工表。
 

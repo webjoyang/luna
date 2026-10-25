@@ -17,9 +17,12 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.Sal
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.GreigeOrderDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.color.GreigeOrderColorDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.greigetype.GreigeTypeMapper;
+import com.luna.lunasrv.framework.tenant.core.context.TenantContextHolder;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.colorinstruction.ColorInstructionDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
+import com.luna.lunasrv.module.lunaerp.service.production.colorinstruction.ColorInstructionService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import jakarta.annotation.Resource;
@@ -41,6 +44,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_ORDER_NOT_EXISTS;
@@ -58,6 +65,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.GREIGE_OR
  * @author luna
  */
 @Service
+@Slf4j
 public class GreigeOrderServiceImpl implements GreigeOrderService {
 
     /**
@@ -116,6 +124,9 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     @Resource
     private GreigeTypeMapper greigeTypeMapper;
 
+    @Resource
+    private ColorInstructionService colorInstructionService;
+
     @Autowired(required = false)
     private GreigeOrderWeavingProgressProvider weavingProgressProvider;
 
@@ -150,6 +161,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         // 6. 保存主表 → 插入颜色行（回填 orderId）
         greigeOrderMapper.insert(order);
         saveColors(order.getId(), colorDOList);
+        triggerMarkInProductionAfterCommit(order.getColorInstructionId());
         return order.getId();
     }
 
@@ -192,6 +204,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         greigeOrderMapper.updateById(order);
         // 7. 颜色投胚分配差异保存（ADR-0032）：按 id 三分流（update / insert / deleteByIds）
         diffSaveColors(updateReqVO.getId(), updateReqVO.getColors(), order.getSuggestedLoss());
+        triggerMarkInProductionAfterCommit(order.getColorInstructionId());
     }
 
     @Override
@@ -246,15 +259,16 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
     }
 
     /**
-     * 引用校验结果：坯布厂/染厂供应商档案、销售合同档案与产品档案，供快照回填
+     * 引用校验结果：坯布厂/染厂供应商档案、销售合同档案、产品档案与打色指示单，供快照回填
      */
-    private record ValidatedRefs(SupplierDO greigeFactory, SupplierDO dyeingFactory, SalesContractDO contract, ProductDO product) {
+    private record ValidatedRefs(SupplierDO greigeFactory, SupplierDO dyeingFactory, SalesContractDO contract, ProductDO product, ColorInstructionDO colorInstruction) {
     }
 
     /**
      * 引用校验（创建/更新共用）：
      * 模式与承织厂联动校验（ADR-0022）：OUTSOURCE（缺省）坯布厂必填；SELF 坯布厂可空，非空时校验存在。
      * 染厂/销售合同/产品档案/胚布品种非空时逐一校验存在（ADR-0007 不校验供应商类型），
+     * 引用打色单非空时校验存在、同租户、未删除、状态为 CONFIRMED/IN_PRODUCTION 且客户与产品口径一致；
      * 任一不过抛 GREIGE_ORDER_REFERENCE_NOT_FOUND。
      */
     private ValidatedRefs validateReferences(GreigeOrderSaveReqVO reqVO) {
@@ -285,8 +299,15 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
                 throw exception(GREIGE_ORDER_REFERENCE_NOT_FOUND, "产品档案");
             }
         }
+        Long contractCustomerId = contract != null ? contract.getCustomerId() : null;
+        ColorInstructionDO colorInstruction = colorInstructionService.validateColorInstructionForDownstream(
+                reqVO.getColorInstructionId(),
+                contractCustomerId,
+                reqVO.getProductId(),
+                reqVO.getProductCode(),
+                GREIGE_ORDER_REFERENCE_NOT_FOUND);
         validateGreigeTypeExists(reqVO.getGreigeTypeId());
-        return new ValidatedRefs(greigeFactory, dyeingFactory, contract, product);
+        return new ValidatedRefs(greigeFactory, dyeingFactory, contract, product, colorInstruction);
     }
 
     /**
@@ -294,6 +315,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
      * 生产模式缺省 OUTSOURCE；
      * 名称/合同号快照为空时用档案当前名称回填（选中供应商后档案改名的场景以前端传值为准）；
      * 关联产品档案时刷新 product_code/product_name 快照（产品档案改名后跟随刷新）；
+     * 关联打色指示单时回填 color_instruction_no 快照；
      * 单据日期缺省今天、状态缺省 ACTIVE、匹重缺省 25、预设损耗缺省 0。
      */
     private void fillSnapshotsAndDefaults(GreigeOrderDO order, ValidatedRefs refs) {
@@ -301,6 +323,7 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         SupplierDO dyeingFactory = refs.dyeingFactory();
         SalesContractDO contract = refs.contract();
         ProductDO product = refs.product();
+        ColorInstructionDO colorInstruction = refs.colorInstruction();
 
         if (!StringUtils.hasText(order.getProductionMode())) {
             order.setProductionMode("OUTSOURCE");
@@ -320,6 +343,12 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
         if (product != null) {
             order.setProductCode(product.getCode());
             order.setProductName(product.getName());
+        }
+        if (colorInstruction != null) {
+            order.setColorInstructionId(colorInstruction.getId());
+            order.setColorInstructionNo(colorInstruction.getInstructionNo());
+        } else if (order.getColorInstructionId() == null) {
+            order.setColorInstructionNo(null);
         }
         if (order.getOrderDate() == null) {
             order.setOrderDate(LocalDate.now());
@@ -614,6 +643,33 @@ public class GreigeOrderServiceImpl implements GreigeOrderService {
      */
     private BigDecimal zeroIfNull(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    /**
+     * 事务提交后同进程触发打色指示单自动标记投产（Issue 07）
+     * <p>
+     * 事务边界策略选择：
+     * 下游保存事务成功提交后再调用 markInProduction，避免下游事务回滚而打色单已被投产的数据不一致风险；
+     * 若当前处于非事务上下文（如纯单测环境），则直接同步调用保证行为一致。
+     */
+    private void triggerMarkInProductionAfterCommit(Long colorInstructionId) {
+        if (colorInstructionId == null) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        colorInstructionService.markInProduction(colorInstructionId);
+                    } catch (Exception e) {
+                        log.error("[triggerMarkInProductionAfterCommit] 自动标记投产异常, colorInstructionId={}", colorInstructionId, e);
+                    }
+                }
+            });
+        } else {
+            colorInstructionService.markInProduction(colorInstructionId);
+        }
     }
 
 }

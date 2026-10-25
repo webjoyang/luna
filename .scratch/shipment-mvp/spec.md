@@ -259,7 +259,7 @@ Status: ready-for-agent
 - `...016_005` 库存不足：{} 需要 {} {}，当前可用 {} {}（审核硬拦截）
 - `...016_006` 签收状态非法
 
-在 lunaerp 模块 ErrorCodeConstants 追加；CONTEXT.md 段位表已同步。
+在 lunaerp 模块 ErrorCodeConstants 追加；GLOSSARY.md 段位表已同步。
 
 ### 字典（2 个）
 
@@ -332,7 +332,7 @@ Service 层纯 Mockito 单元测试，单个测试类 `ShipmentServiceImplTest`�
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 新增"业务管理：发货管理"术语分区（发货单/发货明细/卷清单/发货单状态/发货单号/签收状态/运费/合同未发量）、流水类型 SHIPMENT_OUT(S)/REVERSAL、shipment 模块边界、2 个字典、错误码 1-030-016 段位。
+- [GLOSSARY.md](../../docs/contexts/business/GLOSSARY.md) — 新增"业务管理：发货管理"术语分区（发货单/发货明细/卷清单/发货单状态/发货单号/签收状态/运费/合同未发量）、流水类型 SHIPMENT_OUT(S)/REVERSAL、shipment 模块边界、2 个字典、错误码 1-030-016 段位。
 - [ADR-0029](../../docs/adr/0029-shipment-outbound-voucher-posting.md) — 发货单即出库凭证、三态严格过账、一单一仓库与不足硬拦截、零联动。
 - [ADR-0030](../../docs/adr/0030-shipment-roll-independent-child-table.md) — 卷清单独立子表、聚合保存、不锁卷、软齐套。
 

@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "管理后台 - 生产管理-检验单录检明细 Response VO")
 @Data
@@ -60,6 +61,9 @@ public class InspectionOrderItemRespVO {
 
     @Schema(description = "备注", example = "无疵点")
     private String remark;
+
+    @Schema(description = "疵点照片 URL JSON 数组（车间 H5 录检上传，≤6 张，infra 文件服务）")
+    private List<String> photos;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

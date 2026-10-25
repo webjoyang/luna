@@ -37,7 +37,10 @@
             type="primary"
             :loading="actionLoading"
             @click="handleSave"
-            v-hasPermi="['lunaerp:production:inspection-order:create', 'lunaerp:production:inspection-order:update']"
+            v-hasPermi="[
+              'lunaerp:production:inspection-order:create',
+              'lunaerp:production:inspection-order:update'
+            ]"
           >
             保存草稿
           </el-button>
@@ -118,6 +121,7 @@
         <ItemsTab
           :order-id="numericOrderId"
           :order-status="currentOrder?.status"
+          :order-type="currentOrder?.type"
           :package-mode="currentOrder?.packageMode || 'ROLL'"
           :is-view-mode="isAllReadOnly"
           :default-product-code="currentOrder?.productCode"
@@ -133,12 +137,7 @@
     </el-tabs>
 
     <!-- 生成胚布入库单弹窗 -->
-    <el-dialog
-      v-model="generateStockInVisible"
-      title="生成胚布入库单"
-      width="500px"
-      append-to-body
-    >
+    <el-dialog v-model="generateStockInVisible" title="生成胚布入库单" width="500px" append-to-body>
       <el-form
         ref="generateStockInFormRef"
         :model="generateStockInForm"
@@ -155,12 +154,7 @@
             class="!w-full"
             filterable
           >
-            <el-option
-              v-for="wh in warehouseList"
-              :key="wh.id"
-              :label="wh.name"
-              :value="wh.id!"
-            />
+            <el-option v-for="wh in warehouseList" :key="wh.id" :label="wh.name" :value="wh.id!" />
           </el-select>
         </el-form-item>
         <el-form-item label="备注" prop="remark">

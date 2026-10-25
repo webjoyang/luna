@@ -8,6 +8,8 @@
       @search="handleQuery"
       @create="openForm('create')"
       @batch-delete="handleBatchDelete"
+      @download-template="handleDownloadTemplate"
+      @import="handleImport"
     />
 
     <!-- 状态分段：在售 / 草稿 -->
@@ -53,11 +55,15 @@
 
     <!-- 新建 / 编辑弹窗 -->
     <ProductEditModal ref="editModalRef" @success="handleSaved" />
+
+    <!-- 导入弹窗 -->
+    <ProductImportDialog ref="importDialogRef" @success="getList" />
   </ContentWrap>
 </template>
 
 <script lang="ts" setup>
 import { motion } from 'motion-v'
+import download from '@/utils/download'
 import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
 import ProductToolbar from './components/ProductToolbar.vue'
@@ -65,6 +71,7 @@ import ProductStatusSegment from './components/ProductStatusSegment.vue'
 import ProductGrid from './components/ProductGrid.vue'
 import ProductTable from './components/ProductTable.vue'
 import ProductEditModal from './components/ProductEditModal.vue'
+import ProductImportDialog from './components/ProductImportDialog.vue'
 
 defineOptions({ name: 'LunaerpBaseinfoProduct' })
 
@@ -77,6 +84,23 @@ const total = ref(0) // 总条数
 const list = ref<ProductVO[]>([]) // 当前页数据
 const viewMode = ref<'grid' | 'table'>('grid') // 视图模式
 const checkedIds = ref<number[]>([]) // 表格勾选的产品 id
+
+const importDialogRef = ref()
+
+/** 下载导入模板 */
+const handleDownloadTemplate = async () => {
+  try {
+    const res = await ProductApi.downloadProductTemplate()
+    download.excel(res, '产品导入模板.xlsx')
+  } catch (e) {
+    message.error('下载模板失败')
+  }
+}
+
+/** 打开导入弹窗 */
+const handleImport = () => {
+  importDialogRef.value?.open()
+}
 
 const queryParams = reactive({
   pageNo: 1,

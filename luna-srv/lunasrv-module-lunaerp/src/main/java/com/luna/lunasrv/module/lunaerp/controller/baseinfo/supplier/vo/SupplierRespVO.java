@@ -1,5 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.controller.baseinfo.supplier.vo;
 
+import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -22,6 +24,7 @@ public class SupplierRespVO {
     private String shortName;
 
     @Schema(description = "联系电话", example = "0575-12345678")
+    @Sensitive(seePermission = "lunaerp:sensitive:contact", type = SensitiveType.FIXED_PHONE)
     private String phone;
 
     @Schema(description = "公司地址", example = "浙江省绍兴市柯桥区")

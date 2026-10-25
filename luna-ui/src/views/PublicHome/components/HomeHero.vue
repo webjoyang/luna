@@ -14,7 +14,7 @@
         :class="activeSection === id
           ? 'scale-150 bg-[#1d1d1f]'
           : 'bg-[rgba(29,29,31,0.25)] hover:bg-[#1d1d1f]'"
-      />
+      ></a>
     </nav>
 
     <!-- 首屏 -->
@@ -79,7 +79,7 @@
             v-if="!heroImage"
             class="absolute inset-0 z-[1] mix-blend-color"
             :style="{ backgroundColor: accent, opacity: 0.2 }"
-          />
+          ></div>
           <motion.div
             class="absolute inset-0 z-[2] bg-[rgba(0,0,0,0.28)]"
             :style="{ opacity: capOpacity }"
@@ -144,7 +144,7 @@
           alt=""
           class="h-[110%] w-full object-cover brightness-[0.45] grayscale"
         />
-        <div class="absolute inset-0 bg-black/55" />
+        <div class="absolute inset-0 bg-black/55"></div>
       </div>
       <motion.h2
         :initial="{ opacity: 0, y: 44 }"

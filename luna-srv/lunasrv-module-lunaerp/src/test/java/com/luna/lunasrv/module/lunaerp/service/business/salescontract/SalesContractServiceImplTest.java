@@ -12,10 +12,15 @@ import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.Sale
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
+import com.luna.lunasrv.framework.common.enums.CommonStatusEnum;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.quotation.QuotationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.quotation.QuotationMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
+import com.luna.lunasrv.module.system.api.user.AdminUserApi;
+import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +35,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static com.luna.lunasrv.module.lunaerp.enums.CostCardQuotationErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -69,6 +75,12 @@ class SalesContractServiceImplTest {
 
     @Mock
     private CustomerMapper customerMapper;
+
+    @Mock
+    private QuotationMapper quotationMapper;
+
+    @Mock
+    private AdminUserApi adminUserApi;
 
     @InjectMocks
     private SalesContractServiceImpl salesContractService;
@@ -428,6 +440,7 @@ class SalesContractServiceImplTest {
         reqVO.setPageSize(20);
         reqVO.setKeyword("杭州");
         reqVO.setStatus("ACTIVE");
+        reqVO.setApprovalStatus("APPROVING");
         reqVO.setTradeType("DOMESTIC");
         reqVO.setCustomerId(CUSTOMER_ID);
         when(salesContractMapper.selectPage(any(SalesContractPageReqVO.class), any(Wrapper.class)))
@@ -445,8 +458,9 @@ class SalesContractServiceImplTest {
         assertTrue(sqlSegment.contains("LOWER(contract_no) LIKE"), "keyword 应透传到 contract_no 模糊");
         assertTrue(sqlSegment.contains("LOWER(client_name) LIKE"), "keyword 应透传到 client_name 模糊");
         assertTrue(sqlSegment.contains("LOWER(client_contract_no) LIKE"), "keyword 应透传到 client_contract_no 模糊");
-        // status / tradeType / customerId 等值透传
+        // status / approvalStatus / tradeType / customerId 等值透传
         assertTrue(sqlSegment.contains("status ="), "status 应透传等值过滤");
+        assertTrue(sqlSegment.contains("approval_status ="), "approvalStatus 应透传等值过滤");
         assertTrue(sqlSegment.contains("trade_type ="), "tradeType 应透传等值过滤");
         assertTrue(sqlSegment.contains("customer_id ="), "customerId 应透传等值过滤");
         // 默认签订日期倒序
@@ -925,4 +939,252 @@ class SalesContractServiceImplTest {
         assertEquals("P002", respVO.getItems().get(1).getProductCode());
     }
 
+    @Test
+    void updateSalesContract_whenApproving_throwsException() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        contract.setApprovalStatus("APPROVING");
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        SalesContractSaveReqVO reqVO = new SalesContractSaveReqVO();
+        reqVO.setId(2048L);
+        reqVO.setCustomerId(1L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> salesContractService.updateSalesContract(reqVO));
+        assertEquals(1_030_030_004, ex.getCode());
+    }
+
+    @Test
+    void deleteSalesContract_whenApproving_throwsException() {
+        SalesContractDO contract = new SalesContractDO();
+        contract.setId(2048L);
+        contract.setApprovalStatus("APPROVING");
+        when(salesContractMapper.selectById(2048L)).thenReturn(contract);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> salesContractService.deleteSalesContract(2048L));
+        assertEquals(1_030_030_004, ex.getCode());
+    }
+
+    @Test
+    void testForeignTradeFields_createAndUpdateAndGet() {
+        // 1. Create with foreign trade fields
+        SalesContractSaveReqVO createReqVO = new SalesContractSaveReqVO();
+        createReqVO.setCustomerId(CUSTOMER_ID);
+        createReqVO.setTradeType("EXPORT");
+        createReqVO.setIncoterm("FOB");
+        createReqVO.setPortOfLoading("SHANGHAI");
+        createReqVO.setPortOfDischarge("LOS ANGELES");
+        createReqVO.setPaymentTerm("TT");
+
+        salesContractService.createSalesContract(createReqVO);
+
+        ArgumentCaptor<SalesContractDO> captor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).insert(captor.capture());
+        SalesContractDO inserted = captor.getValue();
+        assertEquals("EXPORT", inserted.getTradeType());
+        assertEquals("FOB", inserted.getIncoterm());
+        assertEquals("SHANGHAI", inserted.getPortOfLoading());
+        assertEquals("LOS ANGELES", inserted.getPortOfDischarge());
+        assertEquals("TT", inserted.getPaymentTerm());
+
+        // 2. Get with foreign trade fields
+        when(salesContractMapper.selectById(2048L)).thenReturn(inserted);
+        SalesContractRespVO respVO = salesContractService.getSalesContract(2048L);
+        assertEquals("FOB", respVO.getIncoterm());
+        assertEquals("SHANGHAI", respVO.getPortOfLoading());
+        assertEquals("LOS ANGELES", respVO.getPortOfDischarge());
+        assertEquals("TT", respVO.getPaymentTerm());
+
+        // 3. Update foreign trade fields
+        SalesContractSaveReqVO updateReqVO = new SalesContractSaveReqVO();
+        updateReqVO.setId(2048L);
+        updateReqVO.setCustomerId(CUSTOMER_ID);
+        updateReqVO.setTradeType("EXPORT");
+        updateReqVO.setIncoterm("CIF");
+        updateReqVO.setPortOfLoading("NINGBO");
+        updateReqVO.setPortOfDischarge("HAMBURG");
+        updateReqVO.setPaymentTerm("LC");
+        salesContractService.updateSalesContract(updateReqVO);
+
+        ArgumentCaptor<SalesContractDO> updateCaptor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).updateById(updateCaptor.capture());
+        SalesContractDO updated = updateCaptor.getValue();
+        assertEquals("CIF", updated.getIncoterm());
+        assertEquals("NINGBO", updated.getPortOfLoading());
+        assertEquals("HAMBURG", updated.getPortOfDischarge());
+        assertEquals("LC", updated.getPaymentTerm());
+    }
+
+    // ==================== createSalesContract / updateSalesContract：来源报价单关联 ====================
+
+    @Test
+    void createSalesContract_fromQuotation_success() {
+        QuotationDO quotation = new QuotationDO();
+        quotation.setId(100L);
+        quotation.setQuotationNo("QT202610100001");
+        quotation.setVersionNo(1);
+        quotation.setStatus("CONFIRMED");
+        quotation.setCurrency("CNY");
+        quotation.setSalespersonUserId(50L);
+
+        when(quotationMapper.selectById(100L)).thenReturn(quotation);
+        when(quotationMapper.selectMaxVersionNoByQuotationNo("QT202610100001")).thenReturn(1);
+
+        AdminUserRespDTO salesperson = new AdminUserRespDTO();
+        salesperson.setId(50L);
+        salesperson.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        salesperson.setDeptId(20L);
+        when(adminUserApi.getUser(50L)).thenReturn(salesperson);
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setSourceQuotationId(100L);
+        req.setCurrency("CNY");
+
+        Long id = salesContractService.createSalesContract(req);
+        assertEquals(2048L, id);
+
+        ArgumentCaptor<SalesContractDO> captor = ArgumentCaptor.forClass(SalesContractDO.class);
+        verify(salesContractMapper).insert(captor.capture());
+        SalesContractDO inserted = captor.getValue();
+        assertEquals(100L, inserted.getSourceQuotationId());
+        assertEquals("QT202610100001-v1", inserted.getSourceQuotationNo());
+        assertEquals(50L, inserted.getSalespersonUserId());
+        assertEquals(20L, inserted.getDeptId());
+    }
+
+    @Test
+    void createSalesContract_fromQuotation_notExists_throwsException() {
+        when(quotationMapper.selectById(999L)).thenReturn(null);
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setSourceQuotationId(999L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> salesContractService.createSalesContract(req));
+        assertEquals(QUOTATION_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createSalesContract_fromQuotation_notConfirmed_throwsException() {
+        QuotationDO quotation = new QuotationDO();
+        quotation.setId(100L);
+        quotation.setQuotationNo("QT202610100001");
+        quotation.setVersionNo(1);
+        quotation.setStatus("DRAFT");
+        quotation.setCurrency("CNY");
+
+        when(quotationMapper.selectById(100L)).thenReturn(quotation);
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setSourceQuotationId(100L);
+        req.setCurrency("CNY");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> salesContractService.createSalesContract(req));
+        assertEquals(QUOTATION_STATUS_NOT_ALLOWED.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createSalesContract_fromQuotation_notLatestVersion_throwsException() {
+        QuotationDO quotation = new QuotationDO();
+        quotation.setId(100L);
+        quotation.setQuotationNo("QT202610100001");
+        quotation.setVersionNo(1);
+        quotation.setStatus("CONFIRMED");
+        quotation.setCurrency("CNY");
+
+        when(quotationMapper.selectById(100L)).thenReturn(quotation);
+        when(quotationMapper.selectMaxVersionNoByQuotationNo("QT202610100001")).thenReturn(2);
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setSourceQuotationId(100L);
+        req.setCurrency("CNY");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> salesContractService.createSalesContract(req));
+        assertEquals(QUOTATION_NOT_LATEST_VERSION.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createSalesContract_fromQuotation_currencyMismatch_throwsException() {
+        QuotationDO quotation = new QuotationDO();
+        quotation.setId(100L);
+        quotation.setQuotationNo("QT202610100001");
+        quotation.setVersionNo(1);
+        quotation.setStatus("CONFIRMED");
+        quotation.setCurrency("USD");
+
+        when(quotationMapper.selectById(100L)).thenReturn(quotation);
+        when(quotationMapper.selectMaxVersionNoByQuotationNo("QT202610100001")).thenReturn(1);
+
+        SalesContractSaveReqVO req = buildCreateReqVO();
+        req.setSourceQuotationId(100L);
+        req.setCurrency("CNY"); // Mismatch with USD
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> salesContractService.createSalesContract(req));
+        assertEquals(QUOTATION_CURRENCY_MISMATCH.getCode(), ex.getCode());
+    }
+
+    @Test
+    void createSalesContract_fromQuotation_allowsMultipleContractsWithoutMutatingQuotation() {
+        QuotationDO quotation = new QuotationDO();
+        quotation.setId(100L);
+        quotation.setQuotationNo("QT202610100001");
+        quotation.setVersionNo(1);
+        quotation.setStatus("CONFIRMED");
+        quotation.setCurrency("CNY");
+
+        when(quotationMapper.selectById(100L)).thenReturn(quotation);
+        when(quotationMapper.selectMaxVersionNoByQuotationNo("QT202610100001")).thenReturn(1);
+
+        SalesContractSaveReqVO req1 = buildCreateReqVO();
+        req1.setSourceQuotationId(100L);
+        req1.setCurrency("CNY");
+
+        SalesContractSaveReqVO req2 = buildCreateReqVO();
+        req2.setSourceQuotationId(100L);
+        req2.setCurrency("CNY");
+
+        Long id1 = salesContractService.createSalesContract(req1);
+        Long id2 = salesContractService.createSalesContract(req2);
+
+        assertNotNull(id1);
+        assertNotNull(id2);
+        // 报价单未被更新修改（支持多份合同关联同一报价单）
+        verify(quotationMapper, never()).updateById(any(QuotationDO.class));
+    }
+
+    @Test
+    void updateSalesContract_fromQuotation_validation() {
+        SalesContractDO existing = new SalesContractDO();
+        existing.setId(2048L);
+        existing.setApprovalStatus("DRAFT");
+        existing.setCurrency("CNY");
+        when(salesContractMapper.selectById(2048L)).thenReturn(existing);
+
+        QuotationDO quotation = new QuotationDO();
+        quotation.setId(100L);
+        quotation.setQuotationNo("QT202610100001");
+        quotation.setVersionNo(1);
+        quotation.setStatus("CONFIRMED");
+        quotation.setCurrency("USD"); // Mismatch
+
+        when(quotationMapper.selectById(100L)).thenReturn(quotation);
+        when(quotationMapper.selectMaxVersionNoByQuotationNo("QT202610100001")).thenReturn(1);
+
+        SalesContractSaveReqVO updateReq = new SalesContractSaveReqVO();
+        updateReq.setId(2048L);
+        updateReq.setCustomerId(CUSTOMER_ID);
+        updateReq.setSourceQuotationId(100L);
+        updateReq.setCurrency("CNY");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> salesContractService.updateSalesContract(updateReq));
+        assertEquals(QUOTATION_CURRENCY_MISMATCH.getCode(), ex.getCode());
+    }
+
 }
+

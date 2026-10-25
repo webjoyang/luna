@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductImageMapper">
+
+    <!-- 级联恢复产品图片（手写 XML：显式 UPDATE ... SET deleted = 0 WHERE product_id = #{productId} AND deleted = 1 AND tenant_id = #{tenantId}） -->
+    <update id="restoreImagesByProductId">
+        UPDATE lunaerp_baseinfo_product_image
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE product_id = #{productId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除产品图片（手写 XML：显式 DELETE WHERE product_id = #{productId} AND tenant_id = #{tenantId}） -->
+    <delete id="purgeImagesByProductId">
+        DELETE FROM lunaerp_baseinfo_product_image
+        WHERE product_id = #{productId}
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

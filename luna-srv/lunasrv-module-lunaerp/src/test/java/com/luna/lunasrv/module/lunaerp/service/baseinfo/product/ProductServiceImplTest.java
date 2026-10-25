@@ -1,7 +1,13 @@
 package com.luna.lunasrv.module.lunaerp.service.baseinfo.product;
 
+import cn.idev.excel.FastExcelFactory;
 import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.luna.lunasrv.framework.common.biz.system.dict.DictDataCommonApi;
+import com.luna.lunasrv.framework.common.biz.system.dict.dto.DictDataRespDTO;
+import com.luna.lunasrv.framework.dict.core.DictFrameworkUtils;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult;
+import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductImportVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO;
@@ -9,15 +15,20 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductImageMa
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.producttag.ProductTagRelMapper;
 import com.luna.lunasrv.module.lunaerp.service.baseinfo.producttag.ProductTagService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.mock.web.MockMultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -26,10 +37,12 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -95,9 +108,28 @@ class ProductServiceImplTest {
     @InjectMocks
     private ProductServiceImpl productService;
 
+    private DictDataCommonApi dictDataApi;
+
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        dictDataApi = org.mockito.Mockito.mock(DictDataCommonApi.class);
+        DictFrameworkUtils.init(dictDataApi);
+        DictFrameworkUtils.clearCache();
+
+        DictDataRespDTO d1 = new DictDataRespDTO();
+        d1.setDictType("lunaerp_product_category");
+        d1.setLabel("成品");
+        d1.setValue("FINISHED");
+
+        DictDataRespDTO d2 = new DictDataRespDTO();
+        d2.setDictType("lunaerp_fabric_type");
+        d2.setLabel("针织");
+        d2.setValue("KNIT");
+
+        when(dictDataApi.getDictDataList("lunaerp_product_category")).thenReturn(Collections.singletonList(d1));
+        when(dictDataApi.getDictDataList("lunaerp_fabric_type")).thenReturn(Collections.singletonList(d2));
+
         when(productMapper.insert(any(ProductDO.class))).thenAnswer(invocation -> {
             ProductDO product = invocation.getArgument(0);
             product.setId(1024L);
@@ -105,6 +137,11 @@ class ProductServiceImplTest {
         });
         when(productImageMapper.selectListByProductIds(anyList())).thenReturn(Collections.emptyList());
         when(productTagService.getProductTagMap(anyCollection())).thenReturn(Collections.emptyMap());
+    }
+
+    @AfterEach
+    void tearDown() {
+        DictFrameworkUtils.clearCache();
     }
 
     @Test
@@ -337,6 +374,118 @@ class ProductServiceImplTest {
             }
         }
         return builder.toString();
+    }
+
+    // ==================== Excel 导入相关测试 ====================
+
+    private static final List<String> PRODUCT_HEADERS = Arrays.asList(
+            "产品编号", "产品名称", "类别", "布种", "织物组织", "成分",
+            "成品门幅", "成品克重", "颜色", "工艺类型", "机型", "供应商样号",
+            "标准米长", "状态", "备注"
+    );
+
+    private byte[] createRawExcelBytes(List<String> headers, List<List<Object>> dataList) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        List<List<String>> headList = headers.stream()
+                .map(Collections::singletonList)
+                .toList();
+        FastExcelFactory.write(out)
+                .head(headList)
+                .sheet("产品导入")
+                .doWrite(dataList);
+        return out.toByteArray();
+    }
+
+    @Test
+    void getImportTemplate_returnsSampleList() {
+        List<ProductImportVO> template = productService.getImportTemplate();
+        assertNotNull(template);
+        assertEquals(1, template.size());
+        assertEquals("P0001", template.get(0).getCode());
+        assertEquals("莫代尔汗布", template.get(0).getName());
+    }
+
+    @Test
+    void importProduct_success_batchInsertsWithActiveStatus() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("P0001", "精梳全棉汗布", "成品", "针织", "KNIT", "100%棉",
+                "185", "180", "白色", "蚀毛", "单面机", "SUP-01", "100", "ACTIVE", "测试产品1"));
+        rows.add(Arrays.asList("P0002", "涤纶网眼布", "成品", "", "KNIT", "100%涤纶",
+                "160", "200", "", "", "", "", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(PRODUCT_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "products.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.emptyList());
+
+        ExcelImportResult result = productService.importProduct(file);
+
+        assertTrue(result.isSuccess());
+        assertEquals(2, result.getSuccessCount());
+        assertNull(result.getErrorStream());
+
+        ArgumentCaptor<List<ProductDO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(productMapper).insertBatch(captor.capture());
+        List<ProductDO> inserted = captor.getValue();
+        assertEquals(2, inserted.size());
+
+        ProductDO p1 = inserted.get(0);
+        assertEquals("P0001", p1.getCode());
+        assertEquals("精梳全棉汗布", p1.getName());
+        assertEquals("FINISHED", p1.getType());
+        assertEquals("成品", p1.getTypeLabel());
+        assertEquals("KNIT", p1.getFabricType());
+        assertEquals("针织", p1.getFabricTypeLabel());
+        assertEquals("100%棉", p1.getComposition());
+        assertEquals(new BigDecimal("185"), p1.getWidthCm());
+        assertEquals(new BigDecimal("180"), p1.getWeightGsm());
+        assertEquals("ACTIVE", p1.getStatus());
+
+        ProductDO p2 = inserted.get(1);
+        assertEquals("P0002", p2.getCode());
+        assertEquals("ACTIVE", p2.getStatus(), "状态为空时缺省应为 ACTIVE");
+    }
+
+    @Test
+    void importProduct_fileDuplicate_generatesErrorExcelWithoutDbWrite() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("P0001", "产品A", "成品", "", "", "100%棉", "180", "200", "", "", "", "", "", "", ""));
+        rows.add(Arrays.asList("P0001", "产品B", "成品", "", "", "100%棉", "180", "200", "", "", "", "", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(PRODUCT_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "duplicate.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.emptyList());
+
+        ExcelImportResult result = productService.importProduct(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(productMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void importProduct_dbDuplicate_generatesErrorExcelWithoutDbWrite() throws IOException {
+        List<List<Object>> rows = new ArrayList<>();
+        rows.add(Arrays.asList("P0001", "已有产品", "成品", "", "", "100%棉", "180", "200", "", "", "", "", "", "", ""));
+
+        byte[] bytes = createRawExcelBytes(PRODUCT_HEADERS, rows);
+        MockMultipartFile file = new MockMultipartFile("file", "db_duplicate.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+
+        ProductDO existing = new ProductDO();
+        existing.setCode("P0001");
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(existing));
+
+        ExcelImportResult result = productService.importProduct(file);
+
+        assertFalse(result.isSuccess());
+        assertEquals(0, result.getSuccessCount());
+        assertNotNull(result.getErrorStream());
+        verify(productMapper, never()).insertBatch(anyList());
     }
 
 }

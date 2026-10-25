@@ -32,8 +32,255 @@ export interface BooleanDictDataType extends DictDataType {
   value: boolean
 }
 
+const defaultApprovalDicts: Record<string, DictDataType[]> = {
+  lunaerp_approval_biz_type: [
+    { dictType: 'lunaerp_approval_biz_type', label: '销售合同', value: 'sales_contract', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_biz_type', label: '付款申请', value: 'payment', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_biz_type', label: '费用报销', value: 'expense', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_approval_biz_type', label: '工资单', value: 'payroll', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_approval_biz_type', label: '销售退货', value: 'sales_return', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_approval_node_type: [
+    { dictType: 'lunaerp_approval_node_type', label: '逐级审批', value: 'SEQUENTIAL', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_node_type', label: '或签', value: 'OR_SIGN', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_approval_node_type', label: '会签', value: 'AND_SIGN', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_approval_approver_type: [
+    { dictType: 'lunaerp_approval_approver_type', label: '指定用户', value: 'USER', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_approver_type', label: '指定岗位', value: 'POST', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_approval_approver_type', label: '指定角色', value: 'ROLE', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_approval_approver_type', label: '部门负责人', value: 'DEPT_LEADER', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_approver_type', label: '提交人直属上级', value: 'SUBMITTER_LEADER', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_approval_config_status: [
+    { dictType: 'lunaerp_approval_config_status', label: '启用', value: 'ENABLED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_config_status', label: '停用', value: 'DISABLED', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_approval_instance_status: [
+    { dictType: 'lunaerp_approval_instance_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_approval_instance_status', label: '审批中', value: 'APPROVING', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_instance_status', label: '已通过', value: 'APPROVED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_instance_status', label: '已驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_approval_instance_status', label: '已撤回', value: 'CANCELLED', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_approval_task_action: [
+    { dictType: 'lunaerp_approval_task_action', label: '通过', value: 'DONE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_task_action', label: '驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_approval_task_action', label: '转交', value: 'TRANSFERRED', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_approval_record_action: [
+    { dictType: 'lunaerp_approval_record_action', label: '提交审批', value: 'SUBMIT', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_record_action', label: '通过', value: 'APPROVE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_record_action', label: '驳回', value: 'REJECT', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_approval_record_action', label: '转交', value: 'TRANSFER', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_approval_record_action', label: '撤回', value: 'WITHDRAW', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_export_doc_status: [
+    { dictType: 'lunaerp_export_doc_status', label: '草稿', value: 'DRAFT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_export_doc_status', label: '已定稿', value: 'FINALIZED', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_incoterm: [
+    { dictType: 'lunaerp_incoterm', label: 'FOB', value: 'FOB', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_incoterm', label: 'CIF', value: 'CIF', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_incoterm', label: 'CFR', value: 'CFR', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_incoterm', label: 'EXW', value: 'EXW', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_payment_term: [
+    { dictType: 'lunaerp_payment_term', label: 'T/T', value: 'TT', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_payment_term', label: 'L/C', value: 'LC', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_payment_term', label: 'D/P', value: 'DP', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_payment_term', label: 'D/A', value: 'DA', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_payment_term', label: 'O/A', value: 'OA', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_transport_mode: [
+    { dictType: 'lunaerp_transport_mode', label: '海运', value: 'SEA', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_transport_mode', label: '空运', value: 'AIR', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_transport_mode', label: '陆运', value: 'LAND', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_transport_mode', label: '快递', value: 'EXPRESS', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_cost_card_status: [
+    { dictType: 'lunaerp_cost_card_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_status', label: '生效', value: 'EFFECTIVE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_status', label: '失效', value: 'EXPIRED', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_cost_card_basis: [
+    { dictType: 'lunaerp_cost_card_basis', label: '按千克', value: 'KG', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_basis', label: '按米', value: 'METER', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_cost_card_fee_type: [
+    { dictType: 'lunaerp_cost_card_fee_type', label: '织造', value: 'WEAVING', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '染色', value: 'DYEING', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '定型', value: 'SETTING', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '检验', value: 'INSPECTION', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '包装', value: 'PACKAGING', colorType: '', cssClass: '' },
+    { dictType: 'lunaerp_cost_card_fee_type', label: '运费', value: 'FREIGHT', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_cost_fee_unit: [
+    { dictType: 'lunaerp_cost_fee_unit', label: '元/千克', value: 'PER_KG', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_cost_fee_unit', label: '元/米', value: 'PER_METER', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_yarn_price_type: [
+    { dictType: 'lunaerp_yarn_price_type', label: '采购参考价', value: 'PURCHASE', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_yarn_price_type', label: '市场参考价', value: 'MARKET', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_quotation_status: [
+    { dictType: 'lunaerp_quotation_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_quotation_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_quotation_status', label: '已修订', value: 'SUPERSEDED', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_quotation_status', label: '已取消', value: 'CANCELLED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_quotation_status', label: '已失效', value: 'EXPIRED', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_quotation_cost_source: [
+    { dictType: 'lunaerp_quotation_cost_source', label: '成本卡', value: 'CARD', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_quotation_cost_source', label: '手工', value: 'MANUAL', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_color_light_source: [
+    { dictType: 'lunaerp_color_light_source', label: '标准光源 D65', value: 'D65', colorType: '', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'TL84 三基色', value: 'TL84', colorType: '', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'CWF 冷白荧光', value: 'CWF', colorType: '', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'A 光源/白炽灯', value: 'A', colorType: '', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'UV 紫外光源', value: 'UV', colorType: '', cssClass: '' },
+    { dictType: 'lunaerp_color_light_source', label: 'TL83 暖白荧光', value: 'TL83', colorType: '', cssClass: '' }
+  ],
+  lunaerp_color_line_status: [
+    { dictType: 'lunaerp_color_line_status', label: '待结果', value: 'PENDING', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_color_line_status', label: '通过', value: 'APPROVED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_color_line_status', label: '驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_color_instruction_status: [
+    { dictType: 'lunaerp_color_instruction_status', label: '待打色', value: 'PENDING', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_color_instruction_status', label: '打色中', value: 'IN_PROGRESS', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_color_instruction_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_color_instruction_status', label: '已投产', value: 'IN_PRODUCTION', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_color_instruction_status', label: '已作废', value: 'VOID', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_supplier_recon_status: [
+    { dictType: 'lunaerp_supplier_recon_status', label: '草稿', value: 'DRAFT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_supplier_recon_status', label: '已确认', value: 'CONFIRMED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_supplier_recon_status', label: '已作废', value: 'CANCELLED', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_payment_apply_type: [
+    { dictType: 'lunaerp_payment_apply_type', label: '对账付款', value: 'RECON', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_payment_apply_type', label: '预付付款', value: 'PREPAY', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_finance_payment_direction: [
+    { dictType: 'lunaerp_finance_payment_direction', label: '收款', value: 'IN', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_payment_direction', label: '付款', value: 'OUT', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_finance_account_type: [
+    { dictType: 'lunaerp_finance_account_type', label: '现金', value: 'CASH', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_type', label: '银行账户', value: 'BANK', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_type', label: '微信支付', value: 'WECHAT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_type', label: '支付宝', value: 'ALIPAY', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_finance_account_nature: [
+    { dictType: 'lunaerp_finance_account_nature', label: '公户', value: 'PUBLIC', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_nature', label: '私户', value: 'PRIVATE', colorType: 'warning', cssClass: '' }
+  ],
+  lunaerp_finance_account_status: [
+    { dictType: 'lunaerp_finance_account_status', label: '启用', value: 'ENABLE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_account_status', label: '停用', value: 'DISABLE', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_other_txn_category: [
+    { dictType: 'lunaerp_other_txn_category', label: '利息收入', value: 'INTEREST_IN', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '废品收入', value: 'WASTE_IN', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '其他收入', value: 'OTHER_IN', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '手续费', value: 'FEE_OUT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '工本费', value: 'COST_OUT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_other_txn_category', label: '其他支出', value: 'OTHER_OUT', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_finance_ledger_category: [
+    { dictType: 'lunaerp_finance_ledger_category', label: '员工报销支出', value: 'OUT_EXPENSE', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '员工工资发放', value: 'OUT_SALARY', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '账户转账转入', value: 'TRANSFER_IN', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '账户转账转出', value: 'TRANSFER_OUT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '其他收入入账', value: 'IN_OTHER', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_finance_ledger_category', label: '其他支出流出', value: 'OUT_OTHER', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_approval_status: [
+    { dictType: 'lunaerp_approval_status', label: '待提交', value: 'PENDING', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_approval_status', label: '审批中', value: 'APPROVING', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_approval_status', label: '已通过', value: 'APPROVED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_approval_status', label: '已驳回', value: 'REJECTED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_approval_status', label: '已撤回', value: 'CANCELLED', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_expense_category: [
+    { dictType: 'lunaerp_expense_category', label: '差旅费', value: 'TRAVEL', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '办公费', value: 'OFFICE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '运输费', value: 'TRANSPORT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '业务招待费', value: 'ENTERTAIN', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '房租', value: 'RENT', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '水电费', value: 'UTILITY', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '通讯费', value: 'COMM', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_expense_category', label: '其他', value: 'OTHER', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_payroll_earning_type: [
+    { dictType: 'lunaerp_payroll_earning_type', label: '基本工资', value: 'BASE', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '计件工资', value: 'PIECE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '提成', value: 'COMMISSION', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '奖金', value: 'BONUS', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '补贴', value: 'SUBSIDY', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_payroll_earning_type', label: '其他收入', value: 'OTHER', colorType: 'default', cssClass: '' }
+  ],
+  lunaerp_payroll_deduction_type: [
+    { dictType: 'lunaerp_payroll_deduction_type', label: '次品扣款', value: 'DEFECT', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_payroll_deduction_type', label: '其他扣款', value: 'OTHER', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_payroll_payment_status: [
+    { dictType: 'lunaerp_payroll_payment_status', label: '未发放', value: 'UNPAID', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_payroll_payment_status', label: '部分发放', value: 'PARTIAL', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_payroll_payment_status', label: '已发清', value: 'PAID', colorType: 'success', cssClass: '' }
+  ],
+  // ========== LunaERP - 车间移动 H5 模块默认回退字典 ==========
+  lunaerp_weaving_exception_type: [
+    { dictType: 'lunaerp_weaving_exception_type', label: '断纱', value: 'YARN_BREAK', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_weaving_exception_type', label: '坏布', value: 'CLOTH_DAMAGE', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_weaving_exception_type', label: '缺纱停机', value: 'YARN_SHORTAGE', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_weaving_exception_type', label: '换机', value: 'MACHINE_CHANGE', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_weaving_exception_type', label: '换人', value: 'WORKER_CHANGE', colorType: 'info', cssClass: '' }
+  ],
+  lunaerp_inspection_grade: [
+    { dictType: 'lunaerp_inspection_grade', label: '一等品', value: 'A', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_inspection_grade', label: '二等品', value: 'B', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_inspection_grade', label: '三等品', value: 'C', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_inspection_grade', label: '等外品', value: 'DEFECTIVE', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_weaving_ticket_status: [
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已生成', value: 'GENERATED', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已开工', value: 'STARTED', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已完工', value: 'COMPLETED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已检验', value: 'INSPECTED', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '已入库', value: 'STOCKED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '异常', value: 'EXCEPTION', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_weaving_ticket_status', label: '作废', value: 'VOID', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_weaving_task_status: [
+    { dictType: 'lunaerp_weaving_task_status', label: '待开始', value: 'PENDING', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_weaving_task_status', label: '生产中', value: 'IN_PROGRESS', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_weaving_task_status', label: '暂停异常', value: 'HALTED', colorType: 'danger', cssClass: '' },
+    { dictType: 'lunaerp_weaving_task_status', label: '已完工', value: 'COMPLETED', colorType: 'success', cssClass: '' }
+  ],
+  lunaerp_yarn_requisition_status: [
+    { dictType: 'lunaerp_yarn_requisition_status', label: '草稿', value: 'DRAFT', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_yarn_requisition_status', label: '待发纱', value: 'ACTIVE', colorType: 'primary', cssClass: '' },
+    { dictType: 'lunaerp_yarn_requisition_status', label: '部分发纱', value: 'PARTIAL', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_yarn_requisition_status', label: '已发纱', value: 'DISPATCHED', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_yarn_requisition_status', label: '已关闭', value: 'CLOSED', colorType: 'danger', cssClass: '' }
+  ],
+  lunaerp_inspection_order_status: [
+    { dictType: 'lunaerp_inspection_order_status', label: '草稿', value: 'DRAFT', colorType: 'warning', cssClass: '' },
+    { dictType: 'lunaerp_inspection_order_status', label: '录检中', value: 'ACTIVE', colorType: 'success', cssClass: '' },
+    { dictType: 'lunaerp_inspection_order_status', label: '录检完成', value: 'COMPLETED', colorType: 'info', cssClass: '' },
+    { dictType: 'lunaerp_inspection_order_status', label: '已取消', value: 'CANCELLED', colorType: 'danger', cssClass: '' }
+  ]
+}
+
 export const getDictOptions = (dictType: string) => {
-  return dictStore.getDictByType(dictType) || []
+  const options = dictStore.getDictByType(dictType)
+  if (options && options.length > 0) {
+    return options
+  }
+  return defaultApprovalDicts[dictType] || []
 }
 
 export const getIntDictOptions = (dictType: string): NumberDictDataType[] => {
@@ -476,6 +723,10 @@ export enum DICT_TYPE {
   // ========== LunaERP - 生产管理-纱线采购单模块 ==========
   LUNAERP_YARN_ORDER_STATUS = 'lunaerp_yarn_order_status', // 纱线采购单状态
 
+  // ========== LunaERP - 生产管理-纱线规格模块 ==========
+  LUNAERP_YARN_SPIN_METHOD = 'lunaerp_yarn_spin_method', // 纺纱方式
+  LUNAERP_YARN_LUSTER = 'lunaerp_yarn_luster', // 光泽
+
   // ========== LunaERP - 生产管理-检验单模块 ==========
   LUNAERP_INSPECTION_ORDER_STATUS = 'lunaerp_inspection_order_status', // 检验单状态
   LUNAERP_INSPECTION_PACKAGE_MODE = 'lunaerp_inspection_package_mode', // 包装模式（卷装/匹装）
@@ -508,5 +759,77 @@ export enum DICT_TYPE {
   LUNAERP_SAMPLE_PROCESS = 'lunaerp_sample_process', // 工序
   LUNAERP_SAMPLE_DYEING_PROCESS = 'lunaerp_sample_dyeing_process', // 双染工艺
   LUNAERP_SAMPLE_MACHINE_TYPE = 'lunaerp_sample_machine_type', // 机型
-  LUNAERP_SAMPLE_SPIN_METHOD = 'lunaerp_sample_spin_method' // 纺法
+  LUNAERP_SAMPLE_SPIN_METHOD = 'lunaerp_sample_spin_method', // 纺法
+
+  // ========== LunaERP - 审批引擎模块 ==========
+  LUNAERP_APPROVAL_CONFIG_STATUS = 'lunaerp_approval_config_status', // 审批流程配置状态（ENABLED/DISABLED）
+  LUNAERP_APPROVAL_BIZ_TYPE = 'lunaerp_approval_biz_type', // 审批单据类型
+  LUNAERP_APPROVAL_NODE_TYPE = 'lunaerp_approval_node_type', // 审批节点类型
+  LUNAERP_APPROVAL_APPROVER_TYPE = 'lunaerp_approval_approver_type', // 审批人来源
+  LUNAERP_APPROVAL_INSTANCE_STATUS = 'lunaerp_approval_instance_status', // 审批实例状态
+  LUNAERP_APPROVAL_TASK_ACTION = 'lunaerp_approval_task_action', // 审批任务动作
+  LUNAERP_APPROVAL_RECORD_ACTION = 'lunaerp_approval_record_action', // 审批记录动作
+
+  // ========== LunaERP - 业务管理-出口单证模块 ==========
+  LUNAERP_EXPORT_DOC_STATUS = 'lunaerp_export_doc_status', // 出口单证状态
+  LUNAERP_INCOTERM = 'lunaerp_incoterm', // 贸易术语
+  LUNAERP_PAYMENT_TERM = 'lunaerp_payment_term', // 付款方式
+  LUNAERP_TRANSPORT_MODE = 'lunaerp_transport_mode', // 运输方式
+
+  // ========== LunaERP - 售前链-成本卡与智能报价模块 ==========
+  LUNAERP_COST_CARD_STATUS = 'lunaerp_cost_card_status', // 成本卡状态
+  LUNAERP_COST_CARD_BASIS = 'lunaerp_cost_card_basis', // 成本卡口径
+  LUNAERP_COST_CARD_FEE_TYPE = 'lunaerp_cost_card_fee_type', // 费用类型
+  LUNAERP_COST_FEE_UNIT = 'lunaerp_cost_fee_unit', // 费用计费口径
+  LUNAERP_YARN_PRICE_TYPE = 'lunaerp_yarn_price_type', // 纱价类型
+  LUNAERP_QUOTATION_STATUS = 'lunaerp_quotation_status', // 报价单状态
+  LUNAERP_QUOTATION_COST_SOURCE = 'lunaerp_quotation_cost_source', // 报价成本来源
+
+  // ========== LunaERP - 生产管理-打色指示单模块 ==========
+  LUNAERP_COLOR_LIGHT_SOURCE = 'lunaerp_color_light_source', // 灯源
+  LUNAERP_COLOR_LINE_STATUS = 'lunaerp_color_line_status', // 颜色行状态
+  LUNAERP_COLOR_INSTRUCTION_STATUS = 'lunaerp_color_instruction_status', // 打色指示单状态
+
+  // ========== LunaERP - 财务管理-供应商对账模块 ==========
+  LUNAERP_SUPPLIER_RECON_STATUS = 'lunaerp_supplier_recon_status', // 供应商对账单状态
+
+  // ========== LunaERP - 财务管理-收付款与付款申请模块 ==========
+  LUNAERP_PAYMENT_APPLY_TYPE = 'lunaerp_payment_apply_type', // 付款申请类型
+  LUNAERP_FINANCE_PAYMENT_DIRECTION = 'lunaerp_finance_payment_direction', // 收付款方向
+  LUNAERP_APPROVAL_STATUS = 'lunaerp_approval_status', // 业务单据审批状态
+
+  // ========== LunaERP - 销售退货模块 ==========
+  LUNAERP_SALES_RETURN_STATUS = 'lunaerp_sales_return_status', // 销售退货状态
+  LUNAERP_SALES_RETURN_REASON = 'lunaerp_sales_return_reason', // 销售退货原因
+  LUNAERP_SALES_RETURN_QC_RESULT = 'lunaerp_sales_return_qc_result', // 销售退货质检判定
+  LUNAERP_FINANCE_ACCOUNT_TYPE = 'lunaerp_finance_account_type', // 资金账户类型
+  LUNAERP_FINANCE_ACCOUNT_NATURE = 'lunaerp_finance_account_nature', // 资金账户性质
+  LUNAERP_FINANCE_ACCOUNT_STATUS = 'lunaerp_finance_account_status', // 资金账户状态
+  LUNAERP_FINANCE_LEDGER_CATEGORY = 'lunaerp_finance_ledger_category', // 资金流水类别
+  LUNAERP_OTHER_TXN_CATEGORY = 'lunaerp_other_txn_category', // 其他收支类别
+  LUNAERP_EXPENSE_CATEGORY = 'lunaerp_expense_category', // 费用报销类别（2284）
+  LUNAERP_PAYROLL_EARNING_TYPE = 'lunaerp_payroll_earning_type', // 工资收入款项类型（2285）
+  LUNAERP_PAYROLL_DEDUCTION_TYPE = 'lunaerp_payroll_deduction_type', // 工资扣款款项类型（2286）
+  LUNAERP_PAYROLL_PAYMENT_STATUS = 'lunaerp_payroll_payment_status' // 工资派生发放状态
 }
+
+/**
+ * 车间移动 H5 专属既有字典引用常量（ADR-0045，零新增字典，仅常量名暴露）
+ * 异常类型 2244、检验等级 2232、布票状态、机台任务状态、领纱单状态、检验单状态
+ */
+export const H5_DICT_TYPE = {
+  WEAVING_EXCEPTION_TYPE: DICT_TYPE.LUNAERP_WEAVING_EXCEPTION_TYPE,
+  INSPECTION_GRADE: DICT_TYPE.LUNAERP_INSPECTION_GRADE,
+  WEAVING_TICKET_STATUS: DICT_TYPE.LUNAERP_WEAVING_TICKET_STATUS,
+  WEAVING_TASK_STATUS: DICT_TYPE.LUNAERP_WEAVING_TASK_STATUS,
+  YARN_REQUISITION_STATUS: DICT_TYPE.LUNAERP_YARN_REQUISITION_STATUS,
+  INSPECTION_ORDER_STATUS: DICT_TYPE.LUNAERP_INSPECTION_ORDER_STATUS
+} as const
+
+export const H5_WEAVING_EXCEPTION_TYPE = DICT_TYPE.LUNAERP_WEAVING_EXCEPTION_TYPE // 异常类型 2244
+export const H5_INSPECTION_GRADE = DICT_TYPE.LUNAERP_INSPECTION_GRADE // 检验等级 2232
+export const H5_WEAVING_TICKET_STATUS = DICT_TYPE.LUNAERP_WEAVING_TICKET_STATUS // 布票状态
+export const H5_WEAVING_TASK_STATUS = DICT_TYPE.LUNAERP_WEAVING_TASK_STATUS // 机台任务状态
+export const H5_YARN_REQUISITION_STATUS = DICT_TYPE.LUNAERP_YARN_REQUISITION_STATUS // 领纱单状态
+export const H5_INSPECTION_ORDER_STATUS = DICT_TYPE.LUNAERP_INSPECTION_ORDER_STATUS // 检验单状态
+

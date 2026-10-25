@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder.YarnOrderItemMapper">
+
+    <!-- 查询已删除采购单下的明细（用于回收站恢复前主数据引用校验） -->
+    <select id="selectDeletedListByOrderId" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnorder.YarnOrderItemDO">
+        SELECT *
+        FROM lunaerp_production_yarn_order_item
+        WHERE order_id = #{orderId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+        ORDER BY id ASC
+    </select>
+
+    <!-- 级联恢复采购明细（手写 XML：显式 SET deleted=0 WHERE order_id=? AND deleted=1 AND tenant_id=?） -->
+    <update id="restoreByOrderId">
+        UPDATE lunaerp_production_yarn_order_item
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE order_id = #{orderId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除采购明细（手写 XML：显式 DELETE WHERE order_id=? AND deleted=1 AND tenant_id=?） -->
+    <delete id="purgeByOrderId">
+        DELETE FROM lunaerp_production_yarn_order_item
+        WHERE order_id = #{orderId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

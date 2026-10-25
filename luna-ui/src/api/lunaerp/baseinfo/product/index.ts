@@ -152,3 +152,21 @@ export const deleteProductList = (ids: number[]) => {
 export const updateProductTags = (id: number, tags: ProductTagVO[]) => {
   return request.put({ url: '/lunaerp/baseinfo/product/update-tags?id=' + id, data: tags })
 }
+
+// 下载产品导入模板
+export const downloadProductTemplate = () => {
+  return request.download({ url: '/lunaerp/baseinfo/product/import-template' })
+}
+
+// 导入产品（二进制响应以捕获错误 Excel 流）
+export const importProduct = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.postOriginal({
+    url: '/lunaerp/baseinfo/product/import',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob'
+  })
+}
+

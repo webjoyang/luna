@@ -13,6 +13,11 @@ export interface YarnRecipeBomItemVO {
   spinMethod?: string
   remark?: string
   refPrice?: number
+  wasteRate?: number
+  direction?: string
+  density?: number
+  crimpRate?: number
+  consumptionKgPerMeter?: number
 }
 
 export interface YarnRecipeBomVO {

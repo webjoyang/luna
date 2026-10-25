@@ -22,6 +22,14 @@
           <el-option label="停用" value="INACTIVE" />
         </el-select>
       </el-form-item>
+      <el-form-item label="业务员" prop="salespersonUserId">
+        <UserSelect
+          v-model="queryParams.salespersonUserId"
+          placeholder="全部"
+          clearable
+          class="!w-180px"
+        />
+      </el-form-item>
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" />重置</el-button>
@@ -41,6 +49,22 @@
           v-hasPermi="['lunaerp:baseinfo:customer:delete']"
         >
           <Icon icon="ep:delete" /> 批量删除
+        </el-button>
+        <el-button
+          type="success"
+          plain
+          @click="handleDownloadTemplate"
+          v-hasPermi="['lunaerp:baseinfo:customer:import']"
+        >
+          <Icon icon="ep:download" /> 下载模板
+        </el-button>
+        <el-button
+          type="primary"
+          plain
+          @click="handleImport"
+          v-hasPermi="['lunaerp:baseinfo:customer:import']"
+        >
+          <Icon icon="ep:upload" /> 导入
         </el-button>
       </el-form-item>
     </el-form>
@@ -130,13 +154,19 @@
       @pagination="getList"
     />
   </ContentWrap>
+
+  <!-- 导入弹窗 -->
+  <CustomerImportDialog ref="importDialogRef" @success="getList" />
 </template>
 
 <script lang="ts" setup>
 import { dateFormatter } from '@/utils/formatTime'
 import { DICT_TYPE } from '@/utils/dict'
+import download from '@/utils/download'
+import CustomerImportDialog from './CustomerImportDialog.vue'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
+import UserSelect from '@/views/system/user/components/UserSelect.vue'
 
 defineOptions({ name: 'LunaerpElmuiBaseinfoCustomer' })
 
@@ -148,12 +178,14 @@ const total = ref(0)
 const list = ref<CustomerVO[]>([])
 const queryFormRef = ref()
 const checkedIds = ref<number[]>([])
+const importDialogRef = ref<InstanceType<typeof CustomerImportDialog>>()
 
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 20,
   search: '',
-  status: ''
+  status: '',
+  salespersonUserId: undefined
 })
 
 /** 查询客户分页 */
@@ -214,6 +246,21 @@ const handleDeleteBatch = async () => {
     message.success('删除成功')
     await getList()
   } catch {}
+}
+
+/** 下载客户导入模板 */
+const handleDownloadTemplate = async () => {
+  try {
+    const res = await CustomerApi.downloadCustomerTemplate()
+    download.excel(res, '客户导入模板.xlsx')
+  } catch {
+    message.error('下载模板失败')
+  }
+}
+
+/** 打开导入弹窗 */
+const handleImport = () => {
+  importDialogRef.value?.open()
 }
 
 /** 初始化 */

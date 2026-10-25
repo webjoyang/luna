@@ -1,6 +1,8 @@
 package com.luna.lunasrv.module.lunaerp.enums;
 
 import com.luna.lunasrv.framework.common.exception.ErrorCode;
+import com.luna.lunasrv.module.lunaerp.enums.business.salesreturn.SalesReturnErrorCodeConstants;
+import com.luna.lunasrv.module.lunaerp.enums.finance.FinanceErrorCodeConstants;
 
 /**
  * LunaERP 错误码枚举类
@@ -17,8 +19,19 @@ import com.luna.lunasrv.framework.common.exception.ErrorCode;
  *                  与 1-030-017-xxx 段（进度反馈：反馈缸与反馈记录共用）
  *                  与 1-030-018-xxx 段（发染记录）
  *                  与 1-030-019-xxx 段（生产进度查询，只读预留）
+ *                  与 1-030-022-xxx 段（供应商对账，见 FinanceErrorCodeConstants）
+ *                  与 1-030-023-xxx 段（收付款与核销，见 FinanceErrorCodeConstants）
+ *                  与 1-030-031-xxx 段（商业地基通用件：回收站 000–099、Excel 导入 100–199，见 CommonErrorCodeConstants）
+ *                  与 1-030-032-xxx 段（打色指示单：主表 000–099、颜色行 100–199，见 ColorInstructionErrorCodeConstants）
+ *                  与 1-030-033-xxx 段（出口单证：单证套 000–099、明细 100–199、卖方配置 200–299，见 ExportDocErrorCodeConstants）
+ *                  与 1-030-034-xxx 段（成本卡与报价：成本卡 000–099、报价单 100–199、纱价追加 1-030-008-008/009，见 CostCardQuotationErrorCodeConstants）
+ *                  与 1-030-035-xxx 段（下达生产）
+ *                  与 1-030-036-xxx 段（排产与齐套）
+ *                  与 1-030-037-xxx 段（销售退货，见 SalesReturnErrorCodeConstants）
+ *                  与 1-030-038-xxx 段（客户门户，见 PortalErrorCodeConstants）
+ *                  与 1-030-039-xxx 段（车间移动 H5，见 WorkshopH5ErrorCodeConstants）
  */
-public interface ErrorCodeConstants {
+public interface ErrorCodeConstants extends CommonErrorCodeConstants, ApprovalErrorCodeConstants, ColorInstructionErrorCodeConstants, ExportDocErrorCodeConstants, CostCardQuotationErrorCodeConstants, FinanceErrorCodeConstants, SalesReturnErrorCodeConstants, PortalErrorCodeConstants, WorkshopH5ErrorCodeConstants {
 
     // ========== 产品模块 1-030-001-000 ==========
     ErrorCode PRODUCT_NOT_EXISTS = new ErrorCode(1_030_001_000, "产品不存在");
@@ -81,6 +94,7 @@ public interface ErrorCodeConstants {
     ErrorCode INSPECTION_ORDER_ROLL_NO_REQUIRED = new ErrorCode(1_030_010_002, "卷装模式下卷号不能为空");
     ErrorCode INSPECTION_ORDER_PIECE_NO_FORBIDDEN = new ErrorCode(1_030_010_002, "卷装模式下禁止填写匹号");
     ErrorCode INSPECTION_ORDER_PIECE_NO_REQUIRED = new ErrorCode(1_030_010_002, "匹装模式下匹号不能为空");
+    ErrorCode INSPECTION_ORDER_VAT_NO_REQUIRED = new ErrorCode(1_030_010_002, "缸号不能为空");
     ErrorCode INSPECTION_ORDER_PIECE_DUPLICATE = new ErrorCode(1_030_010_004, "单内匹号【{}】缸号【{}】已存在");
     ErrorCode INSPECTION_ORDER_STATUS_NOT_COMPLETED = new ErrorCode(1_030_010_005, "仅录检完成（COMPLETED）状态允许生成入库单");
     ErrorCode INSPECTION_ORDER_NO_QUALIFIED_ITEMS = new ErrorCode(1_030_010_006, "检验单无未入库的合格明细，无法生成入库单");
@@ -136,6 +150,7 @@ public interface ErrorCodeConstants {
     ErrorCode WEAVING_TICKET_EXCEED_PLANNED_QTY = new ErrorCode(1_030_015_114, "生成布票数量超过机台任务计划余量");
     ErrorCode WEAVING_TICKET_VOID_REASON_EMPTY = new ErrorCode(1_030_015_115, "作废原因不能为空");
     ErrorCode WEAVING_TICKET_CODE_DUPLICATE = new ErrorCode(1_030_015_116, "布票编号【{}】已存在");
+    ErrorCode WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY = new ErrorCode(1_030_015_117, "布票二维码基址未配置，请联系管理员配置【luna.h5.base-url】参数");
 
     // ========== 织造执行 - 领纱单与明细模块 1-030-015-300 ==========
     ErrorCode YARN_REQUISITION_NOT_EXISTS = new ErrorCode(1_030_015_300, "领纱单不存在");
@@ -195,5 +210,17 @@ public interface ErrorCodeConstants {
     // ========== 生产管理 - 生产进度查询模块 1-030-019-000（只读聚合，ADR-0034） ==========
     ErrorCode PRODUCTION_PROGRESS_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_019_000, "销售合同不存在");
 
+    // ========== 生产管理 - 下达生产模块 1-030-035-000 ==========
+    ErrorCode RELEASE_PRODUCTION_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_035_000, "销售合同或合同行不存在");
+    ErrorCode RELEASE_PRODUCTION_CONTRACT_CANCELLED = new ErrorCode(1_030_035_001, "合同已取消，不能下达生产");
+    ErrorCode RELEASE_PRODUCTION_OVER_RELEASE = new ErrorCode(1_030_035_002, "合同行【{}】已下达量超出合同数量（超下达或并发冲突）");
+    ErrorCode RELEASE_PRODUCTION_COLOR_INSTRUCTION_STATUS_NOT_ALLOWED = new ErrorCode(1_030_035_003, "打色单【{}】状态不允许被引用（须 CONFIRMED/IN_PRODUCTION）");
+    ErrorCode RELEASE_PRODUCTION_LIGHT_PRIMARY_REQUIRED = new ErrorCode(1_030_035_004, "打色单颜色行主灯源不能为空");
+    ErrorCode RELEASE_PRODUCTION_FINISHED_INSPECTION_EXISTS = new ErrorCode(1_030_035_005, "存在相同染色单的成品检验单，请勿重复创建");
+
+    // ========== 生产管理 - 排产与齐套模块 1-030-036-000 ==========
+    ErrorCode MACHINE_TASK_TIME_CONFLICT = new ErrorCode(1_030_036_000, "织机【{}】在 {}~{} 已排任务【{}】，计划时段冲突，请改期或转机");
+
 }
+
 

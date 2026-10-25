@@ -15,6 +15,7 @@ export interface WeavingTicketVO {
   status?: string // 状态：GENERATED / STARTED / COMPLETED / INSPECTED / STOCKED / EXCEPTION / VOID
   exceptionType?: string // 异常类型：YARN_BREAK / CLOTH_DAMAGE / YARN_SHORTAGE / MACHINE_CHANGE / WORKER_CHANGE
   exceptionNote?: string // 异常说明
+  exceptionPhotos?: string[] // 异常现场照片 URL 数组（≤6 张）
   startedAt?: string // 开工时间
   completedAt?: string // 完工时间
   voidReason?: string // 作废原因
@@ -57,6 +58,7 @@ export interface WeavingTicketExceptionReqVO {
   ids?: number[]
   exceptionType: string
   exceptionNote?: string
+  exceptionPhotos?: string[]
 }
 
 // 布票作废请求 VO
@@ -117,4 +119,29 @@ export const getWeavingTicketByCode = (code: string) => {
 // 查询布票分页
 export const getWeavingTicketPage = (params: WeavingTicketPageParam) => {
   return request.get({ url: '/lunaerp/production/weaving-order-ticket/page', params })
+}
+
+// 布票打印标签 VO（独立 VO，豁免脱敏）
+export interface WeavingTicketPrintVO {
+  id: number
+  code: string // 布票编号
+  weavingOrderId?: number
+  weavingOrderCode?: string // 织造单号
+  machineTaskId?: number
+  machineTaskCode?: string // 机台任务号
+  loomNo?: string // 机台号
+  productName?: string // 品名
+  color?: string // 颜色
+  pieceIndex?: number // 匹序
+  quantity?: number // 数量/重量 KG
+  unit?: string // 单位
+  workerName?: string // 挡车工姓名
+  materialBatchNo?: string // 原料批号
+  qrUrl: string // 完整二维码 URL
+  printTime?: string
+}
+
+// 获得布票打印数据（独立 VO，豁免脱敏，含拼好的 qrUrl）
+export const getWeavingTicketPrintData = (id: number | string) => {
+  return request.get<WeavingTicketPrintVO>({ url: `/lunaerp/production/weaving-ticket/${id}/print-data` })
 }

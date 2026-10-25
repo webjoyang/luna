@@ -6,13 +6,7 @@
     destroy-on-close
     append-to-body
   >
-    <el-form
-      ref="formRef"
-      :model="form"
-      :rules="rules"
-      label-width="110px"
-      v-loading="loading"
-    >
+    <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" v-loading="loading">
       <!-- 染色单与颜色行选择（仅非锚定模式下展示） -->
       <template v-if="!isPresetSectionMode">
         <el-form-item label="染色单" prop="dyeingOrderId">
@@ -80,9 +74,14 @@
           </span>
         </div>
         <div class="info-row status-summary">
-          <span>当前已建缸合计: <strong>{{ currentColorSection.totalVatQuantity }} {{ currentUnit }}</strong></span>
+          <span
+            >当前已建缸合计:
+            <strong>{{ currentColorSection.totalVatQuantity }} {{ currentUnit }}</strong></span
+          >
           <span class="info-sep">|</span>
-          <span>当前排产覆盖率: <strong>{{ currentColorSection.coveragePercent }}%</strong></span>
+          <span
+            >当前排产覆盖率: <strong>{{ currentColorSection.coveragePercent }}%</strong></span
+          >
         </div>
       </div>
 
@@ -147,20 +146,16 @@
 
       <!-- 超排软提示警告条 -->
       <div v-if="isOverScheduledWarning" class="over-warning-box">
-        <el-alert
-          type="error"
-          :closable="false"
-          show-icon
-          class="over-alert"
-        >
+        <el-alert type="error" :closable="false" show-icon class="over-alert">
           <template #title>
             <div class="warning-title">超排提示（允许保存）</div>
           </template>
           <div class="warning-desc">
             本缸数量（{{ form.quantity }} {{ currentUnit }}）保存后，总建缸量将达到
-            <strong>{{ previewTotalQty }} {{ currentUnit }}</strong>，
-            预计覆盖率为 <strong>{{ previewCoveragePercent }}%</strong>
-            （超出需求 <strong>{{ overAmount }} {{ currentUnit }}</strong>）。
+            <strong>{{ previewTotalQty }} {{ currentUnit }}</strong
+            >， 预计覆盖率为 <strong>{{ previewCoveragePercent }}%</strong> （超出需求
+            <strong>{{ overAmount }} {{ currentUnit }}</strong
+            >）。
           </div>
         </el-alert>
       </div>
@@ -169,9 +164,10 @@
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>
       <el-button
+        v-hasPermi="['lunaerp:production:progress-feedback:create']"
         type="primary"
         :loading="submitLoading"
-        @click="handleSubmit"
+        @click="handleConfirmCreate"
       >
         确定建缸
       </el-button>
@@ -372,7 +368,7 @@ const open = (presetSection?: ProgressFeedbackColorSectionVO) => {
 }
 
 // 提交建缸
-const handleSubmit = async () => {
+const handleConfirmCreate = async () => {
   if (!formRef.value) return
   await formRef.value.validate()
 

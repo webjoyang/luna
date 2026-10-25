@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.business.salescontract;
 
 import cn.hutool.core.collection.CollUtil;
+import com.luna.lunasrv.framework.common.enums.CommonStatusEnum;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -10,9 +11,11 @@ import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.Sale
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.salescontract.vo.SalesContractSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer.CustomerDO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.quotation.QuotationDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractItemDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customer.CustomerMapper;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.business.quotation.QuotationMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import jakarta.annotation.Resource;
@@ -20,16 +23,25 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
+import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
+import com.luna.lunasrv.module.system.api.user.AdminUserApi;
+import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
+import static com.luna.lunasrv.module.lunaerp.enums.ApprovalErrorCodeConstants.APPROVAL_INSTANCE_STATUS_ERROR;
+import static com.luna.lunasrv.module.lunaerp.enums.CostCardQuotationErrorCodeConstants.*;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SALES_CONTRACT_NOT_EXISTS;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.SALES_CONTRACT_NO_DUPLICATE;
@@ -88,7 +100,6 @@ public class SalesContractServiceImpl implements SalesContractService {
      * 币种缺省：人民币
      */
     private static final String DEFAULT_CURRENCY = "RMB";
-
     @Resource
     private SalesContractMapper salesContractMapper;
 
@@ -97,6 +108,12 @@ public class SalesContractServiceImpl implements SalesContractService {
 
     @Resource
     private CustomerMapper customerMapper;
+
+    @Resource
+    private AdminUserApi adminUserApi;
+
+    @Resource
+    private QuotationMapper quotationMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -134,6 +151,58 @@ public class SalesContractServiceImpl implements SalesContractService {
         if (!StringUtils.hasText(contract.getCurrency())) {
             contract.setCurrency(DEFAULT_CURRENCY);
         }
+        // 来源报价单校验与回填
+        if (createReqVO.getSourceQuotationId() != null) {
+            QuotationDO quotation = quotationMapper.selectById(createReqVO.getSourceQuotationId());
+            if (quotation == null) {
+                throw exception(QUOTATION_NOT_EXISTS);
+            }
+            if (!"CONFIRMED".equalsIgnoreCase(quotation.getStatus())) {
+                throw exception(QUOTATION_STATUS_NOT_ALLOWED);
+            }
+            Integer maxVersion = quotationMapper.selectMaxVersionNoByQuotationNo(quotation.getQuotationNo());
+            if (maxVersion != null && !maxVersion.equals(quotation.getVersionNo())) {
+                throw exception(QUOTATION_NOT_LATEST_VERSION);
+            }
+            if (!contract.getCurrency().equalsIgnoreCase(quotation.getCurrency())) {
+                throw exception(QUOTATION_CURRENCY_MISMATCH, quotation.getCurrency());
+            }
+            contract.setSourceQuotationNo(quotation.getQuotationNo() + "-v" + quotation.getVersionNo());
+
+            // 业务员继承：未显式指定时，继承报价单业务员（已停用则回退登录用户）
+            if (createReqVO.getSalespersonUserId() == null && quotation.getSalespersonUserId() != null) {
+                Long inheritUserId = null;
+                if (adminUserApi != null) {
+                    AdminUserRespDTO qUser = adminUserApi.getUser(quotation.getSalespersonUserId());
+                    if (qUser != null && CommonStatusEnum.ENABLE.getStatus().equals(qUser.getStatus())) {
+                        inheritUserId = quotation.getSalespersonUserId();
+                    }
+                }
+                if (inheritUserId != null) {
+                    contract.setSalespersonUserId(inheritUserId);
+                }
+            }
+        }
+        // 归属人缺省当前登录用户，归属部门服务端推导（ADR-0046）
+        if (contract.getSalespersonUserId() == null) {
+            Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+            if (loginUserId != null) {
+                contract.setSalespersonUserId(loginUserId);
+            }
+        }
+        if (contract.getSalespersonUserId() != null) {
+            if (adminUserApi != null) {
+                AdminUserRespDTO user = adminUserApi.getUser(contract.getSalespersonUserId());
+                contract.setDeptId(user != null ? user.getDeptId() : null);
+            } else {
+                contract.setDeptId(null);
+            }
+        } else {
+            contract.setDeptId(null);
+        }
+        if (!StringUtils.hasText(contract.getApprovalStatus())) {
+            contract.setApprovalStatus("DRAFT");
+        }
         // 1.6 明细聚合：服务端权威重算行金额与主表汇总（请求体传入的 totalQuantity/totalAmount 一律忽略覆盖）
         List<SalesContractItemDO> itemDOList = buildItemDOList(null, createReqVO.getItems());
         BigDecimal[] totals = recalculateTotals(itemDOList);
@@ -149,7 +218,10 @@ public class SalesContractServiceImpl implements SalesContractService {
     @Transactional(rollbackFor = Exception.class)
     public void updateSalesContract(SalesContractSaveReqVO updateReqVO) {
         // 1. 校验合同存在
-        validateSalesContractExists(updateReqVO.getId());
+        SalesContractDO existing = validateSalesContractExists(updateReqVO.getId());
+        if ("APPROVING".equalsIgnoreCase(existing.getApprovalStatus())) {
+            throw exception(APPROVAL_INSTANCE_STATUS_ERROR);
+        }
         // 2. 校验客户存在（customerId 可编辑换客户）
         CustomerDO customer = validateCustomerExists(updateReqVO.getCustomerId());
         // 3. 组装并更新（clientName 为空时用客户公司名称回填，与创建一致）
@@ -165,6 +237,41 @@ public class SalesContractServiceImpl implements SalesContractService {
         if (!StringUtils.hasText(updateObj.getClientName())) {
             updateObj.setClientName(customer.getCompanyName());
         }
+        // 来源报价单校验与回填
+        if (updateReqVO.getSourceQuotationId() != null) {
+            QuotationDO quotation = quotationMapper.selectById(updateReqVO.getSourceQuotationId());
+            if (quotation == null) {
+                throw exception(QUOTATION_NOT_EXISTS);
+            }
+            if (!"CONFIRMED".equalsIgnoreCase(quotation.getStatus())) {
+                throw exception(QUOTATION_STATUS_NOT_ALLOWED);
+            }
+            Integer maxVersion = quotationMapper.selectMaxVersionNoByQuotationNo(quotation.getQuotationNo());
+            if (maxVersion != null && !maxVersion.equals(quotation.getVersionNo())) {
+                throw exception(QUOTATION_NOT_LATEST_VERSION);
+            }
+            String currentCurrency = StringUtils.hasText(updateObj.getCurrency()) ? updateObj.getCurrency() : existing.getCurrency();
+            if (!currentCurrency.equalsIgnoreCase(quotation.getCurrency())) {
+                throw exception(QUOTATION_CURRENCY_MISMATCH, quotation.getCurrency());
+            }
+            updateObj.setSourceQuotationNo(quotation.getQuotationNo() + "-v" + quotation.getVersionNo());
+        }
+        // 归属人推导逻辑（Issue 03 / ADR-0046）：
+        // 归属人变更 → 同事务重算 dept_id（含清空归属人则两列清空）；归属人未变 → 不动 dept_id
+        if (!Objects.equals(existing.getSalespersonUserId(), updateObj.getSalespersonUserId())) {
+            if (updateObj.getSalespersonUserId() != null) {
+                if (adminUserApi != null) {
+                    AdminUserRespDTO user = adminUserApi.getUser(updateObj.getSalespersonUserId());
+                    updateObj.setDeptId(user != null ? user.getDeptId() : null);
+                } else {
+                    updateObj.setDeptId(null);
+                }
+            } else {
+                updateObj.setDeptId(null);
+            }
+        } else {
+            updateObj.setDeptId(existing.getDeptId());
+        }
         // 4. 明细差异保存（ADR-0032）：
         //    带 id 且属于本合同的行走 update、无 id 行走 insert、本合同库内有但本次未提交的行走逻辑删除；
         //    提交行 id 不属于本合同时报错（防跨父 id 串数据）；行号按提交顺序重排；
@@ -177,7 +284,10 @@ public class SalesContractServiceImpl implements SalesContractService {
     @Transactional(rollbackFor = Exception.class)
     public void deleteSalesContract(Long id) {
         // 校验存在
-        validateSalesContractExists(id);
+        SalesContractDO existing = validateSalesContractExists(id);
+        if ("APPROVING".equalsIgnoreCase(existing.getApprovalStatus())) {
+            throw exception(APPROVAL_INSTANCE_STATUS_ERROR);
+        }
         // 逻辑删除主表 + 级联逻辑删除全部明细（明细是合同聚合的一部分，ADR-0003）
         salesContractMapper.deleteById(id);
         salesContractItemMapper.deleteByContractId(id);
@@ -207,10 +317,11 @@ public class SalesContractServiceImpl implements SalesContractService {
     }
 
     @Override
+    @DataPermission(enable = false)
     public String getNextContractNo() {
         // 只读预览、不占号：直接复用自动取号的扫描结果（含已删除行，ADR-0004），
         // 不做撞号查重、不写库；无新建时多次调用返回相同值，保存后再次调用自然顺延
-        return generateContractNo();
+        return DataPermissionUtils.executeIgnore(this::generateContractNo);
     }
 
     // ==================== 私有方法 ====================
@@ -224,6 +335,7 @@ public class SalesContractServiceImpl implements SalesContractService {
         LambdaQueryWrapperX<SalesContractDO> wrapper = new LambdaQueryWrapperX<>();
         // 等值过滤（为空则不过滤，便于"全部"场景）
         wrapper.eqIfPresent(SalesContractDO::getStatus, reqVO.getStatus());
+        wrapper.eqIfPresent(SalesContractDO::getApprovalStatus, reqVO.getApprovalStatus());
         wrapper.eqIfPresent(SalesContractDO::getTradeType, reqVO.getTradeType());
         // customerId 预留透传（本票无 UI 入口）
         wrapper.eqIfPresent(SalesContractDO::getCustomerId, reqVO.getCustomerId());
@@ -412,16 +524,19 @@ public class SalesContractServiceImpl implements SalesContractService {
      *
      * @return 生成的合同编号
      */
+    @DataPermission(enable = false)
     private String generateContractNoWithRetry() {
-        for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
-            String candidate = generateContractNo();
-            // 查重含已删除行（ADR-0004）；命中说明并发取号或历史数据占用，顺延重试
-            if (salesContractMapper.selectByContractNoIncludingDeleted(candidate) == null) {
-                return candidate;
+        return DataPermissionUtils.executeIgnore(() -> {
+            for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
+                String candidate = generateContractNo();
+                // 查重含已删除行（ADR-0004）；命中说明并发取号或历史数据占用，顺延重试
+                if (salesContractMapper.selectByContractNoIncludingDeleted(candidate) == null) {
+                    return candidate;
+                }
             }
-        }
-        // 连续撞号放弃取号，提示用户手填，避免无限循环
-        throw exception(SALES_CONTRACT_NO_DUPLICATE);
+            // 连续撞号放弃取号，提示用户手填，避免无限循环
+            throw exception(SALES_CONTRACT_NO_DUPLICATE);
+        });
     }
 
     /**
@@ -429,61 +544,72 @@ public class SalesContractServiceImpl implements SalesContractService {
      * 扫描当前租户同前缀的全部合同（含已删除行，ADR-0004），按前缀后的数字部分取 max + 1，
      * 字符串排序会取错最大值（如 CH9 > CH10）。
      */
+    @DataPermission(enable = false)
     private String generateContractNo() {
-        String prefix = CONTRACT_NO_PREFIX + LocalDate.now().getYear();
-        List<SalesContractDO> candidates = salesContractMapper.selectListByContractNoPrefixIncludingDeleted(prefix);
-        long maxNum = 0L;
-        int maxDigits = NO_MIN_DIGITS;
-        for (SalesContractDO candidate : candidates) {
-            String no = candidate.getContractNo();
-            if (no == null || no.length() <= prefix.length()) {
-                continue;
+        return DataPermissionUtils.executeIgnore(() -> {
+            String prefix = CONTRACT_NO_PREFIX + LocalDate.now().getYear();
+            List<SalesContractDO> candidates = salesContractMapper.selectListByContractNoPrefixIncludingDeleted(prefix);
+            long maxNum = 0L;
+            int maxDigits = NO_MIN_DIGITS;
+            for (SalesContractDO candidate : candidates) {
+                String no = candidate.getContractNo();
+                if (no == null || no.length() <= prefix.length()) {
+                    continue;
+                }
+                String suffix = no.substring(prefix.length());
+                Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
+                if (!matcher.find()) {
+                    continue;
+                }
+                String digits = matcher.group();
+                long num;
+                try {
+                    num = Long.parseLong(digits);
+                } catch (NumberFormatException ignore) {
+                    // 手填的超长/异常数字后缀不参与取号比较，避免取号被单条脏数据打断
+                    continue;
+                }
+                if (num > maxNum) {
+                    maxNum = num;
+                    maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
+                }
             }
-            String suffix = no.substring(prefix.length());
-            Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
-            if (!matcher.find()) {
-                continue;
+            if (maxNum == 0L) {
+                return prefix + "0001";
             }
-            String digits = matcher.group();
-            long num;
-            try {
-                num = Long.parseLong(digits);
-            } catch (NumberFormatException ignore) {
-                // 手填的超长/异常数字后缀不参与取号比较，避免取号被单条脏数据打断
-                continue;
-            }
-            if (num > maxNum) {
-                maxNum = num;
-                maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
-            }
-        }
-        if (maxNum == 0L) {
-            return prefix + "0001";
-        }
-        return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+            return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+        });
     }
 
     /**
      * 校验合同编号未被占用（排除 excludeId 自身），扫描范围含已删除行（ADR-0004）：
      * 手填撞号（无论目标是否已删除）一律报 SALES_CONTRACT_NO_DUPLICATE，不顺延。
      */
+    @DataPermission(enable = false)
     private void validateContractNoUnique(Long excludeId, String contractNo) {
         if (!StringUtils.hasText(contractNo)) {
             return;
         }
-        SalesContractDO exist = salesContractMapper.selectByContractNoIncludingDeleted(contractNo);
-        if (exist != null && !exist.getId().equals(excludeId)) {
-            throw exception(SALES_CONTRACT_NO_DUPLICATE);
-        }
+        DataPermissionUtils.executeIgnore(() -> {
+            SalesContractDO exist = salesContractMapper.selectByContractNoIncludingDeleted(contractNo);
+            if (exist != null && !exist.getId().equals(excludeId)) {
+                throw exception(SALES_CONTRACT_NO_DUPLICATE);
+            }
+        });
     }
 
     /**
      * 校验合同存在，不存在抛 1_030_003_000
      */
-    private void validateSalesContractExists(Long id) {
-        if (id == null || salesContractMapper.selectById(id) == null) {
+    private SalesContractDO validateSalesContractExists(Long id) {
+        if (id == null) {
             throw exception(SALES_CONTRACT_NOT_EXISTS);
         }
+        SalesContractDO contract = salesContractMapper.selectById(id);
+        if (contract == null) {
+            throw exception(SALES_CONTRACT_NOT_EXISTS);
+        }
+        return contract;
     }
 
     /**

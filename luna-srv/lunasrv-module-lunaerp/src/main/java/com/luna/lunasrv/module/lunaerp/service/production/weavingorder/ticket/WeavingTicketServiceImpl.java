@@ -12,6 +12,12 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ti
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.WeavingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
+import com.luna.lunasrv.module.lunaerp.controller.production.weavingorder.ticket.vo.WeavingTicketPrintRespVO;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.color.GreigeOrderColorDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
+import com.mzt.logapi.context.LogRecordContext;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +29,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
@@ -33,7 +40,7 @@ import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.*;
  * 核心机制：
  * 1. 编号规则：BT-{机台任务号去符号}-{4 位流水}，单内流水计数，全量唯一含软删行，作废占号不重用，撞键重试。
  * 2. 余量校验与行锁：在事务内通过 FOR UPDATE 锁定机台任务行，强校验不超计划匹数。
- * 3. 扫码白名单守卫：开工（GENERATED/STARTED/EXCEPTION）、完工（STARTED）、异常（GENERATED/STARTED）、作废（人工终态）。
+ * 3. 扫码白名单守卫：开工（GENERATED/STARTED/EXCEPTION）、完工（STARTED）、异常（GENERATED/STARTED）、作废（人工终态）。异常照片挂在当前异常事实上（与 exceptionType/exceptionNote 同生共死），再次异常登记覆盖；恢复开工清除，正常开工/完工不带照片。
  * 4. 三层状态同事务推导：每次布票变更同事务推导机台任务 actualQty/状态与织造单状态；HALTED 期间只更新 actualQty 不覆盖状态。
  *
  * @author luna
@@ -78,6 +85,12 @@ public class WeavingTicketServiceImpl implements WeavingTicketService {
 
     @Resource
     private WeavingOrderMapper weavingOrderMapper;
+
+    @Resource
+    private ConfigApi configApi;
+
+    @Resource
+    private GreigeOrderColorMapper greigeOrderColorMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -224,6 +237,7 @@ public class WeavingTicketServiceImpl implements WeavingTicketService {
             if (STATUS_EXCEPTION.equals(ticket.getStatus())) {
                 updateTicket.setExceptionType(null);
                 updateTicket.setExceptionNote(null);
+                updateTicket.setExceptionPhotos(null);
             }
 
             weavingTicketMapper.updateById(updateTicket);
@@ -300,6 +314,7 @@ public class WeavingTicketServiceImpl implements WeavingTicketService {
             updateTicket.setStatus(STATUS_EXCEPTION);
             updateTicket.setExceptionType(cleanExType);
             updateTicket.setExceptionNote(StringUtils.hasText(exceptionReqVO.getExceptionNote()) ? exceptionReqVO.getExceptionNote().trim() : null);
+            updateTicket.setExceptionPhotos(exceptionReqVO.getExceptionPhotos());
 
             weavingTicketMapper.updateById(updateTicket);
             affectedTaskIds.add(ticket.getMachineTaskId());
@@ -339,6 +354,7 @@ public class WeavingTicketServiceImpl implements WeavingTicketService {
             updateTicket.setStatus(STATUS_VOID);
             updateTicket.setVoidReason(voidReason);
             updateTicket.setVoidedAt(voidedAt);
+            updateTicket.setExceptionPhotos(ticket.getExceptionPhotos());
 
             weavingTicketMapper.updateById(updateTicket);
             affectedTaskIds.add(ticket.getMachineTaskId());
@@ -584,6 +600,79 @@ public class WeavingTicketServiceImpl implements WeavingTicketService {
         for (Long orderId : affectedOrderIds) {
             deriveState(null, orderId);
         }
+    }
+
+    @Override
+    @LogRecord(type = "打印", subType = "布票标签", bizNo = "{{#id}}", success = "打印了布票标签 {{#no}}")
+    public WeavingTicketPrintRespVO getWeavingTicketPrintData(Long id) {
+        // 1. 查询布票
+        WeavingTicketDO ticket = weavingTicketMapper.selectById(id);
+        if (ticket == null) {
+            throw exception(WEAVING_TICKET_NOT_EXISTS);
+        }
+
+        // 2. 留痕上下文
+        LogRecordContext.putVariable("no", ticket.getCode());
+        LogRecordContext.putVariable("id", ticket.getId());
+
+        // 3. 校验并获取 H5 基准地址（强校验：缺失时报错提示管理员补配置，不允许打出空域名二维码）
+        String baseUrl = configApi != null ? configApi.getConfigValueByKey("luna.h5.base-url") : null;
+        if (!StringUtils.hasText(baseUrl)) {
+            throw exception(WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY);
+        }
+        String cleanBaseUrl = baseUrl.trim().replaceAll("/+$", "");
+        String qrUrl = cleanBaseUrl + "/h5/scan/weaving-ticket?code=" + ticket.getCode();
+
+        // 4. 关联查询织造单与机台任务
+        WeavingOrderDO order = weavingOrderMapper.selectById(ticket.getWeavingOrderId());
+        MachineTaskDO task = machineTaskMapper.selectById(ticket.getMachineTaskId());
+
+        // 5. 解析匹序（BT-{taskCode}-{4位流水} -> 提取末尾流水转数字）
+        Integer pieceIndex = null;
+        if (ticket.getCode() != null && ticket.getCode().contains("-")) {
+            String seqStr = ticket.getCode().substring(ticket.getCode().lastIndexOf('-') + 1);
+            try {
+                pieceIndex = Integer.parseInt(seqStr);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+
+        // 6. 机台号：优先实际机台，其次预排机台，再次任务机台
+        String loomNo = StringUtils.hasText(ticket.getActualMachine()) ? ticket.getActualMachine()
+                : (StringUtils.hasText(ticket.getPlannedMachine()) ? ticket.getPlannedMachine()
+                : (task != null ? task.getLoomNo() : null));
+
+        // 7. 颜色信息提取
+        String color = null;
+        if (order != null && order.getGreigeOrderId() != null && greigeOrderColorMapper != null) {
+            List<GreigeOrderColorDO> colors = greigeOrderColorMapper.selectListByOrderId(order.getGreigeOrderId());
+            if (CollUtil.isNotEmpty(colors)) {
+                color = colors.stream()
+                        .map(GreigeOrderColorDO::getColor)
+                        .filter(StringUtils::hasText)
+                        .distinct()
+                        .collect(Collectors.joining(" / "));
+            }
+        }
+
+        return WeavingTicketPrintRespVO.builder()
+                .id(ticket.getId())
+                .code(ticket.getCode())
+                .weavingOrderId(ticket.getWeavingOrderId())
+                .weavingOrderCode(order != null ? order.getCode() : null)
+                .machineTaskId(ticket.getMachineTaskId())
+                .machineTaskCode(task != null ? task.getCode() : null)
+                .loomNo(loomNo)
+                .productName(order != null ? order.getProductName() : null)
+                .color(color)
+                .pieceIndex(pieceIndex)
+                .quantity(ticket.getPlannedWeight())
+                .unit("KG")
+                .workerName(ticket.getWorkerName())
+                .materialBatchNo(ticket.getMaterialBatchNo())
+                .qrUrl(qrUrl)
+                .printTime(LocalDateTime.now())
+                .build();
     }
 
 }

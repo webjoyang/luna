@@ -1,0 +1,47 @@
+// =============================================================================
+// LunaERP - 车间移动 H5 专属样式体系（ADR-0045）
+// 约定：
+// 1. 全局只在 /h5 子树引入 Vant 样式与移动 rem/viewport 约定；
+// 2. 严禁在 main.ts 或全局 styles/index.scss 中引入，避免对 PC 端 Element Plus 样式造成全局污染；
+// 3. 不引入 postcss-px-to-viewport，与客户门户（max-width 480px 方案）并存不冲突；
+// 4. 提供 H5 容器最大宽度约束（max-width: 640px 居中）、安全区域适配、触摸反馈优化。
+// =============================================================================
+
+@use 'vant/lib/index.css';
+
+.h5-page-wrapper,
+.h5-container {
+  --van-primary-color: #409eff;
+  --van-success-color: #67c23a;
+  --van-danger-color: #f56c6c;
+  --van-warning-color: #e6a23c;
+}
+
+.h5-page-wrapper {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--van-background, #f7f8fa);
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.h5-container {
+  width: 100%;
+  max-width: 640px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  position: relative;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+// 触摸交互体验微调
+.h5-touch-active:active {
+  opacity: 0.7;
+}

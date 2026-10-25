@@ -279,8 +279,9 @@ BEGIN;
 DELETE FROM system_menu WHERE id IN (10600, 10610, 10611, 10612, 10613, 10614);
 
 -- 顶级目录：样品管理（parent_id=0 顶级，sort=104）
+-- 目录：样品（parent_id=0 顶级目录）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
-VALUES (10600, '样品管理', '', 1, 104, 0, '/sample', 'ep:collection', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-10-04 00:00:00', '1', '2026-10-04 00:00:00', '0');
+VALUES (10600, '样品', '', 1, 104, 0, '/sample', 'ep:collection', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-10-04 00:00:00', '1', '2026-10-04 00:00:00', '0');
 
 -- 菜单：样品分析（query 权限挂在菜单本身）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)

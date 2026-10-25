@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMapper">
+
+    <!-- 回收站分页查询已软删供应商（手写 XML：显式 WHERE deleted = 1 AND tenant_id = #{tenantId}） -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'SUPPLIER' AS biz_type,
+            id AS biz_id,
+            company_name AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_baseinfo_supplier
+        WHERE deleted = 1
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删的供应商记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.supplier.SupplierDO">
+        SELECT *
+        FROM lunaerp_baseinfo_supplier
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复供应商（并发条件更新带 deleted=1 AND tenant_id=?） -->
+    <update id="restoreSupplier">
+        UPDATE lunaerp_baseinfo_supplier
+        SET deleted = 0,
+            status = 'INACTIVE',
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除供应商（物理删除带 deleted=1 AND tenant_id=?） -->
+    <delete id="purgeSupplier">
+        DELETE FROM lunaerp_baseinfo_supplier
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查供应商是否存在活跃业务引用（deleted=0 且 tenant_id=?） -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT (
+            (SELECT COUNT(1) FROM lunaerp_stock_in WHERE supplier_id = #{supplierId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_production_yarn_order_item WHERE supplier_id = #{supplierId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_sample_analysis_supplier_quote WHERE supplier_id = #{supplierId} AND deleted = 0 AND tenant_id = #{tenantId})
+        )
+    </select>
+
+</mapper>

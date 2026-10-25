@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper">
+
+    <!-- 查询已删除入库单下的明细（用于回收站恢复前主数据引用校验） -->
+    <select id="selectDeletedListByStockInId" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockin.StockInItemDO">
+        SELECT *
+        FROM lunaerp_stock_in_item
+        WHERE stock_in_id = #{stockInId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+        ORDER BY id ASC
+    </select>
+
+    <!-- 级联恢复入库明细（手写 XML：显式 SET deleted=0 WHERE stock_in_id=? AND deleted=1 AND tenant_id=?） -->
+    <update id="restoreByStockInId">
+        UPDATE lunaerp_stock_in_item
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE stock_in_id = #{stockInId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除入库明细（手写 XML：显式 DELETE WHERE stock_in_id=? AND deleted=1 AND tenant_id=?） -->
+    <delete id="purgeByStockInId">
+        DELETE FROM lunaerp_stock_in_item
+        WHERE stock_in_id = #{stockInId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

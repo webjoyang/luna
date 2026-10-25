@@ -4,7 +4,9 @@ import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.dyeingorder.color.DyeingColorDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -16,6 +18,17 @@ import java.util.List;
  */
 @Mapper
 public interface DyeingColorMapper extends BaseMapperX<DyeingColorDO> {
+
+    /**
+     * 级联恢复颜色明细（手写 XML：显式 SET deleted=0 WHERE dyeing_order_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByDyeingOrderId(@Param("dyeingOrderId") Long dyeingOrderId, @Param("tenantId") Long tenantId,
+                               @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除颜色明细（手写 XML：显式 DELETE WHERE dyeing_order_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByDyeingOrderId(@Param("dyeingOrderId") Long dyeingOrderId, @Param("tenantId") Long tenantId);
 
     default List<DyeingColorDO> selectListByOrderId(Long orderId) {
         return selectList(new LambdaQueryWrapperX<DyeingColorDO>()

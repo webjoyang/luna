@@ -8,7 +8,7 @@
         class="tag-chip"
         :style="chipStyle(tag.color)"
       >
-        <i class="tag-dot" :style="{ background: resolveTagSwatch(tag.color).ink }" />
+        <i class="tag-dot" :style="{ background: resolveTagSwatch(tag.color).ink }"></i>
         {{ tag.name }}
         <Icon
           icon="ep:close"
@@ -33,7 +33,7 @@
         :disabled="isSelected(tag.name)"
         @click="addExisting(tag)"
       >
-        <i class="tag-dot" :style="{ background: resolveTagSwatch(tag.color).ink }" />
+        <i class="tag-dot" :style="{ background: resolveTagSwatch(tag.color).ink }"></i>
         {{ tag.name }}
         <Icon v-if="!isSelected(tag.name)" icon="ep:plus" :size="11" />
       </button>
@@ -62,7 +62,7 @@
           :title="swatch.label"
           :disabled="!!libraryMatch"
           @click="draftColor = swatch.key"
-        />
+        ></button>
       </div>
       <el-button size="default" @click="addNew">
         <Icon icon="ep:plus" class="mr-3px" />新建标签

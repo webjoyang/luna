@@ -5,18 +5,55 @@
         <template #content>
           <span class="header-title">{{ pageTitle }}</span>
           <span v-if="formData.contractNo" class="header-sub">· {{ formData.contractNo }}</span>
+          <span v-if="formData.sourceQuotationNo" class="header-sub">
+            · 来源报价：
+            <el-link type="primary" :underline="false" @click="handleJumpQuotation">
+              {{ formData.sourceQuotationNo }}
+            </el-link>
+          </span>
+          <DictTag
+            v-if="formData.approvalStatus"
+            :type="DICT_TYPE.LUNAERP_APPROVAL_INSTANCE_STATUS"
+            :value="formData.approvalStatus"
+            class="ml-8px"
+          />
         </template>
       </el-page-header>
     </div>
 
-    <el-form
-      ref="formRef"
-      :model="formData"
-      :rules="rules"
-      label-width="100px"
-      class="contract-form"
-      v-loading="loading"
+    <!-- 工作台 Tab（编辑/查看已有合同展示） -->
+    <el-tabs
+      v-if="!isCreateMode"
+      v-model="activeTab"
+      class="contract-tabs mb-16px"
+      @tab-change="handleTabChange"
     >
+      <el-tab-pane label="合同详情" name="contract" />
+      <el-tab-pane
+        label="生产"
+        name="production"
+        v-hasPermi="['lunaerp:production:release-production:query']"
+      />
+    </el-tabs>
+
+    <div v-show="isCreateMode || activeTab === 'contract'">
+      <el-alert
+        v-if="expiredWarningVisible"
+        title="提示：此销售合同关联的报价单已过有效期，请核对价格后再行签订"
+        type="warning"
+        show-icon
+        closable
+        class="mb-12px"
+      />
+
+      <el-form
+        ref="formRef"
+        :model="formData"
+        :rules="rules"
+        label-width="100px"
+        class="contract-form"
+        v-loading="loading"
+      >
       <div class="section-title">基本信息</div>
       <el-row :gutter="20">
         <el-col :span="12">
@@ -29,7 +66,7 @@
               reserve-keyword
               :remote-method="searchCustomers"
               :loading="customerLoading"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               class="!w-full"
               @change="handleCustomerChange"
             >
@@ -46,7 +83,7 @@
           <el-form-item label="业务员" prop="salespersonUserId">
             <UserSelect
               v-model="formData.salespersonUserId"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               placeholder="请选择业务员（可空）"
             />
           </el-form-item>
@@ -55,7 +92,7 @@
           <el-form-item label="合同编号" prop="contractNo">
             <el-input
               v-model="formData.contractNo"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               maxlength="32"
               placeholder="留空自动生成（如 CH20260001）"
             >
@@ -67,7 +104,7 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="客户合同号" prop="clientContractNo">
-            <el-input v-model="formData.clientContractNo" :disabled="isViewMode" />
+            <el-input v-model="formData.clientContractNo" :disabled="isReadOnly" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -77,7 +114,7 @@
               type="date"
               value-format="YYYY-MM-DD"
               placeholder="请选择签订日期"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               class="!w-full"
             />
           </el-form-item>
@@ -89,14 +126,14 @@
               type="date"
               value-format="YYYY-MM-DD"
               placeholder="请选择交货日期（可空）"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               class="!w-full"
             />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="贸易类型" prop="tradeType">
-            <el-select v-model="formData.tradeType" :disabled="isViewMode" class="!w-full">
+            <el-select v-model="formData.tradeType" :disabled="isReadOnly" class="!w-full">
               <el-option
                 v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_SALES_CONTRACT_TRADE_TYPE)"
                 :key="dict.value"
@@ -108,7 +145,7 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="订单属性" prop="orderType">
-            <el-select v-model="formData.orderType" :disabled="isViewMode" class="!w-full">
+            <el-select v-model="formData.orderType" :disabled="isReadOnly" class="!w-full">
               <el-option
                 v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_SALES_CONTRACT_ORDER_TYPE)"
                 :key="dict.value"
@@ -120,7 +157,7 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="单位" prop="unit">
-            <el-select v-model="formData.unit" :disabled="isViewMode" class="!w-full">
+            <el-select v-model="formData.unit" :disabled="isReadOnly" class="!w-full">
               <el-option
                 v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_SALES_CONTRACT_UNIT)"
                 :key="dict.value"
@@ -132,7 +169,7 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="币种" prop="currency">
-            <el-select v-model="formData.currency" :disabled="isViewMode" class="!w-full">
+            <el-select v-model="formData.currency" :disabled="isReadOnly || isQuotationSource" class="!w-full">
               <el-option
                 v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_SALES_CONTRACT_CURRENCY)"
                 :key="dict.value"
@@ -144,7 +181,7 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="状态" prop="status">
-            <el-select v-model="formData.status" :disabled="isViewMode" class="!w-full">
+            <el-select v-model="formData.status" :disabled="isReadOnly" class="!w-full">
               <el-option
                 v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_SALES_CONTRACT_STATUS)"
                 :key="dict.value"
@@ -156,12 +193,12 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="联系人" prop="clientContact">
-            <el-input v-model="formData.clientContact" :disabled="isViewMode" />
+            <el-input v-model="formData.clientContact" :disabled="isReadOnly" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="客户地址" prop="clientAddress">
-            <el-input v-model="formData.clientAddress" :disabled="isViewMode" />
+            <el-input v-model="formData.clientAddress" :disabled="isReadOnly" />
           </el-form-item>
         </el-col>
         <el-col :span="24">
@@ -171,12 +208,75 @@
               type="textarea"
               :rows="3"
               maxlength="1000"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               placeholder="请输入备注"
             />
           </el-form-item>
         </el-col>
       </el-row>
+
+      <!-- 外贸条款区块：仅 trade_type=EXPORT 时显示（可空，供出口单证带出） -->
+      <template v-if="formData.tradeType === 'EXPORT'">
+        <div class="section-title">外贸条款</div>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="贸易术语" prop="incoterm">
+              <el-select
+                v-model="formData.incoterm"
+                :disabled="isReadOnly"
+                placeholder="请选择贸易术语（如 FOB/CIF/CFR/EXW）"
+                clearable
+                class="!w-full"
+              >
+                <el-option
+                  v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_INCOTERM)"
+                  :key="dict.value"
+                  :label="dict.label"
+                  :value="dict.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="付款方式" prop="paymentTerm">
+              <el-select
+                v-model="formData.paymentTerm"
+                :disabled="isReadOnly"
+                placeholder="请选择付款方式（如 TT/LC/DP/DA/OA）"
+                clearable
+                class="!w-full"
+              >
+                <el-option
+                  v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_PAYMENT_TERM)"
+                  :key="dict.value"
+                  :label="dict.label"
+                  :value="dict.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="起运港" prop="portOfLoading">
+              <el-input
+                v-model="formData.portOfLoading"
+                :disabled="isReadOnly"
+                placeholder="请输入起运港（如 SHANGHAI）"
+                maxlength="64"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="目的港" prop="portOfDischarge">
+              <el-input
+                v-model="formData.portOfDischarge"
+                :disabled="isReadOnly"
+                placeholder="请输入目的港（如 LOS ANGELES）"
+                maxlength="64"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </template>
 
       <div class="section-title">商品明细</div>
       <el-table
@@ -200,7 +300,7 @@
               reserve-keyword
               :remote-method="(query: string) => searchProducts(row, query)"
               :loading="!!productLoadingMap.get(row)"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               class="!w-full"
               @change="(val: string) => handleProductChange(row, val)"
             >
@@ -218,34 +318,34 @@
         </el-table-column>
         <el-table-column label="品名" width="140">
           <template #default="{ row }">
-            <el-input v-model="row.productName" :disabled="isViewMode" />
+            <el-input v-model="row.productName" :disabled="isReadOnly" />
           </template>
         </el-table-column>
         <el-table-column label="客户色号" width="110">
           <template #default="{ row }">
-            <el-input v-model="row.customerColor" :disabled="isViewMode" />
+            <el-input v-model="row.customerColor" :disabled="isReadOnly" />
           </template>
         </el-table-column>
         <el-table-column label="成分" width="120">
           <template #default="{ row }">
-            <el-input v-model="row.composition" :disabled="isViewMode" />
+            <el-input v-model="row.composition" :disabled="isReadOnly" />
           </template>
         </el-table-column>
         <el-table-column label="门幅" width="90">
           <template #default="{ row }">
-            <el-input v-model="row.width" :disabled="isViewMode" />
+            <el-input v-model="row.width" :disabled="isReadOnly" />
           </template>
         </el-table-column>
         <el-table-column label="克重" width="90">
           <template #default="{ row }">
-            <el-input v-model="row.weight" :disabled="isViewMode" />
+            <el-input v-model="row.weight" :disabled="isReadOnly" />
           </template>
         </el-table-column>
         <el-table-column label="数量" width="110">
           <template #default="{ row }">
             <el-input-number
               v-model="row.quantity"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               :precision="2"
               :controls="false"
               :min="0"
@@ -257,7 +357,7 @@
           <template #default="{ row }">
             <el-input-number
               v-model="row.unitPrice"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               :precision="2"
               :controls="false"
               :min="0"
@@ -269,7 +369,7 @@
           <template #default="{ row }">
             <el-input-number
               v-model="row.otherFees"
-              :disabled="isViewMode"
+              :disabled="isReadOnly"
               :precision="2"
               :controls="false"
               :min="0"
@@ -284,16 +384,16 @@
         </el-table-column>
         <el-table-column label="行备注" width="140">
           <template #default="{ row }">
-            <el-input v-model="row.remark" :disabled="isViewMode" />
+            <el-input v-model="row.remark" :disabled="isReadOnly" />
           </template>
         </el-table-column>
-        <el-table-column v-if="!isViewMode" label="操作" width="70" align="center" fixed="right">
+        <el-table-column v-if="!isReadOnly" label="操作" width="70" align="center" fixed="right">
           <template #default="{ $index }">
             <el-button type="danger" link @click="removeItem($index)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
-      <div v-if="!isViewMode" class="items-actions">
+      <div v-if="!isReadOnly" class="items-actions">
         <el-button type="primary" plain @click="addItem">添加明细行</el-button>
       </div>
       <div class="items-summary">
@@ -302,8 +402,9 @@
         <span class="summary-tip">（前端实时预览，提交后以服务端重算为准）</span>
       </div>
 
-      <div v-if="!isViewMode" class="form-footer">
+      <div class="form-footer">
         <el-button
+          v-if="!isReadOnly"
           type="primary"
           :loading="submitting"
           @click="handleSubmit"
@@ -315,9 +416,35 @@
         >
           保存
         </el-button>
+        <el-button
+          v-if="!isCreateMode && !isApproving"
+          type="success"
+          :loading="approvalLoading"
+          @click="handleSubmitApproval"
+        >
+          <Icon icon="ep:check" class="mr-2px" /> 提交审批
+        </el-button>
+        <el-button
+          v-if="!isCreateMode && isApproving"
+          type="warning"
+          :loading="approvalLoading"
+          @click="handleWithdraw"
+        >
+          <Icon icon="ep:refresh-left" class="mr-2px" /> 撤回审批
+        </el-button>
         <el-button @click="handleBack">返回</el-button>
       </div>
     </el-form>
+    </div>
+
+    <!-- 生产 Tab 内容 -->
+    <div v-if="!isCreateMode && activeTab === 'production'">
+      <ReleaseProductionTab
+        :contract-id="Number(contractId)"
+        :contract="formData"
+        @refresh="loadContract"
+      />
+    </div>
   </ContentWrap>
 </template>
 
@@ -332,6 +459,10 @@ import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
 import * as CustomerContactApi from '@/api/lunaerp-elmui/baseinfo/customer/contact'
 import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
+import * as QuotationApi from '@/api/lunaerp/business/quotation'
+import * as ApprovalInstanceApi from '@/api/approval/instance'
+import { ElMessageBox, type TabPaneName } from 'element-plus'
+import ReleaseProductionTab from '../workspace/tabs/ReleaseProductionTab.vue'
 
 defineOptions({ name: 'LunaerpElmuiBusinessSalesContractEdit' })
 
@@ -342,6 +473,33 @@ const message = useMessage()
 const formRef = ref()
 const loading = ref(false)
 const submitting = ref(false)
+const approvalLoading = ref(false)
+const activeInstanceId = ref<number | null>(null)
+
+const activeTab = ref('contract')
+
+const handleTabChange = (tabName: TabPaneName) => {
+  activeTab.value = tabName
+  router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      tab: tabName
+    }
+  })
+}
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (tab === 'production') {
+      activeTab.value = 'production'
+    } else {
+      activeTab.value = 'contract'
+    }
+  },
+  { immediate: true }
+)
 
 const formData = reactive<SalesContractVO>({
   contractNo: '',
@@ -357,8 +515,15 @@ const formData = reactive<SalesContractVO>({
   currency: 'RMB',
   tradeType: 'DOMESTIC',
   orderType: 'BULK',
+  incoterm: undefined,
+  portOfLoading: '',
+  portOfDischarge: '',
+  paymentTerm: undefined,
   remarks: '',
   status: 'ACTIVE',
+  approvalStatus: 'DRAFT',
+  sourceQuotationId: undefined,
+  sourceQuotationNo: '',
   items: [] as SalesContractItemVO[]
 })
 
@@ -370,9 +535,12 @@ const contractId = computed(() => (route.params.id as string) || null)
 const isCreateMode = computed(() => !contractId.value)
 /** 查看模式：列表"查看"以同一页只读打开（?mode=view），全部控件 disabled、隐藏保存 */
 const isViewMode = computed(() => route.query.mode === 'view')
+const isApproving = computed(() => formData.approvalStatus === 'APPROVING')
+const isReadOnly = computed(() => isViewMode.value || isApproving.value)
 
 const pageTitle = computed(() => {
   if (isCreateMode.value) return '新建销售合同'
+  if (activeTab.value === 'production') return '下达生产工作台'
   return isViewMode.value ? '查看销售合同' : '编辑销售合同'
 })
 
@@ -525,9 +693,67 @@ const handleProductChange = (row: SalesContractItemVO, val: string) => {
   row.unitPrice = undefined
 }
 
+const isQuotationSource = computed(() => !!formData.sourceQuotationId)
+const expiredWarningVisible = ref(false)
+
+const loadPrefillFromQuotation = async (qId: number) => {
+  loading.value = true
+  try {
+    const prefill = await QuotationApi.getContractPrefill(qId)
+    formData.sourceQuotationId = prefill.sourceQuotationId
+    formData.sourceQuotationNo = prefill.sourceQuotationNo
+    formData.customerId = prefill.customerId
+    formData.clientName = prefill.clientName
+    formData.clientContact = prefill.clientContact || ''
+    formData.currency = prefill.currency
+    formData.tradeType = prefill.tradeType || 'DOMESTIC'
+    if (prefill.salespersonUserId) {
+      formData.salespersonUserId = prefill.salespersonUserId
+    }
+    customerOptions.value = [
+      { id: prefill.customerId, companyName: prefill.clientName } as CustomerVO
+    ]
+    formData.items = (prefill.items || []).map((it) => ({
+      productCode: it.productCode || '',
+      productName: it.productName || '',
+      customerColor: it.customerColor || '',
+      composition: it.composition || '',
+      width: it.width || '',
+      weight: it.weight || '',
+      quantity: it.quantity,
+      unitPrice: it.unitPrice,
+      otherFees: 0,
+      amount: it.amount,
+      remark: it.remark || ''
+    }))
+    if (prefill.expiredWarning) {
+      expiredWarningVisible.value = true
+      message.warning('该报价单已过有效期，请注意核实')
+    }
+  } catch (e: any) {
+    console.error('加载报价预填失败', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleJumpQuotation = () => {
+  if (formData.sourceQuotationId) {
+    router.push({
+      path: '/business/quotation/edit',
+      query: { id: String(formData.sourceQuotationId), readonly: '1' }
+    })
+  }
+}
+
 /** 加载合同（编辑/查看模式） */
 const loadContract = async () => {
-  if (!contractId.value) return
+  if (!contractId.value) {
+    if (route.query.quotationId) {
+      await loadPrefillFromQuotation(Number(route.query.quotationId))
+    }
+    return
+  }
   loading.value = true
   try {
     const data = await SalesContractApi.getSalesContract(Number(contractId.value))
@@ -538,8 +764,68 @@ const loadContract = async () => {
     if (data.customerId) {
       customerOptions.value = [{ id: data.customerId, companyName: data.clientName || '' } as CustomerVO]
     }
+    if (formData.approvalStatus === 'APPROVING') {
+      try {
+        const instance = await ApprovalInstanceApi.getLatestInstanceByBiz({
+          bizType: 'sales_contract',
+          bizId: Number(contractId.value)
+        })
+        if (instance) {
+          activeInstanceId.value = instance.id
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
   } finally {
     loading.value = false
+  }
+}
+
+const handleSubmitApproval = async () => {
+  try {
+    await message.confirm('确认提交审批？')
+    approvalLoading.value = true
+    await ApprovalInstanceApi.submitInstance({
+      bizType: 'sales_contract',
+      bizId: Number(contractId.value)
+    })
+    message.success('提交审批成功')
+    await loadContract()
+  } catch (e) {
+    // cancelled or error
+  } finally {
+    approvalLoading.value = false
+  }
+}
+
+const handleWithdraw = async () => {
+  try {
+    const { value: reason } = await ElMessageBox.prompt('请输入撤回原因（可选）', '撤回审批', {
+      confirmButtonText: '确定撤回',
+      cancelButtonText: '取消',
+      inputPlaceholder: '撤回原因'
+    })
+    approvalLoading.value = true
+    let instanceId = activeInstanceId.value
+    if (!instanceId) {
+      const instance = await ApprovalInstanceApi.getLatestInstanceByBiz({
+        bizType: 'sales_contract',
+        bizId: Number(contractId.value)
+      })
+      instanceId = instance?.id ?? null
+    }
+    if (!instanceId) {
+      message.error('未找到进行中的审批实例')
+      return
+    }
+    await ApprovalInstanceApi.withdrawInstance(instanceId, { reason })
+    message.success('撤回成功')
+    await loadContract()
+  } catch (e) {
+    // cancelled or error
+  } finally {
+    approvalLoading.value = false
   }
 }
 

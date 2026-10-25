@@ -59,7 +59,7 @@
         v-else
         class="h-full w-full"
         :style="{ background: `linear-gradient(135deg, ${accent} 0%, #1d1d1f 100%)` }"
-      />
+      ></div>
       <span
         v-if="tag"
         class="absolute bottom-[22px] left-6 z-[3] rounded-full bg-white/85 px-4 py-[7px] text-[12.5px] font-semibold text-[#1d1d1f] backdrop-blur"

@@ -62,4 +62,20 @@ public interface YarnSpecService {
      */
     List<YarnSpecCascadeOptionVO> getCascadeOptions(String keyword);
 
+    /**
+     * 获得纱线规格导入模板数据
+     *
+     * @return 模板数据
+     */
+    List<com.luna.lunasrv.module.lunaerp.controller.production.yarnspec.vo.YarnSpecImportVO> getImportTemplate();
+
+    /**
+     * 导入纱线规格
+     *
+     * @param file Excel 文件
+     * @return 导入结果
+     * @throws java.io.IOException 读取异常
+     */
+    com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult importYarnSpec(org.springframework.web.multipart.MultipartFile file) throws java.io.IOException;
+
 }

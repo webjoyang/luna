@@ -125,4 +125,12 @@ public interface WeavingTicketService {
      */
     void markStocked(java.util.Collection<Long> ticketIds);
 
+    /**
+     * 获得布票打印数据（独立 VO，豁免脱敏，含拼好的 qrUrl）
+     *
+     * @param id 布票ID
+     * @return 打印数据
+     */
+    WeavingTicketPrintRespVO getWeavingTicketPrintData(Long id);
+
 }

@@ -34,10 +34,17 @@ export interface SalesContractVO {
   currency?: string
   tradeType?: string
   orderType?: string
+  incoterm?: string // 贸易术语（字典 lunaerp_incoterm：FOB/CIF/CFR/EXW，可空）
+  portOfLoading?: string // 起运港（可空）
+  portOfDischarge?: string // 目的港（可空）
+  paymentTerm?: string // 付款方式（字典 lunaerp_payment_term：TT/LC/DP/DA/OA，可空）
   totalQuantity?: number // 服务端按明细权威重算，前端传入值会被忽略覆盖
   totalAmount?: number // 服务端按明细权威重算，前端传入值会被忽略覆盖
   remarks?: string
   status?: string
+  approvalStatus?: string
+  sourceQuotationId?: number // 来源报价单ID（可空）
+  sourceQuotationNo?: string // 来源报价单号快照（可空）
   items?: SalesContractItemVO[] // 商品明细列表（整体替换；为空表示零明细合同）
   createTime?: Date | string
 }
@@ -48,6 +55,7 @@ export interface SalesContractPageParam {
   pageSize?: number
   keyword?: string
   status?: string
+  approvalStatus?: string
   tradeType?: string
   customerId?: number
 }

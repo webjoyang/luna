@@ -80,6 +80,10 @@ public class MachineTaskServiceImpl implements MachineTaskService {
     @Resource
     private com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService weavingTicketService;
 
+    @org.springframework.context.annotation.Lazy
+    @Resource
+    private com.luna.lunasrv.module.lunaerp.service.production.scheduling.SchedulingService schedulingService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public MachineTaskSaveRespVO createMachineTask(MachineTaskSaveReqVO createReqVO) {
@@ -94,6 +98,10 @@ public class MachineTaskServiceImpl implements MachineTaskService {
 
         // 4. 排期日期校验（end ≥ start）
         validateDateRange(createReqVO.getPlannedStart(), createReqVO.getPlannedEnd());
+
+        // 4.1 同织机计划时段冲突校验（Issue 02）
+        validateLoomTimeConflict(null, createReqVO.getLoomId(), loom.getLoomNo(),
+                createReqVO.getPlannedStart(), createReqVO.getPlannedEnd());
 
         // 5. 组装实体
         MachineTaskDO task = BeanUtils.toBean(createReqVO, MachineTaskDO.class);
@@ -143,6 +151,10 @@ public class MachineTaskServiceImpl implements MachineTaskService {
         // 4. 计划匹数与排期校验
         validatePlannedQty(updateReqVO.getPlannedQty());
         validateDateRange(updateReqVO.getPlannedStart(), updateReqVO.getPlannedEnd());
+
+        // 4.1 同织机计划时段冲突校验（Issue 02，排除自身）
+        validateLoomTimeConflict(exist.getId(), updateReqVO.getLoomId(), loom.getLoomNo(),
+                updateReqVO.getPlannedStart(), updateReqVO.getPlannedEnd());
 
         // 5. 任务编号变更查重（若手填修改）
         if (StringUtils.hasText(updateReqVO.getCode()) && !updateReqVO.getCode().trim().equals(exist.getCode())) {
@@ -249,6 +261,9 @@ public class MachineTaskServiceImpl implements MachineTaskService {
 
     @Override
     public PageResult<MachineTaskRespVO> getMachineTaskPage(MachineTaskPageReqVO pageReqVO) {
+        if (schedulingService != null) {
+            return schedulingService.getMachineTaskPage(pageReqVO);
+        }
         PageResult<MachineTaskDO> pageResult = machineTaskMapper.selectPage(pageReqVO);
         return BeanUtils.toBean(pageResult, MachineTaskRespVO.class);
     }
@@ -381,6 +396,56 @@ public class MachineTaskServiceImpl implements MachineTaskService {
             return String.format("单内机台任务计划匹数合计(%d匹)超出织造单计划匹数(%d匹)", totalPlanned, weavingOrder.getPlannedQty());
         }
         return null;
+    }
+
+    /**
+     * 校验同织机计划时段冲突（Issue 02）
+     *
+     * 规则：
+     * 1. 参与冲突库内任务：同租户、未删、同 loomId、status ∈ (PENDING, IN_PROGRESS, HALTED)、plannedStart/plannedEnd 至少一个非空、id ≠ excludeId；
+     * 2. 本次提交有效区间：effStart = coalesce(plannedStart, plannedEnd), effEnd = coalesce(plannedEnd, plannedStart)；
+     *    两端皆空跳过校验（进待排池，不占时段）；
+     * 3. 闭区间相交（同日即冲突）：existEffStart ≤ effEnd AND existEffEnd ≥ effStart；
+     * 4. 命中首条即抛 1_030_036_000，消息含冲突任务编号与起止日期。
+     */
+    private void validateLoomTimeConflict(Long excludeId, Long loomId, String loomNo,
+                                          LocalDate plannedStart, LocalDate plannedEnd) {
+        LocalDate[] reqRange = coalesceDateRange(plannedStart, plannedEnd);
+        if (reqRange == null) {
+            return;
+        }
+
+        List<MachineTaskDO> occupiedTasks = machineTaskMapper.selectOccupiedTasksByLoomId(loomId, excludeId);
+        if (CollUtil.isEmpty(occupiedTasks)) {
+            return;
+        }
+
+        for (MachineTaskDO task : occupiedTasks) {
+            if (excludeId != null && excludeId.equals(task.getId())) {
+                continue;
+            }
+            if (STATUS_COMPLETED.equals(task.getStatus())) {
+                continue;
+            }
+            LocalDate[] existRange = coalesceDateRange(task.getPlannedStart(), task.getPlannedEnd());
+            if (existRange == null) {
+                continue;
+            }
+
+            // 闭区间相交判定：existEffStart <= effEnd && existEffEnd >= effStart
+            if (!existRange[0].isAfter(reqRange[1]) && !existRange[1].isBefore(reqRange[0])) {
+                throw exception(MACHINE_TASK_TIME_CONFLICT, loomNo, existRange[0], existRange[1], task.getCode());
+            }
+        }
+    }
+
+    private LocalDate[] coalesceDateRange(LocalDate start, LocalDate end) {
+        if (start == null && end == null) {
+            return null;
+        }
+        LocalDate effStart = start != null ? start : end;
+        LocalDate effEnd = end != null ? end : start;
+        return new LocalDate[]{effStart, effEnd};
     }
 
 }

@@ -24,7 +24,7 @@
       <Icon icon="ep:search" class="mr-3px" />搜索
     </el-button>
 
-    <span class="toolbar-divider" />
+    <span class="toolbar-divider"></span>
 
     <!-- 网格 / 表格 视图切换 -->
     <div class="view-switch">
@@ -63,7 +63,25 @@
       <span v-if="batchCount > 0" class="batch-count">{{ batchCount }}</span>
     </el-button>
 
-    <span class="toolbar-spacer" />
+    <span class="toolbar-spacer"></span>
+
+    <el-button
+      type="success"
+      plain
+      @click="emit('download-template')"
+      v-hasPermi="['lunaerp:baseinfo:product:import']"
+    >
+      <Icon icon="ep:download" class="mr-3px" />下载模板
+    </el-button>
+
+    <el-button
+      type="primary"
+      plain
+      @click="emit('import')"
+      v-hasPermi="['lunaerp:baseinfo:product:import']"
+    >
+      <Icon icon="ep:upload" class="mr-3px" />导入
+    </el-button>
 
     <el-button
       type="primary"
@@ -105,7 +123,9 @@ const emit = defineEmits([
   'update:viewMode',
   'search',
   'create',
-  'batch-delete'
+  'batch-delete',
+  'download-template',
+  'import'
 ])
 
 /** 回车/点按钮触发查询（回第 1 页由父组件处理） */

@@ -5,6 +5,8 @@ import com.luna.lunasrv.module.lunaerp.controller.production.productionprogress.
 import com.luna.lunasrv.module.lunaerp.controller.production.productionprogress.vo.ProductionProgressPageItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.productionprogress.vo.ProductionProgressPageReqVO;
 
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
+
 /**
  * 生产管理-生产进度查询 Service 接口（只读聚合视图，ADR-0034）
  *
@@ -20,10 +22,12 @@ public interface ProductionProgressQueryService {
      * 获得生产进度分页（跨合同列表：合同头 + 各环节关键量 + 预警数）。
      *
      * <p>默认按交期升序、无交期排最后；支持关键字/交期范围/状态/仅看预警筛选，默认排除 CANCELLED。</p>
+     * 显式关闭数据权限（ADR-0034 / ADR-0046 §5.2 第 4 项），系统级跨单聚合视图。
      *
      * @param reqVO 分页与筛选参数
      * @return 生产进度分页
      */
+    @DataPermission(enable = false)
     PageResult<ProductionProgressPageItemRespVO> getProductionProgressPage(ProductionProgressPageReqVO reqVO);
 
     /**

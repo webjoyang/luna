@@ -21,6 +21,10 @@ public final class ServiceException extends RuntimeException {
      * 错误提示
      */
     private String message;
+    /**
+     * 业务数据（可空）
+     */
+    private Object data;
 
     /**
      * 空构造方法，避免反序列化问题
@@ -33,9 +37,21 @@ public final class ServiceException extends RuntimeException {
         this.message = errorCode.getMsg();
     }
 
+    public ServiceException(ErrorCode errorCode, Object data) {
+        this.code = errorCode.getCode();
+        this.message = errorCode.getMsg();
+        this.data = data;
+    }
+
     public ServiceException(Integer code, String message) {
         this.code = code;
         this.message = message;
+    }
+
+    public ServiceException(Integer code, String message, Object data) {
+        this.code = code;
+        this.message = message;
+        this.data = data;
     }
 
     public Integer getCode() {
@@ -54,6 +70,15 @@ public final class ServiceException extends RuntimeException {
 
     public ServiceException setMessage(String message) {
         this.message = message;
+        return this;
+    }
+
+    public Object getData() {
+        return data;
+    }
+
+    public ServiceException setData(Object data) {
+        this.data = data;
         return this;
     }
 

@@ -2,6 +2,7 @@ package com.luna.lunasrv.module.lunaerp.service.production.yarnrecipebom;
 
 import com.luna.lunasrv.framework.common.exception.ServiceException;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
+import com.luna.lunasrv.module.lunaerp.controller.production.yarnrecipebom.vo.YarnRecipeBomItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnrecipebom.vo.YarnRecipeBomItemSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnrecipebom.vo.YarnRecipeBomPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.production.yarnrecipebom.vo.YarnRecipeBomRespVO;
@@ -17,6 +18,7 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnrecipebom.YarnRe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnspec.YarnSpecMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarntype.YarnTypeMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -32,6 +34,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -532,6 +535,91 @@ class YarnRecipeBomServiceImplTest {
         PageResult<YarnRecipeBomRespVO> respPage = yarnRecipeBomService.getYarnRecipeBomPage(req);
         assertEquals(1, respPage.getList().size());
         assertEquals(2, respPage.getList().get(0).getItemCount());
+    }
+
+    @Test
+    @DisplayName("BOM明细 5 列扩展：支持损耗率/方向/密度/织缩率/每米用量保存与查询，且存量 null 值不被默认设为 0")
+    void testCreateAndGetBom_fiveColumnsPersistenceAndNullSafety() {
+        stubProduct(10L, "P10", "高密斜纹布");
+        stubSpec(101L, "精梳环锭纺", "32.0000");
+        stubSpec(102L, "普梳气流纺", "22.0000");
+
+        // 1. 创建 BOM，包含 5 列数据以及存量 null 行
+        YarnRecipeBomSaveReqVO req = new YarnRecipeBomSaveReqVO();
+        req.setProductId(10L);
+        req.setRemark("梭织精算面料");
+
+        // 行1：填写完整 5 列
+        YarnRecipeBomItemSaveReqVO item1 = itemReq(null, 1L, 101L, "60.00", "精梳环锭纺", "经纱", "32.0000");
+        item1.setWasteRate(new BigDecimal("3.50"));
+        item1.setDirection("WARP");
+        item1.setDensity(new BigDecimal("120.00"));
+        item1.setCrimpRate(new BigDecimal("6.50"));
+        item1.setConsumptionKgPerMeter(new BigDecimal("0.156000"));
+
+        // 行2：存量样式，5 列均为 null
+        YarnRecipeBomItemSaveReqVO item2 = itemReq(null, 1L, 102L, "40.00", "普梳气流纺", "纬纱", "22.0000");
+        item2.setWasteRate(null);
+        item2.setDirection(null);
+        item2.setDensity(null);
+        item2.setCrimpRate(null);
+        item2.setConsumptionKgPerMeter(null);
+
+        req.setItems(Arrays.asList(item1, item2));
+
+        when(yarnRecipeBomMapper.insert(any(YarnRecipeBomDO.class))).thenAnswer(inv -> {
+            YarnRecipeBomDO b = inv.getArgument(0);
+            b.setId(200L);
+            return 1;
+        });
+
+        ArgumentCaptor<YarnRecipeBomItemDO> itemCaptor = ArgumentCaptor.forClass(YarnRecipeBomItemDO.class);
+        yarnRecipeBomService.createYarnRecipeBom(req);
+
+        verify(yarnRecipeBomItemMapper, times(2)).insert(itemCaptor.capture());
+        List<YarnRecipeBomItemDO> savedItems = itemCaptor.getAllValues();
+        assertEquals(2, savedItems.size());
+
+        // 验证行1 5 列持久化
+        YarnRecipeBomItemDO saved1 = savedItems.get(0);
+        assertEquals(new BigDecimal("3.50"), saved1.getWasteRate());
+        assertEquals("WARP", saved1.getDirection());
+        assertEquals(new BigDecimal("120.00"), saved1.getDensity());
+        assertEquals(new BigDecimal("6.50"), saved1.getCrimpRate());
+        assertEquals(new BigDecimal("0.156000"), saved1.getConsumptionKgPerMeter());
+
+        // 验证行2 5 列为 null，不被篡改或设为 0
+        YarnRecipeBomItemDO saved2 = savedItems.get(1);
+        assertNull(saved2.getWasteRate());
+        assertNull(saved2.getDirection());
+        assertNull(saved2.getDensity());
+        assertNull(saved2.getCrimpRate());
+        assertNull(saved2.getConsumptionKgPerMeter());
+
+        // 2. 模拟从数据库查询回显
+        saved1.setId(201L);
+        saved2.setId(202L);
+        YarnRecipeBomDO bomDO = stubBomDO(200L, 10L);
+        when(yarnRecipeBomMapper.selectById(200L)).thenReturn(bomDO);
+        when(yarnRecipeBomItemMapper.selectListByRecipeBomId(200L)).thenReturn(Arrays.asList(saved1, saved2));
+
+        YarnRecipeBomRespVO resp = yarnRecipeBomService.getYarnRecipeBom(200L);
+        assertNotNull(resp);
+        assertEquals(2, resp.getItems().size());
+
+        YarnRecipeBomItemRespVO respItem1 = resp.getItems().get(0);
+        assertEquals(new BigDecimal("3.50"), respItem1.getWasteRate());
+        assertEquals("WARP", respItem1.getDirection());
+        assertEquals(new BigDecimal("120.00"), respItem1.getDensity());
+        assertEquals(new BigDecimal("6.50"), respItem1.getCrimpRate());
+        assertEquals(new BigDecimal("0.156000"), respItem1.getConsumptionKgPerMeter());
+
+        YarnRecipeBomItemRespVO respItem2 = resp.getItems().get(1);
+        assertNull(respItem2.getWasteRate());
+        assertNull(respItem2.getDirection());
+        assertNull(respItem2.getDensity());
+        assertNull(respItem2.getCrimpRate());
+        assertNull(respItem2.getConsumptionKgPerMeter());
     }
 
     // ==================== 辅助方法 ====================

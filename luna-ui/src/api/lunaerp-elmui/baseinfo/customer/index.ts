@@ -15,6 +15,15 @@ export interface CustomerVO {
   unifiedSocialCreditCode?: string
   remark?: string
   status?: string
+  salespersonUserId?: number
+  defaultMarginRate?: number
+  nameEn?: string
+  addressEn?: string
+  invoiceTitle?: string
+  invoiceAddress?: string
+  bankName?: string
+  bankAccountNo?: string
+  creditDays?: number
   createTime?: Date | string
 }
 
@@ -24,6 +33,7 @@ export interface CustomerPageParam {
   pageSize?: number
   search?: string
   status?: string
+  salespersonUserId?: number
 }
 
 // 查询客户分页
@@ -54,4 +64,55 @@ export const deleteCustomer = (id: number) => {
 // 批量删除客户
 export const deleteCustomerList = (ids: number[]) => {
   return request.delete({ url: '/lunaerp/baseinfo/customer/delete-list', params: { ids: ids.join(',') } })
+}
+
+// 下载客户导入模板
+export const downloadCustomerTemplate = () => {
+  return request.download({ url: '/lunaerp/baseinfo/customer/import-template' })
+}
+
+// 导入客户档案（二进制响应以捕获错误 Excel 流）
+export const importCustomer = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.postOriginal({
+    url: '/lunaerp/baseinfo/customer/import',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob'
+  })
+}
+
+// 客户门户令牌 VO
+export interface CustomerPortalTokenVO {
+  exists: boolean
+  url?: string
+  token?: string
+  tokenFingerprint?: string
+  generateTime?: string | Date
+  remainingDays?: number
+}
+
+// 获得客户门户令牌状态
+export const getCustomerPortalToken = (customerId: number) => {
+  return request.get<CustomerPortalTokenVO>({
+    url: '/lunaerp/baseinfo/customer/portal-token',
+    params: { customerId }
+  })
+}
+
+// 生成/重新生成客户门户令牌
+export const generateCustomerPortalToken = (customerId: number) => {
+  return request.post<CustomerPortalTokenVO>({
+    url: '/lunaerp/baseinfo/customer/portal-token/generate',
+    params: { customerId }
+  })
+}
+
+// 吊销客户门户令牌
+export const revokeCustomerPortalToken = (customerId: number) => {
+  return request.delete<boolean>({
+    url: '/lunaerp/baseinfo/customer/portal-token',
+    params: { customerId }
+  })
 }

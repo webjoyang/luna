@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -18,6 +19,17 @@ import java.util.List;
  */
 @Mapper
 public interface MachineTaskMapper extends BaseMapperX<MachineTaskDO> {
+
+    /**
+     * 级联恢复机台任务（手写 XML：显式 SET deleted=0 WHERE weaving_order_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByWeavingOrderId(@Param("weavingOrderId") Long weavingOrderId, @Param("tenantId") Long tenantId,
+                                @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除机台任务（手写 XML：显式 DELETE WHERE weaving_order_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByWeavingOrderId(@Param("weavingOrderId") Long weavingOrderId, @Param("tenantId") Long tenantId);
 
     /**
      * 按编号前缀查询机台任务，【包含已逻辑删除的行】。
@@ -91,19 +103,66 @@ public interface MachineTaskMapper extends BaseMapperX<MachineTaskDO> {
     }
 
     /**
+     * 查询指定织机下处于占用态（PENDING/IN_PROGRESS/HALTED）的有效机台任务
+     *
+     * @param loomId    织机ID
+     * @param excludeId 排除的任务ID（更新时排除自身，可为 null）
+     * @return 占用态任务列表
+     */
+    default List<MachineTaskDO> selectOccupiedTasksByLoomId(Long loomId, Long excludeId) {
+        return selectList(new LambdaQueryWrapperX<MachineTaskDO>()
+                .eq(MachineTaskDO::getLoomId, loomId)
+                .neIfPresent(MachineTaskDO::getId, excludeId)
+                .in(MachineTaskDO::getStatus, List.of("PENDING", "IN_PROGRESS", "HALTED"))
+                .orderByAsc(MachineTaskDO::getPlannedStart)
+                .orderByAsc(MachineTaskDO::getId));
+    }
+
+    /**
+     * 查询指定织机集合（或全部织机）下处于占用态（PENDING/IN_PROGRESS/HALTED）的有效机台任务
+     *
+     * @param loomIds 织机ID集合（为空查全部织机占用态任务）
+     * @return 占用态任务列表
+     */
+    default List<MachineTaskDO> selectOccupiedTasks(java.util.Collection<Long> loomIds) {
+        return selectList(new LambdaQueryWrapperX<MachineTaskDO>()
+                .inIfPresent(MachineTaskDO::getLoomId, loomIds)
+                .in(MachineTaskDO::getStatus, List.of("PENDING", "IN_PROGRESS", "HALTED"))
+                .orderByAsc(MachineTaskDO::getPlannedStart)
+                .orderByAsc(MachineTaskDO::getId));
+    }
+
+    /**
+     * 分页查询机台任务（按计划开始日期升序、创建时间降序排序，支持限制 ID 集合）
+     *
+     * @param reqVO      分页查询条件
+     * @param includeIds 允许包含的任务ID集合（如冲突任务ID集合，可为 null）
+     * @return 分页结果
+     */
+    default PageResult<MachineTaskDO> selectPage(MachineTaskPageReqVO reqVO, java.util.Collection<Long> includeIds) {
+        return selectPage(reqVO, new LambdaQueryWrapperX<MachineTaskDO>()
+                .eqIfPresent(MachineTaskDO::getWeavingOrderId, reqVO.getWeavingOrderId())
+                .inIfPresent(MachineTaskDO::getLoomId, reqVO.getLoomIds())
+                .eqIfPresent(MachineTaskDO::getLoomId, cn.hutool.core.collection.CollUtil.isEmpty(reqVO.getLoomIds()) ? reqVO.getLoomId() : null)
+                .eqIfPresent(MachineTaskDO::getWorkerUserId, reqVO.getWorkerUserId())
+                .inIfPresent(MachineTaskDO::getStatus, reqVO.getStatuses())
+                .eqIfPresent(MachineTaskDO::getStatus, cn.hutool.core.collection.CollUtil.isEmpty(reqVO.getStatuses()) ? reqVO.getStatus() : null)
+                .likeIfPresent(MachineTaskDO::getCode, reqVO.getCode())
+                .geIfPresent(MachineTaskDO::getPlannedEnd, reqVO.getStartDate())
+                .leIfPresent(MachineTaskDO::getPlannedStart, reqVO.getEndDate())
+                .inIfPresent(MachineTaskDO::getId, includeIds)
+                .orderByAsc(MachineTaskDO::getPlannedStart)
+                .orderByDesc(MachineTaskDO::getCreateTime));
+    }
+
+    /**
      * 分页查询机台任务
      *
      * @param reqVO 分页查询条件
      * @return 分页结果
      */
     default PageResult<MachineTaskDO> selectPage(MachineTaskPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<MachineTaskDO>()
-                .eqIfPresent(MachineTaskDO::getWeavingOrderId, reqVO.getWeavingOrderId())
-                .eqIfPresent(MachineTaskDO::getLoomId, reqVO.getLoomId())
-                .eqIfPresent(MachineTaskDO::getWorkerUserId, reqVO.getWorkerUserId())
-                .eqIfPresent(MachineTaskDO::getStatus, reqVO.getStatus())
-                .likeIfPresent(MachineTaskDO::getCode, reqVO.getCode())
-                .orderByDesc(MachineTaskDO::getId));
+        return selectPage(reqVO, (java.util.Collection<Long>) null);
     }
 
 }

@@ -319,7 +319,7 @@ create/update 入库单时校验并回填快照：
 - `1_030_013_101` WAREHOUSE_LOCATION_CODE_DUPLICATE（库位编码【{}】在同一仓库下已存在）
 - `1_030_013_102` WAREHOUSE_LOCATION_IN_USE（库位已被入库放置记录引用，不能删除，请停用）
 
-在 lunaerp 模块 `ErrorCodeConstants` 追加；CONTEXT.md 段位全表同步更新。
+在 lunaerp 模块 `ErrorCodeConstants` 追加；GLOSSARY.md 段位全表同步更新。
 
 ### 字典（3 个）
 
@@ -427,7 +427,7 @@ Service 层纯 Mockito 单元测试，3 个测试类，不起 Spring 上下文�
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 新增"库存管理"术语分区（入库单/入库明细/库位分配/仓库/库位/库存台账/库存余额/入库单号/入库类型/入库状态）、stock 模块边界、3 个字典、错误码 1-030-011/012/013 段位
+- [GLOSSARY.md](../../docs/contexts/stock/GLOSSARY.md) — 新增"库存管理"术语分区（入库单/入库明细/库位分配/仓库/库位/库存台账/库存余额/入库单号/入库类型/入库状态）、stock 模块边界、3 个字典、错误码 1-030-011/012/013 段位
 - [ADR-0016](../../docs/adr/0016-stock-in-posting-state-machine.md) — 入库单三态严格过账状态机（审核过账/红冲/分权，刻意不一致现有单据自由切态）
 - [ADR-0017](../../docs/adr/0017-universal-stock-ledger.md) — 通用库存流水台账与实时聚合余额（supersedes ADR-0012）
 - [ADR-0018](../../docs/adr/0018-warehouse-location-two-level.md) — 仓库/库位两级简版与多库位分配放置

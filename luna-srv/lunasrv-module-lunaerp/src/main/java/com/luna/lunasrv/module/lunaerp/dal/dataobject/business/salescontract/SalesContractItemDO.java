@@ -67,6 +67,10 @@ public class SalesContractItemDO extends TenantBaseDO {
      */
     private BigDecimal quantity;
     /**
+     * 已下达生产数量（KG，缺省 0；下达时累加，下游单据修改/删除不回写 ADR-0040）
+     */
+    private BigDecimal releasedQty;
+    /**
      * 单价
      */
     private BigDecimal unitPrice;

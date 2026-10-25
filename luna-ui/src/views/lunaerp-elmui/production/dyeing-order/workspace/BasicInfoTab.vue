@@ -90,6 +90,29 @@
           />
         </el-form-item>
       </el-col>
+      <el-col :span="12">
+        <el-form-item label="打色指示单" prop="colorInstructionId">
+          <el-select
+            v-model="formData.colorInstructionId"
+            placeholder="输入单号/客户/品名搜索打色单（可空）"
+            clearable
+            filterable
+            remote
+            reserve-keyword
+            :remote-method="searchColorInstructions"
+            :loading="colorInstructionLoading"
+            class="!w-full"
+            @change="handleColorInstructionChange"
+          >
+            <el-option
+              v-for="item in colorInstructionOptions"
+              :key="item.id"
+              :label="formatColorInstructionLabel(item)"
+              :value="item.id!"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
     </el-row>
 
     <!-- 第二区：产品规格 -->
@@ -401,6 +424,7 @@ import * as SalesContractApi from '@/api/lunaerp-elmui/business/sales-contract'
 import type { SalesContractVO } from '@/api/lunaerp-elmui/business/sales-contract'
 import * as SupplierApi from '@/api/lunaerp-elmui/baseinfo/supplier'
 import type { SupplierVO } from '@/api/lunaerp-elmui/baseinfo/supplier'
+import { useColorInstructionSelect } from '@/views/lunaerp-elmui/production/color-instruction/composables/useColorInstructionSelect'
 
 defineOptions({ name: 'DyeingOrderBasicInfoTab' })
 
@@ -435,6 +459,8 @@ const formData = ref<DyeingOrderVO>({
   dyeingFactoryName: '',
   orderDate: formatDate(new Date(), 'YYYY-MM-DD'),
   deliveryDate: '',
+  colorInstructionId: undefined,
+  colorInstructionNo: '',
   productCode: '',
   productName: '',
   composition: '',
@@ -630,6 +656,28 @@ const handleSupplierChange = (val?: number) => {
   }
 }
 
+// 打色指示单远程搜索
+const {
+  colorInstructionOptions,
+  colorInstructionLoading,
+  formatColorInstructionLabel,
+  searchColorInstructions,
+  handleColorInstructionChange: triggerColorInstructionChange,
+  preloadColorInstruction
+} = useColorInstructionSelect({
+  onSelected: (item) => {
+    formData.value.colorInstructionNo = item?.instructionNo || ''
+    if (!item) {
+      formData.value.colorInstructionId = undefined
+    }
+  }
+})
+
+const handleColorInstructionChange = (val?: number) => {
+  formData.value.colorInstructionId = val || undefined
+  triggerColorInstructionChange(val)
+}
+
 // 详情加载
 const loadDetail = async () => {
   if (!props.orderId) return
@@ -668,12 +716,18 @@ const loadDetail = async () => {
         }
       ]
     }
+    if (res.colorInstructionId) {
+      await preloadColorInstruction(res.colorInstructionId, res.colorInstructionNo)
+    }
   } finally {
     loading.value = false
   }
 }
 
 onMounted(() => {
+  if (isCreateMode.value) {
+    searchColorInstructions('')
+  }
   loadDetail()
 })
 
@@ -681,6 +735,9 @@ onMounted(() => {
 const buildSubmitData = (status: 'DRAFT' | 'ACTIVE'): DyeingOrderVO => ({
   ...formData.value,
   status,
+  colorInstructionId:
+    formData.value.colorInstructionId != null ? formData.value.colorInstructionId : null,
+  colorInstructionNo: formData.value.colorInstructionNo?.trim() || null,
   colors: colorRows.value.map((row) => ({
     id: row.id != null ? row.id : undefined,
     dyeingOrderId: row.dyeingOrderId,

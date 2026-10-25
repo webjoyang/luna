@@ -1,12 +1,16 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.production.inspectionorder.item;
 
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 生产管理-检验单录检明细 DO
@@ -19,7 +23,7 @@ import java.math.BigDecimal;
  *
  * @author luna
  */
-@TableName("lunaerp_production_inspection_order_item")
+@TableName(value = "lunaerp_production_inspection_order_item", autoResultMap = true)
 @KeySequence("lunaerp_production_inspection_order_item_seq")
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -53,6 +57,7 @@ public class InspectionOrderItemDO extends TenantBaseDO {
     /**
      * 缸号
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String vatNo;
 
     /**
@@ -109,5 +114,11 @@ public class InspectionOrderItemDO extends TenantBaseDO {
      * 备注
      */
     private String remark;
+
+    /**
+     * 疵点照片 URL JSON 数组（车间 H5 录检上传，≤6 张，infra 文件服务）
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class, updateStrategy = FieldStrategy.ALWAYS)
+    private List<String> photos;
 
 }

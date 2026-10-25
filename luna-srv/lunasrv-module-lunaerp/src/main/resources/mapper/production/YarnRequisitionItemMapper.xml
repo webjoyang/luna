@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.requisition.item.YarnRequisitionItemMapper">
+
+    <!-- 级联恢复领纱明细（手写 XML：显式 SET deleted=0 WHERE requisition_id IN (...) AND deleted=1 AND tenant_id=?） -->
+    <update id="restoreByWeavingOrderId">
+        UPDATE lunaerp_production_yarn_requisition_item
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE requisition_id IN (
+            SELECT id FROM lunaerp_production_yarn_requisition
+            WHERE weaving_order_id = #{weavingOrderId}
+              AND tenant_id = #{tenantId}
+        )
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除领纱明细（手写 XML：显式 DELETE WHERE requisition_id IN (...) AND deleted=1 AND tenant_id=?） -->
+    <delete id="purgeByWeavingOrderId">
+        DELETE FROM lunaerp_production_yarn_requisition_item
+        WHERE requisition_id IN (
+            SELECT id FROM lunaerp_production_yarn_requisition
+            WHERE weaving_order_id = #{weavingOrderId}
+              AND tenant_id = #{tenantId}
+        )
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

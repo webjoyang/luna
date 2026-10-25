@@ -29,6 +29,8 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.
 import com.luna.lunasrv.module.lunaerp.service.production.weavingorder.ticket.WeavingTicketService;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnorder.YarnOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder.YarnOrderMapper;
 import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnspec.YarnSpecDO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
@@ -140,6 +142,9 @@ class StockInServiceImplTest {
     @Mock
     private WeavingTicketMapper weavingTicketMapper;
 
+    @Mock
+    private YarnOrderMapper yarnOrderMapper;
+
     @InjectMocks
     private StockInServiceImpl stockInService;
 
@@ -202,6 +207,22 @@ class StockInServiceImplTest {
         loc.setName(name);
         loc.setStatus("ACTIVE");
         return loc;
+    }
+
+    private YarnOrderDO mockYarnOrder(Long id, String orderNo) {
+        YarnOrderDO order = new YarnOrderDO();
+        order.setId(id);
+        order.setOrderNo(orderNo);
+        order.setStatus("EFFECTIVE");
+        return order;
+    }
+
+    private ProductDO mockProduct(Long id, String name, String code) {
+        ProductDO product = new ProductDO();
+        product.setId(id);
+        product.setName(name);
+        product.setCode(code);
+        return product;
     }
 
     private StockInSaveReqVO buildCreateReqVO() {
@@ -395,6 +416,40 @@ class StockInServiceImplTest {
         assertEquals(STOCK_IN_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
     }
 
+    @Test
+    void createStockIn_withYarnOrder_success() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        req.setYarnOrderId(888L);
+
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(productMapper.selectById(1L)).thenReturn(mockProduct(1L, "全棉汗布", "P001"));
+        when(yarnOrderMapper.selectById(888L)).thenReturn(mockYarnOrder(888L, "YO-20261015-001"));
+
+        Long id = stockInService.createStockIn(req);
+
+        ArgumentCaptor<StockInDO> captor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).insert(captor.capture());
+        StockInDO saved = captor.getValue();
+        assertEquals(888L, saved.getYarnOrderId());
+        assertEquals("YO-20261015-001", saved.getYarnOrderNo());
+
+        // 零回写：不更新采购单，仅只读查询一次
+        verify(yarnOrderMapper, times(1)).selectById(888L);
+        verifyNoMoreInteractions(yarnOrderMapper);
+    }
+
+    @Test
+    void createStockIn_yarnOrderNotExists_throwsException() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        req.setYarnOrderId(999L);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(yarnOrderMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> stockInService.createStockIn(req));
+        assertEquals(STOCK_IN_REFERENCE_NOT_FOUND.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("纱线采购单"));
+    }
+
     // ==================== 修改与状态守卫 ====================
 
     @Test
@@ -484,6 +539,67 @@ class StockInServiceImplTest {
         assertEquals(STOCK_IN_NOT_EXISTS.getCode(), ex.getCode());
     }
 
+    @Test
+    void updateStockIn_changeYarnOrder_success() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        req.setId(100L);
+        req.setInNo("IN-20260924-001");
+        req.setYarnOrderId(777L);
+
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        existing.setInNo("IN-20260924-001");
+        existing.setYarnOrderId(888L);
+        existing.setYarnOrderNo("YO-20261015-001");
+
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(productMapper.selectById(1L)).thenReturn(mockProduct(1L, "全棉汗布", "P001"));
+        when(yarnOrderMapper.selectById(777L)).thenReturn(mockYarnOrder(777L, "YO-20261015-002"));
+
+        stockInService.updateStockIn(req);
+
+        ArgumentCaptor<StockInDO> captor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).updateById(captor.capture());
+        StockInDO updated = captor.getValue();
+        assertEquals(777L, updated.getYarnOrderId());
+        assertEquals("YO-20261015-002", updated.getYarnOrderNo());
+
+        // 零回写：不更新采购单，仅只读查询一次
+        verify(yarnOrderMapper, times(1)).selectById(777L);
+        verifyNoMoreInteractions(yarnOrderMapper);
+    }
+
+    @Test
+    void updateStockIn_clearYarnOrder_success() {
+        StockInSaveReqVO req = buildCreateReqVO();
+        req.setId(100L);
+        req.setInNo("IN-20260924-001");
+        req.setYarnOrderId(null);
+
+        StockInDO existing = new StockInDO();
+        existing.setId(100L);
+        existing.setStatus("DRAFT");
+        existing.setInNo("IN-20260924-001");
+        existing.setYarnOrderId(888L);
+        existing.setYarnOrderNo("YO-20261015-001");
+
+        when(stockInMapper.selectById(100L)).thenReturn(existing);
+        when(warehouseMapper.selectById(10L)).thenReturn(mockWarehouse(10L, "一号仓", "ACTIVE"));
+        when(productMapper.selectById(1L)).thenReturn(mockProduct(1L, "全棉汗布", "P001"));
+
+        stockInService.updateStockIn(req);
+
+        ArgumentCaptor<StockInDO> captor = ArgumentCaptor.forClass(StockInDO.class);
+        verify(stockInMapper).updateById(captor.capture());
+        StockInDO updated = captor.getValue();
+        assertNull(updated.getYarnOrderId());
+        assertNull(updated.getYarnOrderNo());
+
+        verifyNoInteractions(yarnOrderMapper);
+    }
+
     // ==================== 详情与取号预览 ====================
 
     @Test
@@ -506,6 +622,42 @@ class StockInServiceImplTest {
         assertEquals("IN-20260924-001", resp.getInNo());
         assertEquals(1, resp.getItems().size());
         assertEquals("P-1001", resp.getItems().get(0).getProductCode());
+    }
+
+    @Test
+    void getStockIn_withYarnOrder_success() {
+        StockInDO stockIn = new StockInDO();
+        stockIn.setId(100L);
+        stockIn.setInNo("IN-20260924-001");
+        stockIn.setStatus("DRAFT");
+        stockIn.setWarehouseName("一号仓");
+        stockIn.setYarnOrderId(888L);
+        stockIn.setYarnOrderNo("YO-20261015-001");
+        when(stockInMapper.selectById(100L)).thenReturn(stockIn);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        StockInRespVO resp = stockInService.getStockIn(100L);
+        assertNotNull(resp);
+        assertEquals(888L, resp.getYarnOrderId());
+        assertEquals("YO-20261015-001", resp.getYarnOrderNo());
+    }
+
+    @Test
+    void getStockIn_withoutYarnOrder_nullCompatible() {
+        StockInDO stockIn = new StockInDO();
+        stockIn.setId(100L);
+        stockIn.setInNo("IN-20260924-001");
+        stockIn.setStatus("DRAFT");
+        stockIn.setWarehouseName("一号仓");
+        stockIn.setYarnOrderId(null);
+        stockIn.setYarnOrderNo(null);
+        when(stockInMapper.selectById(100L)).thenReturn(stockIn);
+        when(stockInItemMapper.selectListByStockInId(100L)).thenReturn(Collections.emptyList());
+
+        StockInRespVO resp = stockInService.getStockIn(100L);
+        assertNotNull(resp);
+        assertNull(resp.getYarnOrderId());
+        assertNull(resp.getYarnOrderNo());
     }
 
     @Test
@@ -1549,6 +1701,22 @@ class StockInServiceImplTest {
 
         // 草稿作废不写流水
         verify(stockLedgerMapper, never()).insert(any(StockLedgerDO.class));
+    }
+
+    @Test
+    void cancelDraftStockIn_success() {
+        when(stockInMapper.update(isNull(), any())).thenReturn(1);
+        boolean result = stockInService.cancelDraftStockIn(100L);
+        assertTrue(result);
+        verify(stockInMapper).update(isNull(), any());
+    }
+
+    @Test
+    void cancelDraftStockIn_failedOrNotFound() {
+        when(stockInMapper.update(isNull(), any())).thenReturn(0);
+        boolean result = stockInService.cancelDraftStockIn(100L);
+        assertFalse(result);
+        assertFalse(stockInService.cancelDraftStockIn(null));
     }
 
     @Test

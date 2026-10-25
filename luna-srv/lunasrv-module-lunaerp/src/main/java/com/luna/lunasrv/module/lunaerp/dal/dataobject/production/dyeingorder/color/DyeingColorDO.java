@@ -38,6 +38,16 @@ public class DyeingColorDO extends TenantBaseDO {
      */
     private Integer lineNo;
     /**
+     * 来源合同行 ID（lunaerp_business_sales_contract_item.id，逻辑关联不建外键）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long contractLineId;
+    /**
+     * 来源合同行号快照
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Integer contractLineNo;
+    /**
      * 客户色号
      */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)

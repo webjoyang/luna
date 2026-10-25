@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 
-> 本 spec 由 grill-with-docs 访谈（3 轮、21+ 项决策）综合而成。术语遵循 [CONTEXT.md](../../CONTEXT.md)；架构依据：设计文档 `.trae/documents/contract-progress-architecture-design.md`、ADR-0033（发染记录）、ADR-0034（生产进度只读聚合视图）、ADR-0031（进度反馈）、ADR-0017（通用库存流水）、ADR-0027（发纱不足拦截先例）。
+> 本 spec 由 grill-with-docs 访谈（3 轮、21+ 项决策）综合而成。术语遵循 [GLOSSARY.md](../../docs/contexts/production/GLOSSARY.md)；架构依据：设计文档 `.trae/documents/contract-progress-architecture-design.md`、ADR-0033（发染记录）、ADR-0034（生产进度只读聚合视图）、ADR-0031（进度反馈）、ADR-0017（通用库存流水）、ADR-0027（发纱不足拦截先例）。
 
 ## Problem Statement
 

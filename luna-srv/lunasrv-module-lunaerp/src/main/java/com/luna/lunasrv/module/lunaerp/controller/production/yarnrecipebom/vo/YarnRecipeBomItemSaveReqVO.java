@@ -34,4 +34,19 @@ public class YarnRecipeBomItemSaveReqVO {
     @Schema(description = "参考单价（可空，测算兜底取规格 ref_price）", example = "28.5000")
     private BigDecimal refPrice;
 
+    @Schema(description = "损耗率（百分比数字，如 2.50 表示 2.5%）", example = "2.50")
+    private BigDecimal wasteRate;
+
+    @Schema(description = "方向（GENERAL 通用 / WARP 经纱 / WEFT 纬纱）", example = "WARP")
+    private String direction;
+
+    @Schema(description = "密度（经密 / 纬密 / 针织路数）", example = "80.00")
+    private BigDecimal density;
+
+    @Schema(description = "织缩率（百分比数字，如 5.00 表示 5%）", example = "5.00")
+    private BigDecimal crimpRate;
+
+    @Schema(description = "每米用量（KG/米）", example = "0.125000")
+    private BigDecimal consumptionKgPerMeter;
+
 }

@@ -105,6 +105,29 @@ public interface StockLedgerMapper extends BaseMapperX<StockLedgerDO> {
                                                        @Param("unit") String unit);
 
     /**
+     * 批量按纱线规格ID集合（与可选仓库ID集合）聚合可用库存余额（SUM(quantity)）
+     *
+     * @param yarnSpecIds 纱线规格ID集合
+     * @param warehouseIds 仓库ID集合（可选，为 null 或空时统计全仓）
+     * @return 纱线库存聚合列表
+     */
+    @Select("<script>"
+            + "SELECT yarn_spec_id AS yarnSpecId, COALESCE(SUM(quantity), 0) AS quantity "
+            + "FROM lunaerp_stock_ledger "
+            + "WHERE deleted = 0 AND item_type = 'YARN_SPEC' "
+            + "AND yarn_spec_id IN "
+            + "<foreach item='id' collection='yarnSpecIds' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "<if test='warehouseIds != null and warehouseIds.size() > 0'> "
+            + "AND warehouse_id IN "
+            + "<foreach item='wid' collection='warehouseIds' open='(' separator=',' close=')'>#{wid}</foreach> "
+            + "</if> "
+            + "GROUP BY yarn_spec_id"
+            + "</script>")
+    List<InventoryBalanceRespVO> sumQuantityByYarnSpecIdsAndWarehouseIds(
+            @Param("yarnSpecIds") Collection<Long> yarnSpecIds,
+            @Param("warehouseIds") Collection<Long> warehouseIds);
+
+    /**
      * 实时聚合库存余额分页查询
      *
      * 按 item_type, product_id, yarn_spec_id, warehouse_id, unit 分组求和 SUM(quantity)；

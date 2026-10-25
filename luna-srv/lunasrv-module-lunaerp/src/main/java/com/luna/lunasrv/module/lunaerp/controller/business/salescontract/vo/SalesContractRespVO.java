@@ -54,6 +54,18 @@ public class SalesContractRespVO {
     @Schema(description = "订单属性（字典 lunaerp_sales_contract_order_type）", example = "BULK")
     private String orderType;
 
+    @Schema(description = "贸易术语（字典 lunaerp_incoterm：FOB/CIF/CFR/EXW，可空）", example = "FOB")
+    private String incoterm;
+
+    @Schema(description = "起运港（可空）", example = "SHANGHAI")
+    private String portOfLoading;
+
+    @Schema(description = "目的港（可空）", example = "LOS ANGELES")
+    private String portOfDischarge;
+
+    @Schema(description = "付款方式（字典 lunaerp_payment_term：TT/LC/DP/DA/OA，可空）", example = "TT")
+    private String paymentTerm;
+
     @Schema(description = "总数量（服务端按明细重算）", example = "300.00")
     private BigDecimal totalQuantity;
 
@@ -66,8 +78,17 @@ public class SalesContractRespVO {
     @Schema(description = "合同状态（字典 lunaerp_sales_contract_status）", example = "ACTIVE")
     private String status;
 
+    @Schema(description = "审批状态（DRAFT/PENDING/APPROVING/APPROVED/REJECTED/CANCELLED）", example = "DRAFT")
+    private String approvalStatus;
+
     @Schema(description = "商品明细列表（按 line_no 升序；分页列表不返回明细）")
     private List<SalesContractItemRespVO> items;
+
+    @Schema(description = "来源报价单ID（可空）", example = "100")
+    private Long sourceQuotationId;
+
+    @Schema(description = "来源报价单号快照（可空）", example = "QT20260001-v1")
+    private String sourceQuotationNo;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

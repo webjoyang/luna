@@ -13,6 +13,12 @@ public class DyeingColorSaveReqVO {
     @Schema(description = "明细ID（更新时携带可空行 id，新增时留空）", example = "1024")
     private Long id;
 
+    @Schema(description = "来源合同行 ID", example = "2048")
+    private Long contractLineId;
+
+    @Schema(description = "来源合同行号快照", example = "1")
+    private Integer contractLineNo;
+
     @Schema(description = "客户色号（从合同明细带出可改）", example = "C-001")
     @Size(max = 64, message = "客户色号长度不能超过 64 位")
     private String customerColorNo;

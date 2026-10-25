@@ -179,9 +179,16 @@ INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon
 VALUES (10288, '织机删除', 'lunaerp:production:loom:delete', 3, 3, 10285, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
 
 -- 超级管理员（角色 1/2）自动赋予菜单权限
+-- PostgreSQL 无自增：system_role_menu.id 须显式取号（序列对齐现有最大 id，防主键冲突）
+CREATE SEQUENCE IF NOT EXISTS system_role_menu_seq;
+DO $$
+BEGIN
+    PERFORM setval('system_role_menu_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM system_role_menu), 1));
+END $$;
+
 DELETE FROM system_role_menu WHERE menu_id IN (10280, 10281, 10282, 10283, 10284, 10285, 10286, 10287, 10288);
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
 FROM system_role r
 CROSS JOIN (SELECT id FROM system_menu WHERE id IN (10280, 10281, 10282, 10283, 10284, 10285, 10286, 10287, 10288)) m
 WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)
@@ -478,7 +485,7 @@ INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_t
 -- =============================================================================
 -- 12. 领纱单与明细权限注册（不开独立菜单，挂在 10280 织造单下）
 -- =============================================================================
-DELETE FROM system_menu WHERE id IN (10289, 10290, 10291, 10292, 10293, 10294, 10295, 10296, 10297, 10298);
+DELETE FROM system_menu WHERE id IN (10289, 10290, 10291, 10292, 10293, 10294, 10295, 10296, 10297, 10298, 10299);
 
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
 VALUES (10289, '领纱单查询', 'lunaerp:production:weaving-order-requisition:query', 3, 5, 10280, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-26 00:00:00', '1', '2026-09-26 00:00:00', '0');
@@ -514,8 +521,8 @@ INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon
 VALUES (10299, '领纱明细发纱与撤销', 'lunaerp:production:weaving-order-requisition-item:dispatch', 3, 15, 10280, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-27 00:00:00', '1', '2026-09-27 00:00:00', '0');
 
 DELETE FROM system_role_menu WHERE menu_id IN (10289, 10290, 10291, 10292, 10293, 10294, 10295, 10296, 10297, 10298, 10299);
-INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
-SELECT r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
+INSERT INTO system_role_menu (id, role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT nextval('system_role_menu_seq'), r.id, m.id, 'admin', CURRENT_TIMESTAMP, 'admin', CURRENT_TIMESTAMP, 0, 1
 FROM system_role r
 CROSS JOIN (SELECT id FROM system_menu WHERE id IN (10289, 10290, 10291, 10292, 10293, 10294, 10295, 10296, 10297, 10298, 10299)) m
 WHERE r.code IN ('super_admin', 'admin') OR r.id IN (1, 2)

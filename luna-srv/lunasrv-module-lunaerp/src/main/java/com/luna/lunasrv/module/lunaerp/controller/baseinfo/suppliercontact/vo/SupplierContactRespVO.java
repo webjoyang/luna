@@ -1,5 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.controller.baseinfo.suppliercontact.vo;
 
+import com.luna.lunasrv.module.lunaerp.common.desensitize.Sensitive;
+import com.luna.lunasrv.module.lunaerp.common.desensitize.SensitiveType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -16,15 +18,18 @@ public class SupplierContactRespVO {
     private Long supplierId;
 
     @Schema(description = "联系人姓名", requiredMode = Schema.RequiredMode.REQUIRED, example = "张三")
+    @Sensitive(seePermission = "lunaerp:sensitive:contact", type = SensitiveType.CHINESE_NAME)
     private String name;
 
     @Schema(description = "职位", example = "采购经理")
     private String position;
 
     @Schema(description = "联系电话", example = "13800000000")
+    @Sensitive(seePermission = "lunaerp:sensitive:contact", type = SensitiveType.MOBILE)
     private String phone;
 
     @Schema(description = "邮箱", example = "zhangsan@example.com")
+    @Sensitive(seePermission = "lunaerp:sensitive:contact", type = SensitiveType.EMAIL)
     private String email;
 
     @Schema(description = "备注")

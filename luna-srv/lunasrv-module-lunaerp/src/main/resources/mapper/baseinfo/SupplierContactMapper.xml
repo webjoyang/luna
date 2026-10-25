@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.suppliercontact.SupplierContactMapper">
+
+    <!-- 级联恢复供应商联系人（手写 XML：显式 UPDATE ... SET deleted = 0 WHERE supplier_id = #{supplierId} AND deleted = 1 AND tenant_id = #{tenantId}） -->
+    <update id="restoreContactsBySupplierId">
+        UPDATE lunaerp_baseinfo_supplier_contact
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE supplier_id = #{supplierId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除供应商联系人（手写 XML：显式 DELETE WHERE supplier_id = #{supplierId} AND tenant_id = #{tenantId}） -->
+    <delete id="purgeContactsBySupplierId">
+        DELETE FROM lunaerp_baseinfo_supplier_contact
+        WHERE supplier_id = #{supplierId}
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

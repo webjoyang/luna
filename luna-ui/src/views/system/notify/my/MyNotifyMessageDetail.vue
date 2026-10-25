@@ -20,18 +20,38 @@
         {{ detailData.templateContent }}
       </el-descriptions-item>
     </el-descriptions>
+    <template #footer v-if="jumpRoute">
+      <el-button @click="dialogVisible = false">关闭</el-button>
+      <el-button type="primary" @click="handleJump">前往处理</el-button>
+    </template>
   </Dialog>
 </template>
 <script lang="ts" setup>
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { DICT_TYPE } from '@/utils/dict'
 import { formatDate } from '@/utils/formatTime'
 import * as NotifyMessageApi from '@/api/system/notify/message'
+import { parseNotifyParams, getNotifyJumpRoute } from '@/utils/notifyRoute'
 
 defineOptions({ name: 'MyNotifyMessageDetailDetail' })
 
+const { push } = useRouter()
 const dialogVisible = ref(false) // 弹窗的是否展示
 const detailLoading = ref(false) // 表单的加载中
 const detailData = ref({} as NotifyMessageApi.NotifyMessageVO) // 详情数据
+
+const jumpRoute = computed(() => {
+  const params = parseNotifyParams(detailData.value?.templateParams)
+  return getNotifyJumpRoute(params)
+})
+
+const handleJump = () => {
+  if (jumpRoute.value) {
+    dialogVisible.value = false
+    push(jumpRoute.value)
+  }
+}
 
 /** 打开弹窗 */
 const open = async (data: NotifyMessageApi.NotifyMessageVO) => {

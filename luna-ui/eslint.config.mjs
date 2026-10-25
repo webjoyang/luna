@@ -41,6 +41,79 @@ export default tseslint.config(
     }
   },
 
+  // API 层架构边界守护：严禁从视图层逆向引入或重导出
+  {
+    files: ['src/api/**/*.{ts,js,mts,cts}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/views/**', '**/views/**'],
+              message: 'API 层严禁逆向引入或重导出 View 层模块（应保持 View 单向依赖 API/Model）'
+            }
+          ]
+        }
+      ]
+    }
+  },
+
+  // 纯领域模型架构边界守护：严禁直接依赖 API 层、Axios 或 Router，确保纯 Node 单测环境无污染
+  {
+    files: ['src/views/**/model/**/*.{ts,js,mts,cts}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/api/**', '**/api/**', '@/config/**', '@/router/**'],
+              message: '纯领域模型（model/*.ts）严禁直接依赖 API 层、Axios 或 Router，确保纯 Node 单测环境无污染'
+            }
+          ]
+        }
+      ]
+    }
+  },
+
+  // 移动子树架构边界守护：严禁引用 lunaerp-elmui/** PC 组件与 ElementPlus 业务组件（隔离依赖方向，保持 PC/H5 互不干扰，ADR-0045）
+  {
+    files: ['src/views/h5/**/*.{vue,ts,js,mts,cts}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/views/lunaerp-elmui/**', '**/views/lunaerp-elmui/**'],
+              message: '移动子树（/h5/**）严禁引用 lunaerp-elmui/** PC 视图与业务组件（ADR-0045 隔离依赖方向）'
+            },
+            {
+              group: ['element-plus', 'element-plus/**'],
+              message: '移动子树（/h5/**）严禁直接引用 ElementPlus 组件与类型（ADR-0045 移动端采用 Vant 4）'
+            }
+          ]
+        }
+      ]
+    }
+  },
+
+  // 时区日期初始化守卫：严禁使用 toISOString() 截取业务日期（存在 UTC 时区偏移），统一使用 toLocaleDateString('en-CA') 或 dayjs()
+  {
+    files: ['src/views/lunaerp-elmui/**/*.{vue,ts,js,mts,cts}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='toISOString']",
+          message:
+            "严禁使用 toISOString() 初始化业务日期（存在 UTC 偏移，东八区早晨会回退前一天），请使用 new Date().toLocaleDateString('en-CA') 或 dayjs().format('YYYY-MM-DD')"
+        }
+      ]
+    }
+  },
+
   // Main rules config
   {
     languageOptions: {

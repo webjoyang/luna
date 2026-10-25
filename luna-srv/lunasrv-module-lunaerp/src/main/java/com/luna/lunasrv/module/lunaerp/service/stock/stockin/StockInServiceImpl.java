@@ -1,6 +1,7 @@
 package com.luna.lunasrv.module.lunaerp.service.stock.stockin;
 
 import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -30,6 +31,8 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.supplier.SupplierMappe
 import com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract.SalesContractMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.dyeingorder.DyeingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.GreigeOrderMapper;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.yarnorder.YarnOrderDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.yarnorder.YarnOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.InspectionOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.inspectionorder.item.InspectionOrderItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
@@ -187,6 +190,9 @@ public class StockInServiceImpl implements StockInService {
 
     @Resource
     private WeavingTicketMapper weavingTicketMapper;
+
+    @Resource
+    private YarnOrderMapper yarnOrderMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -459,6 +465,19 @@ public class StockInServiceImpl implements StockInService {
         }
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean cancelDraftStockIn(Long id) {
+        if (id == null) {
+            return false;
+        }
+        int rows = stockInMapper.update(null, new LambdaUpdateWrapper<StockInDO>()
+                .eq(StockInDO::getId, id)
+                .eq(StockInDO::getStatus, DEFAULT_STATUS)
+                .set(StockInDO::getStatus, STATUS_CANCELLED));
+        return rows > 0;
+    }
+
     // ==================== 私有方法 ====================
 
     /**
@@ -602,6 +621,19 @@ public class StockInServiceImpl implements StockInService {
             stockIn.setGreigeTypeName(greigeType.getName());
         } else {
             stockIn.setGreigeTypeName(null);
+        }
+
+        // 7. 纱线采购单（可选，第 5 个上游引用，零回写）
+        if (reqVO.getYarnOrderId() != null) {
+            YarnOrderDO yarnOrder = yarnOrderMapper.selectById(reqVO.getYarnOrderId());
+            if (yarnOrder == null) {
+                throw exception(STOCK_IN_REFERENCE_NOT_FOUND, "纱线采购单");
+            }
+            stockIn.setYarnOrderId(yarnOrder.getId());
+            stockIn.setYarnOrderNo(yarnOrder.getOrderNo());
+        } else {
+            stockIn.setYarnOrderId(null);
+            stockIn.setYarnOrderNo(null);
         }
     }
 

@@ -29,6 +29,16 @@
         </el-form-item>
       </el-col>
       <el-col :span="12">
+        <el-form-item label="英文名称" prop="nameEn">
+          <el-input v-model="formData.nameEn" placeholder="请输入英文名称（外销单据带出）" maxlength="128" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="英文地址" prop="addressEn">
+          <el-input v-model="formData.addressEn" placeholder="请输入英文地址（外销单据带出）" maxlength="512" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
         <el-form-item label="客户类型" prop="clientType">
           <el-select v-model="formData.clientType" placeholder="请选择客户类型" class="!w-full">
             <el-option
@@ -106,26 +116,95 @@
           </el-select>
         </el-form-item>
       </el-col>
-      <el-col :span="24">
-        <el-form-item label="备注" prop="remark">
-          <el-input
-            v-model="formData.remark"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入备注"
+      <el-col :span="12">
+        <el-form-item label="归属业务员" prop="salespersonUserId">
+          <UserSelect
+            v-model="formData.salespersonUserId"
+            placeholder="请选择归属业务员（可空）"
+            clearable
           />
         </el-form-item>
       </el-col>
+      <el-col :span="12">
+        <el-form-item label="默认毛利率 (%)" prop="defaultMarginRate">
+          <el-input-number
+            v-model="marginRatePercent"
+            :min="-99"
+            :max="99.9"
+            :step="1"
+            :precision="2"
+            controls-position="right"
+            placeholder="留空回退全局 15%"
+            class="!w-full"
+          />
+        </el-form-item>
+      </el-col>
+      <!-- 开票信息区块 -->
+      <el-col :span="24">
+        <el-divider content-position="left">开票信息</el-divider>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="开票抬头" prop="invoiceTitle">
+          <el-input
+            v-model="formData.invoiceTitle"
+            placeholder="留空时自动用公司名称回填"
+            maxlength="256"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="信用账期(天)" prop="creditDays">
+          <el-input-number
+            v-model="formData.creditDays"
+            :min="0"
+            :max="9999"
+            :step="1"
+            :precision="0"
+            controls-position="right"
+            placeholder="留空为不设账期"
+            class="!w-full"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="开户银行" prop="bankName">
+          <el-input v-model="formData.bankName" placeholder="请输入开户银行" maxlength="256" />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="开户行账号" prop="bankAccountNo">
+          <el-input
+            v-model="formData.bankAccountNo"
+            placeholder="请输入开户行账号"
+            maxlength="64"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="24">
+        <el-form-item label="开票地址" prop="invoiceAddress">
+          <el-input
+            v-model="formData.invoiceAddress"
+            placeholder="请输入开票地址"
+            maxlength="512"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="24">
+        <el-form-item label="备注" prop="remark">
+          <el-input v-model="formData.remark" type="textarea" :rows="3" placeholder="请输入备注" />
+        </el-form-item>
+      </el-col>
     </el-row>
+
+    <CustomerPortalCard v-if="!isCreateMode && customerId" :customer-id="customerId" class="mt-4" />
+
     <div class="form-footer">
       <el-button
         type="primary"
         :loading="submitting"
         @click="handleSubmit"
         v-hasPermi="
-          isCreateMode
-            ? ['lunaerp:baseinfo:customer:create']
-            : ['lunaerp:baseinfo:customer:update']
+          isCreateMode ? ['lunaerp:baseinfo:customer:create'] : ['lunaerp:baseinfo:customer:update']
         "
       >
         保存
@@ -141,6 +220,9 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as CustomerApi from '@/api/lunaerp-elmui/baseinfo/customer'
 import type { CustomerVO } from '@/api/lunaerp-elmui/baseinfo/customer'
+import UserSelect from '@/views/system/user/components/UserSelect.vue'
+import CustomerPortalCard from './CustomerPortalCard.vue'
+import { useUserStore } from '@/store/modules/user'
 
 defineOptions({ name: 'LunaerpElmuiCustomerBasicProfileTab' })
 
@@ -156,6 +238,7 @@ const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const submitting = ref(false)
+const marginRatePercent = ref<number | undefined>(undefined)
 
 const formData = reactive<CustomerVO>({
   companyName: '',
@@ -169,7 +252,16 @@ const formData = reactive<CustomerVO>({
   cooperationStatus: '',
   unifiedSocialCreditCode: '',
   remark: '',
-  status: 'ACTIVE'
+  status: 'ACTIVE',
+  salespersonUserId: undefined,
+  defaultMarginRate: undefined,
+  nameEn: '',
+  addressEn: '',
+  invoiceTitle: '',
+  invoiceAddress: '',
+  bankName: '',
+  bankAccountNo: '',
+  creditDays: undefined
 })
 
 const rules: FormRules = {
@@ -185,6 +277,8 @@ const loadCustomer = async () => {
   try {
     const data = await CustomerApi.getCustomer(Number(props.customerId))
     Object.assign(formData, data)
+    marginRatePercent.value =
+      data.defaultMarginRate != null ? Number((data.defaultMarginRate * 100).toFixed(4)) : undefined
   } finally {
     loading.value = false
   }
@@ -194,6 +288,10 @@ const handleSubmit = async () => {
   await formRef.value?.validate()
   submitting.value = true
   try {
+    formData.defaultMarginRate =
+      marginRatePercent.value != null && !Number.isNaN(marginRatePercent.value)
+        ? Number((marginRatePercent.value / 100).toFixed(6))
+        : undefined
     if (isCreateMode.value) {
       const id = await CustomerApi.createCustomer(formData)
       message.success('保存成功')
@@ -217,7 +315,14 @@ const handleBack = () => {
 }
 
 onMounted(() => {
-  loadCustomer()
+  if (isCreateMode.value) {
+    const userStore = useUserStore()
+    if (userStore.getUser?.id) {
+      formData.salespersonUserId = userStore.getUser.id
+    }
+  } else {
+    loadCustomer()
+  }
 })
 </script>
 

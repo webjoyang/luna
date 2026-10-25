@@ -110,7 +110,23 @@
             </el-tag>
             <span v-else class="text-12px text-gray-400">请选择上方材质</span>
           </div>
-          <div>
+          <div class="flex items-center gap-2">
+            <el-button
+              type="success"
+              plain
+              @click="handleDownloadSpecTemplate"
+              v-hasPermi="['lunaerp:production:yarn-spec:import']"
+            >
+              <Icon icon="ep:download" class="mr-1" /> 下载模板
+            </el-button>
+            <el-button
+              type="primary"
+              plain
+              @click="handleImportSpec"
+              v-hasPermi="['lunaerp:production:yarn-spec:import']"
+            >
+              <Icon icon="ep:upload" class="mr-1" /> 导入规格
+            </el-button>
             <el-button
               type="primary"
               plain
@@ -199,8 +215,16 @@
             align="center"
             :formatter="dateFormatter"
           />
-          <el-table-column label="操作" width="160" align="center" fixed="right">
+          <el-table-column label="操作" width="230" align="center" fixed="right">
             <template #default="{ row }">
+              <el-button
+                link
+                type="primary"
+                @click="openPriceDrawer(row)"
+                v-hasPermi="['lunaerp:production:yarn-price:query']"
+              >
+                <Icon icon="ep:money" class="mr-1" />价格记录
+              </el-button>
               <el-button
                 link
                 type="primary"
@@ -330,6 +354,12 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 规格导入弹窗 -->
+    <YarnSpecImportDialog ref="specImportDialogRef" @success="handleSpecImportSuccess" />
+
+    <!-- 纱价记录抽屉 -->
+    <YarnPriceDrawer ref="priceDrawerRef" />
   </el-container>
 </template>
 
@@ -337,6 +367,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { dateFormatter } from '@/utils/formatTime'
+import download from '@/utils/download'
 import {
   getYarnTypePage,
   createYarnType,
@@ -346,10 +377,13 @@ import {
   createYarnSpec,
   updateYarnSpec,
   deleteYarnSpec,
+  downloadYarnSpecTemplate,
   type YarnTypeVO,
   type YarnSpecVO,
   type YarnSpecPageParam
 } from '@/api/lunaerp-elmui/production/yarn-master'
+import YarnSpecImportDialog from './YarnSpecImportDialog.vue'
+import YarnPriceDrawer from './components/YarnPriceDrawer.vue'
 
 defineOptions({ name: 'LunaerpElmuiProductionYarnMaster' })
 
@@ -598,6 +632,38 @@ const handleSpecDelete = async (row: YarnSpecVO) => {
   } catch {
     // 用户取消
   }
+}
+
+const specImportDialogRef = ref()
+
+/** 下载规格导入模板 */
+const handleDownloadSpecTemplate = async () => {
+  try {
+    const res = await downloadYarnSpecTemplate()
+    download.excel(res, '纱线规格导入模板.xlsx')
+  } catch (e) {
+    ElMessage.error('下载模板失败')
+  }
+}
+
+/** 打开规格导入弹窗 */
+const handleImportSpec = () => {
+  specImportDialogRef.value?.open()
+}
+
+/** 规格导入成功后刷新列表 */
+const handleSpecImportSuccess = async () => {
+  await getSpecList()
+}
+
+/** 纱价记录抽屉 */
+const priceDrawerRef = ref()
+const openPriceDrawer = (row: YarnSpecVO) => {
+  priceDrawerRef.value?.open({
+    id: row.id,
+    specName: row.specName,
+    standardName: row.standardName
+  })
 }
 
 onMounted(async () => {

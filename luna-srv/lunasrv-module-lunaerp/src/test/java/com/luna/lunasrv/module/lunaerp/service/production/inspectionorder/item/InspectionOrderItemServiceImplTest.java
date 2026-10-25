@@ -23,7 +23,9 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.INSPECTION_ORDER_ITEM_NOT_EXISTS;
@@ -103,6 +105,12 @@ class InspectionOrderItemServiceImplTest {
 
     private InspectionOrderRespVO buildOrder(Long id, String status) {
         return buildOrder(id, status, "ROLL");
+    }
+
+    private InspectionOrderRespVO buildOrder(Long id, String status, String packageMode, String type) {
+        InspectionOrderRespVO order = buildOrder(id, status, packageMode);
+        order.setType(type);
+        return order;
     }
 
     private InspectionOrderRespVO buildOrder(Long id, String status, String packageMode) {
@@ -254,6 +262,77 @@ class InspectionOrderItemServiceImplTest {
         ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
         verify(inspectionOrderItemMapper).insert(captor.capture());
         assertEquals(1, captor.getValue().getPieceCount(), "匹数缺省应为 1");
+    }
+
+    @Test
+    void createInspectionOrderItem_rollMode_missingVatNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, "", ROLL_NO);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "ROLL", "GREIGE"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.createInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("缸号不能为空"));
+        verify(inspectionOrderItemMapper, never()).insert(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void createInspectionOrderItem_finishedType_pieceMode_missingVatNo_throws1030010002() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, null, null, PIECE_NO);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "PIECE", "FINISHED"));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.createInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("缸号不能为空"));
+        verify(inspectionOrderItemMapper, never()).insert(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void createInspectionOrderItem_greigeType_pieceMode_missingVatNo_success() {
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, "", null, PIECE_NO);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "DRAFT", "PIECE", "GREIGE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, null, PIECE_NO))
+                .thenReturn(null);
+        when(inspectionOrderItemMapper.selectCountByInspectionOrderId(ORDER_ID)).thenReturn(0L);
+
+        Long id = inspectionOrderItemService.createInspectionOrderItem(reqVO);
+        assertEquals(ITEM_ID, id);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).insert(captor.capture());
+        assertNull(captor.getValue().getVatNo());
+        assertEquals(PIECE_NO, captor.getValue().getPieceNo());
+    }
+
+    @Test
+    void updateInspectionOrderItem_rollMode_missingVatNo_throws1030010002() {
+        InspectionOrderItemDO exist = buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(exist);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "ROLL", "GREIGE"));
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, "", ROLL_NO);
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> inspectionOrderItemService.updateInspectionOrderItem(reqVO));
+        assertEquals(1_030_010_002, ex.getCode());
+        assertTrue(ex.getMessage().contains("缸号不能为空"));
+        verify(inspectionOrderItemMapper, never()).updateById(any(InspectionOrderItemDO.class));
+    }
+
+    @Test
+    void updateInspectionOrderItem_greigeType_pieceMode_missingVatNo_success() {
+        InspectionOrderItemDO exist = buildItem(ITEM_ID, ORDER_ID, null, null, PIECE_NO);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(exist);
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(buildOrder(ORDER_ID, "ACTIVE", "PIECE", "GREIGE"));
+        when(inspectionOrderItemMapper.selectByInspectionOrderIdAndVatNoAndPieceNo(ORDER_ID, null, PIECE_NO))
+                .thenReturn(null);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, null, null, PIECE_NO);
+        inspectionOrderItemService.updateInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).updateById(captor.capture());
+        assertNull(captor.getValue().getVatNo());
     }
 
     @Test
@@ -613,6 +692,76 @@ class InspectionOrderItemServiceImplTest {
         verify(weavingTicketService).rollbackInspected(77L);
     }
 
+    // ==================== 04 票：photos 字段链路测试 ====================
+
+    @Test
+    void createInspectionOrderItem_withPhotos_savesPhotosToDO() {
+        InspectionOrderRespVO order = buildOrder(ORDER_ID, "ACTIVE");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(order);
+        when(inspectionOrderItemMapper.selectCountByInspectionOrderId(ORDER_ID)).thenReturn(1L);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(null, ORDER_ID, VAT_NO, ROLL_NO);
+        List<String> photos = Arrays.asList("http://img.example.com/p1.jpg", "http://img.example.com/p2.jpg");
+        reqVO.setPhotos(photos);
+
+        inspectionOrderItemService.createInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).insert(captor.capture());
+        assertEquals(photos, captor.getValue().getPhotos());
+    }
+
+    @Test
+    void updateInspectionOrderItem_withPhotos_updatesPhotosInDO() {
+        InspectionOrderRespVO order = buildOrder(ORDER_ID, "ACTIVE");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(order);
+
+        InspectionOrderItemDO existing = buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(existing);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        List<String> photos = Collections.singletonList("http://img.example.com/p3.jpg");
+        reqVO.setPhotos(photos);
+
+        inspectionOrderItemService.updateInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).updateById(captor.capture());
+        assertEquals(photos, captor.getValue().getPhotos());
+    }
+
+    @Test
+    void updateInspectionOrderItem_withNullPhotos_updatesNullInDO() {
+        InspectionOrderRespVO order = buildOrder(ORDER_ID, "ACTIVE");
+        when(inspectionOrderService.getInspectionOrder(ORDER_ID)).thenReturn(order);
+
+        InspectionOrderItemDO existing = buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        existing.setPhotos(Arrays.asList("http://img.example.com/p1.jpg"));
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(existing);
+
+        InspectionOrderItemSaveReqVO reqVO = buildSaveReqVO(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        reqVO.setPhotos(null);
+
+        inspectionOrderItemService.updateInspectionOrderItem(reqVO);
+
+        ArgumentCaptor<InspectionOrderItemDO> captor = ArgumentCaptor.forClass(InspectionOrderItemDO.class);
+        verify(inspectionOrderItemMapper).updateById(captor.capture());
+        assertNull(captor.getValue().getPhotos());
+    }
+
+    @Test
+    void getInspectionOrderItem_withPhotos_mapsPhotosToRespVO() {
+        InspectionOrderItemDO item = buildItem(ITEM_ID, ORDER_ID, VAT_NO, ROLL_NO);
+        List<String> photos = Arrays.asList("http://img.example.com/p1.jpg", "http://img.example.com/p2.jpg");
+        item.setPhotos(photos);
+        when(inspectionOrderItemMapper.selectById(ITEM_ID)).thenReturn(item);
+
+        InspectionOrderItemRespVO respVO = inspectionOrderItemService.getInspectionOrderItem(ITEM_ID);
+
+        assertNotNull(respVO);
+        assertEquals(photos, respVO.getPhotos());
+    }
+
     // ==================== VO 校验 ====================
 
     @Nested
@@ -633,10 +782,10 @@ class InspectionOrderItemServiceImplTest {
         }
 
         @Test
-        void saveReqVO_missingVatNo_failsValidation() {
+        void saveReqVO_missingVatNo_passesValidation() {
             InspectionOrderItemSaveReqVO vo = buildSaveReqVO(null, ORDER_ID, "", ROLL_NO);
             Set<ConstraintViolation<InspectionOrderItemSaveReqVO>> violations = validator.validate(vo);
-            assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("vatNo")));
+            assertTrue(violations.stream().noneMatch(v -> v.getPropertyPath().toString().equals("vatNo")));
         }
 
         @Test

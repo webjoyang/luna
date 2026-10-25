@@ -29,7 +29,7 @@
 - 全局避让调整：
   - 更新 `lunaerp-stock.sql` 将 `lunaerp_stock_item_type` 统一配置为 2247，避免执行时占用发货域 2245
 - 权威文档与错误码：
-  - `CONTEXT.md`：增加"业务管理：发货管理"术语概念；补充发货管理字典说明；注册 `1-030-016-xxx` 发货单错误码段位
+  - `GLOSSARY.md`：增加"业务管理：发货管理"术语概念；补充发货管理字典说明；注册 `1-030-016-xxx` 发货单错误码段位
   - `ErrorCodeConstants.java`：同步落地 016 段错误码常量定义
 - 前端字典常量：
   - `luna-ui/src/utils/dict.ts`：追加 `LUNAERP_SHIPMENT_STATUS` 与 `LUNAERP_SHIPMENT_SIGN_STATUS` 定义

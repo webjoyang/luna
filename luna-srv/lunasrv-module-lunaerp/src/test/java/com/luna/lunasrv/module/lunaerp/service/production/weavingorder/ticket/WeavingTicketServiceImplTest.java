@@ -12,6 +12,9 @@ import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.weavingorder.ti
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.WeavingOrderMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.task.MachineTaskMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.production.weavingorder.ticket.WeavingTicketMapper;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
+import com.luna.lunasrv.module.lunaerp.dal.dataobject.production.greigeorder.color.GreigeOrderColorDO;
+import com.luna.lunasrv.module.lunaerp.dal.mysql.production.greigeorder.color.GreigeOrderColorMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,6 +58,12 @@ class WeavingTicketServiceImplTest {
 
     @Mock
     private WeavingOrderMapper weavingOrderMapper;
+
+    @Mock
+    private ConfigApi configApi;
+
+    @Mock
+    private GreigeOrderColorMapper greigeOrderColorMapper;
 
     @InjectMocks
     private WeavingTicketServiceImpl weavingTicketService;
@@ -359,6 +368,7 @@ class WeavingTicketServiceImplTest {
         WeavingTicketDO ticket = buildTicket(1L, "EXCEPTION");
         ticket.setExceptionType("YARN_BREAK");
         ticket.setExceptionNote("断纱处理完毕");
+        ticket.setExceptionPhotos(Arrays.asList("https://oss.example.com/p1.jpg", "https://oss.example.com/p2.jpg"));
         when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
 
         WeavingTicketStartReqVO req = WeavingTicketStartReqVO.builder()
@@ -373,6 +383,7 @@ class WeavingTicketServiceImplTest {
         assertEquals("STARTED", updated.getStatus());
         assertNull(updated.getExceptionType());
         assertNull(updated.getExceptionNote());
+        assertNull(updated.getExceptionPhotos());
     }
 
     @Test
@@ -462,6 +473,53 @@ class WeavingTicketServiceImplTest {
     }
 
     @Test
+    void testExceptionTicket_withPhotos_persistsExceptionPhotos() {
+        WeavingTicketDO ticket = buildTicket(1L, "STARTED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        List<String> photos = Arrays.asList("https://oss.example.com/photo1.jpg", "https://oss.example.com/photo2.jpg");
+        WeavingTicketExceptionReqVO req = WeavingTicketExceptionReqVO.builder()
+                .id(1L)
+                .exceptionType("CLOTH_DAMAGE")
+                .exceptionNote("织造疵点破洞")
+                .exceptionPhotos(photos)
+                .build();
+
+        weavingTicketService.exceptionTicket(req);
+
+        ArgumentCaptor<WeavingTicketDO> captor = ArgumentCaptor.forClass(WeavingTicketDO.class);
+        verify(weavingTicketMapper).updateById(captor.capture());
+        WeavingTicketDO updated = captor.getValue();
+        assertEquals("EXCEPTION", updated.getStatus());
+        assertEquals("CLOTH_DAMAGE", updated.getExceptionType());
+        assertEquals("织造疵点破洞", updated.getExceptionNote());
+        assertEquals(2, updated.getExceptionPhotos().size());
+        assertEquals(photos, updated.getExceptionPhotos());
+    }
+
+    @Test
+    void testExceptionTicket_overwritePhotos_persistsNewPhotos() {
+        WeavingTicketDO ticket = buildTicket(1L, "STARTED");
+        ticket.setExceptionPhotos(Collections.singletonList("https://oss.example.com/old.jpg"));
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        List<String> newPhotos = Arrays.asList("https://oss.example.com/new1.jpg", "https://oss.example.com/new2.jpg");
+        WeavingTicketExceptionReqVO req = WeavingTicketExceptionReqVO.builder()
+                .id(1L)
+                .exceptionType("YARN_BREAK")
+                .exceptionNote("重新报异常")
+                .exceptionPhotos(newPhotos)
+                .build();
+
+        weavingTicketService.exceptionTicket(req);
+
+        ArgumentCaptor<WeavingTicketDO> captor = ArgumentCaptor.forClass(WeavingTicketDO.class);
+        verify(weavingTicketMapper).updateById(captor.capture());
+        WeavingTicketDO updated = captor.getValue();
+        assertEquals(newPhotos, updated.getExceptionPhotos());
+    }
+
+    @Test
     void testExceptionTicket_invalidType_throws113() {
         WeavingTicketDO ticket = buildTicket(1L, "STARTED");
         when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
@@ -521,6 +579,27 @@ class WeavingTicketServiceImplTest {
         assertEquals("VOID", updated.getStatus());
         assertEquals("现场误开工重打布票", updated.getVoidReason());
         assertNotNull(updated.getVoidedAt());
+    }
+
+    @Test
+    void testVoidTicket_fromException_preservesExceptionPhotos() {
+        WeavingTicketDO ticket = buildTicket(1L, "EXCEPTION");
+        List<String> photos = Arrays.asList("https://oss.example.com/p1.jpg", "https://oss.example.com/p2.jpg");
+        ticket.setExceptionPhotos(photos);
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        WeavingTicketVoidReqVO req = WeavingTicketVoidReqVO.builder()
+                .id(1L)
+                .voidReason("异常严重无法修复，直接作废")
+                .build();
+
+        weavingTicketService.voidTicket(req);
+
+        ArgumentCaptor<WeavingTicketDO> captor = ArgumentCaptor.forClass(WeavingTicketDO.class);
+        verify(weavingTicketMapper).updateById(captor.capture());
+        WeavingTicketDO updated = captor.getValue();
+        assertEquals("VOID", updated.getStatus());
+        assertEquals(photos, updated.getExceptionPhotos());
     }
 
     @Test
@@ -737,6 +816,18 @@ class WeavingTicketServiceImplTest {
     }
 
     @Test
+    void testGetTicket_withExceptionPhotos_mapsToRespVO() {
+        WeavingTicketDO ticket = buildTicket(1L, "EXCEPTION");
+        List<String> photos = Arrays.asList("https://oss.example.com/p1.jpg", "https://oss.example.com/p2.jpg");
+        ticket.setExceptionPhotos(photos);
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+
+        WeavingTicketRespVO resp = weavingTicketService.getTicket(1L);
+        assertNotNull(resp);
+        assertEquals(photos, resp.getExceptionPhotos());
+    }
+
+    @Test
     void testGetTicketByCode_success() {
         WeavingTicketDO ticket = buildTicket(1L, "STARTED");
         when(weavingTicketMapper.selectByCode("BT-MTZZPB09190010101-0001")).thenReturn(ticket);
@@ -837,6 +928,83 @@ class WeavingTicketServiceImplTest {
         List<WeavingTicketDO> updatedList = captor.getAllValues();
         assertEquals("STOCKED", updatedList.get(0).getStatus());
         assertEquals("STOCKED", updatedList.get(1).getStatus());
+    }
+
+    // ==================== 打印数据测试（Issue 03） ====================
+
+    @Test
+    void testPrintData_ticketNotExists() {
+        when(weavingTicketMapper.selectById(999L)).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                weavingTicketService.getWeavingTicketPrintData(999L));
+        assertEquals(WEAVING_TICKET_NOT_EXISTS.getCode(), ex.getCode());
+    }
+
+    @Test
+    void testPrintData_baseUrlMissing() {
+        WeavingTicketDO ticket = buildTicket(1L, "GENERATED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+        when(configApi.getConfigValueByKey("luna.h5.base-url")).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                weavingTicketService.getWeavingTicketPrintData(1L));
+        assertEquals(WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY.getCode(), ex.getCode());
+        assertTrue(ex.getMessage().contains("luna.h5.base-url"));
+    }
+
+    @Test
+    void testPrintData_baseUrlEmpty() {
+        WeavingTicketDO ticket = buildTicket(1L, "GENERATED");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+        when(configApi.getConfigValueByKey("luna.h5.base-url")).thenReturn("   ");
+
+        ServiceException ex = assertThrows(ServiceException.class, () ->
+                weavingTicketService.getWeavingTicketPrintData(1L));
+        assertEquals(WEAVING_TICKET_PRINT_H5_BASE_URL_EMPTY.getCode(), ex.getCode());
+    }
+
+    @Test
+    void testPrintData_success() {
+        WeavingTicketDO ticket = buildTicket(1L, "GENERATED");
+        ticket.setMaterialBatchNo("YB20260901-01");
+        when(weavingTicketMapper.selectById(1L)).thenReturn(ticket);
+        when(configApi.getConfigValueByKey("luna.h5.base-url")).thenReturn("https://h5.lunaerp.com/");
+
+        WeavingOrderDO order = new WeavingOrderDO();
+        order.setId(100L);
+        order.setCode("ZZ-PB0919001-01");
+        order.setProductName("40S全棉汗布");
+        order.setGreigeOrderId(50L);
+        when(weavingOrderMapper.selectById(100L)).thenReturn(order);
+
+        MachineTaskDO task = new MachineTaskDO();
+        task.setId(200L);
+        task.setCode("MT-ZZPB09190010101");
+        task.setLoomNo("LM20260001");
+        when(machineTaskMapper.selectById(200L)).thenReturn(task);
+
+        GreigeOrderColorDO color1 = new GreigeOrderColorDO();
+        color1.setColor("原白");
+        when(greigeOrderColorMapper.selectListByOrderId(50L)).thenReturn(Collections.singletonList(color1));
+
+        WeavingTicketPrintRespVO printVO = weavingTicketService.getWeavingTicketPrintData(1L);
+
+        assertNotNull(printVO);
+        assertEquals(1L, printVO.getId());
+        assertEquals("BT-MTZZPB09190010101-0001", printVO.getCode());
+        assertEquals("ZZ-PB0919001-01", printVO.getWeavingOrderCode());
+        assertEquals("MT-ZZPB09190010101", printVO.getMachineTaskCode());
+        assertEquals("LM20260001", printVO.getLoomNo());
+        assertEquals("40S全棉汗布", printVO.getProductName());
+        assertEquals("原白", printVO.getColor());
+        assertEquals(1, printVO.getPieceIndex());
+        assertEquals(new BigDecimal("25.00"), printVO.getQuantity());
+        assertEquals("KG", printVO.getUnit());
+        assertEquals("张三", printVO.getWorkerName());
+        assertEquals("YB20260901-01", printVO.getMaterialBatchNo());
+        assertEquals("https://h5.lunaerp.com/h5/scan/weaving-ticket?code=BT-MTZZPB09190010101-0001", printVO.getQrUrl());
+        assertNotNull(printVO.getPrintTime());
     }
 
     // ==================== 辅助方法 ====================

@@ -1,4 +1,5 @@
 import { Layout } from '@/utils/routerHelper'
+import { useI18n } from '@/hooks/web/useI18n'
 
 const { t } = useI18n()
 /**
@@ -108,6 +109,71 @@ const remainingRouter: AppRouteRecordRaw[] = [
           noTagsView: false,
           icon: 'ep:message',
           title: '我的站内信'
+        }
+      }
+    ]
+  },
+  {
+    path: '/approval',
+    component: Layout,
+    name: 'ApprovalCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'todo',
+        component: () => import('@/views/approval/todo/index.vue'),
+        name: 'ApprovalTodo',
+        meta: {
+          title: '待我审批',
+          canTo: true,
+          hidden: true,
+          noCache: true
+        }
+      },
+      {
+        path: 'done',
+        component: () => import('@/views/approval/done/index.vue'),
+        name: 'ApprovalDone',
+        meta: {
+          title: '我已审批',
+          canTo: true,
+          hidden: true,
+          noCache: true
+        }
+      },
+      {
+        path: 'mine',
+        component: () => import('@/views/approval/mine/index.vue'),
+        name: 'ApprovalMine',
+        meta: {
+          title: '我发起的',
+          canTo: true,
+          hidden: true,
+          noCache: true
+        }
+      },
+      {
+        path: 'detail',
+        component: () => import('@/views/approval/detail/index.vue'),
+        name: 'ApprovalDetail',
+        meta: {
+          title: '审批实例详情',
+          canTo: true,
+          hidden: true,
+          noCache: true
+        }
+      },
+      {
+        path: 'config',
+        component: () => import('@/views/approval/config/index.vue'),
+        name: 'ApprovalConfig',
+        meta: {
+          title: '审批链配置',
+          canTo: true,
+          hidden: true,
+          noCache: true
         }
       }
     ]
@@ -512,6 +578,54 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           activeMenu: '/business/shipment'
         }
+      },
+      {
+        path: 'export-doc/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/business/export-doc/workspace/index.vue'),
+        name: 'LunaerpElmuiBusinessExportDocWorkspace',
+        meta: {
+          title: '出口单证工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/business/export-doc'
+        }
+      },
+      {
+        path: 'sales-return/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/business/sales-return/workspace/index.vue'),
+        name: 'LunaerpElmuiBusinessSalesReturnWorkspace',
+        meta: {
+          title: '退货工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/business/sales-return'
+        }
+      },
+      {
+        path: 'cost-card/edit/:id?',
+        component: () => import('@/views/lunaerp/business/cost-card/edit.vue'),
+        name: 'LunaerpBusinessCostCardEdit',
+        meta: {
+          title: '成本卡编辑',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/business/cost-card'
+        }
+      },
+      {
+        path: 'quotation/edit/:id?',
+        component: () => import('@/views/lunaerp/business/quotation/edit.vue'),
+        name: 'LunaerpBusinessQuotationEdit',
+        meta: {
+          title: '报价单编辑',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/business/quotation'
+        }
       }
     ]
   },
@@ -521,6 +635,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
     name: 'lunaerpElmuiProductionStatic',
     meta: { hidden: true },
     children: [
+      {
+        path: 'color-instruction/edit/:id?',
+        component: () => import('@/views/lunaerp-elmui/production/color-instruction/edit.vue'),
+        name: 'LunaerpElmuiProductionColorInstructionEdit',
+        meta: {
+          title: '打色指示单',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/production/color-instruction'
+        }
+      },
       {
         path: 'greige-order/edit/:id?',
         component: () => import('@/views/lunaerp-elmui/production/greige-order/edit/index.vue'),
@@ -611,6 +737,26 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           canTo: true,
           activeMenu: '/stock/stock-in'
+        }
+      }
+    ]
+  },
+  {
+    path: '/finance',
+    component: Layout,
+    name: 'lunaerpElmuiFinanceStatic',
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'supplier-recon/workspace/:id?',
+        component: () => import('@/views/lunaerp-elmui/finance/supplier-recon/workspace/index.vue'),
+        name: 'LunaerpElmuiFinanceSupplierReconWorkspace',
+        meta: {
+          title: '供应商对账工作台',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/finance/supplier-reconciliation'
         }
       }
     ]
@@ -798,6 +944,212 @@ const remainingRouter: AppRouteRecordRaw[] = [
       }
     ]
   },
+  {
+    path: '/portal',
+    component: () => import('@/views/portal/PortalLayout.vue'),
+    redirect: '/portal/shipments',
+    name: 'CustomerPortal',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '客户门户'
+    },
+    children: [
+      {
+        path: 'shipments',
+        name: 'PortalShipmentList',
+        component: () => import('@/views/portal/shipment/list.vue'),
+        meta: {
+          title: '发货单列表',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'shipment/:id',
+        name: 'PortalShipmentDetail',
+        component: () => import('@/views/portal/shipment/detail.vue'),
+        meta: {
+          title: '发货单详情',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'shipment',
+        name: 'PortalShipmentDetailByNo',
+        component: () => import('@/views/portal/shipment/detail.vue'),
+        meta: {
+          title: '发货单详情',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'statements',
+        name: 'PortalStatementList',
+        component: () => import('@/views/portal/statement/list.vue'),
+        meta: {
+          title: '对账单列表',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'statement/:id',
+        name: 'PortalStatementDetail',
+        component: () => import('@/views/portal/statement/detail.vue'),
+        meta: {
+          title: '对账单详情',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'statement',
+        name: 'PortalStatementDetailByNo',
+        component: () => import('@/views/portal/statement/detail.vue'),
+        meta: {
+          title: '对账单详情',
+          hidden: true,
+          noTagsView: true
+        }
+      }
+    ]
+  },
+  {
+    path: '/portal/invalid',
+    name: 'PortalInvalid',
+    component: () => import('@/views/portal/invalid.vue'),
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '链接已失效'
+    }
+  },
+  {
+    path: '/h5/login',
+    component: () => import('@/views/h5/login.vue'),
+    name: 'H5Login',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '车间移动端登录'
+    }
+  },
+  {
+    path: '/h5/403',
+    component: () => import('@/views/h5/403.vue'),
+    name: 'H5Forbidden',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '无权限访问'
+    }
+  },
+  {
+    path: '/h5',
+    component: () => import('@/views/h5/layout/H5Layout.vue'),
+    name: 'H5Layout',
+    redirect: '/h5/report',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '车间移动端'
+    },
+    children: [
+      {
+        path: 'report',
+        name: 'H5Report',
+        component: () => import('@/views/h5/report/index.vue'),
+        meta: {
+          title: '车间报工',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'inspection',
+        name: 'H5Inspection',
+        component: () => import('@/views/h5/inspection/index.vue'),
+        meta: {
+          title: '移动质检',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'requisition',
+        name: 'H5Requisition',
+        component: () => import('@/views/h5/requisition/index.vue'),
+        meta: {
+          title: '移动发纱',
+          hidden: true,
+          noTagsView: true
+        }
+      },
+      {
+        path: 'me',
+        name: 'H5Me',
+        component: () => import('@/views/h5/me/index.vue'),
+        meta: {
+          title: '个人中心',
+          hidden: true,
+          noTagsView: true
+        }
+      }
+    ]
+  },
+  {
+    path: '/h5/ticket',
+    component: () => import('@/views/h5/ticket.vue'),
+    name: 'H5Ticket',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '布票报工卡'
+    }
+  },
+  {
+    path: '/h5/scan/weaving-ticket',
+    component: () => import('@/views/h5/scan/weaving-ticket.vue'),
+    name: 'H5ScanWeavingTicket',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '布票扫码报工'
+    }
+  },
+  {
+    path: '/h5/inspection/order',
+    component: () => import('@/views/h5/inspection/order.vue'),
+    name: 'H5InspectionOrder',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '移动质检详情'
+    }
+  },
+  {
+    path: '/h5/requisition/detail',
+    component: () => import('@/views/h5/requisition/detail.vue'),
+    name: 'H5RequisitionDetail',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: '移动发纱详情'
+    }
+  },
+  {
+    path: '/h5/demo',
+    component: () => import('@/views/h5/demo/index.vue'),
+    name: 'H5Demo',
+    meta: {
+      hidden: true,
+      noTagsView: true,
+      title: 'H5 拍照压缩与弱网交互 Demo'
+    }
+  }
 ]
 
 export default remainingRouter

@@ -35,4 +35,4 @@
   - **纱线规格/成本结构明细当前是纯占位**，提交载荷刻意不带 `yarnSpecs` / `costItems` 两个键——缺键 → DO 为 null → `updateById` 跳过 → 库里已有 JSON 不被覆盖。工单 05 接上 `ProductYarnCostSection.vue` 后必须重新带上这两个键，否则纱线/成本录入永远写不进去。
   - **工单 05 的列还没加 ALWAYS**：`fabricConstruction`、`wovenCalculationMode`、`greigeWeightGsm`、`greigeWidthCm`、`knitProcessingFeePerKg`、`weavingFeePerMeter`、`otherProcessingFeePerMeter`、`packagingFee`、`taxRate` 本次未加（表单还没接管它们，提前加反而会因载荷缺键被刷成 null）。工单 05 开始提交这些字段时，必须同批给它们补 `@TableField(updateStrategy = FieldStrategy.ALWAYS)`，并同步 `ProductServiceImplTest.CLEARABLE_FIELDS`（已加至 8 项：greigeTypeId/fabricType/fabricTypeLabel + 5 个梭织参数）。
   - 扩展表单字段请改 `product-form.ts` 的两个映射函数并同步补 `product-form.spec.ts`，不要再往 `ProductEditModal.vue` 里塞散落的映射逻辑。
-  - 工作区仍有与本工单无关的未提交改动（CONTEXT.md 产品章节、YarnTypeDO/lunaerp-production-yarn-master.sql 的 seed 移除、.scratch/review_diff.txt），同工单 02 处理口径，未纳入本次提交。
+  - 工作区仍有与本工单无关的未提交改动（GLOSSARY.md 产品章节、YarnTypeDO/lunaerp-production-yarn-master.sql 的 seed 移除、.scratch/review_diff.txt），同工单 02 处理口径，未纳入本次提交。

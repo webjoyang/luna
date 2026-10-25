@@ -24,6 +24,13 @@ public class DyeingOrderSaveReqVO {
     @Size(max = 32, message = "合同号长度不能超过 32 位")
     private String contractNo;
 
+    @Schema(description = "打色指示单ID（远程选择打色单，可空）", example = "5001")
+    private Long colorInstructionId;
+
+    @Schema(description = "打色指示单号快照（选中打色单时保存，可空）", example = "DS20261007001")
+    @Size(max = 32, message = "打色单号长度不能超过 32 位")
+    private String colorInstructionNo;
+
     @Schema(description = "客户ID（从合同带出）", example = "1001")
     private Long customerId;
 

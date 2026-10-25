@@ -5,7 +5,7 @@
     class="pointer-events-none absolute inset-0 h-full w-full"
     :style="{ mixBlendMode: 'overlay' }"
     aria-hidden="true"
-  />
+  ></canvas>
 </template>
 
 <script lang="ts" setup>

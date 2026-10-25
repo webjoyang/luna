@@ -36,17 +36,17 @@ public class DataPermissionRuleFactoryImpl implements DataPermissionRuleFactory 
         if (CollUtil.isEmpty(rules)) {
             return Collections.emptyList();
         }
-        // 1.2 未配置，则默认开启
+        // 1.2 特殊：数据翻译时，强制忽略数据权限 https://github.com/YunaiV/ruoyi-vue-pro/issues/1007
+        if (isTranslateCall()) {
+            return Collections.emptyList();
+        }
+        // 1.3 未配置，则默认开启
         DataPermission dataPermission = DataPermissionContextHolder.get();
         if (dataPermission == null) {
             return rules;
         }
-        // 1.3 已配置，但禁用
+        // 1.4 已配置，但禁用
         if (!dataPermission.enable()) {
-            return Collections.emptyList();
-        }
-        // 1.4 特殊：数据翻译时，强制忽略数据权限 https://github.com/YunaiV/ruoyi-vue-pro/issues/1007
-        if (isTranslateCall()) {
             return Collections.emptyList();
         }
 

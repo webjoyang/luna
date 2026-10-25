@@ -1,7 +1,13 @@
 <template>
   <ContentWrap>
     <!-- 搜索区 -->
-    <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
+    <el-form
+      class="-mb-15px"
+      :model="queryParams"
+      ref="queryFormRef"
+      :inline="true"
+      label-width="80px"
+    >
       <el-form-item label="产品编码" prop="productCode">
         <el-input
           v-model="queryParams.productCode"
@@ -58,7 +64,13 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="备注" align="center" prop="remark" min-width="150" show-overflow-tooltip />
+      <el-table-column
+        label="备注"
+        align="center"
+        prop="remark"
+        min-width="150"
+        show-overflow-tooltip
+      />
       <el-table-column label="创建人" align="center" prop="creator" width="120" />
       <el-table-column
         label="创建时间"
@@ -111,6 +123,7 @@ import {
 defineOptions({ name: 'LunaerpElmuiProductionYarnRecipeBom' })
 
 const router = useRouter()
+const route = useRoute()
 const message = useMessage()
 const { t } = useI18n()
 
@@ -122,8 +135,9 @@ const queryFormRef = ref()
 const queryParams = reactive<YarnRecipeBomPageParam>({
   pageNo: 1,
   pageSize: 10,
-  productCode: undefined,
-  productName: undefined,
+  productId: route.query?.productId ? Number(route.query.productId) : undefined,
+  productCode: (route.query?.productCode as string) || undefined,
+  productName: (route.query?.productName as string) || undefined,
   status: undefined
 })
 

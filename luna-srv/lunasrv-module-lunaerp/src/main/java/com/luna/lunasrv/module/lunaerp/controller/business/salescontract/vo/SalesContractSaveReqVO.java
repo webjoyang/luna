@@ -58,17 +58,38 @@ public class SalesContractSaveReqVO {
     @Schema(description = "订单属性（字典 lunaerp_sales_contract_order_type），缺省 BULK", example = "BULK")
     private String orderType;
 
+    @Schema(description = "贸易术语（字典 lunaerp_incoterm：FOB/CIF/CFR/EXW，可空）", example = "FOB")
+    private String incoterm;
+
+    @Schema(description = "起运港（可空）", example = "SHANGHAI")
+    private String portOfLoading;
+
+    @Schema(description = "目的港（可空）", example = "LOS ANGELES")
+    private String portOfDischarge;
+
+    @Schema(description = "付款方式（字典 lunaerp_payment_term：TT/LC/DP/DA/OA，可空）", example = "TT")
+    private String paymentTerm;
+
     @Schema(description = "备注")
     private String remarks;
 
     @Schema(description = "合同状态（字典 lunaerp_sales_contract_status），缺省 ACTIVE", example = "ACTIVE")
     private String status;
 
+    @Schema(description = "审批状态（DRAFT/PENDING/APPROVING/APPROVED/REJECTED/CANCELLED），缺省 DRAFT", example = "DRAFT")
+    private String approvalStatus;
+
     @Schema(description = "总数量（服务端按明细权威重算，前端传入值一律忽略覆盖）", example = "0")
     private java.math.BigDecimal totalQuantity;
 
     @Schema(description = "总金额（服务端按明细权威重算，前端传入值一律忽略覆盖）", example = "0")
     private java.math.BigDecimal totalAmount;
+
+    @Schema(description = "来源报价单ID（可空）", example = "100")
+    private Long sourceQuotationId;
+
+    @Schema(description = "来源报价单号快照（可空）", example = "QT20260001-v1")
+    private String sourceQuotationNo;
 
     @Schema(description = "商品明细列表（整体替换：服务端按数组顺序重排 line_no；为空表示零明细合同）")
     @Valid

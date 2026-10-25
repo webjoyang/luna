@@ -271,7 +271,7 @@ Prior art：`SalesContractServiceImplTest` / `CustomerServiceImplTest`（同模�
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 已新增"生产管理：胚布单"术语分区：胚布单、颜色投胚分配、承织坯布厂、指定染厂、计划投胚量、胚布单号、胚布单状态；更新模块落点、字典、错误码段位表
+- [GLOSSARY.md](../../docs/contexts/production/GLOSSARY.md) — 已新增"生产管理：胚布单"术语分区：胚布单、颜色投胚分配、承织坯布厂、指定染厂、计划投胚量、胚布单号、胚布单状态；更新模块落点、字典、错误码段位表
 - [ADR-0006](../../docs/adr/0006-greige-order-no-daily-sequence.md) — 胚布单号按日取号（刻意区别于 CH/SUP 按年）
 - [ADR-0007](../../docs/adr/0007-supplier-role-reference-no-type-filter.md) — 供应商角色引用不做类型强过滤
 

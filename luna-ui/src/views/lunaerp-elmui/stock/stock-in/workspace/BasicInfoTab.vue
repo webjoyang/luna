@@ -12,7 +12,13 @@
         <el-form-item label="入库单号" prop="inNo">
           <el-input
             v-model="formData.inNo"
-            :placeholder="isCreate ? (previewNo ? `留空自动生成：${previewNo}` : '留空自动生成：IN-YYYYMMDD-NNN') : '请输入入库单号'"
+            :placeholder="
+              isCreate
+                ? previewNo
+                  ? `留空自动生成：${previewNo}`
+                  : '留空自动生成：IN-YYYYMMDD-NNN'
+                : '请输入入库单号'
+            "
             clearable
             :disabled="isReadOnly || !isCreate"
           />
@@ -109,7 +115,11 @@
             <el-option
               v-for="item in contractOptions"
               :key="item.id"
-              :label="item.contractNo ? `${item.contractNo} (${item.clientName || '无客户'})` : String(item.id)"
+              :label="
+                item.contractNo
+                  ? `${item.contractNo} (${item.clientName || '无客户'})`
+                  : String(item.id)
+              "
               :value="item.id!"
             />
           </el-select>
@@ -136,7 +146,11 @@
             <el-option
               v-for="item in greigeOrderOptions"
               :key="item.id"
-              :label="item.orderNo ? `${item.orderNo} (${item.greigeFactoryName || '无承织厂'})` : String(item.id)"
+              :label="
+                item.orderNo
+                  ? `${item.orderNo} (${item.greigeFactoryName || '无承织厂'})`
+                  : String(item.id)
+              "
               :value="item.id!"
             />
           </el-select>
@@ -189,9 +203,42 @@
         </el-form-item>
       </el-col>
       <el-col :span="12">
+        <el-form-item label="关联纱线采购单" prop="yarnOrderId">
+          <el-select
+            v-model="formData.yarnOrderId"
+            placeholder="搜索纱线采购单（可选）"
+            clearable
+            filterable
+            remote
+            reserve-keyword
+            :remote-method="searchYarnOrders"
+            :loading="yarnOrderLoading"
+            class="!w-full"
+            :disabled="isReadOnly"
+            @change="handleYarnOrderChange"
+          >
+            <el-option
+              v-for="item in yarnOrderOptions"
+              :key="item.id"
+              :label="
+                item.orderNo
+                  ? `${item.orderNo}${item.orderDate ? ' (' + item.orderDate + ')' : ''}`
+                  : String(item.id)
+              "
+              :value="item.id!"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20">
+      <el-col :span="12">
         <el-form-item label="金额合计">
           <el-input
-            :model-value="formData.totalAmount != null ? `¥ ${Number(formData.totalAmount).toFixed(2)}` : '—'"
+            :model-value="
+              formData.totalAmount != null ? `¥ ${Number(formData.totalAmount).toFixed(2)}` : '—'
+            "
             disabled
           />
         </el-form-item>
@@ -202,7 +249,11 @@
       <el-col :span="12">
         <el-form-item label="关联检验单">
           <el-input
-            :model-value="formData.inspectionOrderNo ? `${formData.inspectionOrderNo}` : `检验单 #${formData.inspectionOrderId}`"
+            :model-value="
+              formData.inspectionOrderNo
+                ? `${formData.inspectionOrderNo}`
+                : `检验单 #${formData.inspectionOrderId}`
+            "
             disabled
           >
             <template #append v-if="formData.inspectionOrderId">
@@ -242,6 +293,8 @@ import * as GreigeOrderApi from '@/api/lunaerp-elmui/production/greige-order'
 import type { GreigeOrderVO } from '@/api/lunaerp-elmui/production/greige-order'
 import * as DyeingOrderApi from '@/api/lunaerp-elmui/production/dyeing-order'
 import type { DyeingOrderVO } from '@/api/lunaerp-elmui/production/dyeing-order'
+import * as YarnOrderApi from '@/api/lunaerp-elmui/production/yarn-order'
+import type { YarnOrderVO } from '@/api/lunaerp-elmui/production/yarn-order'
 import * as GreigeTypeApi from '@/api/lunaerp/baseinfo/greige-type'
 import type { GreigeTypeSimpleVO } from '@/api/lunaerp/baseinfo/greige-type'
 
@@ -378,6 +431,27 @@ const handleGreigeTypeChange = (val: number) => {
   formData.value.greigeTypeName = target?.name
 }
 
+// 纱线采购单远程
+const yarnOrderOptions = ref<YarnOrderVO[]>([])
+const yarnOrderLoading = ref(false)
+const searchYarnOrders = async (query: string) => {
+  yarnOrderLoading.value = true
+  try {
+    const res = await YarnOrderApi.getYarnOrderPage({
+      pageNo: 1,
+      pageSize: 20,
+      keyword: query || ''
+    })
+    yarnOrderOptions.value = res.list
+  } finally {
+    yarnOrderLoading.value = false
+  }
+}
+const handleYarnOrderChange = (val?: number) => {
+  const target = yarnOrderOptions.value.find((y) => y.id === val)
+  formData.value.yarnOrderNo = target?.orderNo
+}
+
 // 预填充已选中项，避免远程搜索前不展示名称
 const ensureInitialOptions = () => {
   if (formData.value.supplierId && formData.value.supplierName) {
@@ -395,10 +469,20 @@ const ensureInitialOptions = () => {
       { id: formData.value.greigeOrderId, orderNo: formData.value.greigeOrderNo } as any
     ]
   }
+  if (formData.value.yarnOrderId && formData.value.yarnOrderNo) {
+    yarnOrderOptions.value = [
+      { id: formData.value.yarnOrderId, orderNo: formData.value.yarnOrderNo } as any
+    ]
+  }
 }
 
 watch(
-  () => [props.modelValue.supplierId, props.modelValue.salesContractId, props.modelValue.greigeOrderId],
+  () => [
+    props.modelValue.supplierId,
+    props.modelValue.salesContractId,
+    props.modelValue.greigeOrderId,
+    props.modelValue.yarnOrderId
+  ],
   () => ensureInitialOptions(),
   { immediate: true }
 )
@@ -413,7 +497,9 @@ defineExpose({ validate })
 const router = useRouter()
 const handleNavigateToInspection = () => {
   if (formData.value.inspectionOrderId) {
-    router.push(`/production/inspection-order/workspace/${formData.value.inspectionOrderId}?mode=view`)
+    router.push(
+      `/production/inspection-order/workspace/${formData.value.inspectionOrderId}?mode=view`
+    )
   }
 }
 

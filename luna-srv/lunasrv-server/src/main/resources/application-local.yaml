@@ -84,10 +84,10 @@ spring:
   # Redis 配置。Redisson 默认的配置足够使用，一般不需要进行调优
   data:
     redis:
-      host: discovery-neovivid-powder-15081.db.redis.io # 地址
-      port: 11274 # 端口
+      host: 175.27.165.226 # 地址
+      port: 6379 # 端口
       database: 0 # 数据库索引
-      password: SIrHzvsQ7YFt10jsc5hysebVrG8lWdEa # 密码，建议生产环境开启
+      password: ca3d0ef6714751a9a9913cb10ebb754db0852bc58119c283 # 密码，建议生产环境开启
 
 --- #################### 定时任务相关配置 ####################
 

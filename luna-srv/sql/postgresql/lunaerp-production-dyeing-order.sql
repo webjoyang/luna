@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS lunaerp_production_dyeing_order (
     fastness_perspiration    varchar(64)   NULL,
     fastness_dry_clean       varchar(64)   NULL,
     fastness_six_fiber       varchar(64)   NULL,
+    color_instruction_id     int8          NULL,
+    color_instruction_no     varchar(32)   NULL,
     other_req                varchar(1000) NULL,
     remark                   varchar(1000) NULL,
     status                   varchar(16)   NOT NULL DEFAULT 'DRAFT',
@@ -57,12 +59,18 @@ BEGIN
     END IF;
 END $$;
 
+-- 存量表结构变更与默认值补齐（可重复执行）
+ALTER TABLE lunaerp_production_dyeing_order ADD COLUMN IF NOT EXISTS color_instruction_id int8 NULL;
+ALTER TABLE lunaerp_production_dyeing_order ADD COLUMN IF NOT EXISTS color_instruction_no varchar(32) NULL;
+
 CREATE INDEX IF NOT EXISTS idx_lb_dyeing_order_status
     ON lunaerp_production_dyeing_order (status);
 CREATE INDEX IF NOT EXISTS idx_lb_dyeing_order_order_date
     ON lunaerp_production_dyeing_order (order_date);
 CREATE INDEX IF NOT EXISTS idx_lb_dyeing_order_sales_contract_id
     ON lunaerp_production_dyeing_order (sales_contract_id);
+CREATE INDEX IF NOT EXISTS idx_lb_dyeing_order_color_instruction_id
+    ON lunaerp_production_dyeing_order (color_instruction_id);
 
 COMMENT ON TABLE lunaerp_production_dyeing_order IS '生产管理-染色单主表';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.id IS '染色单ID';
@@ -90,6 +98,8 @@ COMMENT ON COLUMN lunaerp_production_dyeing_order.fastness_light IS '日晒牢�
 COMMENT ON COLUMN lunaerp_production_dyeing_order.fastness_perspiration IS '汗渍牢度';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.fastness_dry_clean IS '干洗牢度';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.fastness_six_fiber IS '六千沾色牢度';
+COMMENT ON COLUMN lunaerp_production_dyeing_order.color_instruction_id IS '打色指示单ID（lunaerp_production_color_instruction.id，逻辑关联可空，同客户+产品）';
+COMMENT ON COLUMN lunaerp_production_dyeing_order.color_instruction_no IS '打色单号快照（保存时同步记录）';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.other_req IS '其他要求';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.remark IS '备注';
 COMMENT ON COLUMN lunaerp_production_dyeing_order.status IS '染色单状态（字典 lunaerp_dyeing_order_status：DRAFT/ACTIVE/COMPLETED/CANCELLED），创建缺省 DRAFT';

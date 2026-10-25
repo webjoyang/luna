@@ -3,6 +3,7 @@
 
 # Log file
 *.log
+.scratch/logs/
 
 # BlueJ files
 *.ctxt
@@ -110,3 +111,4 @@ output/
 skills/
 .trae/commands/
 .qoder/
+.claude/

@@ -6,7 +6,7 @@ export interface InspectionOrderItemVO {
   inspectionOrderId: number
   rollNo?: string
   pieceNo?: string
-  vatNo: string
+  vatNo?: string
   measuredWeight?: number
   lengthM?: number
   machineNo?: string
@@ -18,6 +18,7 @@ export interface InspectionOrderItemVO {
   productName?: string
   pieceCount?: number
   weavingTicketId?: number
+  photos?: string[]
   remark?: string
   createTime?: Date | string
   updateTime?: Date | string
@@ -36,7 +37,7 @@ export interface InspectionOrderItemSaveReqVO {
   inspectionOrderId: number
   rollNo?: string
   pieceNo?: string
-  vatNo: string
+  vatNo?: string
   measuredWeight?: number
   lengthM?: number
   machineNo?: string
@@ -48,6 +49,7 @@ export interface InspectionOrderItemSaveReqVO {
   productName?: string
   pieceCount?: number
   weavingTicketId?: number
+  photos?: string[]
   remark?: string
 }
 
@@ -58,7 +60,9 @@ export const getInspectionOrderItemPage = (params: InspectionOrderItemPageParam)
 
 // 查询录检明细详情
 export const getInspectionOrderItem = (id: number) => {
-  return request.get<InspectionOrderItemVO>({ url: `/lunaerp/production/inspection-order-item/get?id=${id}` })
+  return request.get<InspectionOrderItemVO>({
+    url: `/lunaerp/production/inspection-order-item/get?id=${id}`
+  })
 }
 
 // 创建录检明细
@@ -73,5 +77,7 @@ export const updateInspectionOrderItem = (data: InspectionOrderItemSaveReqVO) =>
 
 // 删除录检明细
 export const deleteInspectionOrderItem = (id: number) => {
-  return request.delete<boolean>({ url: `/lunaerp/production/inspection-order-item/delete?id=${id}` })
+  return request.delete<boolean>({
+    url: `/lunaerp/production/inspection-order-item/delete?id=${id}`
+  })
 }

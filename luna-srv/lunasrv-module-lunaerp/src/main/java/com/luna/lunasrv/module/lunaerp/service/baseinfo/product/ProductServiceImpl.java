@@ -1,11 +1,17 @@
 package com.luna.lunasrv.module.lunaerp.service.baseinfo.product;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.framework.common.util.object.BeanUtils;
+import com.luna.lunasrv.framework.dict.core.DictFrameworkUtils;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportHelper;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult;
+import com.luna.lunasrv.module.lunaerp.common.dataimport.ImportRow;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductImageVO;
+import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductImportVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductPageReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductSaveReqVO;
@@ -20,20 +26,25 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.luna.lunasrv.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST;
 import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PRODUCT_CODE_DUPLICATE;
 import static com.luna.lunasrv.module.lunaerp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
@@ -132,6 +143,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createProduct(ProductSaveReqVO createReqVO) {
+        validateProductNotMasked(createReqVO);
         // 校验同租户未删除产品编号唯一
         validateCodeUnique(null, createReqVO.getCode());
         // 插入产品
@@ -154,6 +166,7 @@ public class ProductServiceImpl implements ProductService {
     public void updateProduct(ProductSaveReqVO updateReqVO) {
         // 校验存在
         validateProductExists(updateReqVO.getId());
+        validateProductNotMasked(updateReqVO);
         // 校验编号唯一（排除自身）
         validateCodeUnique(updateReqVO.getId(), updateReqVO.getCode());
         // 更新主表
@@ -449,6 +462,157 @@ public class ProductServiceImpl implements ProductService {
             product.setTags(tagMap.getOrDefault(product.getId(), Collections.emptyList()));
             // TODO 供应商模块迁移后接入：按 supplierId 查询供应商公司名称
             product.setSupplierCompany(null);
+        }
+    }
+
+    /**
+     * 校验产品字段不含脱敏占位符，写接口不接受脱敏值入库
+     */
+    private void validateProductNotMasked(ProductSaveReqVO reqVO) {
+        if (reqVO != null && reqVO.getCostItems() != null && reqVO.getCostItems().contains("****")) {
+            throw exception(BAD_REQUEST, "成本项明细不能包含脱敏占位符");
+        }
+    }
+
+    @Override
+    public List<ProductImportVO> getImportTemplate() {
+        return Collections.singletonList(
+                ProductImportVO.builder()
+                        .code("P0001")
+                        .name("莫代尔汗布")
+                        .type("FINISHED")
+                        .fabricType("KNIT")
+                        .fabricConstruction("KNIT")
+                        .composition("95%莫代尔 5%氨纶")
+                        .widthCm(new BigDecimal("160"))
+                        .weightGsm(new BigDecimal("220"))
+                        .color("黑色")
+                        .craftType("丝光")
+                        .machineType("大圆机")
+                        .supplierCode("SUP-M01")
+                        .standardLength("100")
+                        .status("ACTIVE")
+                        .remark("标准产品档案示例")
+                        .build()
+        );
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ExcelImportResult importProduct(MultipartFile file) throws IOException {
+        return ExcelImportHelper.importExcel(
+                file,
+                ProductImportVO.class,
+                this::validateProductImportRows,
+                validList -> {
+                    List<ProductDO> doList = new ArrayList<>(validList.size());
+                    for (ProductImportVO vo : validList) {
+                        ProductDO product = BeanUtils.toBean(vo, ProductDO.class);
+                        if (!StringUtils.hasText(product.getStatus())) {
+                            product.setStatus(DEFAULT_STATUS);
+                        }
+                        if (StringUtils.hasText(product.getType())) {
+                            product.setTypeLabel(safeParseDictLabel("lunaerp_product_category", product.getType()));
+                        }
+                        if (StringUtils.hasText(product.getFabricType())) {
+                            product.setFabricTypeLabel(safeParseDictLabel("lunaerp_fabric_type", product.getFabricType()));
+                        }
+                        doList.add(product);
+                    }
+                    productMapper.insertBatch(doList);
+                }
+        );
+    }
+
+    /**
+     * 逐行校验产品导入数据：
+     * 1. 产品编号必填
+     * 2. 产品名称必填
+     * 3. 产品类别必填
+     * 4. 成分必填
+     * 5. 成品门幅必填
+     * 6. 成品克重必填
+     * 7. 文件内产品编号重复排查
+     * 8. 数据库内产品编号查重（1_030_001_001 口径）
+     */
+    private void validateProductImportRows(List<ImportRow<ProductImportVO>> rows) {
+        Set<String> seenCodes = new HashSet<>();
+        Set<String> fileDuplicateCodes = new HashSet<>();
+        List<String> queryCodes = new ArrayList<>();
+
+        for (ImportRow<ProductImportVO> row : rows) {
+            ProductImportVO vo = row.getData();
+            String code = vo.getCode() != null ? vo.getCode().trim() : "";
+            if (StrUtil.isBlank(code)) {
+                row.addError("产品编号不能为空");
+            } else {
+                if (!seenCodes.add(code)) {
+                    fileDuplicateCodes.add(code);
+                }
+                queryCodes.add(code);
+            }
+
+            String name = vo.getName() != null ? vo.getName().trim() : "";
+            if (StrUtil.isBlank(name)) {
+                row.addError("产品名称不能为空");
+            }
+
+            String type = vo.getType() != null ? vo.getType().trim() : "";
+            if (StrUtil.isBlank(type)) {
+                row.addError("产品类别不能为空");
+            }
+
+            String composition = vo.getComposition() != null ? vo.getComposition().trim() : "";
+            if (StrUtil.isBlank(composition)) {
+                row.addError("成分不能为空");
+            }
+
+            if (vo.getWidthCm() == null) {
+                row.addError("成品门幅不能为空");
+            }
+
+            if (vo.getWeightGsm() == null) {
+                row.addError("成品克重不能为空");
+            }
+        }
+
+        // 文件内编号重复检查
+        if (!fileDuplicateCodes.isEmpty()) {
+            for (ImportRow<ProductImportVO> row : rows) {
+                String code = row.getData().getCode() != null ? row.getData().getCode().trim() : "";
+                if (fileDuplicateCodes.contains(code)) {
+                    row.addError("产品编号在文件中重复");
+                }
+            }
+        }
+
+        // 数据库内编号查重（1_030_001_001 口径）
+        if (!queryCodes.isEmpty()) {
+            List<ProductDO> existingProducts = productMapper.selectListByCodes(queryCodes);
+            if (CollUtil.isNotEmpty(existingProducts)) {
+                Set<String> existingCodes = existingProducts.stream()
+                        .map(ProductDO::getCode)
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .collect(Collectors.toSet());
+                for (ImportRow<ProductImportVO> row : rows) {
+                    String code = row.getData().getCode() != null ? row.getData().getCode().trim() : "";
+                    if (existingCodes.contains(code)) {
+                        row.addError(PRODUCT_CODE_DUPLICATE.getMsg());
+                    }
+                }
+            }
+        }
+    }
+
+    private String safeParseDictLabel(String dictType, String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return DictFrameworkUtils.parseDictDataLabel(dictType, value);
+        } catch (Exception e) {
+            return null;
         }
     }
 

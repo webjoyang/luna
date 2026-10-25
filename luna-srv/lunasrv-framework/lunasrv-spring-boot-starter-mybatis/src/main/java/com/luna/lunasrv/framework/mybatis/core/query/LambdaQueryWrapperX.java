@@ -1,5 +1,6 @@
 package com.luna.lunasrv.framework.mybatis.core.query;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.ObjectUtil;
 import com.luna.lunasrv.framework.common.util.collection.ArrayUtils;
@@ -46,6 +47,27 @@ public class LambdaQueryWrapperX<T> extends LambdaQueryWrapper<T> {
             return (LambdaQueryWrapperX<T>) super.in(column, values);
         }
         return this;
+    }
+
+    /**
+     * 当 values 为 null 或空集合时，追加 1 = 0 永假条件；非空时拼接 in 条件。
+     * <p>防止空集合跳过条件导致全表/全租户无限制扫描。</p>
+     */
+    public LambdaQueryWrapperX<T> inOrEmpty(SFunction<T, ?> column, Collection<?> values) {
+        if (CollUtil.isEmpty(values)) {
+            return (LambdaQueryWrapperX<T>) super.apply("1 = 0");
+        }
+        return (LambdaQueryWrapperX<T>) super.in(column, values);
+    }
+
+    /**
+     * 当 values 为 null 或空数组时，追加 1 = 0 永假条件；非空时拼接 in 条件。
+     */
+    public LambdaQueryWrapperX<T> inOrEmpty(SFunction<T, ?> column, Object... values) {
+        if (ArrayUtil.isEmpty(values)) {
+            return (LambdaQueryWrapperX<T>) super.apply("1 = 0");
+        }
+        return (LambdaQueryWrapperX<T>) super.in(column, values);
     }
 
     public LambdaQueryWrapperX<T> eqIfPresent(SFunction<T, ?> column, Object val) {
@@ -165,9 +187,19 @@ public class LambdaQueryWrapperX<T> extends LambdaQueryWrapper<T> {
         return this;
     }
 
+    public LambdaQueryWrapperX<T> exists(String existsSql) {
+        super.exists(existsSql);
+        return this;
+    }
+
     @Override
     public LambdaQueryWrapperX<T> notExists(boolean condition, String existsSql, Object... values) {
         super.notExists(condition, existsSql, values);
+        return this;
+    }
+
+    public LambdaQueryWrapperX<T> notExists(String existsSql) {
+        super.notExists(existsSql);
         return this;
     }
 

@@ -1,11 +1,11 @@
 package com.luna.lunasrv.module.lunaerp.controller.production.inspectionorder.item.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Schema(description = "管理后台 - 生产管理-检验单录检明细创建/修改 Request VO")
 @Data
@@ -27,8 +27,7 @@ public class InspectionOrderItemSaveReqVO {
     @Schema(description = "关联织造布票ID", example = "3001")
     private Long weavingTicketId;
 
-    @Schema(description = "缸号", requiredMode = Schema.RequiredMode.REQUIRED, example = "V001")
-    @NotBlank(message = "缸号不能为空")
+    @Schema(description = "缸号（type=FINISHED 或 packageMode=ROLL 必填；type=GREIGE 且 packageMode=PIECE 可空）", example = "V001")
     private String vatNo;
 
     @Schema(description = "实称重量 KG", example = "25.50")
@@ -63,5 +62,8 @@ public class InspectionOrderItemSaveReqVO {
 
     @Schema(description = "备注", example = "无疵点")
     private String remark;
+
+    @Schema(description = "疵点照片 URL JSON 数组（车间 H5 录检上传，≤6 张，infra 文件服务）")
+    private List<String> photos;
 
 }

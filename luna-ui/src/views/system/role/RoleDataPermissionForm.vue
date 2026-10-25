@@ -10,7 +10,7 @@
       <el-form-item label="权限范围">
         <el-select v-model="formData.dataScope">
           <el-option
-            v-for="item in getIntDictOptions(DICT_TYPE.SYSTEM_DATA_SCOPE)"
+            v-for="item in dataScopeOptions"
             :key="item.value"
             :label="item.label"
             :value="item.value"
@@ -63,6 +63,7 @@
   </Dialog>
 </template>
 <script lang="ts" setup>
+import { computed } from 'vue'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { defaultProps, handleTree } from '@/utils/tree'
 import { SystemDataScopeEnum } from '@/utils/constants'
@@ -71,6 +72,21 @@ import * as DeptApi from '@/api/system/dept'
 import * as PermissionApi from '@/api/system/permission'
 
 defineOptions({ name: 'SystemRoleDataPermissionForm' })
+
+/**
+ * 允许的数据范围白名单常量（白名单 [1, 4, 3, 5]，顺序 = 全部 / 本部门及以下 / 本部门 / 本人）
+ * 自定义部门档（value = 2）已停用并隐藏
+ */
+const ALLOWED_DATA_SCOPES = [1, 4, 3, 5]
+
+const dataScopeOptions = computed(() => {
+  const dictOptions = getIntDictOptions(DICT_TYPE.SYSTEM_DATA_SCOPE).filter(
+    (item) => item.value !== 2 && ALLOWED_DATA_SCOPES.includes(item.value)
+  )
+  return ALLOWED_DATA_SCOPES.map((scope) => dictOptions.find((item) => item.value === scope)).filter(
+    (item): item is NonNullable<typeof item> => item !== undefined
+  )
+})
 
 const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
@@ -105,7 +121,7 @@ const open = async (row: RoleApi.RoleVO) => {
   await nextTick()
   // 需要在 DOM 渲染完成后，再设置选中状态
   row.dataScopeDeptIds?.forEach((deptId: number): void => {
-    treeRef.value.setChecked(deptId, true, false)
+    treeRef.value?.setChecked(deptId, true, false)
   })
 }
 defineExpose({ open }) // 提供 open 方法，用于打开弹窗

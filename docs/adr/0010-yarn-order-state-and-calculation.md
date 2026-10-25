@@ -32,8 +32,8 @@ accepted
 
 ## 后果
 
-- 全系统出现三套单据状态枚举：三态（合同/胚布单）+ 四态（染色单 + 纱线采购单）。CONTEXT.md 已显式记录该刻意不一致，未来工程师看到纱线采购单有 DRAFT 不应"修正"为三态。
-- 全系统出现两套损耗率口径：胚布单 `loss_rate` 用小数（0.05 = 5%）+ 除法公式；纱线采购单 `lossRate` 用百分比数字（5 = 5%）+ 乘法公式。CONTEXT.md 已显式记录该刻意不一致，未来工程师**不应**统一两套口径。
+- 全系统出现三套单据状态枚举：三态（合同/胚布单）+ 四态（染色单 + 纱线采购单）。GLOSSARY.md 已显式记录该刻意不一致，未来工程师看到纱线采购单有 DRAFT 不应"修正"为三态。
+- 全系统出现两套损耗率口径：胚布单 `loss_rate` 用小数（0.05 = 5%）+ 除法公式；纱线采购单 `lossRate` 用百分比数字（5 = 5%）+ 乘法公式。GLOSSARY.md 已显式记录该刻意不一致，未来工程师**不应**统一两套口径。
 - 前端编辑页需根据状态切换按钮显示与只读模式：DRAFT 显示"保存/下达/删除"，ACTIVE 显示"完成/取消"，COMPLETED/CANCELLED 全部只读。
 - 后端 `update` / `delete` 接口需校验状态，非 DRAFT 拒绝操作并返回 `1_030_009_002`。
 - 测算接口 `POST /yarn-order/calculate` 入参为胚布单 IDs 列表 + 损耗率，出参为测算后的明细行（含 `yarnTypeId` / `yarnSpecId` / `ratio` / `baseQty` / `lossRate` / `requiredQty` / `stockQty` / `purchaseQty` / `refUnitPrice`；台账回退后 `stockQty` 缺省 0，`purchaseQty = requiredQty`）。

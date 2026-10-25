@@ -76,6 +76,14 @@ public interface StockInService {
     void cancelStockIn(Long id);
 
     /**
+     * 作废草稿态入库单（供外部业务单据联动作废复用，仅当状态为 DRAFT 时原子更新为 CANCELLED）
+     *
+     * @param id 入库单编号
+     * @return 是否成功作废草稿（若单据不存在或已被审核/取消则返回 false）
+     */
+    boolean cancelDraftStockIn(Long id);
+
+    /**
      * 检验单生成胚布入库单草稿（COMPLETED 状态下显式生成，选仓，过滤 DEFECTIVE，幂等跳过已生成明细）
      *
      * @param reqVO 生成入库单请求

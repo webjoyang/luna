@@ -121,7 +121,7 @@ Luna ERP 七个"主表 + 聚合子表"业务单据，更新主表时对子表的
 - **染色单守卫扩展点**：DyeingOrderServiceImpl 差异计算得出"待删除颜色行 id 集"后，预留 `progressVatMapper.countByColorIds(...)` 类调用点；阶段二建表前以接口隔离或注释占位，阶段二启用，命中即抛 1-030-017-004。实现阶段若阶段二尚未开发，先写 TODO 锚点并在 PR 说明，禁止提前建表。
 - **前端联动（7 个编辑页）**：sales-contract、dyeing-order、greige-order、yarn-order、shipment（明细 + 卷弹窗）、stock-in（明细 + 放置弹窗）、yarn-recipe-bom。详情数据加载后明细行保留 `id`；el-table row-key 设为行 id；提交 payload 中未删行携带原 id；新增行 id 留空。不改页面布局、字段与交互文案。
 - **不做的事**：不抽公共差异保存基类/工具（七处内联重复可接受，避免过早抽象；待第三处以上非聚合场景需要再提）；不引入乐观锁与版本号（ADR-0003 已明确 MVP 不处理并发覆盖）；不改 SQL DDL（行 id 列早已存在）。
-- **ADR/CONTEXT**：遵循 ADR-0032；ADR-0003 已补注；CONTEXT.md 术语中"随单聚合保存、级联删除"的表述语义不变（聚合边界未动），无需再改。
+- **ADR/CONTEXT**：遵循 ADR-0032；ADR-0003 已补注；GLOSSARY.md 术语中"随单聚合保存、级联删除"的表述语义不变（聚合边界未动），无需再改。
 - **错误码**：本阶段不新增错误码。染色单守卫错误码 1-030-017-004 在阶段二定义；防御性的"子行引用了被删父行"优先返回通用参数校验错误，不占用专属码。
 
 ## Testing Decisions

@@ -31,6 +31,16 @@
           />
         </el-select>
       </el-form-item>
+      <el-form-item label="审批状态" prop="approvalStatus">
+        <el-select v-model="queryParams.approvalStatus" placeholder="全部" clearable class="!w-180px">
+          <el-option
+            v-for="dict in getStrDictOptions(DICT_TYPE.LUNAERP_APPROVAL_INSTANCE_STATUS)"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
+      </el-form-item>
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" />重置</el-button>
@@ -53,6 +63,19 @@
           <span class="cell-no">{{ row.contractNo }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="来源报价" prop="sourceQuotationNo" min-width="130" align="center">
+        <template #default="{ row }">
+          <el-link
+            v-if="row.sourceQuotationNo"
+            type="primary"
+            :underline="false"
+            @click="router.push(`/business/quotation/edit?id=${row.sourceQuotationId}&readonly=1`)"
+          >
+            {{ row.sourceQuotationNo }}
+          </el-link>
+          <span v-else class="text-gray-400">—</span>
+        </template>
+      </el-table-column>
       <el-table-column label="客户" prop="clientName" min-width="200" show-overflow-tooltip />
       <el-table-column label="贸易类型" prop="tradeType" width="100" align="center">
         <template #default="{ row }">
@@ -71,7 +94,12 @@
           <DictTag :type="DICT_TYPE.LUNAERP_SALES_CONTRACT_STATUS" :value="row.status" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" align="center" fixed="right">
+      <el-table-column label="审批状态" prop="approvalStatus" width="100" align="center">
+        <template #default="{ row }">
+          <DictTag :type="DICT_TYPE.LUNAERP_APPROVAL_INSTANCE_STATUS" :value="row.approvalStatus || 'DRAFT'" />
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="260" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -84,6 +112,7 @@
           <el-button
             link
             type="primary"
+            :disabled="row.approvalStatus === 'APPROVING'"
             @click="openEdit(row.id)"
             v-hasPermi="['lunaerp:business:sales-contract:update']"
           >
@@ -91,7 +120,16 @@
           </el-button>
           <el-button
             link
+            type="primary"
+            @click="handleReleaseProduction(row.id)"
+            v-hasPermi="['lunaerp:production:release-production:release']"
+          >
+            <Icon icon="ep:promotion" class="mr-2px" />下达生产
+          </el-button>
+          <el-button
+            link
             type="danger"
+            :disabled="row.approvalStatus === 'APPROVING'"
             @click="handleDelete(row.id)"
             v-hasPermi="['lunaerp:business:sales-contract:delete']"
           >
@@ -133,6 +171,7 @@ const queryParams = reactive({
   pageSize: 20,
   keyword: '',
   status: '',
+  approvalStatus: '',
   tradeType: ''
 })
 
@@ -183,6 +222,11 @@ const openEdit = (id?: number) => {
 /** 查看：同一表单页只读模式打开 */
 const openView = (id: number) => {
   router.push(`/business/sales-contract/edit/${id}?mode=view`)
+}
+
+/** 下达生产：跳详情并激活「生产」Tab */
+const handleReleaseProduction = (id: number) => {
+  router.push(`/business/sales-contract/edit/${id}?tab=production`)
 }
 
 /** 删除合同（二次确认） */

@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "管理后台 - 布票 Response VO")
 @Data
@@ -48,6 +49,9 @@ public class WeavingTicketRespVO {
 
     @Schema(description = "异常说明", example = "断纱")
     private String exceptionNote;
+
+    @Schema(description = "异常现场照片 URL 列表（≤6 张）")
+    private List<String> exceptionPhotos;
 
     @Schema(description = "开工时间")
     private LocalDateTime startedAt;

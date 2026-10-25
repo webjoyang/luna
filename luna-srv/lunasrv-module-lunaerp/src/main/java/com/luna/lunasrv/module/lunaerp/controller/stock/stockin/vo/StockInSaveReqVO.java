@@ -51,10 +51,22 @@ public class StockInSaveReqVO {
     @Schema(description = "关联检验单号快照（可选）", example = "INS-20260927-001")
     private String inspectionOrderNo;
 
+    @Schema(description = "关联纱线采购单ID（可选）", example = "800")
+    private Long yarnOrderId;
+
+    @Schema(description = "关联纱线采购单号快照（可选）", example = "YO-20261015-001")
+    private String yarnOrderNo;
+
     @Schema(description = "单据日期", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-09-24")
     @NotNull(message = "单据日期不能为空")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY)
     private LocalDate inDate;
+
+    @Schema(description = "通用来源单据类型（SALES_RETURN 等通用业务来源，ADR-0042）", example = "SALES_RETURN")
+    private String sourceDocType;
+
+    @Schema(description = "通用来源单据ID（lunaerp_business_sales_return.id 等）", example = "1024")
+    private Long sourceDocId;
 
     @Schema(description = "备注", example = "采购大货入库")
     private String remark;

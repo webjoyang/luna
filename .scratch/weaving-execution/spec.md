@@ -17,7 +17,7 @@ GreigeInstruction（胚布指示单/自产计划）
 
 ## Solution
 
-总体方案（设计依据：ADR-0022 ~ ADR-0028；术语以根 CONTEXT.md 为准）：
+总体方案（设计依据：ADR-0022 ~ ADR-0028；术语以根 GLOSSARY.md 为准）：
 
 1. **胚布单扩展自织模式**（ADR-0022）：加 `productionMode`（SELF 自织 / OUTSOURCE 外发，缺省），自织时承织坯布厂可空；自织胚布单是织造单的唯一合法来源。
 2. **织造三层对象**（ADR-0023）：织造单 `WeavingOrder`（从自织胚布单创建）→ 机台任务 `MachineTask`（排产：哪台机织多少匹）→ 布票 `WeavingTicket`（**每匹一码**，票号=二维码内容）。数量超量一律软校验（警告不拦截）。
@@ -42,5 +42,5 @@ GreigeInstruction（胚布指示单/自产计划）
 - 前端落 `luna-ui/src/views/lunaerp-elmui/production/{weaving-order,loom}/`，API 镜像于 `src/api/lunaerp-elmui/production/`。
 - 菜单：10280 织造单（10281-10284 按钮）、10285 织机档案（10286-10288）；领纱并入织造单工作台 Tab，IoT 并入织机档案页 Tab。
 - 错误码段：织造域 `1-030-015`（子资源分段）；改造域复用各自段位。
-- 字典 id：2238-2244（详见 CONTEXT.md）。
+- 字典 id：2238-2244（详见 GLOSSARY.md）。
 - 全部新实体继承 `TenantBaseDO`；关联存 ID + 名称快照，不建物理外键（沿用项目惯例）。

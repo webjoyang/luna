@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS lunaerp_production_greige_order (
     suggested_loss           numeric(6,4)  NOT NULL DEFAULT 0,
     processing_fee           numeric(18,2) NULL,
     greige_type_id           varchar(64)   NULL,
+    color_instruction_id     int8          NULL,
+    color_instruction_no     varchar(32)   NULL,
     production_remark        varchar(1000) NULL,
     remark                   varchar(1000) NULL,
     status                   varchar(16)   NOT NULL DEFAULT 'ACTIVE',
@@ -61,6 +63,8 @@ END $$;
 ALTER TABLE lunaerp_production_greige_order ALTER COLUMN greige_factory_id DROP NOT NULL;
 ALTER TABLE lunaerp_production_greige_order ALTER COLUMN greige_factory_name DROP NOT NULL;
 ALTER TABLE lunaerp_production_greige_order ADD COLUMN IF NOT EXISTS production_mode varchar(16) NOT NULL DEFAULT 'OUTSOURCE';
+ALTER TABLE lunaerp_production_greige_order ADD COLUMN IF NOT EXISTS color_instruction_id int8 NULL;
+ALTER TABLE lunaerp_production_greige_order ADD COLUMN IF NOT EXISTS color_instruction_no varchar(32) NULL;
 
 -- 胚布单号租户内全量唯一（ADR-0006）：普通唯一索引、不带 WHERE deleted=0，
 -- 按天取号、软删不释放编号。勿"修正"为部分唯一索引。
@@ -72,6 +76,8 @@ CREATE INDEX IF NOT EXISTS idx_lb_greige_order_order_date
     ON lunaerp_production_greige_order (order_date);
 CREATE INDEX IF NOT EXISTS idx_lb_greige_order_product_id
     ON lunaerp_production_greige_order (product_id);
+CREATE INDEX IF NOT EXISTS idx_lb_greige_order_color_instruction_id
+    ON lunaerp_production_greige_order (color_instruction_id);
 -- 承织坯布厂复合索引（ADR-0022：按承织厂过滤，B-tree 索引包含 NULL）
 CREATE INDEX IF NOT EXISTS idx_lb_greige_order_tenant_factory
     ON lunaerp_production_greige_order (tenant_id, greige_factory_id);
@@ -105,6 +111,8 @@ COMMENT ON COLUMN lunaerp_production_greige_order.finished_qty IS '下单成品�
 COMMENT ON COLUMN lunaerp_production_greige_order.suggested_loss IS '预设损耗（小数，0.05 = 5%，缺省 0）';
 COMMENT ON COLUMN lunaerp_production_greige_order.processing_fee IS '加工费';
 COMMENT ON COLUMN lunaerp_production_greige_order.greige_type_id IS '所属胚布品种（胚布品种档案 id 为字符串，手选不自动识别）';
+COMMENT ON COLUMN lunaerp_production_greige_order.color_instruction_id IS '打色指示单ID（lunaerp_production_color_instruction.id，逻辑关联可空，同客户+产品）';
+COMMENT ON COLUMN lunaerp_production_greige_order.color_instruction_no IS '打色单号快照（保存时同步记录）';
 COMMENT ON COLUMN lunaerp_production_greige_order.production_remark IS '生产工艺备注';
 COMMENT ON COLUMN lunaerp_production_greige_order.remark IS '备注';
 COMMENT ON COLUMN lunaerp_production_greige_order.status IS '胚布单状态（字典 lunaerp_greige_order_status：ACTIVE/COMPLETED/CANCELLED），创建缺省 ACTIVE';
@@ -177,8 +185,8 @@ BEGIN;
 
 DELETE FROM system_menu WHERE id IN (10200, 10210, 10211, 10212, 10213);
 
--- 目录：生产管理（parent_id=0 顶级，与基本信息 10000 / 业务管理 10100 平级）
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10200, '生产管理', '', 1, 102, 0, '/production', 'ep:set-up', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
+-- 目录：生产（parent_id=0 顶级，与基础信息 10000 / 销售 10100 平级）
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10200, '生产', '', 1, 102, 0, '/production', 'ep:set-up', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 -- 菜单：胚布单（query 权限挂在菜单本身，参照产品/客户菜单模式）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10210, '胚布单', 'lunaerp:production:greige-order:query', 2, 1, 10200, 'greige-order', 'ep:threads', 'lunaerp-elmui/production/greige-order/index', 'LunaerpElmuiProductionGreigeOrder', 0, '1', '1', '1', 'admin', '2026-09-19 00:00:00', '1', '2026-09-19 00:00:00', '0');
 -- 按钮：胚布单创建/修改/删除（02/03/05 票的后端端点与前端按钮使用）

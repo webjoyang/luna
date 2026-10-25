@@ -202,7 +202,7 @@ Status: ready-for-agent
 - `1_030_010_004` — INSPECTION_ORDER_ROLL_DUPLICATE（单内卷号【{}】缸号【{}】已存在）
 - `1_030_010_100` — INSPECTION_ORDER_ITEM_NOT_EXISTS（录检明细不存在，明细段从 100 起避开主表）
 
-在 lunaerp 模块 `ErrorCodeConstants` 追加。段位全表已更新于 CONTEXT.md。
+在 lunaerp 模块 `ErrorCodeConstants` 追加。段位全表已更新于 GLOSSARY.md。
 
 ### 字典（2 个）
 
@@ -296,7 +296,7 @@ Prior art：`SupplierServiceImplTest`（编号取号/查重/重试模式）、`D
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 已新增"生产管理：检验单"术语分区：检验单、录检明细、承检方、检验单号、检验单状态、检验等级；并更新模块边界、字典、错误码段位表（新增 1-030-010 段）
+- [GLOSSARY.md](../../docs/contexts/production/GLOSSARY.md) — 已新增"生产管理：检验单"术语分区：检验单、录检明细、承检方、检验单号、检验单状态、检验等级；并更新模块边界、字典、错误码段位表（新增 1-030-010 段）
 - [ADR-0013](../../docs/adr/0013-inspection-sync-to-stockin-deferred.md) — 检验同步入库本期延后
 - [ADR-0014](../../docs/adr/0014-inspection-item-independent-subresource.md) — 录检明细作为独立子资源（刻意不一致 ADR-0003 聚合保存模式）
 - [ADR-0015](../../docs/adr/0015-inspection-order-no-with-dashes.md) — 检验单号带连字符分隔（刻意不一致项目编号惯例）

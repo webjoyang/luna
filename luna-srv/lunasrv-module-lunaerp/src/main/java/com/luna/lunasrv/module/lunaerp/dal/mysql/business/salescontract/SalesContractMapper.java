@@ -1,14 +1,19 @@
 package com.luna.lunasrv.module.lunaerp.dal.mysql.business.salescontract;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.luna.lunasrv.framework.mybatis.core.mapper.BaseMapperX;
 import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
+import com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salescontract.SalesContractDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 import org.springframework.util.StringUtils;
 
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -18,6 +23,47 @@ import java.util.List;
  */
 @Mapper
 public interface SalesContractMapper extends BaseMapperX<SalesContractDO> {
+
+    /**
+     * 调岗同步归属部门（ADR-0046）
+     *
+     * <p>绕过数据权限规则，在当前租户下将该业务员名下所有有效销售合同的归属部门刷新为新部门。</p>
+     *
+     * @param salespersonUserId 业务员用户编号
+     * @param deptId 新部门编号
+     * @return 更新行数
+     */
+    @DataPermission(enable = false)
+    @Update("UPDATE lunaerp_business_sales_contract SET dept_id = #{deptId,jdbcType=BIGINT} "
+            + "WHERE salesperson_user_id = #{salespersonUserId,jdbcType=BIGINT} AND deleted = 0")
+    int updateDeptIdBySalespersonUserId(@Param("salespersonUserId") Long salespersonUserId,
+                                        @Param("deptId") Long deptId);
+
+    /**
+     * 回收站分页查询已软删草稿销售合同（手写 XML：显式 WHERE deleted = 1 AND status = 'DRAFT' AND tenant_id = #{tenantId}）
+     */
+    IPage<RecycleItemRespVO> selectRecyclePage(IPage<RecycleItemRespVO> page, @Param("tenantId") Long tenantId);
+
+    /**
+     * 查询指定租户下已软删的草稿销售合同
+     */
+    SalesContractDO selectDeletedById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 恢复草稿销售合同（并发条件更新带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int restoreSalesContract(@Param("id") Long id, @Param("tenantId") Long tenantId,
+                             @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底删除草稿销售合同（物理删除带 deleted=1 AND status='DRAFT' AND tenant_id=?）
+     */
+    int purgeSalesContract(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /**
+     * 检查销售合同是否存在活跃业务引用（deleted=0 且 tenant_id=?）
+     */
+    Long selectActiveReferenceCount(@Param("salesContractId") Long salesContractId, @Param("tenantId") Long tenantId);
 
     /**
      * 按编号前缀查询合同，【包含已逻辑删除的行】。
@@ -30,6 +76,7 @@ public interface SalesContractMapper extends BaseMapperX<SalesContractDO> {
      * @param prefix 编号前缀，如 CH2026
      * @return 合同列表（含已删除行）
      */
+    @DataPermission(enable = false)
     @Select("SELECT id, contract_no, customer_id, client_name, client_contact, client_address, client_contract_no, "
             + "salesperson_user_id, sign_date, delivery_date, unit, currency, trade_type, order_type, "
             + "total_quantity, total_amount, remarks, status, "
@@ -47,6 +94,7 @@ public interface SalesContractMapper extends BaseMapperX<SalesContractDO> {
      * @param contractNo 合同编号
      * @return 合同（含已删除行），不存在返回 null
      */
+    @DataPermission(enable = false)
     @Select("SELECT id, contract_no, customer_id, client_name, client_contact, client_address, client_contract_no, "
             + "salesperson_user_id, sign_date, delivery_date, unit, currency, trade_type, order_type, "
             + "total_quantity, total_amount, remarks, status, "

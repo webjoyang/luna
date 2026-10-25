@@ -328,7 +328,7 @@ Prior art：`InspectionOrderServiceImplTest`（同域关联校验/状态守卫�
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 已新增"生产管理：质检确认"术语分区（质检确认、责任类型、质检确认状态、挡车工、质检确认来源、认定日期双口径），并更新模块边界（10270 菜单/1-030-014 段）、字典（2236/2237）、错误码段位表
+- [GLOSSARY.md](../../docs/contexts/production/GLOSSARY.md) — 已新增"生产管理：质检确认"术语分区（质检确认、责任类型、质检确认状态、挡车工、质检确认来源、认定日期双口径），并更新模块边界（10270 菜单/1-030-014 段）、字典（2236/2237）、错误码段位表
 - [ADR-0019](../../docs/adr/0019-inspection-confirmation-source-and-generation.md) — 以检验单录检明细为源、显式幂等生成、快照零回写
 - [ADR-0020](../../docs/adr/0020-confirmation-revoke-clone-chain.md) — 撤销冻结+克隆留痕链、一律不可删
 - [ADR-0021](../../docs/adr/0021-worker-reuse-system-user-post.md) — 挡车工复用 system_users + system_post

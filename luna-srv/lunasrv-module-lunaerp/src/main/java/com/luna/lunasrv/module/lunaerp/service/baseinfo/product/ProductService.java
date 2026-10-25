@@ -83,4 +83,20 @@ public interface ProductService {
      */
     List<ProductTagRefVO> updateProductTags(Long id, List<ProductTagRefVO> tags);
 
+    /**
+     * 获得产品导入模板数据
+     *
+     * @return 模板数据
+     */
+    List<com.luna.lunasrv.module.lunaerp.controller.baseinfo.product.vo.ProductImportVO> getImportTemplate();
+
+    /**
+     * 导入产品
+     *
+     * @param file Excel 文件
+     * @return 导入结果
+     * @throws java.io.IOException 读取异常
+     */
+    com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult importProduct(org.springframework.web.multipart.MultipartFile file) throws java.io.IOException;
+
 }

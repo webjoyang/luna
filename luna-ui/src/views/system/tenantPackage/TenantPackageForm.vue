@@ -132,11 +132,28 @@ const submitForm = async () => {
   // 提交请求
   formLoading.value = true
   try {
+    const allTreeKeys = new Set<number>()
+    const collectTreeKeys = (nodes: any[]) => {
+      nodes?.forEach((node) => {
+        allTreeKeys.add(node.id)
+        if (node.children?.length) {
+          collectTreeKeys(node.children)
+        }
+      })
+    }
+    collectTreeKeys(menuOptions.value)
+    const hangingIds = ((formData.value.menuIds || []) as number[]).filter(
+      (mid: number) => !allTreeKeys.has(mid)
+    )
+
     const data = formData.value as unknown as TenantPackageApi.TenantPackageVO
-    data.menuIds = [
-      ...(treeRef.value!.getCheckedKeys(false) as unknown as Array<number>), // 获得当前选中节点
-      ...(treeRef.value!.getHalfCheckedKeys() as unknown as Array<number>) // 获得半选中的父节点
-    ]
+    data.menuIds = Array.from(
+      new Set([
+        ...(treeRef.value!.getCheckedKeys(false) as unknown as Array<number>), // 获得当前选中节点
+        ...(treeRef.value!.getHalfCheckedKeys() as unknown as Array<number>), // 获得半选中的父节点
+        ...hangingIds // 保留尚未在菜单树落地的规划模块 ID（如 10700/10800）
+      ])
+    )
     if (formType.value === 'create') {
       await TenantPackageApi.createTenantPackage(data)
       message.success(t('common.createSuccess'))

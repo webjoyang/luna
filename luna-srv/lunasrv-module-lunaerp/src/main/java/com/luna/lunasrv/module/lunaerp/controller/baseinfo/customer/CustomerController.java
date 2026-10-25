@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import com.luna.lunasrv.module.lunaerp.controller.baseinfo.customer.vo.CustomerPortalTokenRespVO;
+import com.luna.lunasrv.module.lunaerp.portal.service.PortalTokenService;
+import java.util.Map;
 import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 
 @Tag(name = "基础信息-客户档案")
@@ -27,6 +30,9 @@ public class CustomerController {
 
     @Resource
     private CustomerService customerService;
+
+    @Resource
+    private PortalTokenService portalTokenService;
 
     @PostMapping("/create")
     @Operation(summary = "创建客户")
@@ -73,6 +79,62 @@ public class CustomerController {
     @PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:customer:delete')")
     public CommonResult<Boolean> deleteCustomerList(@RequestParam("ids") List<Long> ids) {
         customerService.deleteCustomerList(ids);
+        return success(true);
+    }
+
+    @GetMapping("/import-template")
+    @Operation(summary = "获得客户导入模板")
+    @PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:customer:import')")
+    public void importCustomerTemplate(jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        List<com.luna.lunasrv.module.lunaerp.controller.baseinfo.customer.vo.CustomerImportVO> list = customerService.getImportTemplate();
+        com.luna.lunasrv.framework.excel.core.util.ExcelUtils.write(response, "客户导入模板.xlsx", "客户列表",
+                com.luna.lunasrv.module.lunaerp.controller.baseinfo.customer.vo.CustomerImportVO.class, list);
+    }
+
+    @PostMapping(value = "/import", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "导入客户档案")
+    @io.swagger.v3.oas.annotations.Parameters({
+            @Parameter(name = "file", description = "Excel 文件", required = true)
+    })
+    @PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:customer:import')")
+    public CommonResult<Integer> importCustomer(@RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+                                                jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        com.luna.lunasrv.module.lunaerp.common.dataimport.ExcelImportResult result = customerService.importCustomer(file);
+        if (result.hasError()) {
+            result.writeResponse(response, "客户导入错误明细.xlsx");
+            return null;
+        }
+        return success(result.getSuccessCount());
+    }
+
+    @GetMapping("/portal-token")
+    @Operation(summary = "获得客户门户令牌状态")
+    @Parameter(name = "customerId", description = "客户ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:customer:portal-token')")
+    public CommonResult<CustomerPortalTokenRespVO> getCustomerPortalToken(@RequestParam("customerId") Long customerId) {
+        return success(portalTokenService.getTokenState(customerId));
+    }
+
+    @PostMapping("/portal-token/generate")
+    @Operation(summary = "生成/重新生成客户门户令牌")
+    @Parameter(name = "customerId", description = "客户ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:customer:portal-token')")
+    public CommonResult<CustomerPortalTokenRespVO> generateCustomerPortalToken(
+            @RequestParam(value = "customerId", required = false) Long queryCustomerId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        Long customerId = queryCustomerId;
+        if (customerId == null && body != null && body.containsKey("customerId")) {
+            customerId = Long.valueOf(body.get("customerId").toString());
+        }
+        return success(portalTokenService.generateToken(customerId));
+    }
+
+    @DeleteMapping("/portal-token")
+    @Operation(summary = "吊销客户门户令牌")
+    @Parameter(name = "customerId", description = "客户ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:baseinfo:customer:portal-token')")
+    public CommonResult<Boolean> revokeCustomerPortalToken(@RequestParam("customerId") Long customerId) {
+        portalTokenService.revokeToken(customerId);
         return success(true);
     }
 

@@ -19,7 +19,7 @@ import static com.luna.lunasrv.framework.common.pojo.CommonResult.success;
 /**
  * 管理后台 - 库存余额 Controller（ADR-0017）
  *
- * 归属 stock.stockledger 子包，映射 URL /lunaerp/stock/inventory-balance（CONTEXT.md 架构约束）
+ * 归属 stock.stockledger 子包，映射 URL /lunaerp/stock/inventory-balance（GLOSSARY.md 架构约束）
  *
  * @author luna
  */

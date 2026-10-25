@@ -138,15 +138,49 @@ COMMIT;
 -- @formatter:off
 BEGIN;
 
-DELETE FROM system_menu WHERE id IN (10240, 10241, 10242, 10243, 10244);
+DELETE FROM system_menu WHERE id IN (10240, 10241, 10242, 10243, 10244, 10245);
 
 -- 菜单：纱线档案（query 权限挂在菜单本身，参照胚布单/染色单模式）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10240, '纱线档案', 'lunaerp:production:yarn-type:query', 2, 4, 10200, 'yarn-master', 'ep:files', 'lunaerp-elmui/production/yarn-master/index', 'LunaerpElmuiProductionYarnMaster', 0, '1', '1', '1', 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
--- 按钮：纱线档案查询/创建/修改/删除（规格操作复用同菜单权限码）
+-- 按钮：纱线档案查询/创建/修改/删除/导入（规格操作复用同菜单权限码）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10241, '纱线档案查询', 'lunaerp:production:yarn-type:query', 3, 1, 10240, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10242, '纱线档案创建', 'lunaerp:production:yarn-type:create', 3, 2, 10240, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10243, '纱线档案修改', 'lunaerp:production:yarn-type:update', 3, 3, 10240, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10244, '纱线档案删除', 'lunaerp:production:yarn-type:delete', 3, 4, 10240, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10245, '纱线规格导入', 'lunaerp:production:yarn-spec:import', 3, 5, 10240, '', '#', '', NULL, 0, '1', '1', '1', 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+
+COMMIT;
+-- @formatter:on
+
+-- =============================================================================
+-- 6. 字典类型与字典数据（system_dict_type / system_dict_data，可重复执行）
+--    dict_type id 2267（纺纱方式）、2268（光泽），
+--    dict_data id 3740-3745（纺纱方式）、3746-3748（光泽）。
+-- =============================================================================
+-- @formatter:off
+BEGIN;
+
+DELETE FROM system_dict_type WHERE id IN (2267, 2268)
+    OR type IN ('lunaerp_yarn_spin_method', 'lunaerp_yarn_luster');
+DELETE FROM system_dict_data WHERE dict_type IN ('lunaerp_yarn_spin_method', 'lunaerp_yarn_luster')
+    OR id IN (3740, 3741, 3742, 3743, 3744, 3745, 3746, 3747, 3748);
+
+-- 字典类型：纺纱方式
+INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time) VALUES (2267, '纺纱方式', 'lunaerp_yarn_spin_method', 0, 'LunaERP 生产管理-纱线规格-纺纱方式', 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0', NULL);
+-- 纺纱方式：环锭纺 / 赛络纺 / 紧密纺 / 紧密赛络纺 / 气流纺 / 涡流纺
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3740, 1, '环锭纺', '环锭纺', 'lunaerp_yarn_spin_method', 0, '', '', NULL, 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3741, 2, '赛络纺', '赛络纺', 'lunaerp_yarn_spin_method', 0, '', '', NULL, 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3742, 3, '紧密纺', '紧密纺', 'lunaerp_yarn_spin_method', 0, '', '', NULL, 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3743, 4, '紧密赛络纺', '紧密赛络纺', 'lunaerp_yarn_spin_method', 0, '', '', NULL, 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3744, 5, '气流纺', '气流纺', 'lunaerp_yarn_spin_method', 0, '', '', NULL, 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3745, 6, '涡流纺', '涡流纺', 'lunaerp_yarn_spin_method', 0, '', '', NULL, 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+
+-- 字典类型：光泽
+INSERT INTO system_dict_type (id, name, type, status, remark, creator, create_time, updater, update_time, deleted, deleted_time) VALUES (2268, '光泽', 'lunaerp_yarn_luster', 0, 'LunaERP 生产管理-纱线规格-光泽', 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0', NULL);
+-- 光泽：半光 / 全光 / 消光
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3746, 1, '半光', '半光', 'lunaerp_yarn_luster', 0, '', '', NULL, 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3747, 2, '全光', '全光', 'lunaerp_yarn_luster', 0, '', '', NULL, 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
+INSERT INTO system_dict_data (id, sort, label, value, dict_type, status, color_type, css_class, remark, creator, create_time, updater, update_time, deleted) VALUES (3748, 3, '消光', '消光', 'lunaerp_yarn_luster', 0, '', '', NULL, 'admin', '2026-09-20 00:00:00', '1', '2026-09-20 00:00:00', '0');
 
 COMMIT;
 -- @formatter:on

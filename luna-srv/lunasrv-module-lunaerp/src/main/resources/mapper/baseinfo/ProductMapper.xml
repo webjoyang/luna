@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.product.ProductMapper">
+
+    <!-- 回收站分页查询已软删产品（手写 XML：显式 WHERE deleted = 1 AND tenant_id = #{tenantId}） -->
+    <select id="selectRecyclePage" resultType="com.luna.lunasrv.module.lunaerp.common.recycle.vo.RecycleItemRespVO">
+        SELECT
+            'PRODUCT' AS biz_type,
+            id AS biz_id,
+            name AS display_name,
+            updater AS deleted_by,
+            update_time AS deleted_time
+        FROM lunaerp_baseinfo_product
+        WHERE deleted = 1
+          AND tenant_id = #{tenantId}
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定租户下已软删的产品记录 -->
+    <select id="selectDeletedById" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.product.ProductDO">
+        SELECT *
+        FROM lunaerp_baseinfo_product
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 恢复产品（并发条件更新带 deleted=1 AND tenant_id=?） -->
+    <update id="restoreProduct">
+        UPDATE lunaerp_baseinfo_product
+        SET deleted = 0,
+            status = 'INACTIVE',
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除产品（物理删除带 deleted=1 AND tenant_id=?） -->
+    <delete id="purgeProduct">
+        DELETE FROM lunaerp_baseinfo_product
+        WHERE id = #{id}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+    <!-- 检查产品是否存在活跃业务引用（deleted=0 且 tenant_id=?） -->
+    <select id="selectActiveReferenceCount" resultType="java.lang.Long">
+        SELECT (
+            (SELECT COUNT(1) FROM lunaerp_business_shipment_item WHERE product_id = #{productId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_production_greige_order WHERE product_id = #{productId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_production_weaving_order WHERE product_id = #{productId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_production_yarn_recipe_bom WHERE product_id = #{productId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_stock_in_item WHERE product_id = #{productId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_production_inspection_order WHERE product_id = #{productId} AND deleted = 0 AND tenant_id = #{tenantId}) +
+            (SELECT COUNT(1) FROM lunaerp_production_greige_dispatch_record WHERE product_id = #{productId} AND deleted = 0 AND tenant_id = #{tenantId})
+        )
+    </select>
+
+</mapper>

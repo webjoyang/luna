@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.business.costcard.CostCardYarnMapper">
+
+    <!-- 级联恢复成本卡纱线明细（显式 SET deleted=0 WHERE card_id=? AND deleted=1 AND tenant_id=?） -->
+    <update id="restoreByCardId">
+        UPDATE lunaerp_business_cost_card_yarn
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{now}
+        WHERE card_id = #{cardId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除成本卡纱线明细（显式 DELETE WHERE card_id=? AND deleted=1 AND tenant_id=?） -->
+    <delete id="purgeByCardId">
+        DELETE FROM lunaerp_business_cost_card_yarn
+        WHERE card_id = #{cardId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

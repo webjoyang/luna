@@ -44,6 +44,8 @@ export interface GreigeOrderVO {
   suggestedLoss?: number // 预设损耗，小数（0.05 = 5%）
   processingFee?: number
   greigeTypeId?: string // 所属胚布品种（档案 id 为字符串），手选
+  colorInstructionId?: number | null // 关联打色指示单ID（逻辑关联可空）
+  colorInstructionNo?: string | null // 打色单号快照
   productionRemark?: string
   remark?: string
   status?: string

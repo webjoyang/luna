@@ -1,0 +1,283 @@
+# 财务域术语表（finance）
+
+本文件是 Luna ERP **财务域（finance）**的权威术语表，收录经营账视角下的资金、往来、费用与工资概念。
+仓库领域文档总入口见根目录 `GLOSSARY-MAP.md`；跨域平台约定（租户、软删除、前后端模块约定、错误码段位总表）见 `docs/contexts/shared/GLOSSARY.md`。
+当对话或代码中含糊使用某个词时，以本文件为准。
+
+> **本文件是 W3 施工中的骨架**（ADR-0037，2026-10-07）：域边界、模块清单、包结构、错误码段、菜单骨架已锁定；客户侧（10 号）、供应商侧（11 号）与资金/费用/工资（12 号）均已定稿回填。
+
+## 域定位
+
+**财务域 (finance)**：
+Luna ERP 第六个业务域，与 baseinfo/business/production/stock/sample 平级。一期只做**经营账**：面向经营者的"钱从哪来、到哪去、谁欠谁"，覆盖资金账户、经营分录账、客户/供应商对账、收付款与核销、报销、工资、发票申请、汇率主档。
+_避免_：财务管理系统（宽泛）、总账。
+
+**经营账 (Operating account)**：
+以资金与往来为核心的记账视角，唯一账本是 append-only 经营分录账。一期**不做借贷会计**：无会计凭证、会计科目、期初试算平衡、期末结转、资产负债表/利润表/现金流量表、账套。法定账务由金蝶/用友等外部财务软件承担，一期仅预留对接面（ADR-0037 决策 1/4）。
+_避免_：借贷账、复式记账、凭证、科目。
+
+**fms（借贷会计脚手架）**：
+`luna-ui/src/views/fms/` 下的纯前端脚手架（凭证/账簿/三大报表/期末结转/账套科目配置），无后端、不在激活路由、不挂菜单。按 ADR-0037 决策 2 **不迁后端、不挂菜单、保留代码**，仅作未来外部对接的交互参照。finance 域新功能与其零代码共享。
+_避免_：把 fms 称为财务域的一部分或"一期财务模块"。
+
+## 模块清单（W3）
+
+| 子模块（包名） | 菜单 | 错误码段 | 落地 ticket/spec |
+|---|---|---|---|
+| `account` 资金账户（资金流水/转账/其他收支/收支总览，域公共） | 资金账户（10710）、收支总览（10715） | `1-030-020` | DDL 归 10 号；管理页/转账/其他收支/总览/统一过账服务归 12 号（均已定稿，ADR-0043） |
+| `ledger` 经营分录账（域公共） | 无独立菜单（只读服务于各页） | `1-030-020` | DDL 归 10 号；12 号落唯一写入口 `FinancePostingService`，10/11/13 共用（ADR-0043） |
+| `customerrecon` 客户对账（对账单/确认/账龄） | 客户对账（10720） | `1-030-021` | 10 号 spec（customer-reconciliation，已定稿） |
+| `supplierrecon` 供应商对账 | 供应商对账（10730） | `1-030-022` | 11 号 spec（vendor-reconciliation，已定稿） |
+| `payment` 收付款与核销（direction 分型） | 收付款（10740） | `1-030-023` | 10/11 号 spec（OUT 侧 11 号定稿；IN 侧 10 号 customer-reconciliation 定稿，共表 IN 扩列收口） |
+| `expense` 报销申请 | 报销（10750） | `1-030-024` | 12 号 spec（treasury-expense-payroll，已定稿） |
+| `payroll` 工资单/扣款明细/发放 | 工资（10760） | `1-030-025` | 12 号 spec（已定稿） |
+| `invoice` 发票申请/登记 | 发票申请（10770） | `1-030-026` | 10 号 spec（customer-reconciliation，已定稿） |
+| `exchangerate` 汇率主档 | 汇率（10780） | `1-030-020` | 10 号 spec（已定稿，域公共先行落地） |
+| `external` 金蝶/用友适配器 | 无 | `1-030-027~029` 预留 | 一期不实现，仅占包名 |
+
+## 核心术语
+
+**资金账户 (FinanceAccount / account)**：
+企业资金的存放账户，单租户多个：类型（现金/银行/微信/支付宝，字典 2277）、**账户性质**（公户/私户，字典 2282——私户走账是经营刚需）、账号或标识（现金可空，其余必填）、单币种（建户后不可改）、期初余额、备注；启用/停用，停用后不可登记新分录但历史不变。多租户隔离。物理表归 10 号 spec，管理页（无分录可改期初/可删）与 account_no/account_nature/remark 三列归 12 号 spec（ADR-0043）。
+
+**账户性质 (Account nature)**：
+资金账户的企业资金归属分类，字典 2282（PUBLIC 公户 primary / PRIVATE 私户 warning，缺省 PUBLIC）。私户走账是中小制造企业经营刚需；公私户资金严格隔离，在资金账户列表与流水明细中以标签形式高亮标示，转账支持公私互转，报销与工资发放支持指定私户支出。
+
+**期初余额 (Opening balance)**：
+建账事实，是资金账户主数据（opening_balance），不是一条 OPENING 分录。建户时一次写入；仅在该账户**无任何业务分录**时可修改，之后只读（错误码 020_104）。
+
+**可用余额 (Current balance)**：
+资金账户上的物化运行余额 `current_balance`：建户时=期初，此后**只允许**经统一过账通道（条件 UPDATE）随分录同事务增减；无任何手工修改端点、无定时重建（ADR-0043）。流出时"余额不足"统一报 023_004。
+
+**资金流水**：
+账户维度的收支明细。定稿（10/12 号 spec，ADR-0043）：**就是经营分录账中 account_id 非空的行**（账户维度视图），不建第二本账；方向 DEBIT 流入/CREDIT 流出，收付款/报销/工资发放/转账/其他收支统一写入。
+
+**经营分录账 (Ledger / ledger)**：
+finance 域唯一的、**append-only 的分录账**：只追加、不物理删除（deleted 恒 0）、冲销用反向红冲分录（reversal_of_id 预留，二期）、永不全量重建。account_id 非空=资金流水，为空=往来分录（如应收成立/退货冲减）。每条分录携带 biz_date、方向（DEBIT/CREDIT）、类别（字典 2274）、往来主体（客户/供应商/员工/无）、原币金额/汇率/本位币金额、`ref_type/ref_id/ref_no` 业务单据回指。**唯一资金写入口 `FinancePostingService.post(...)`**（12 号落地）：校验账户→条件更新余额→INSERT 分录，同事务；他模块禁止直接 UPDATE 余额或 INSERT 分录。是金蝶/用友未来对接的唯一权威出口（ADR-0037 决策 4）。
+_避免_：台账重建、recalculate、第二本流水表。
+
+**账户间转账 (Transfer)**：
+同一企业两个资金账户之间的划转（银行提现、私户转公户）。一张转账单（ZZ 单号）同事务经统一通道写两条分录：转出账户 CREDIT/TRANSFER_OUT、转入账户 DEBIT/TRANSFER_IN，双边条件更新余额。严格同币种、出入账户不可相同；登记即终态不可改删，红冲二期。
+
+**其他收支单 (OtherTransaction)**：
+没有业务单据来源的资金登记：利息收入/废品收入等流入，手续费/工本费等流出（类别字典 2287，与方向匹配校验）。登记即写 IN_OTHER/OUT_OTHER 分录、生成 QT 单号，不审批、不可改删。
+
+**客户对账单 (CustomerStatement / customerrecon)**：
+按"客户+币种+起止日期区间"生成（多币种客户分单）的对账凭证，行=完整往来账：期初欠款/本期借方（发货日落在区间内的已审核发货明细分录，**不看签收状态**，签收前可对账，红冲按分录净额呈现）/本期贷方（收款核销+预收转核销+退货冲减）/期末欠款，服务端重算、行快照冻结零回写。状态机 **DRAFT → SENT → CONFIRMED / REJECTED / VOID**：一条分录最多被一张 CONFIRMED 对账单占用（行级占用）；确认后源单红冲/退货不回改不阻塞（冲减落在下期）。确认两通道：客户门户（14 号，`/portal/finance/statement/` 契约已冻结）与内部**代客确认**。对账单只是确认与沟通凭证，**不产生应收**（应收成立于发货审核）。
+
+**供应商对账单 (SupplierReconciliation / supplierrecon)**：
+按"供应商+对账区间"聚合应付的对账凭证，三类行混排：加工费行（取数源=**检验单**，见对账取数口径）、采购货款行（取数源=已审核 PURCHASE 入库明细）、调整项行（手工负数扣款/正数补差，必填原因）。状态机为**三态**：**DRAFT → CONFIRMED → CANCELLED**：草稿可编辑/重取/删（进回收站），确认后行表冻结（快照凭证，源单零回写）并可打印（A4 套打）与生成付款申请，作废后源明细指纹释放、但有非终态付款申请时禁止作废。**不落已申请/已付金额字段**——全部实时只读聚合（老系统 paidAmount 占位 0 的 P0 教训）。仅人民币；加工单价在对账行手工填（产品档案加工费仅预填参考）；质保金不做实体。
+
+**对账取数口径 (检验确认数量)**：
+承织/承染加工费的应付计费依据，口径常量化收敛于唯一取数服务：**计费依据 = 检验确认数量 × 加工单价，全等级计入**。源单为 **COMPLETED（录检完成）检验单**按承检方汇总录检明细 **Σ实称重量 / Σ米数**，等级（A/B/C/DEFECTIVE）全计入、劣品扣款走调整项行；计价基准 GREIGE（织费）缺省按米、FINISHED（染费）缺省按公斤，逐行可改。偏离老系统 StockIn 取数源的理由见 vendor-reconciliation spec Problem Statement。防重复取数靠源指纹（检验单/入库明细），被有效对账单引用即出候选、作废即释放。
+
+**收付款单 (Payment / payment)**：
+收款（客户）与付款（供应商）共用单据、按 `direction=IN/OUT` 分型。OUT 侧（付款申请两步制）由 11 号定稿，红冲二期；IN 侧（10 号定稿）：**收款单直接走 02 号审批（CUSTOMER_RECEIPT）一步过账**——APPROVED 同事务"账户余额条件更新+入账分录+核销行"，类型分 RECEIPT 货款/ADVANCE 预收；已过账收款单不可改删，唯一逆向是**红冲**（一期，IN 侧：反向分录+账户回加+核销行自动重开）。**分录账级联状态机制**：红冲时系统追加反向 `RECEIPT_REVERSAL` 分录并将原单状态置为 `REVERSED`；过账时产生的 `RECEIPT_WRITE_OFF` / `ADVANCE_WRITE_OFF` 分录不物理删除亦不生成反向分录，各业务端（对账单候选提取、账龄冲抵）统一通过 `payment.status == 'COMPLETED'` 进行级联状态过滤，排除已红冲单据的核销。核销子表 `payment_ref` 共用：OUT=PAY_APPLY（核销付款申请），IN=AR_ENTRY（核销发货明细分录）。
+
+**付款申请单 (PaymentApply)**：
+供应商付款的业务申请单，两类用途：**RECON 对账付款**（必须挂 CONFIRMED 对账单，累计申请额 ≤ 确认金额，条件更新防并发超申）与 **PREPAY 预付付款**（挂供应商+必填用途，如纱线采购定金）。走 02 号审批链（强制审批单据，Q14-d）；`approval_status` **五态审批**（PENDING/APPROVING/APPROVED/REJECTED/CANCELLED），驳回改后重提走全流程；APPROVED 的 ApprovalHandler 为空实现——审批通过 ≠ 钱已付，不触发任何过账。供应商档案一期仅维护公司基本信息与联系人，未扩展收款银行卡列；付款申请单上的 bank_name/bank_account 快照由前端调用方传入并兜底，落库仅作脱敏展示，严禁跨域静默修改供应商主实体（lunaerp_baseinfo_supplier）。
+
+**付款登记 (Payment register)**：
+出纳对 APPROVED 付款申请的显式资金执行动作（**两步付款制**：申请审批 → 登记付款）。一次登记可核销同一供应商多个申请（按顺序分配、可部分核销），可选**预付抵扣**。同事务四写：付款单+核销行、资金账户流出流水（实付额）、经营分录账 OUT_SUPPLIER 分录（实付+抵扣全额）。金额整数分比较防浮点。
+
+**供应商预付余额 (Prepay balance)**：
+独立表达的预付池（不复用"余额转负"）：**两条 SUM 口径**实时聚合：**= Σ(PREPAY 申请被核销分配额) − Σ(各付款登记的预付抵扣额)**，实时聚合不落余额表，口径常量化。抵扣额超池报错。
+
+**应收核销 (AR write-off)**：
+收款（含预收）与发货明细分录之间的核销关系行（payment_ref，ref_type=AR_ENTRY），核销本身写分录账（RECEIPT_WRITE_OFF/ADVANCE_WRITE_OFF）。选单三视角（CONFIRMED 对账单/发货单/合同，底层都拆到发货明细分录）+预收余额作可分配来源；FIFO 自动分配仅辅助可改（客户指定款对指定单是常态）；守卫：严格同币种、逐行≤分录未核销余额、合计≤收款额，过账条件更新防两单重复核销；未核销余额=入账−红冲−已核销−退货冲减，实时聚合。
+
+**预收余额 (Advance balance)**：
+客户预收池 = Σ(ADVANCE 收款单入账) − Σ(ADVANCE_WRITE_OFF 核销额)，实时聚合不落余额表（对齐供应商预付余额模式）；不进账龄桶，账龄汇总页单列。
+
+**账龄分桶 (Aging buckets)**：
+应收未核销余额按**发货日**起算的五桶：0–30/31–60/61–90/91–180/181+ 天；FIFO 冲抵（应收减少分录按时间消耗最老的应收增加分录）、按客户分别计算不跨客户互抵；逾期=发货日+客户 credit_days<查询日（未设账期不判逾期）；纯函数实时计算不落快照。**勾稽恒等式**：未核销明细严格满足 `原始金额 - 已核销/冲减 == 未核销余额`，发货红冲净额前置扣减额统合入冲减额呈现。**业务员入参兼容**：实体标准外键为 `salespersonUserId`（归属系统用户），历史/外部入参 `salesmanId` 仅作为兼容别名回退。
+
+**代客确认 (Confirm on behalf)**：
+门户上线前/客户线下回传场景，内部财务代客户确认对账单的动作（独立权限，必填线下方式+备注），与门户确认落同一状态字段，审计经 confirm_type 区分。
+
+**调整项行 (Adjust line)**：
+对账单上的手工金额行（负数扣款/正数补差），必填原因；用于质量扣款、运费补差、采购退货冲减等一期不建实体的结算调整。
+
+**报销单 (Expense / expense)**：
+员工费用报销申请单（BX 单号）：报销人缺省本人但可代填、**付款账户必填**、多行费用（类型字典 2284/金额/发生日期/说明）、附件 ≤10（infra URL 存 jsonb）。走 02 号审批链（强制单据 expense，五态）。**一步过账**：审批通过同事务经统一通道在指定账户写 CREDIT/OUT_EXPENSE 分录（一次全额，外币按通过日 SPOT 汇率快照），余额不足回滚审批；APPROVED 终态不可改删作废，可 A4 套打。不含借支/备用金/发票 OCR 查重/AI 风控（二期）。
+
+**工资单 (Payroll / payroll)**：
+一期工资初稿（Q14-b）：**一租户一个自然月（period=YYYY-MM）一张有效单**（部分唯一索引），手工增删员工（全员可选不按岗位）。每个员工挂多条**工资款项行**：收入项（字典 2285：基本/计件/提成/奖金/补贴/其他，计件支持数量×单价）与扣款项（字典 2286）；应发/扣款/实发服务端重算，实发不可为负。走 02 号审批链（强制单据 payroll，五态）。**两步制**：APPROVED 的 Handler 为空（审批通过 ≠ 已发），出纳做**工资发放登记**才过账。**不含考勤算薪、社保个税、工资结构表、员工银行账户、工资条**（二期随 HR）。
+
+**工资款项行 (Payroll line item)**：
+工资单中归属于单个员工的明细收支行。分为两类：收入项（字典 2285：BASIC 基本工资 / PIECE 计件工资 / COMMISSION 提成 / BONUS 奖金 / SUBSIDY 补贴 / OTHER 其它，计件支持数量 × 单价输入并联动折算金额）与扣款项（字典 2286：DEFECT 次品扣款 / OTHER 其它扣款）。款项金额必须 > 0，服务端根据明细行重算员工与单头 earning_total、deduction_total 与 net_amount，并守卫实发金额 net_amount ≥ 0。
+
+**次品引用 (Defect reference)**：
+工资次品扣款项下**每卷一条**的引用子表（confirmation_id/确认单号/卷号/等级/确认日/扣款单价快照），可逐卷追溯到质检确认记录——替代老系统 otherDeduction 单一标量挂不上明细的缺陷。取数口径=区间版 payroll-summary：confirmed_at 落在工资月内 + CONFIRMED + OPERATOR（REVOKED 天然排除），导入时填统一单价（仅本次使用不存配置）。防重靠**引用指纹**：已被有效工资单（非 CANCELLED）引用的确认记录不再入候选，工资单作废/草稿删除即释放；**只读质检表，不回写、不引入 payrollSyncedAt 列**（守 inspection-confirmation MVP 决议）。
+
+**工资发放批次 (PayrollPayment)**：
+出纳对 APPROVED 工资单的发放登记（GF 单号）：选一个资金账户+本次金额+发放日，一张工资单可多次登记（银行批量+现金尾款）、可跨账户；每次经统一通道写 CREDIT/OUT_SALARY 分录（主体 NONE——批次不跟踪到人）。累计发放 ≤ 实发合计；批次不可改删。
+
+**已发清 (Fully paid)**：
+工资单派生态而非存储状态：Σ 发放批次金额=0 未发放 / 小于实发 部分发放 / 等于实发 已发清，实时聚合不落字段（对齐供应商对账单"不存已付额"教训）。APPROVED 且零批次时可作废（释放次品指纹），有批次不可作废。
+
+**收支总览 (Finance overview)**：
+菜单 10715 的只读汇总页（12 号新增）：资金视角按账户/期间列期初/本期流入/本期流出/期末并按类别钻取流水；并列**经营毛利参考**卡片（管理口径，非法定报表）：收入=区间内发货日口径应收分录净额（AR_INC−AR_INC_REVERSAL，直接查分录账，不复制发货白名单），成本=确认日落区间的供应商已确认对账单 total_amount；永久标注"管理参考、期间错配、非法定报表"。
+
+**经营毛利参考 (Operating gross margin reference)**：
+收支总览页（10715）并列展示的经营管理卡片（管理口径，非法定报表）：计算公式为 经营毛利 = 期间收入净额 − 期间对账成本。其中收入取区间内发货日口径已审核应收分录净额（AR_INC − AR_INC_REVERSAL，直接查分录账，不复制发货白名单），成本取确认日落区间的供应商已确认对账单 total_amount；永久显式标注"管理参考、期间错配、非法定报表"，无 AR 数据或无对账数据时平稳降级呈现 0。
+
+**发票申请 (InvoiceApplication / invoice)**：
+开票的业务申请与登记，申请与法定凭证分离建模；**不对接金税盘/电子发票平台**（10 号定稿）。多选发货单为开票来源（同客户同币种），支持部分开票，守卫"同一发货单累计开票（含在途）≤ 发货单金额+运费"；抬头四要素自客户档案快照（税号=统一社会信用代码快照）；单头单税率（字典），不含税额/税额按税率服务端反算；状态机 **DRAFT → SUBMITTED → ISSUED / REJECTED**（登记回填数电票 20 位发票号即财务复核点，不接审批引擎）；**开票与收款核销完全解耦**（不冲应收、不进账龄）。
+
+**汇率主档 (ExchangeRate / exchangerate)**：
+外币折算的汇率来源，归属 10 号 spec（域公共表 + 菜单 10780 + 错误码 020_200~202）。一期仅 **SPOT 即期**牌价（租户+币种+生效日唯一，RMB 内置 rate=1 不建行，失效=停用），取数=生效日 ≤ 业务日的最近一条，取不到报 020_200；应收分录按**发货日**、报销按**审批通过日**、其他资金单据按登记日取价并快照到单据与分录；**核销严格同币种**，本位币差额一期不做汇兑损益分录；MONTH_END 期末牌价、结汇、跨币种转账均二期（12 号为纯消费方）。
+
+## 模块边界
+
+后端：`com.luna.lunasrv.module.lunaerp.{controller,service,dal.mysql,dal.dataobject}.finance.<子模块>`、枚举 `enums.finance.FinanceErrorCodeConstants`；表名前缀 `lunaerp_finance_`；URL `/lunaerp/finance/<子模块>/...`；权限 `lunaerp:finance:<子模块>:<动作>`。
+前端：视图 `luna-ui/src/views/lunaerp/finance/<子模块>/`（临时区备选 `lunaerp-elmui/finance/`），API 目录镜像。
+完整骨架与命名理由见 **ADR-0037**。
+
+## 菜单
+
+一级目录 **10700 财务**（sort 107，path `/finance`，icon `ep:money`），九个二级菜单：**资金账户（10710）/收支总览（10715，12 号新增）**/客户对账（10720）/供应商对账（10730）/收付款（10740）/报销（10750）/工资（10760）/发票申请（10770）/汇率（10780，10 号新增）。INSERT SQL 随 W3 各模块建表脚本交付，不提前插空菜单；sort 与按钮明细以 12 号 spec 菜单总表为准（10780 sort 9）。骨架见 ADR-0037 决策 6 及其增补节。
+
+## 错误码
+
+错误码段位总表与取段规则见 `docs/contexts/shared/GLOSSARY.md`。本域预留 **`1-030-020` ~ `1-030-029`**，逐段分配见上方"模块清单"表与 ADR-0037 决策 5。各段具体错误码（000/001/…）随 spec 落地后回填本节。
+
+- `1-030-020`（域公共，分录账/资金账户/汇率主档，10/12 号回填）：000 `LEDGER_IMMUTABLE` / 100 `ACCOUNT_NOT_EXISTS` / 101 `ACCOUNT_DISABLED` / 102 `ACCOUNT_NAME_DUPLICATE` / 103 `ACCOUNT_HAS_ENTRIES` / 104 `ACCOUNT_OPENING_BALANCE_IMMUTABLE` / 105 账号必填 / 106 币种不一致 / 107 转出转入相同 / 108 转账单不存在 / 109 其他收支单不存在 / 110 类别与方向不符 / 111 转账单号耗尽 / 112 其他收支单号耗尽 / 200 `EXCHANGE_RATE_NOT_FOUND` / 201 `EXCHANGE_RATE_DUPLICATE` / 202 `EXCHANGE_RATE_BASE_CURRENCY_NOT_ALLOWED`
+- `1-030-021`（customerrecon，10 号已回填）：000 `STATEMENT_NOT_EXISTS` 对账单不存在 / 001 `STATEMENT_STATUS_NOT_ALLOWED` 当前状态不允许该操作 / 002 `STATEMENT_NO_ENTRIES` 对账区间内无可对账分录 / 003 `STATEMENT_ENTRY_ALREADY_OCCUPIED` 分录已被占用 / 004 `STATEMENT_CANNOT_VOID_CONFIRMED` 已确认对账单不可作废 / 005 `STATEMENT_MULTI_CURRENCY_NOT_ALLOWED` 不允许跨币种分单 / 006 `STATEMENT_CUSTOMER_MISMATCH` 客户不一致 / 007 `STATEMENT_PERIOD_INVALID` 对账区间不合法 / 008 `STATEMENT_NO_EXHAUSTED` 对账单编号序号耗尽
+- `1-030-022`（supplierrecon，11 号已回填）：000 `SUPPLIER_RECON_NOT_EXISTS` 对账单不存在 / 001 `SUPPLIER_RECON_STATUS_NOT_ALLOWED` 当前状态不允许该操作 / 002 `SUPPLIER_RECON_SUPPLIER_NOT_EXISTS` 供应商不存在 / 003 `SUPPLIER_RECON_NO_SOURCE_ITEMS` 对账区间内无可对账明细 / 004 `SUPPLIER_RECON_SOURCE_REFERENCED` 源明细已被对账单【{}】引用 / 005 `SUPPLIER_RECON_ADJUST_LINE_INVALID` 调整项行不合法：金额为 0 或缺备注 / 006 `SUPPLIER_RECON_HAS_PAYMENT_APPLY` 对账单存在付款申请，禁止作废 / 007 `SUPPLIER_RECON_APPLY_AMOUNT_EXCEED` 累计申请金额【{}】超出对账确认金额
+- `1-030-023`（payment 共享段，OUT 侧 000–010 由 11 号先占，IN 侧 100–107 由 10 号回填）：000 `PAYMENT_APPLY_NOT_EXISTS` / 001 `PAYMENT_APPLY_STATUS_NOT_ALLOWED` / 002 `PAYMENT_APPLY_RECON_NOT_CONFIRMED` / 003 `PAYMENT_ALLOCATE_EXCEED` / 004 `PAYMENT_ACCOUNT_BALANCE_NOT_ENOUGH` / 005 `PAYMENT_PREPAY_BALANCE_NOT_ENOUGH` / 006 `PAYMENT_ACCOUNT_NOT_AVAILABLE` / 007 `PAYMENT_AMOUNT_INVALID` / 008 `PAYMENT_APPLY_NO_EXHAUSTED` / 009 `PAYMENT_NOT_EXISTS` / 010 `PAYMENT_NO_EXHAUSTED`；IN 侧：100 `RECEIPT_NOT_EXISTS` / 101 `RECEIPT_STATUS_NOT_ALLOWED` / 102 `RECEIPT_CUSTOMER_MISMATCH` / 103 `RECEIPT_CURRENCY_MISMATCH` / 104 `RECEIPT_ALLOCATE_EXCEED` / 105 `RECEIPT_POSTING_CONFLICT` / 106 `RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH` / 107 `RECEIPT_REVERSAL_NOT_ALLOWED`
+- `1-030-024`（expense，12 号回填）：000 报销单不存在 / 001 状态不允许 / 002 至少一行费用 / 003 付款账户不存在或停用 / 004 金额不合法 / 005 附件超过 10 个 / 006 报销人不存在 / 007 费用发生日期不合法
+- `1-030-025`（payroll，12 号回填）：000 工资单不存在 / 001 状态不允许 / 002 期间工资单重复 / 003 员工重复 / 004 款项金额不合法 / 005 次品记录已被引用或已失效 / 006 已有发放记录禁止作废 / 007 累计发放超实发 / 008 发放批次不存在 / 009 无员工行不可提交 / 010 次品扣款单价必填 / 011 实发为负 / 012 员工不存在
+- `1-030-026`（invoice，10 号已回填）：000 `INVOICE_NOT_EXISTS` / 001 `INVOICE_STATUS_NOT_ALLOWED` / 002 `INVOICE_AMOUNT_EXCEEDED` / 003 `INVOICE_CURRENCY_MISMATCH` / 004 `INVOICE_CUSTOMER_MISMATCH` / 005 `INVOICE_OFFICIAL_NO_REQUIRED` / 006 `INVOICE_OFFICIAL_NO_DUPLICATE` / 007 `INVOICE_TAX_RATE_INVALID` / 008 `INVOICE_NO_EXHAUSTED`
+
+### 域公共错误码明细（1-030-020）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_020_000` | `LEDGER_IMMUTABLE` | 经营分录账为 append-only 账本，禁止直接修改或物理删除 | 分录账 (000–099) |
+| `1_030_020_100` | `ACCOUNT_NOT_EXISTS` | 资金账户不存在 | 资金账户 (100–199) |
+| `1_030_020_101` | `ACCOUNT_DISABLED` | 资金账户已停用，禁止操作 | 资金账户 (100–199) |
+| `1_030_020_102` | `ACCOUNT_NAME_DUPLICATE` | 资金账户名称【{}】已存在 | 资金账户 (100–199) |
+| `1_030_020_103` | `ACCOUNT_HAS_ENTRIES` | 资金账户已存在业务分录，禁止删除 | 资金账户 (100–199) |
+| `1_030_020_104` | `ACCOUNT_OPENING_BALANCE_IMMUTABLE` | 资金账户已有分录，期初余额不可修改 | 资金账户 (100–199) |
+| `1_030_020_105` | `ACCOUNT_NO_REQUIRED` | 该类型账户必须填写账号/标识 | 资金账户 (100–199) |
+| `1_030_020_106` | `ACCOUNT_CURRENCY_MISMATCH` | 账户币种不一致，跨币种操作不支持 | 资金账户 (100–199) |
+| `1_030_020_107` | `TRANSFER_ACCOUNT_SAME` | 转出转入账户不能相同 | 账户间转账 (100–199) |
+| `1_030_020_108` | `TRANSFER_NOT_EXISTS` | 转账单不存在 | 账户间转账 (100–199) |
+| `1_030_020_109` | `OTHER_TXN_NOT_EXISTS` | 其他收支单不存在 | 其他收支 (100–199) |
+| `1_030_020_110` | `OTHER_TXN_CATEGORY_DIRECTION_MISMATCH` | 收支类别与方向不一致 | 其他收支 (100–199) |
+| `1_030_020_111` | `TRANSFER_NO_EXHAUSTED` | 转账单号生成重试耗尽 | 账户间转账 (100–199) |
+| `1_030_020_112` | `OTHER_TXN_NO_EXHAUSTED` | 其他收支单号生成重试耗尽 | 其他收支 (100–199) |
+| `1_030_020_200` | `EXCHANGE_RATE_NOT_FOUND` | 未找到币种【{}】在日期【{}】的有效汇率 | 汇率主档 (200–299) |
+| `1_030_020_201` | `EXCHANGE_RATE_DUPLICATE` | 币种【{}】在日期【{}】的汇率已存在 | 汇率主档 (200–299) |
+| `1_030_020_202` | `EXCHANGE_RATE_BASE_CURRENCY_NOT_ALLOWED` | 本位币无需配置汇率 | 汇率主档 (200–299) |
+
+### 客户对账错误码明细（1-030-021）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_021_000` | `STATEMENT_NOT_EXISTS` | 客户对账单不存在 | 对账主表 (000–099) |
+| `1_030_021_001` | `STATEMENT_STATUS_NOT_ALLOWED` | 客户对账单当前状态不允许该操作 | 对账主表 (000–099) |
+| `1_030_021_002` | `STATEMENT_NO_ENTRIES` | 对账区间内无可对账分录 | 对账明细 (000–099) |
+| `1_030_021_003` | `STATEMENT_ENTRY_ALREADY_OCCUPIED` | 分录【{}】已被其他确认的对账单占用 | 防重占用 (000–099) |
+| `1_030_021_004` | `STATEMENT_CANNOT_VOID_CONFIRMED` | 已确认对账单不可作废 | 状态机守卫 (000–099) |
+| `1_030_021_005` | `STATEMENT_MULTI_CURRENCY_NOT_ALLOWED` | 同一对账单不允许跨币种，请按币种分单 | 币种校验 (000–099) |
+| `1_030_021_006` | `STATEMENT_CUSTOMER_MISMATCH` | 所选分录的客户与对账单客户不一致 | 往来校验 (000–099) |
+| `1_030_021_007` | `STATEMENT_PERIOD_INVALID` | 对账区间起止日期不合法 | 期间校验 (000–099) |
+| `1_030_021_008` | `STATEMENT_NO_EXHAUSTED` | 客户对账单编号序号已耗尽，请稍后重试 | 单号发号 (000–099) |
+
+### 收款核销 IN 侧错误码明细（1-030-023-100~199）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_023_100` | `RECEIPT_NOT_EXISTS` | 收款单不存在 | 收款单 (100–199) |
+| `1_030_023_101` | `RECEIPT_STATUS_NOT_ALLOWED` | 收款单当前状态不允许该操作 | 收款单 (100–199) |
+| `1_030_023_102` | `RECEIPT_CUSTOMER_MISMATCH` | 核销明细客户与收款单客户不一致 | 核销守卫 (100–199) |
+| `1_030_023_103` | `RECEIPT_CURRENCY_MISMATCH` | 收款币种与核销分录币种不一致 | 核销守卫 (100–199) |
+| `1_030_023_104` | `RECEIPT_ALLOCATE_EXCEED` | 本次核销分配总额【{}】超过收款单有效金额【{}】 | 核销守卫 (100–199) |
+| `1_030_023_105` | `RECEIPT_POSTING_CONFLICT` | 收款单过账并发冲突，请重试 | 并发过账 (100–199) |
+| `1_030_023_106` | `RECEIPT_ADVANCE_BALANCE_NOT_ENOUGH` | 客户预收余额不足，无法执行预收转核销 | 预收池守卫 (100–199) |
+| `1_030_023_107` | `RECEIPT_REVERSAL_NOT_ALLOWED` | 该收款单已被后续核销或对账单引用，不可红冲 | 红冲守卫 (100–199) |
+
+### 费用报销错误码明细（1-030-024）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_024_000` | `EXPENSE_NOT_EXISTS` | 报销单不存在 | 报销主表 (000–007) |
+| `1_030_024_001` | `EXPENSE_STATUS_NOT_ALLOWED` | 报销单当前状态不允许该操作 | 状态机守卫 (000–007) |
+| `1_030_024_002` | `EXPENSE_ITEM_REQUIRED` | 报销明细行至少需要一行 | 明细守卫 (000–007) |
+| `1_030_024_003` | `EXPENSE_ACCOUNT_INVALID` | 付款账户不存在或已停用 | 账户校验 (000–007) |
+| `1_030_024_004` | `EXPENSE_AMOUNT_INVALID` | 报销金额必须大于0 | 金额校验 (000–007) |
+| `1_030_024_005` | `EXPENSE_ATTACHMENT_LIMIT` | 报销附件最多上传10个 | 附件限制 (000–007) |
+| `1_030_024_006` | `EXPENSE_USER_NOT_EXISTS` | 报销人不存在 | 用户校验 (000–007) |
+| `1_030_024_007` | `EXPENSE_OCCUR_DATE_INVALID` | 费用发生日期不合法 | 日期校验 (000–007) |
+
+### 工资核算错误码明细（1-030-025）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_025_000` | `PAYROLL_NOT_EXISTS` | 工资单不存在 | 工资主表 (000–012) |
+| `1_030_025_001` | `PAYROLL_STATUS_NOT_ALLOWED` | 工资单当前状态不允许该操作 | 状态机守卫 (000–012) |
+| `1_030_025_002` | `PAYROLL_PERIOD_DUPLICATE` | 同期间有效工资单已存在 | 期间守卫 (000–012) |
+| `1_030_025_003` | `PAYROLL_EMPLOYEE_DUPLICATE` | 工资单中员工不能重复 | 员工排重 (000–012) |
+| `1_030_025_004` | `PAYROLL_LINE_AMOUNT_INVALID` | 工资款项金额必须大于0 | 金额校验 (000–012) |
+| `1_030_025_005` | `PAYROLL_DEFECT_ALREADY_REFERENCED` | 次品记录【{}】已被工资单【{}】引用或已失效 | 次品防重 (000–012) |
+| `1_030_025_006` | `PAYROLL_HAS_PAYMENT_NO_CANCEL` | 工资单已存在发放记录，禁止作废 | 作废守卫 (000–012) |
+| `1_030_025_007` | `PAYROLL_PAYMENT_AMOUNT_EXCEED` | 本次发放金额超出剩余应发金额 | 发放守卫 (000–012) |
+| `1_030_025_008` | `PAYROLL_PAYMENT_NOT_EXISTS` | 工资发放批次不存在 | 发放批次 (000–012) |
+| `1_030_025_009` | `PAYROLL_EMPTY` | 工资单员工明细至少需要一人 | 员工守卫 (000–012) |
+| `1_030_025_010` | `PAYROLL_DEFECT_PRICE_REQUIRED` | 次品扣款单价必填且必须大于0 | 次品导入 (000–012) |
+| `1_030_025_011` | `PAYROLL_NET_AMOUNT_NEGATIVE` | 员工实发工资不能为负数 | 实发校验 (000–012) |
+| `1_030_025_012` | `PAYROLL_USER_NOT_EXISTS` | 员工不存在 | 用户校验 (000–012) |
+
+### 发票申请错误码明细（1-030-026）
+| 错误码 | 常量名 | 说明 / 模板 | 类别 |
+|---|---|---|---|
+| `1_030_026_000` | `INVOICE_NOT_EXISTS` | 发票申请不存在 | 发票主表 (000–099) |
+| `1_030_026_001` | `INVOICE_STATUS_NOT_ALLOWED` | 发票申请当前状态不允许该操作 | 发票主表 (000–099) |
+| `1_030_026_002` | `INVOICE_AMOUNT_EXCEEDED` | 发票申请金额【{}】超出关联发货单可开票额【{}】 | 开票额守卫 (000–099) |
+| `1_030_026_003` | `INVOICE_CURRENCY_MISMATCH` | 开票申请币种与发货单币种不一致 | 币种校验 (000–099) |
+| `1_030_026_004` | `INVOICE_CUSTOMER_MISMATCH` | 所选发货单与开票申请客户不一致 | 往来校验 (000–099) |
+| `1_030_026_005` | `INVOICE_OFFICIAL_NO_REQUIRED` | 登记开票时官方发票号码必填 | 登记开票 (000–099) |
+| `1_030_026_006` | `INVOICE_OFFICIAL_NO_DUPLICATE` | 官方发票号码【{}】已存在，不可重复登记 | 登记开票 (000–099) |
+| `1_030_026_007` | `INVOICE_TAX_RATE_INVALID` | 开票税率不合法 | 税率校验 (000–099) |
+| `1_030_026_008` | `INVOICE_NO_EXHAUSTED` | 发票申请单号生成重试耗尽 | 发号守卫 (000–099) |
+
+## 接口与开发规范速查卡（Finance Engineering Standards）
+
+### 1. 契约与注解标配
+- **Controller 路径**：必须使用单一路径 `@RequestMapping("/lunaerp/finance/<submodule>")`，严禁多重别名数组（`ArchitectureStandardsTest` 强约束）。
+- **权限码规范**：统一为 `lunaerp:finance:<submodule>:<action>`（如 `lunaerp:finance:overview:query`、`lunaerp:finance:account:query`）。
+- **金额脱敏注解**：所有 Response VO 中的金额/单价/成本/余额（BigDecimal 字段）必须统一标注：
+  ```java
+  @Sensitive(seePermission = SensitiveConstants.PERMISSION_AMOUNT, type = SensitiveType.AMOUNT)
+  ```
+- **分录只读不改**：`LedgerService` 严禁提供任何带有 `update`、`delete`、`modify`、`remove` 前缀的方法（保证 ADR-0043 append-only 不可变分录）。
+- **纯 Mockito 单元测试预热**：被测 Service 构造 `LambdaQueryWrapperX` 时，在 `@BeforeEach setUp()` 中使用统一工具：
+  ```java
+  TableInfoTestHelper.initTableInfo(AccountDO.class, ...);
+  ```
+
+### 2. 业务单据来源类型 (`ref_type`) 与前端路由字典 (`sourceRoute`)
+分录流水中的 `ref_type` 映射到前端路由：
+| 业务来源类型 (`ref_type`) | 业务单据说明 | 前端路由跳转目标 (`sourceRoute`) |
+|---|---|---|
+| `SALE_RECON` | 客户销售对账单 | `/finance/customer-recon` |
+| `PURCHASE_RECON` | 供应商采购对账单 | `/finance/supplier-recon` |
+| `RECEIVABLE` | 客户应收单 | `/finance/receivable` |
+| `PAYABLE` | 供应商付款申请/应付单 | `/finance/payment-apply` |
+| `EXPENSE` | 报销申请单 | `/finance/expense` |
+| `PAYROLL` | 工资单/工资发放 | `/finance/payroll` |
+| `TRANSFER` | 资金账户转账单 | `/finance/transfer` |
+
+## 非目标（一期）
+
+- 借贷会计全套：凭证、科目、期初/试算平衡、期末结转、三大报表、账套（`views/fms` 对应能力）；
+- 金蝶/用友实际对接实现（只预留分录账出口与 `service.finance.external` 包名）；
+- 金税盘/电子发票平台对接、发票 OCR 与 AI 风控；
+- 考勤算薪、社保公积金、HR 薪资套件（工资一期只做扣款+手工计件初稿）；
+- 结汇与汇兑损益自动分录（汇率主档保留，结汇业务二期）；应收侧仅保留往来查询"汇率差异"只读列（10 号）；
+- 账期预警 job 与站外推送（04 号 `LUNA_AR_PERIOD_WARNING` 模板一期不接线，逾期仅账龄页静态筛选）、账龄导出 Excel 与坏账计提（10 号）。
+
+## 相关 ADR
+
+- ADR-0037：财务域独立成域——只做经营账，不做借贷会计（域边界/包结构/错误码段/菜单骨架/fms 处置/外部对接预留）
+- ADR-0043：全域唯一经营分录账——一张分录表（资金流水+往来分录）+ current_balance 受控物化余额与统一过账通道
+- ADR-0017：通用库存台账（流水不存余额的模式参照；资金侧余额口径以 ADR-0043 为准）
+- ADR-0034：生产进度只读聚合视图（只读聚合服务的边界参照）
+- ADR-0001：lunaerp-elmui 临时 UI 区与正式 UI 目录

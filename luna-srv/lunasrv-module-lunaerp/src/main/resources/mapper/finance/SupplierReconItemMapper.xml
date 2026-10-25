@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.finance.supplierrecon.SupplierReconItemMapper">
+
+    <!-- 级联恢复对账单明细（显式 SET deleted=0 WHERE recon_id=? AND deleted=1 AND tenant_id=?） -->
+    <update id="restoreByReconId">
+        UPDATE lunaerp_finance_supplier_recon_item
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{now}
+        WHERE recon_id = #{reconId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除对账单明细（显式 DELETE WHERE recon_id=? AND deleted=1 AND tenant_id=?） -->
+    <delete id="purgeByReconId">
+        DELETE FROM lunaerp_finance_supplier_recon_item
+        WHERE recon_id = #{reconId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

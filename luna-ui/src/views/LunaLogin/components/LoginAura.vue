@@ -16,21 +16,21 @@
         :key="idx"
         class="aura-col h-full flex-1"
         :style="{ animationDelay: col.delay }"
-      />
+      ></div>
     </div>
 
     <!-- 极光柔光：缓慢漂移的青/紫/薄荷光幕 -->
-    <div class="aura-glow aura-glow--cyan absolute inset-0 mix-blend-screen" />
-    <div class="aura-glow aura-glow--violet absolute inset-0 mix-blend-screen" />
-    <div class="aura-glow aura-glow--mint absolute inset-0 mix-blend-screen" />
+    <div class="aura-glow aura-glow--cyan absolute inset-0 mix-blend-screen"></div>
+    <div class="aura-glow aura-glow--violet absolute inset-0 mix-blend-screen"></div>
+    <div class="aura-glow aura-glow--mint absolute inset-0 mix-blend-screen"></div>
 
     <!-- 底部渐隐为暖白/粉橙 -->
     <div
       class="absolute inset-x-0 bottom-0 h-[58%]"
       style="background: linear-gradient(180deg, transparent 0%, rgba(255, 231, 224, 0.42) 55%, rgba(255, 236, 228, 0.66) 100%)"
-    />
+    ></div>
     <!-- 顶部轻微压暗，承托白色字标 -->
-    <div class="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/15 to-transparent" />
+    <div class="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/15 to-transparent"></div>
 
     <!-- 鼠标青白光晕 + 拖尾 -->
     <LoginCursorField />

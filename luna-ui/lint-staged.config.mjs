@@ -3,6 +3,9 @@ export default {
     'eslint --fix --cache --cache-location node_modules/.cache/eslint/',
     'prettier --write --loglevel warn --cache --cache-location node_modules/.cache/prettier/.prettier-cache'
   ],
+  'src/**/*.vue': [
+    'node scripts/check-button-perm.mjs'
+  ],
   'src/**/*.{css,less,scss,postcss,vue}': [
     'stylelint --fix --cache --cache-location node_modules/.cache/stylelint/'
   ],

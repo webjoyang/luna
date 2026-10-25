@@ -28,6 +28,7 @@
     "lint:format:check": "prettier --check --cache --cache-location node_modules/.cache/prettier/.prettier-cache \"src/**/*.{js,ts,json,tsx,css,less,scss,vue,html,md}\"",
     "lint:style": "stylelint --fix \"./src/**/*.{vue,less,postcss,css,scss}\" --cache --cache-location node_modules/.cache/stylelint/",
     "lint:style:check": "stylelint \"./src/**/*.{vue,less,postcss,css,scss}\" --cache --cache-location node_modules/.cache/stylelint/",
+    "lint:perms": "node scripts/check-button-perm.mjs",
     "lint:lint-staged": "lint-staged"
   },
   "dependencies": {
@@ -58,6 +59,7 @@
     "element-plus": "2.13.7",
     "fast-xml-parser": "^4.3.2",
     "highlight.js": "^11.11.1",
+    "html5-qrcode": "^2.3.8",
     "jsbarcode": "^3.12.3",
     "jsencrypt": "^3.5.4",
     "jsoneditor": "^10.4.3",
@@ -81,9 +83,11 @@
     "steady-xml": "^0.1.0",
     "tyme4ts": "^1.4.6",
     "url": "^0.11.4",
+    "vant": "^4.10.2",
     "video.js": "^8.23.8",
     "vue": "3.5.34",
     "vue-dompurify-html": "^5.3.0",
+    "vue-ganttastic": "npm:@infectoone/vue-ganttastic@2.3.2",
     "vue-i18n": "11.4.0",
     "vue-router": "5.0.6",
     "vue-types": "^6.0.0",
@@ -154,5 +158,10 @@
   "engines": {
     "node": ">= 20.19.0",
     "pnpm": ">=8.6.0"
+  },
+  "lint-staged": {
+    "*.vue": [
+      "node scripts/check-button-perm.mjs"
+    ]
   }
 }

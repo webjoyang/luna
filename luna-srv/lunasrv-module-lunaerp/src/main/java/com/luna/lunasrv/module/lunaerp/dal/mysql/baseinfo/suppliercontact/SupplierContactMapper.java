@@ -6,6 +6,9 @@ import com.luna.lunasrv.framework.mybatis.core.query.LambdaQueryWrapperX;
 import com.luna.lunasrv.module.lunaerp.controller.baseinfo.suppliercontact.vo.SupplierContactPageReqVO;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.suppliercontact.SupplierContactDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.time.LocalDateTime;
 
 /**
  * 基本信息-供应商联系人表 Mapper
@@ -33,5 +36,19 @@ public interface SupplierContactMapper extends BaseMapperX<SupplierContactDO> {
         wrapper.orderByDesc(SupplierContactDO::getCreateTime);
         return selectPage(reqVO, wrapper);
     }
+
+    /**
+     * 级联恢复供应商联系人（手写 XML：显式 UPDATE ... SET deleted = 0 WHERE supplier_id = #{supplierId} AND deleted = 1 AND tenant_id = #{tenantId}）
+     */
+    int restoreContactsBySupplierId(@Param("supplierId") Long supplierId,
+                                    @Param("tenantId") Long tenantId,
+                                    @Param("updater") String updater,
+                                    @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底删除供应商联系人（手写 XML：显式 DELETE WHERE supplier_id = #{supplierId} AND tenant_id = #{tenantId}）
+     */
+    int purgeContactsBySupplierId(@Param("supplierId") Long supplierId,
+                                  @Param("tenantId") Long tenantId);
 
 }

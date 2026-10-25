@@ -13,6 +13,15 @@
           >
             编辑
           </el-button>
+          <el-button
+            v-if="currentStatus === 'COMPLETED'"
+            type="primary"
+            :loading="createInspectionLoading"
+            @click="handleCreateFinishedInspection"
+            v-hasPermi="['lunaerp:production:release-production:release']"
+          >
+            生成成品检验单
+          </el-button>
         </template>
       </el-page-header>
     </div>
@@ -48,11 +57,13 @@ import BasicInfoTab from './BasicInfoTab.vue'
 import ProgressFeedbackTab from './ProgressFeedbackTab.vue'
 import DispatchRecordTab from './DispatchRecordTab.vue'
 import type { DyeingOrderVO } from '@/api/lunaerp-elmui/production/dyeing-order'
+import * as ReleaseProductionApi from '@/api/lunaerp-elmui/production/release-production'
 
 defineOptions({ name: 'LunaerpElmuiProductionDyeingOrderWorkspace' })
 
 const router = useRouter()
 const route = useRoute()
+const message = useMessage()
 
 const activeTab = ref('basic')
 const orderId = computed(() => (route.params.id as string) || null)
@@ -60,6 +71,7 @@ const isCreateMode = computed(() => !orderId.value)
 const isViewMode = computed(() => route.query.mode === 'view')
 const currentStatus = ref<string>()
 const currentContractNo = ref<string>()
+const createInspectionLoading = ref(false)
 
 const pageTitle = computed(() => {
   if (isCreateMode.value) return '新建染色单'
@@ -82,6 +94,24 @@ const handleSwitchToEdit = () => {
 const handleOrderLoaded = (order: DyeingOrderVO) => {
   currentStatus.value = order.status
   currentContractNo.value = order.contractNo
+}
+
+const handleCreateFinishedInspection = async () => {
+  if (!orderId.value) return
+  try {
+    await message.confirm('确认基于该染色单生成成品检验单吗？')
+  } catch {
+    return
+  }
+
+  createInspectionLoading.value = true
+  try {
+    const inspectionOrderId = await ReleaseProductionApi.createFinishedInspection(Number(orderId.value))
+    message.success('生成成品检验单成功')
+    router.push(`/production/inspection-order/workspace/${inspectionOrderId}`)
+  } finally {
+    createInspectionLoading.value = false
+  }
 }
 
 const handleSuccess = (_id: number) => {

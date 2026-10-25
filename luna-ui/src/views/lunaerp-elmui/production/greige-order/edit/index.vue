@@ -121,6 +121,29 @@
             </el-select>
           </el-form-item>
         </el-col>
+        <el-col :span="12">
+          <el-form-item label="打色指示单" prop="colorInstructionId">
+            <el-select
+              v-model="formData.colorInstructionId"
+              placeholder="输入单号/客户/品名搜索打色单（可空）"
+              clearable
+              filterable
+              remote
+              reserve-keyword
+              :remote-method="searchColorInstructions"
+              :loading="colorInstructionLoading"
+              class="!w-full"
+              @change="handleColorInstructionChange"
+            >
+              <el-option
+                v-for="item in colorInstructionOptions"
+                :key="item.id"
+                :label="formatColorInstructionLabel(item)"
+                :value="item.id!"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
       </el-row>
 
       <div class="section-title">坯布厂与染厂</div>
@@ -497,6 +520,7 @@ import * as ProductApi from '@/api/lunaerp/baseinfo/product'
 import type { ProductVO } from '@/api/lunaerp/baseinfo/product'
 import * as GreigeTypeApi from '@/api/lunaerp/baseinfo/greige-type'
 import type { GreigeTypeSimpleVO } from '@/api/lunaerp/baseinfo/greige-type'
+import { useColorInstructionSelect } from '@/views/lunaerp-elmui/production/color-instruction/composables/useColorInstructionSelect'
 
 defineOptions({ name: 'LunaerpElmuiProductionGreigeOrderEdit' })
 
@@ -514,6 +538,8 @@ const formData = reactive<GreigeOrderVO>({
   salesContractId: undefined,
   contractNo: '',
   productId: undefined,
+  colorInstructionId: undefined,
+  colorInstructionNo: '',
   greigeFactoryId: undefined as unknown as number,
   greigeFactoryName: '',
   dyeingFactoryId: undefined,
@@ -791,6 +817,29 @@ const handleProductChange = (productId?: number) => {
   formData.gsm = product.weightGsm != null ? String(product.weightGsm) : ''
 }
 
+// ==================== 打色指示单远程搜索（可空引用，同客户+产品） ====================
+
+const {
+  colorInstructionLoading,
+  colorInstructionOptions,
+  formatColorInstructionLabel,
+  searchColorInstructions,
+  handleColorInstructionChange: triggerColorInstructionChange,
+  preloadColorInstruction
+} = useColorInstructionSelect({
+  onSelected: (item) => {
+    formData.colorInstructionNo = item?.instructionNo || ''
+    if (!item) {
+      formData.colorInstructionId = undefined
+    }
+  }
+})
+
+const handleColorInstructionChange = (instructionId?: number) => {
+  formData.colorInstructionId = instructionId || undefined
+  triggerColorInstructionChange(instructionId)
+}
+
 // ==================== 胚布品种（手选、不自动识别） ====================
 
 const greigeTypeOptions = ref<GreigeTypeSimpleVO[]>([])
@@ -875,6 +924,9 @@ const loadGreigeOrder = async () => {
         } as ProductVO
       ]
     }
+    if (data.colorInstructionId) {
+      await preloadColorInstruction(data.colorInstructionId, data.colorInstructionNo)
+    }
   } finally {
     restoring.value = false
     loading.value = false
@@ -892,6 +944,8 @@ const handleSubmit = async () => {
       productionMode: formData.productionMode || 'OUTSOURCE',
       orderNo: formData.orderNo?.trim() || undefined, // 留空走后端自动号
       contractNo: formData.contractNo?.trim() || undefined,
+      colorInstructionId: formData.colorInstructionId != null ? formData.colorInstructionId : null,
+      colorInstructionNo: formData.colorInstructionNo?.trim() || null,
       greigeFactoryId:
         formData.productionMode === 'SELF'
           ? (formData.greigeFactoryId ?? (null as unknown as number))
@@ -938,11 +992,12 @@ const handleBack = () => {
 onMounted(() => {
   loadGreigeTypes()
   if (isCreateMode.value) {
-    // 新建：预取一批供应商/合同/产品候选，保证下拉一打开就有内容可看
+    // 新建：预取一批供应商/合同/产品/打色单候选，保证下拉一打开就有内容可看
     searchSuppliers('', 'greige')
     searchSuppliers('', 'dyeing')
     searchContracts('')
     searchProducts('')
+    searchColorInstructions('')
   } else {
     // 编辑/查看：按 id 回填全部字段（远程下拉用快照预置选中态）
     loadGreigeOrder()

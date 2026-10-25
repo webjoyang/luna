@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import { useI18n } from '@/hooks/web/useI18n'
 
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import qs from 'qs'
@@ -13,9 +14,15 @@ import {
 } from '@/utils/auth'
 import errorCode from './errorCode'
 
-import { resetRouter } from '@/router'
+import router, { resetRouter } from '@/router'
 import { deleteUserCache } from '@/hooks/web/useCache'
 import { ApiEncrypt } from '@/utils/encrypt'
+import { usePermissionStoreWithOut } from '@/store/modules/permission'
+import {
+  determineForbiddenReason,
+  MSG_MODULE_NOT_ACTIVATED,
+  MSG_NO_OPERATION_PERMISSION
+} from '@/utils/moduleGateway'
 
 const tenantEnable = import.meta.env.VITE_APP_TENANT_ENABLE
 const { result_code, base_url, request_timeout } = config
@@ -50,7 +57,7 @@ const service: AxiosInstance = axios.create({
 service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // lunaerp 模块不需要 /admin-api 前缀，直接使用 VITE_BASE_URL
-    if (config.url?.startsWith('/lunaerp')) {
+    if (config.url?.startsWith('/lunaerp') && !config.url?.startsWith('/lunaerp/h5')) {
       config.baseURL = import.meta.env.VITE_BASE_URL || ''
     }
     // 是否需要设置 token；命中白名单的接口（如 /login）不带 token
@@ -196,6 +203,8 @@ service.interceptors.response.use(
           })
         })
       }
+    } else if (code === 403) {
+      return handleForbidden(config)
     } else if (code === 500) {
       ElMessage.error(t('sys.api.errMsg500'))
       return Promise.reject(new Error(msg))
@@ -221,13 +230,22 @@ service.interceptors.response.use(
       } else {
         ElNotification.error({ title: msg })
       }
-      return Promise.reject('error')
+      const err: any = new Error(msg)
+      err.code = code
+      err.data = data
+      return Promise.reject(err)
     } else {
       return data
     }
   },
   (error: AxiosError) => {
     console.log('err' + error) // for debug
+    if (error.response?.status === 403 || (error.response?.data as any)?.code === 403) {
+      return handleForbidden(error.config)
+    }
+    if (error.response?.status === 401 || (error.response?.data as any)?.code === 401) {
+      return handleAuthorized()
+    }
     let { message } = error
     const { t } = useI18n()
     if (message === 'Network Error') {
@@ -242,12 +260,57 @@ service.interceptors.response.use(
   }
 )
 
+export const handleForbidden = (axiosConfig?: InternalAxiosRequestConfig | any) => {
+  const permissionStore = usePermissionStoreWithOut()
+  const currentRoute = router.currentRoute.value
+  const requestUrl = axiosConfig?.url
+
+  const reason = determineForbiddenReason({
+    currentRoute,
+    requestUrl,
+    addRouters: permissionStore.getAddRouters
+  })
+
+  if (reason === 'MODULE_NOT_ACTIVATED') {
+    ElMessage.error(MSG_MODULE_NOT_ACTIVATED)
+    if (currentRoute?.path !== '/index') {
+      router.push('/index')
+    }
+    return Promise.reject(new Error(MSG_MODULE_NOT_ACTIVATED))
+  } else {
+    ElMessage.error(MSG_NO_OPERATION_PERMISSION)
+    return Promise.reject(new Error(MSG_NO_OPERATION_PERMISSION))
+  }
+}
+
 const refreshToken = async () => {
   axios.defaults.headers.common['tenant-id'] = getTenantId()
   return await axios.post(base_url + '/system/auth/refresh-token?refreshToken=' + getRefreshToken())
 }
-const handleAuthorized = () => {
+export const handleAuthorized = () => {
   const { t } = useI18n()
+  const currentPath =
+    typeof window !== 'undefined'
+      ? window.location.pathname + window.location.search
+      : (router?.currentRoute?.value?.fullPath as string) || ''
+  const isH5 = currentPath.startsWith('/h5')
+
+  if (isH5) {
+    resetRouter()
+    deleteUserCache()
+    removeToken()
+    isRelogin.show = false
+    if (!currentPath.includes('/h5/login')) {
+      const redirectUrl = '/h5/login?redirect=' + encodeURIComponent(currentPath)
+      if (router?.push) {
+        router.push(redirectUrl)
+      } else if (typeof window !== 'undefined') {
+        window.location.href = redirectUrl
+      }
+    }
+    return Promise.reject(t('sys.api.timeoutMessage'))
+  }
+
   if (!isRelogin.show) {
     // 如果已经到登录页面则不进行弹窗提示
     if (window.location.href.includes('login')) {

@@ -28,20 +28,34 @@ import com.luna.lunasrv.module.lunaerp.dal.mysql.business.shipment.ShipmentRollM
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockin.StockInItemMapper;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.warehouse.WarehouseMapper;
 import com.luna.lunasrv.framework.security.core.service.SecurityFrameworkService;
+import com.luna.lunasrv.framework.security.core.util.SecurityFrameworkUtils;
 import com.luna.lunasrv.module.lunaerp.dal.dataobject.stock.stockledger.StockLedgerDO;
 import com.luna.lunasrv.module.lunaerp.dal.mysql.stock.stockledger.StockLedgerMapper;
 import com.luna.lunasrv.module.lunaerp.service.stock.stockledger.StockLedgerService;
 import com.luna.lunasrv.module.system.api.user.AdminUserApi;
 import com.luna.lunasrv.module.system.api.user.dto.AdminUserRespDTO;
+import com.luna.lunasrv.module.infra.api.config.ConfigApi;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPrintRespVO;
+import com.mzt.logapi.context.LogRecordContext;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentAuditedEvent;
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentCancelledEvent;
+import com.luna.lunasrv.module.lunaerp.service.business.shipment.event.ShipmentItemSnapshotDTO;
+
+import com.luna.lunasrv.framework.datapermission.core.annotation.DataPermission;
+import com.luna.lunasrv.framework.datapermission.core.util.DataPermissionUtils;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Function;
@@ -169,6 +183,12 @@ public class ShipmentServiceImpl implements ShipmentService {
     @Resource
     private SecurityFrameworkService securityFrameworkService;
 
+    @Resource
+    private ConfigApi configApi;
+
+    @Resource
+    private ApplicationEventPublisher applicationEventPublisher;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createShipment(ShipmentSaveReqVO createReqVO) {
@@ -192,6 +212,14 @@ public class ShipmentServiceImpl implements ShipmentService {
             validateShipmentNoUnique(null, shipment.getShipmentNo());
         } else {
             shipment.setShipmentNo(generateShipmentNoWithRetry(shipment.getShippingDate()));
+        }
+
+        // 归属人缺省当前登录用户，归属部门服务端推导（ADR-0046）
+        if (shipment.getSalespersonUserId() == null) {
+            Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+            if (loginUserId != null) {
+                shipment.setSalespersonUserId(loginUserId);
+            }
         }
 
         // 3. 关联存在性校验与快照回填
@@ -234,8 +262,16 @@ public class ShipmentServiceImpl implements ShipmentService {
             updateObj.setShipmentNo(null);
         }
 
+        // 归属人推导逻辑（Issue 03 / ADR-0046）：
+        // 归属人变更 → 同事务重算 dept_id（含清空归属人则两列清空）；归属人未变 → 不动 dept_id
+        boolean ownerChanged = !Objects.equals(existing.getSalespersonUserId(), updateObj.getSalespersonUserId());
+
         // 4. 关联存在性校验与快照回填
         fillSnapshotsAndValidateRefs(updateObj, updateReqVO);
+
+        if (!ownerChanged) {
+            updateObj.setDeptId(existing.getDeptId());
+        }
 
         // 5. 明细与卷清单两级差异保存（ADR-0032）：
         //    严格先父行（明细）后子行（卷），三分流保存，金额匹数权威重算
@@ -294,10 +330,22 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     @Override
+    @DataPermission(enable = false)
     public String getNextShipmentNo(LocalDate shippingDate) {
         // 只读预览、不占号：直接扫描同前缀单号（含已删除行，ADR-0029）
         LocalDate date = shippingDate != null ? shippingDate : LocalDate.now();
-        return generateShipmentNo(date);
+        return DataPermissionUtils.executeIgnore(() -> generateShipmentNo(date));
+    }
+
+    /**
+     * 合同未发量聚合：按合同ID与状态查询发货单列表（ADR-0046 / §5.2 第 3 项），
+     * 显式关闭数据权限，必须统计租户内全部 COMPLETED 发货，否则受限档会算虚假未发量导致超发。
+     */
+    @DataPermission(enable = false)
+    public List<ShipmentDO> selectListByContractIdAndStatus(Long contractId, String status) {
+        return DataPermissionUtils.executeIgnore(() ->
+                shipmentMapper.selectListByContractIdAndStatus(contractId, status)
+        );
     }
 
     @Override
@@ -318,7 +366,8 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // 3. 实时只读计算：按已生效出库的发货单（COMPLETED 态、即已过账写负流水）依产品/客户色号聚合已发数量
-        List<ShipmentDO> completedShipments = shipmentMapper.selectListByContractIdAndStatus(contractId, "COMPLETED");
+        // 必须关闭数据权限（ADR-0046 §5.2 第 3 项），跨归属统计租户内全部发货，防虚假未发量导致超发
+        List<ShipmentDO> completedShipments = selectListByContractIdAndStatus(contractId, "COMPLETED");
         Map<String, BigDecimal> shippedQtyByKey = new HashMap<>();
         if (CollUtil.isNotEmpty(completedShipments)) {
             List<Long> completedShipmentIds = completedShipments.stream()
@@ -467,6 +516,22 @@ public class ShipmentServiceImpl implements ShipmentService {
             ledger.setRemark(item.getRemark());
             stockLedgerMapper.insert(ledger);
         }
+
+        // 7. 发布发货单审核出库完成事件（同事务 BEFORE_COMMIT 记账，Q1）
+        if (applicationEventPublisher != null) {
+            List<ShipmentItemSnapshotDTO> snapshots = buildItemSnapshots(items);
+            ShipmentAuditedEvent event = ShipmentAuditedEvent.builder()
+                    .shipmentId(existing.getId())
+                    .shipmentNo(existing.getShipmentNo())
+                    .customerId(existing.getCustomerId())
+                    .customerName(existing.getCustomerName())
+                    .currency(existing.getCurrency() != null ? existing.getCurrency() : DEFAULT_CURRENCY)
+                    .shipmentDate(existing.getShippingDate())
+                    .freightFee(existing.getFreightFee())
+                    .items(snapshots)
+                    .build();
+            applicationEventPublisher.publishEvent(event);
+        }
     }
 
     @Override
@@ -521,6 +586,22 @@ public class ShipmentServiceImpl implements ShipmentService {
                     stockLedgerMapper.insert(reversal);
                 }
             }
+
+            // 2.2.3 发布发货单红冲完成事件（同事务 BEFORE_COMMIT 记账，Q1）
+            if (applicationEventPublisher != null) {
+                List<ShipmentItemDO> items = shipmentItemMapper.selectListByShipmentId(id);
+                List<ShipmentItemSnapshotDTO> snapshots = buildItemSnapshots(items);
+                ShipmentCancelledEvent event = ShipmentCancelledEvent.builder()
+                        .shipmentId(existing.getId())
+                        .shipmentNo(existing.getShipmentNo())
+                        .customerId(existing.getCustomerId())
+                        .currency(existing.getCurrency() != null ? existing.getCurrency() : DEFAULT_CURRENCY)
+                        .cancelDate(LocalDate.now())
+                        .freightFee(existing.getFreightFee())
+                        .items(snapshots)
+                        .build();
+                applicationEventPublisher.publishEvent(event);
+            }
         } else {
             // 2.3 CANCELLED 终态或非法状态：报 1_030_016_002
             throw exception(SHIPMENT_STATUS_NOT_ALLOW);
@@ -555,6 +636,30 @@ public class ShipmentServiceImpl implements ShipmentService {
     // ==================== 私有方法 ====================
 
     /**
+     * 构建发货明细快照数组（用于发货审核/红冲事件通知，解耦业务与财务）
+     */
+    private List<ShipmentItemSnapshotDTO> buildItemSnapshots(List<ShipmentItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        List<ShipmentItemSnapshotDTO> snapshots = new ArrayList<>(items.size());
+        for (ShipmentItemDO item : items) {
+            snapshots.add(ShipmentItemSnapshotDTO.builder()
+                    .shipmentItemId(item.getId())
+                    .productId(item.getProductId())
+                    .productCode(item.getProductCode())
+                    .productName(item.getProductName())
+                    .quantity(item.getQuantity())
+                    .unit(item.getUnit())
+                    .unitPrice(item.getUnitPrice())
+                    .amount(item.getAmount())
+                    .remark(item.getRemark())
+                    .build());
+        }
+        return snapshots;
+    }
+
+    /**
      * 校验发货单存在
      */
     private ShipmentDO validateShipmentExists(Long id) {
@@ -571,67 +676,76 @@ public class ShipmentServiceImpl implements ShipmentService {
     /**
      * 校验单号租户内全量唯一（含已删除行，ADR-0029）
      */
+    @DataPermission(enable = false)
     private void validateShipmentNoUnique(Long excludeId, String shipmentNo) {
         if (!StringUtils.hasText(shipmentNo)) {
             return;
         }
-        ShipmentDO exist = shipmentMapper.selectByShipmentNoIncludingDeleted(shipmentNo);
-        if (exist != null && !exist.getId().equals(excludeId)) {
-            throw exception(SHIPMENT_NO_DUPLICATE, shipmentNo);
-        }
+        DataPermissionUtils.executeIgnore(() -> {
+            ShipmentDO exist = shipmentMapper.selectByShipmentNoIncludingDeleted(shipmentNo);
+            if (exist != null && !exist.getId().equals(excludeId)) {
+                throw exception(SHIPMENT_NO_DUPLICATE, shipmentNo);
+            }
+        });
     }
 
     /**
      * 自动取号（带顺延重试）
      */
+    @DataPermission(enable = false)
     private String generateShipmentNoWithRetry(LocalDate shippingDate) {
-        String lastCandidate = null;
-        for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
-            String candidate = generateShipmentNo(shippingDate);
-            lastCandidate = candidate;
-            if (shipmentMapper.selectByShipmentNoIncludingDeleted(candidate) == null) {
-                return candidate;
+        return DataPermissionUtils.executeIgnore(() -> {
+            String lastCandidate = null;
+            for (int i = 0; i < MAX_GENERATE_RETRY; i++) {
+                String candidate = generateShipmentNo(shippingDate);
+                lastCandidate = candidate;
+                if (shipmentMapper.selectByShipmentNoIncludingDeleted(candidate) == null) {
+                    return candidate;
+                }
             }
-        }
-        throw exception(SHIPMENT_NO_DUPLICATE, lastCandidate);
+            throw exception(SHIPMENT_NO_DUPLICATE, lastCandidate);
+        });
     }
 
     /**
      * 生成单号：SH- + YYYYMMDD + - + 3位顺序号（超 999 自然扩位）
      */
+    @DataPermission(enable = false)
     private String generateShipmentNo(LocalDate shippingDate) {
-        LocalDate date = shippingDate != null ? shippingDate : LocalDate.now();
-        String prefix = ORDER_NO_PREFIX + date.format(DATE_FORMATTER) + "-";
-        List<ShipmentDO> candidates = shipmentMapper.selectListByShipmentNoPrefixIncludingDeleted(prefix);
+        return DataPermissionUtils.executeIgnore(() -> {
+            LocalDate date = shippingDate != null ? shippingDate : LocalDate.now();
+            String prefix = ORDER_NO_PREFIX + date.format(DATE_FORMATTER) + "-";
+            List<ShipmentDO> candidates = shipmentMapper.selectListByShipmentNoPrefixIncludingDeleted(prefix);
 
-        long maxNum = 0L;
-        int maxDigits = NO_MIN_DIGITS;
-        for (ShipmentDO candidate : candidates) {
-            String no = candidate.getShipmentNo();
-            if (no == null || no.length() <= prefix.length()) {
-                continue;
+            long maxNum = 0L;
+            int maxDigits = NO_MIN_DIGITS;
+            for (ShipmentDO candidate : candidates) {
+                String no = candidate.getShipmentNo();
+                if (no == null || no.length() <= prefix.length()) {
+                    continue;
+                }
+                String suffix = no.substring(prefix.length());
+                Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
+                if (!matcher.find()) {
+                    continue;
+                }
+                String digits = matcher.group();
+                long num;
+                try {
+                    num = Long.parseLong(digits);
+                } catch (NumberFormatException ignore) {
+                    continue;
+                }
+                if (num > maxNum) {
+                    maxNum = num;
+                    maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
+                }
             }
-            String suffix = no.substring(prefix.length());
-            Matcher matcher = NO_SUFFIX_NUMBER_PATTERN.matcher(suffix);
-            if (!matcher.find()) {
-                continue;
+            if (maxNum == 0L) {
+                return prefix + "001";
             }
-            String digits = matcher.group();
-            long num;
-            try {
-                num = Long.parseLong(digits);
-            } catch (NumberFormatException ignore) {
-                continue;
-            }
-            if (num > maxNum) {
-                maxNum = num;
-                maxDigits = Math.max(NO_MIN_DIGITS, digits.length());
-            }
-        }
-        if (maxNum == 0L) {
-            return prefix + "001";
-        }
-        return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+            return prefix + String.format("%0" + maxDigits + "d", maxNum + 1);
+        });
     }
 
     /**
@@ -664,14 +778,16 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // 4. 业务员（可选）
-        if (reqVO.getSalespersonUserId() != null) {
-            AdminUserRespDTO user = adminUserApi.getUser(reqVO.getSalespersonUserId());
+        if (shipment.getSalespersonUserId() != null) {
+            AdminUserRespDTO user = adminUserApi.getUser(shipment.getSalespersonUserId());
             if (user == null || CommonStatusEnum.isDisable(user.getStatus())) {
                 throw exception(SHIPMENT_RELATED_REF_NOT_EXISTS, "业务员");
             }
             shipment.setSalespersonName(user.getNickname());
+            shipment.setDeptId(user.getDeptId());
         } else {
             shipment.setSalespersonName(null);
+            shipment.setDeptId(null);
         }
     }
 
@@ -970,6 +1086,105 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         wrapper.orderByDesc(ShipmentDO::getShippingDate).orderByDesc(ShipmentDO::getId);
         return wrapper;
+    }
+
+    @Override
+    @LogRecord(type = "打印", subType = "发货单", bizNo = "{{#id}}", success = "打印了发货单 {{#no}}")
+    public ShipmentPrintRespVO getShipmentPrintData(Long id) {
+        // 1. 校验单据存在
+        ShipmentDO shipment = validateShipmentExists(id);
+
+        // 2. 留痕上下文
+        LogRecordContext.putVariable("no", shipment.getShipmentNo());
+        LogRecordContext.putVariable("id", shipment.getId());
+
+        // 3. 客户门户基准URL与二维码（14号前可空，不阻断发货单打印，仅二维码提示）
+        String qrUrl = null;
+        String baseUrl = configApi != null ? configApi.getConfigValueByKey("luna.portal.base-url") : null;
+        if (StringUtils.hasText(baseUrl)) {
+            String cleanBaseUrl = baseUrl.trim().replaceAll("/+$", "");
+            qrUrl = cleanBaseUrl + "/portal/shipment?no=" + shipment.getShipmentNo();
+        }
+
+        // 4. 查询明细与卷清单（独立 VO 豁免脱敏）
+        List<ShipmentItemDO> itemDOList = shipmentItemMapper.selectListByShipmentId(id);
+        List<ShipmentPrintRespVO.ItemVO> printItems = new ArrayList<>();
+
+        if (CollUtil.isNotEmpty(itemDOList)) {
+            List<ShipmentRollDO> rollDOList = shipmentRollMapper.selectListByShipmentId(id);
+            Map<Long, List<ShipmentRollDO>> rollsByItemId = CollUtil.isEmpty(rollDOList)
+                    ? Collections.emptyMap()
+                    : rollDOList.stream().collect(Collectors.groupingBy(ShipmentRollDO::getShipmentItemId));
+
+            for (ShipmentItemDO itemDO : itemDOList) {
+                List<ShipmentRollDO> itemRolls = rollsByItemId.getOrDefault(itemDO.getId(), Collections.emptyList());
+                List<ShipmentPrintRespVO.RollVO> printRolls = new ArrayList<>();
+                for (ShipmentRollDO rollDO : itemRolls) {
+                    printRolls.add(ShipmentPrintRespVO.RollVO.builder()
+                            .id(rollDO.getId())
+                            .shipmentId(rollDO.getShipmentId())
+                            .shipmentItemId(rollDO.getShipmentItemId())
+                            .rollNo(rollDO.getRollNo())
+                            .weight(rollDO.getWeight())
+                            .lengthM(rollDO.getLengthM())
+                            .remark(rollDO.getRemark())
+                            .build());
+                }
+
+                printItems.add(ShipmentPrintRespVO.ItemVO.builder()
+                        .id(itemDO.getId())
+                        .shipmentId(itemDO.getShipmentId())
+                        .productId(itemDO.getProductId())
+                        .productCode(itemDO.getProductCode())
+                        .productName(itemDO.getProductName())
+                        .customerColorNo(itemDO.getCustomerColorNo())
+                        .colorName(itemDO.getColorName())
+                        .vatNo(itemDO.getVatNo())
+                        .quantity(itemDO.getQuantity())
+                        .pieces(itemDO.getPieces())
+                        .unit(itemDO.getUnit())
+                        .unitPrice(itemDO.getUnitPrice())
+                        .amount(itemDO.getAmount())
+                        .remark(itemDO.getRemark())
+                        .rolls(printRolls)
+                        .build());
+            }
+        }
+
+        // 5. 组装发货单独立打印 VO
+        return ShipmentPrintRespVO.builder()
+                .id(shipment.getId())
+                .shipmentNo(shipment.getShipmentNo())
+                .status(shipment.getStatus())
+                .customerId(shipment.getCustomerId())
+                .customerName(shipment.getCustomerName())
+                .salesContractId(shipment.getSalesContractId())
+                .contractNo(shipment.getContractNo())
+                .warehouseId(shipment.getWarehouseId())
+                .warehouseName(shipment.getWarehouseName())
+                .shippingAddress(shipment.getShippingAddress())
+                .receiveAddress(shipment.getReceiveAddress())
+                .carrier(shipment.getCarrier())
+                .trackingNumber(shipment.getTrackingNumber())
+                .shippingDate(shipment.getShippingDate())
+                .expectedDeliveryDate(shipment.getExpectedDeliveryDate())
+                .freightFee(shipment.getFreightFee())
+                .totalAmount(shipment.getTotalAmount())
+                .totalPieces(shipment.getTotalPieces())
+                .salespersonUserId(shipment.getSalespersonUserId())
+                .salespersonName(shipment.getSalespersonName())
+                .currency(shipment.getCurrency())
+                .signStatus(shipment.getSignStatus())
+                .signedByName(shipment.getSignedByName())
+                .signedAt(shipment.getSignedAt())
+                .signRemark(shipment.getSignRemark())
+                .remark(shipment.getRemark())
+                .creator(shipment.getCreator())
+                .createTime(shipment.getCreateTime())
+                .qrUrl(qrUrl)
+                .printTime(LocalDateTime.now())
+                .items(printItems)
+                .build();
     }
 
 }

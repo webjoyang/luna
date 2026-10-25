@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -19,6 +20,22 @@ import java.util.stream.Collectors;
  */
 @Mapper
 public interface YarnOrderItemMapper extends BaseMapperX<YarnOrderItemDO> {
+
+    /**
+     * 查询已删除采购单下的明细（用于回收站恢复前主数据引用校验）
+     */
+    List<YarnOrderItemDO> selectDeletedListByOrderId(@Param("orderId") Long orderId, @Param("tenantId") Long tenantId);
+
+    /**
+     * 级联恢复采购明细（手写 XML：显式 SET deleted=0 WHERE order_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int restoreByOrderId(@Param("orderId") Long orderId, @Param("tenantId") Long tenantId,
+                         @Param("updater") String updater, @Param("updateTime") LocalDateTime updateTime);
+
+    /**
+     * 彻底物理删除采购明细（手写 XML：显式 DELETE WHERE order_id=? AND deleted=1 AND tenant_id=?）
+     */
+    int purgeByOrderId(@Param("orderId") Long orderId, @Param("tenantId") Long tenantId);
 
     default List<YarnOrderItemDO> selectListByOrderId(Long orderId) {
         return selectList(new LambdaQueryWrapperX<YarnOrderItemDO>()
@@ -65,5 +82,24 @@ public interface YarnOrderItemMapper extends BaseMapperX<YarnOrderItemDO> {
             + "AND order_id IN (SELECT id FROM lunaerp_production_yarn_order WHERE status IN ('ACTIVE', 'COMPLETED') AND deleted = 0) "
             + "ORDER BY update_time DESC, id DESC LIMIT 1")
     BigDecimal selectRecentUnitPriceBySpecId(@Param("yarnSpecId") Long yarnSpecId);
+
+    /**
+     * 批量按纱线规格ID集合聚合 ACTIVE 采购单在途采购数量（SUM(purchase_qty)）
+     *
+     * @param yarnSpecIds 纱线规格ID集合
+     * @return 聚合列表（包含 yarnSpecId 与 purchaseQty）
+     */
+    @Select("<script>"
+            + "SELECT i.yarn_spec_id AS yarnSpecId, COALESCE(SUM(i.purchase_qty), 0) AS purchaseQty "
+            + "FROM lunaerp_production_yarn_order_item i "
+            + "JOIN lunaerp_production_yarn_order o ON o.id = i.order_id "
+            + "WHERE i.deleted = 0 AND o.deleted = 0 "
+            + "AND o.status = 'ACTIVE' "
+            + "AND i.yarn_spec_id IN "
+            + "<foreach item='id' collection='yarnSpecIds' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "GROUP BY i.yarn_spec_id"
+            + "</script>")
+    List<YarnOrderItemDO> sumInTransitQtyByYarnSpecIds(
+            @Param("yarnSpecIds") java.util.Collection<Long> yarnSpecIds);
 
 }

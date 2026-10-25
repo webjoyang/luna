@@ -16,4 +16,6 @@ public class CustomerPageReqVO extends PageParam {
     @Schema(description = "状态：ACTIVE/INACTIVE", example = "ACTIVE")
     private String status;
 
+    @Schema(description = "归属业务员", example = "1")
+    private Long salespersonUserId;
 }

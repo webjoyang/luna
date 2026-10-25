@@ -250,7 +250,7 @@ Status: ready-for-agent
 
 ### 已落地文档
 
-- [CONTEXT.md](../../CONTEXT.md) — 已新增"供应商与联系人"术语节（Supplier / SupplierContact / SupplierNo / SupplierType / SupplierWorkspace / machineType），并同步模块落点、租户、软删除、字典、错误码段、companyName 命名统一
+- [GLOSSARY.md](../../docs/contexts/baseinfo/GLOSSARY.md) — 已新增"供应商与联系人"术语节（Supplier / SupplierContact / SupplierNo / SupplierType / SupplierWorkspace / machineType），并同步模块落点、租户、软删除、字典、错误码段、companyName 命名统一
 - [docs/adr/0005-supplier-no-full-uniqueness.md](../../docs/adr/0005-supplier-no-full-uniqueness.md) — 供应商编号全量唯一、基础档案采用单据级编号规则的决策
 - 关联：ADR-0001（lunaerp-elmui 目录拆分）、ADR-0002（联系人独立 Controller）、ADR-0004（合同编号全量唯一，供应商编号机制同构）
 

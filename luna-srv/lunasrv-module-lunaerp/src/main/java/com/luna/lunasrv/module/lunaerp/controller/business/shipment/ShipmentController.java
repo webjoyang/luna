@@ -4,6 +4,7 @@ import com.luna.lunasrv.framework.common.pojo.CommonResult;
 import com.luna.lunasrv.framework.common.pojo.PageResult;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentItemRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPageReqVO;
+import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentPrintRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentRespVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentSaveReqVO;
 import com.luna.lunasrv.module.lunaerp.controller.business.shipment.vo.ShipmentUpdateSignReqVO;
@@ -114,6 +115,17 @@ public class ShipmentController {
     public CommonResult<Boolean> updateShipmentSign(@Valid @RequestBody ShipmentUpdateSignReqVO reqVO) {
         shipmentService.updateShipmentSign(reqVO);
         return success(true);
+    }
+
+    @GetMapping({"/{id}/print-data", "/print-data"})
+    @Operation(summary = "获得发货单打印数据（豁免脱敏）")
+    @Parameter(name = "id", description = "发货单ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('lunaerp:business:shipment:print')")
+    public CommonResult<ShipmentPrintRespVO> getShipmentPrintData(
+            @PathVariable(value = "id", required = false) Long pathId,
+            @RequestParam(value = "id", required = false) Long queryId) {
+        Long id = pathId != null ? pathId : queryId;
+        return success(shipmentService.getShipmentPrintData(id));
     }
 
 }

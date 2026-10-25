@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.baseinfo.customercontact.CustomerContactMapper">
+
+    <!-- 级联恢复客户联系人（手写 XML：显式 UPDATE ... SET deleted = 0 WHERE customer_id = #{customerId} AND deleted = 1 AND tenant_id = #{tenantId}） -->
+    <update id="restoreContactsByCustomerId">
+        UPDATE lunaerp_baseinfo_customer_contact
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE customer_id = #{customerId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底删除客户联系人（手写 XML：显式 DELETE WHERE customer_id = #{customerId} AND tenant_id = #{tenantId}） -->
+    <delete id="purgeContactsByCustomerId">
+        DELETE FROM lunaerp_baseinfo_customer_contact
+        WHERE customer_id = #{customerId}
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

@@ -7,7 +7,7 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 - One feature per directory: `.scratch/<feature-slug>/`
 - The spec is `.scratch/<feature-slug>/spec.md`
 - Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file
+- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings; completed/verified tickets use `closed`, research/spike findings use `resolved`)
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
 ## When a skill says "publish to the issue tracker"
@@ -17,6 +17,13 @@ Create a new file under `.scratch/<feature-slug>/` (creating the directory if ne
 ## When a skill says "fetch the relevant ticket"
 
 Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+
+## Implementation order (`.scratch/_order.md`)
+
+- One line per feature that has a `spec.md`: `- [ ] NN，<feature-slug>，[<slug>/spec.md](<slug>/spec.md)`
+- On creating a new spec, insert the line at the dependency-correct position and renumber sequentially. Numbers are ordering, not identity; the slug is identity — reference a feature by its slug, never by its number.
+- The checkbox is to be checked manually.
+- Spec-less directories (wayfinder maps, one-off fix tickets) are not listed.
 
 ## Wayfinding operations
 

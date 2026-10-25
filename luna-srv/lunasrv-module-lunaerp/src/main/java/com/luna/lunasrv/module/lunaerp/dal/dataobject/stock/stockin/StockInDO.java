@@ -112,6 +112,26 @@ public class StockInDO extends TenantBaseDO {
      */
     private LocalDate inDate;
     /**
+     * 关联纱线采购单ID
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long yarnOrderId;
+    /**
+     * 关联纱线采购单号快照
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String yarnOrderNo;
+    /**
+     * 通用来源单据类型（SALES_RETURN 等通用业务来源，ADR-0042）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String sourceDocType;
+    /**
+     * 通用来源单据ID（lunaerp_business_sales_return.id 等）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long sourceDocId;
+    /**
      * 备注
      */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)

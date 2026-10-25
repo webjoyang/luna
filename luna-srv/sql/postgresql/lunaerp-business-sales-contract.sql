@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS lunaerp_business_sales_contract (
     total_amount             numeric(18,2) NOT NULL DEFAULT 0,
     remarks                  varchar(1000) NULL,
     status                   varchar       NOT NULL DEFAULT 'ACTIVE',
+    approval_status          varchar(16)   NOT NULL DEFAULT 'DRAFT',
     creator                  varchar(64)   NULL DEFAULT '',
     create_time              timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater                  varchar(64)   NULL DEFAULT '',
@@ -55,6 +56,10 @@ CREATE INDEX IF NOT EXISTS idx_lb_sales_contract_status
 CREATE INDEX IF NOT EXISTS idx_lb_sales_contract_sign_date
     ON lunaerp_business_sales_contract (sign_date);
 
+-- 存量库补列：早期版本已建表时，CREATE TABLE IF NOT EXISTS 不会补新列，
+-- 须先 ADD COLUMN 再 COMMENT（否则 COMMENT ON COLUMN 报列不存在）
+ALTER TABLE lunaerp_business_sales_contract ADD COLUMN IF NOT EXISTS approval_status varchar(16) NOT NULL DEFAULT 'DRAFT';
+
 COMMENT ON TABLE lunaerp_business_sales_contract IS '业务管理-销售合同主表';
 COMMENT ON COLUMN lunaerp_business_sales_contract.id IS '合同ID';
 COMMENT ON COLUMN lunaerp_business_sales_contract.contract_no IS '合同编号（CH+年份+4位顺序号，可手填，租户内全量唯一含已删除行）';
@@ -74,7 +79,9 @@ COMMENT ON COLUMN lunaerp_business_sales_contract.total_quantity IS '总数量�
 COMMENT ON COLUMN lunaerp_business_sales_contract.total_amount IS '总金额（本票固定 0，02 票按商品明细重算）';
 COMMENT ON COLUMN lunaerp_business_sales_contract.remarks IS '备注';
 COMMENT ON COLUMN lunaerp_business_sales_contract.status IS '合同状态（字典 lunaerp_sales_contract_status：ACTIVE/COMPLETED/CANCELLED），创建缺省 ACTIVE';
+COMMENT ON COLUMN lunaerp_business_sales_contract.approval_status IS '审批状态（DRAFT 草稿 / APPROVING 审批中 / APPROVED 已通过 / REJECTED 已驳回 / CANCELLED 已撤回）';
 COMMENT ON COLUMN lunaerp_business_sales_contract.creator IS '创建者';
+
 COMMENT ON COLUMN lunaerp_business_sales_contract.create_time IS '创建时间';
 COMMENT ON COLUMN lunaerp_business_sales_contract.updater IS '更新者';
 COMMENT ON COLUMN lunaerp_business_sales_contract.update_time IS '更新时间';
@@ -153,8 +160,8 @@ BEGIN;
 
 DELETE FROM system_menu WHERE id IN (10100, 10110, 10111, 10112, 10113);
 
--- 目录：业务管理（parent_id=0 顶级，与基本信息 10000 平级）
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10100, '业务管理', '', 1, 101, 0, '/business', 'ep:briefcase', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
+-- 目录：销售（parent_id=0 顶级，与基础信息 10000 平级）
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10100, '销售', '', 1, 101, 0, '/business', 'ep:briefcase', NULL, NULL, 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
 -- 菜单：销售合同（query 权限挂在菜单本身，参照产品/客户菜单模式）
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (10110, '销售合同', 'lunaerp:business:sales-contract:query', 2, 1, 10100, 'sales-contract', 'ep:document', 'lunaerp-elmui/business/sales-contract/index', 'LunaerpElmuiBusinessSalesContract', 0, '1', '1', '1', 'admin', '2026-09-18 00:00:00', '1', '2026-09-18 00:00:00', '0');
 -- 按钮：合同创建/修改/删除

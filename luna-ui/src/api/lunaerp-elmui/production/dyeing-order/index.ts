@@ -41,6 +41,8 @@ export interface DyeingOrderVO {
   fastnessPerspiration?: string
   fastnessDryClean?: string
   fastnessSixFiber?: string
+  colorInstructionId?: number | null // 关联打色指示单ID（逻辑关联可空）
+  colorInstructionNo?: string | null // 打色单号快照
   otherReq?: string
   remark?: string
   status?: string // DRAFT / ACTIVE / COMPLETED / CANCELLED

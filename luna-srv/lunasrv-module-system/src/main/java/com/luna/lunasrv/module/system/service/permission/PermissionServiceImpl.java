@@ -33,8 +33,10 @@ import jakarta.annotation.Resource;
 import java.util.*;
 import java.util.function.Supplier;
 
+import static com.luna.lunasrv.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.luna.lunasrv.framework.common.util.collection.CollectionUtils.convertSet;
 import static com.luna.lunasrv.framework.common.util.json.JsonUtils.toJsonString;
+import static com.luna.lunasrv.module.system.enums.ErrorCodeConstants.ROLE_DATA_SCOPE_CUSTOM_DISABLED;
 
 /**
  * 权限 Service 实现类
@@ -269,6 +271,9 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     public void assignRoleDataScope(Long roleId, Integer dataScope, Set<Long> dataScopeDeptIds) {
+        if (Objects.equals(dataScope, DataScopeEnum.DEPT_CUSTOM.getScope())) {
+            throw exception(ROLE_DATA_SCOPE_CUSTOM_DISABLED);
+        }
         roleService.updateRoleDataScope(roleId, dataScope, dataScopeDeptIds);
     }
 

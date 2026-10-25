@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.luna.lunasrv.module.lunaerp.dal.mysql.business.salesreturn.SalesReturnItemMapper">
+
+    <!-- 查询已删除销售退货单下的明细（用于回收站恢复前引用校验） -->
+    <select id="selectDeletedListByReturnId" resultType="com.luna.lunasrv.module.lunaerp.dal.dataobject.business.salesreturn.SalesReturnItemDO">
+        SELECT *
+        FROM lunaerp_business_sales_return_item
+        WHERE return_id = #{returnId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </select>
+
+    <!-- 级联恢复销售退货明细（显式 SET deleted=0 WHERE return_id=? AND deleted=1 AND tenant_id=?） -->
+    <update id="restoreByReturnId">
+        UPDATE lunaerp_business_sales_return_item
+        SET deleted = 0,
+            updater = #{updater},
+            update_time = #{updateTime}
+        WHERE return_id = #{returnId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </update>
+
+    <!-- 彻底物理删除销售退货明细（显式 DELETE WHERE return_id=? AND deleted=1 AND tenant_id=?） -->
+    <delete id="purgeByReturnId">
+        DELETE FROM lunaerp_business_sales_return_item
+        WHERE return_id = #{returnId}
+          AND deleted = 1
+          AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>

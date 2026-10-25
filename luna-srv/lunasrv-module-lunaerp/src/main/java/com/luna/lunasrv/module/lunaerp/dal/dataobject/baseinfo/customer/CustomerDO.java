@@ -1,10 +1,14 @@
 package com.luna.lunasrv.module.lunaerp.dal.dataobject.baseinfo.customer;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.luna.lunasrv.framework.tenant.core.db.TenantBaseDO;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+
+import java.math.BigDecimal;
 
 /**
  * 基本信息-客户表 DO
@@ -75,5 +79,47 @@ public class CustomerDO extends TenantBaseDO {
      * 状态（ACTIVE 启用 / INACTIVE 停用），创建缺省 ACTIVE
      */
     private String status;
-
+    /**
+     * 英文名称
+     */
+    private String nameEn;
+    /**
+     * 英文地址
+     */
+    private String addressEn;
+    /**
+     * 归属业务员（数据范围 user 列）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long salespersonUserId;
+    /**
+     * 归属部门（数据范围 dept 列）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long deptId;
+    /**
+     * 默认毛利率（小数，如 0.150000 表示 15%，可空；空回退全局 15%）
+     */
+    private BigDecimal defaultMarginRate;
+    /**
+     * 开票抬头（缺省取公司名）
+     */
+    private String invoiceTitle;
+    /**
+     * 开票地址
+     */
+    private String invoiceAddress;
+    /**
+     * 开户银行
+     */
+    private String bankName;
+    /**
+     * 开户行账号
+     */
+    private String bankAccountNo;
+    /**
+     * 信用账期天数（空=不设账期）
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Integer creditDays;
 }
